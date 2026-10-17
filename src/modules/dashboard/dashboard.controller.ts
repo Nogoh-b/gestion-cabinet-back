@@ -11,6 +11,8 @@ import { DashboardOverviewDto } from './dto/dashboard-overview.dto';
 import { DashboardService } from './dashboard.service';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import type { RestrictedFieldsUser } from 'src/core/security/restricted-fields';
 
 @ApiTags('dashboard')
 @Controller('dashboard')
@@ -25,7 +27,10 @@ export class DashboardController {
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   @ApiOperation({ summary: "Obtenir les données pour l'overview du dashboard" })
   @ApiResponse({ status: 200, type: DashboardOverviewDto })
-  async getOverview(): Promise<DashboardOverviewDto> {
-    return this.dashboardService.getOverview();
+  async getOverview(
+    @CurrentUser() user: RestrictedFieldsUser,
+  ): Promise<DashboardOverviewDto> {
+    // L'utilisateur décide de la section financière (droits sur les factures).
+    return this.dashboardService.getOverview(user);
   }
 }

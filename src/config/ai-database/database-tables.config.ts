@@ -252,7 +252,7 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
       case_action_families:
         'Familles du catalogue des actions (regroupements fonctionnels : Formalités, Audience, Conseil…). Création via INSERT avec le champ "label" OBLIGATOIRE (ex: {"label": "Recouvrement amiable"}) — le code est généré automatiquement.',
       dossier_actions:
-        'Actions de traitement d’un dossier. Une action terminée n’est à facturer que si billing_decision vaut BILLABLE.',
+        'Actions de traitement d’un dossier. BILLABLE, HOURLY et VACATION sont facturables; vérifier le statut et les montants dans billable_items.',
       dossier_recommendations:
         'Prochaines actions recommandées pour un dossier.',
       dossier_billing_profiles:
@@ -315,6 +315,8 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
         'categorie d actions',
       ],
       billable_items: [
+        'vacation',
+        'montant a facturer',
         'element facturable',
         'elements a facturer',
         'travaux a facturer',
@@ -322,11 +324,16 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
         'honoraires a facturer',
       ],
       dossier_billing_profiles: [
+        'vacation',
+        'configuration de facturation',
+        'parametres de facturation',
+        'bareme',
         'mode de facturation',
         'convention d honoraires',
         'tarif du dossier',
       ],
       dossier_billing_rules: [
+        'vacation',
         'regle tarifaire',
         'tarif applicable',
         'tarif de l action',

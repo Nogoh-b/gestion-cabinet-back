@@ -20,7 +20,7 @@ import {
  * Handler custom pour les apports de dossiers.
  * Logique métier :
  *   - dossier + referrer + commission_rate obligatoires
- *   - 0 < commission_rate ≤ 100
+ *   - 0 ≤ commission_rate ≤ 100, commission_amount ≥ 0 (bornes du formulaire)
  *   - dossier_id UNIQUE → 1 seul apporteur par dossier
  *   - Dédup par dossier_id (retourne l'existant)
  *   - referral_date par défaut : today
@@ -84,44 +84,50 @@ export class DossierReferralWriteHandler extends BaseWriteHandler {
     operation: 'INSERT' | 'UPDATE',
   ): Promise<ValidationResult> {
     const errors: string[] = [];
+    const transformed = { ...fields };
+    const has = (v: any) => v !== undefined && v !== null;
     if (operation === 'INSERT') {
       if (!fields.dossier_id)
         errors.push('Le dossier est requis (dossier_id ou dossier)');
       if (!fields.referrer_id)
         errors.push("L'apporteur est requis (referrer_id ou referrer)");
-      const mode = fields.commission_mode ?? CommissionMode.RATE;
+      // Mode déduit de ce qui est fourni : un montant seul = commission fixe.
       if (
-        mode === CommissionMode.RATE &&
-        (fields.commission_rate === undefined ||
-          fields.commission_rate === null)
+        !has(fields.commission_mode) &&
+        !has(fields.commission_rate) &&
+        has(fields.commission_amount)
       ) {
+        transformed.commission_mode = CommissionMode.FIXED_AMOUNT;
+      }
+      const mode = transformed.commission_mode ?? CommissionMode.RATE;
+      if (mode === CommissionMode.RATE && !has(fields.commission_rate)) {
         errors.push('Le taux de commission est requis (commission_rate)');
       }
       if (
         mode === CommissionMode.FIXED_AMOUNT &&
-        (fields.commission_amount === undefined ||
-          fields.commission_amount === null)
+        !has(fields.commission_amount)
       ) {
         errors.push(
           'Le montant fixe de commission est requis (commission_amount)',
         );
       }
     }
-    if (fields.commission_rate !== undefined) {
+    // Mêmes bornes que le formulaire : taux entre 0 et 100, montant ≥ 0.
+    if (has(fields.commission_rate)) {
       const rate = Number(fields.commission_rate);
-      if (rate <= 0)
-        errors.push('Le taux de commission doit être strictement positif');
+      if (rate < 0)
+        errors.push('Le taux de commission ne peut pas être négatif');
       if (rate > 100)
         errors.push('Le taux de commission ne peut pas excéder 100%');
     }
-    if (fields.commission_amount !== undefined) {
-      const amount = Number(fields.commission_amount);
-      if (amount <= 0)
-        errors.push(
-          'Le montant fixe de commission doit etre strictement positif',
-        );
+    if (has(fields.commission_amount) && Number(fields.commission_amount) < 0) {
+      errors.push('Le montant fixe de commission ne peut pas être négatif');
     }
-    return { valid: errors.length === 0, errors, transformedFields: fields };
+    return {
+      valid: errors.length === 0,
+      errors,
+      transformedFields: transformed,
+    };
   }
 
   protected async doInsert(

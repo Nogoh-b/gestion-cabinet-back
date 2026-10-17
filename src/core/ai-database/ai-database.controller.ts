@@ -13,9 +13,11 @@ import {
   Param,
   Logger,
   UseInterceptors,
-  UploadedFile,
   UploadedFiles,
   Res,
+  Patch,
+  Delete,
+  BadRequestException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -34,10 +36,27 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { PrepareFormDto } from './dto/prepare-form.dto';
 import { memoryStorageOptions } from '../shared/interceptors/upload.interceptor';
 import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
+import { toChatPayload } from './chat-visibility';
+import { normalizeConversationTitle } from './conversation-resource';
+import { UpdateConversationDto } from './dto/update-conversation.dto';
+import { MAX_ANALYZED_FILES, utf8FileName } from './chat-attachments';
+import { PlanFieldsService } from './plan-fields.service';
+import { FieldOptionsRequest, FieldOptionsResponse, PlanFieldsResponse } from './dto/plan-fields.dto';
+
+/** `file` (un fichier, historique) ou `files` (plusieurs fichiers lus ensemble). */
+const QUESTION_FILES = FileFieldsInterceptor(
+  [{ name: 'file', maxCount: 1 }, { name: 'files', maxCount: MAX_ANALYZED_FILES }],
+  memoryStorageOptions,
+);
+type QuestionFiles = { file?: Express.Multer.File[]; files?: Express.Multer.File[] } | undefined;
+const questionFiles = (uploaded: QuestionFiles) =>
+  [...(uploaded?.file ?? []), ...(uploaded?.files ?? [])]
+    .slice(0, MAX_ANALYZED_FILES)
+    .map((file) => ({ ...file, originalname: utf8FileName(file.originalname) }));
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
@@ -51,6 +70,7 @@ export class AiDatabaseController {
     private readonly schemaMetadata: SchemaMetadataService,
     private readonly conversationManager: ConversationManagerService,
     private readonly tenantContext: TenantContext,
+    private readonly planFields: PlanFieldsService,
   ) {}
   @Post('form/prepare')
   @HttpCode(HttpStatus.OK)
@@ -69,7 +89,7 @@ export class AiDatabaseController {
   @Post('ask')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, AiQuotaGuard)
-  @UseInterceptors(FileInterceptor('file', memoryStorageOptions))
+  @UseInterceptors(QUESTION_FILES)
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -83,6 +103,7 @@ export class AiDatabaseController {
         },
         intentMode: { type: 'string', enum: ['auto', 'read', 'write', 'chat'] },
         file: { type: 'string', format: 'binary' },
+        files: { type: 'array', items: { type: 'string', format: 'binary' } },
       },
     },
   })
@@ -90,13 +111,15 @@ export class AiDatabaseController {
     @Body() dto: AskQuestionDto,
     @CurrentUser() user,
     @Req() req,
-    @UploadedFile() file?: Express.Multer.File,
+    @UploadedFiles() uploaded?: QuestionFiles,
   ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.analyzeQuestion(
-      dto,
-      user,
-      file,
-      req?.aiRequestLogId,
+    return toChatPayload(
+      await this.aiDbService.analyzeQuestion(
+        dto,
+        user,
+        questionFiles(uploaded),
+        req?.aiRequestLogId,
+      ),
     );
   }
 
@@ -119,13 +142,13 @@ export class AiDatabaseController {
    */
   @Post('ask/stream')
   @UseGuards(JwtAuthGuard, AiQuotaGuard)
-  @UseInterceptors(FileInterceptor('file', memoryStorageOptions))
+  @UseInterceptors(QUESTION_FILES)
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Version streaming (SSE) de /ask' })
   async askStream(
     @Body() dto: AskQuestionDto,
     @CurrentUser() user,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles() uploaded: QuestionFiles,
     @Res() res: Response,
   ): Promise<void> {
     const t0 = Date.now();
@@ -140,8 +163,10 @@ export class AiDatabaseController {
     res.flushHeaders(); // flush immédiat vers le client
 
     let tokenEmitCount = 0;
-    const sendEvent = (event: string, data: any) => {
+    const sendEvent = (event: string, rawData: any) => {
       if (res.writableEnded) return; // connexion déjà fermée
+      const data =
+        event === 'rows' || event === 'result' ? toChatPayload(rawData) : rawData;
 
       if (event === 'token') {
         tokenEmitCount++;
@@ -175,7 +200,7 @@ export class AiDatabaseController {
         this.aiDbService.analyzeQuestionStream(
           dto,
           user,
-          file,
+          questionFiles(uploaded),
           sendEvent,
           (res.req as any)?.aiRequestLogId,
         ),
@@ -201,6 +226,31 @@ export class AiDatabaseController {
     @CurrentUser() user,
   ): Promise<AnalysisResponseDto> {
     return this.aiDbService.confirmWrite(pendingIntent, user);
+  }
+
+  /**
+   * Champs d'un plan pour la carte de confirmation : libellés, valeur reconnue
+   * et listes de choix (clés étrangères, énumérations). Rien n'est écrit.
+   */
+  @Post('write/plan-fields')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Décrit les champs modifiables d'un plan d'écriture" })
+  async describePlanFields(
+    @Body('plan') plan: WritePlan,
+    @CurrentUser() user,
+  ): Promise<PlanFieldsResponse> {
+    return this.planFields.describePlan(user, plan);
+  }
+
+  /** Options d'un champ : recherche (`q`) ou liste filtrée (champ dépendant). */
+  @Post('write/field-options')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Options d'un champ de plan d'écriture" })
+  async fieldOptions(
+    @Body() request: FieldOptionsRequest,
+    @CurrentUser() user,
+  ): Promise<FieldOptionsResponse> {
+    return this.planFields.fieldOptions(user, request);
   }
 
   // ── Résolution d'ambiguïté ───────────────────────────────────────────────────
@@ -306,13 +356,78 @@ export class AiDatabaseController {
   @Post('analyze')
   async analyze(@Body() dto: AskQuestionDto, @Req() req) {
     const userId = req.user?.id || 'anonymous'; // Ton système d'auth
-    return this.aiDbService.analyzeQuestion(dto, userId);
+    return toChatPayload(await this.aiDbService.analyzeQuestion(dto, userId));
   }
 
   @Get('conversations')
-  async getConversations(@Req() req) {
+  async getConversations(
+    @Req() req,
+    @Query('search') search?: string,
+    @Query('resourceType') resourceType?: string,
+    @Query('resourceId') resourceId?: string,
+  ) {
     const userId = req.user?.id || 'anonymous';
-    return this.conversationManager.getUserConversations(userId);
+    return this.conversationManager.listConversations(String(userId), {
+      search,
+      resourceType,
+      resourceId,
+    });
+  }
+
+  @Patch('conversations/:id')
+  @ApiOperation({ summary: 'Renomme et/ou épingle une conversation' })
+  async updateConversation(
+    @Param('id') conversationId: string,
+    @Body() dto: UpdateConversationDto,
+    @Req() req,
+  ) {
+    await this.assertOwnConversation(conversationId, req.user?.id);
+    if (dto.title !== undefined) {
+      const title = normalizeConversationTitle(dto.title);
+      if (!title) throw new BadRequestException('Le titre ne peut pas être vide.');
+      await this.conversationManager.renameConversation(conversationId, title);
+    }
+    if (dto.pinned !== undefined) {
+      await this.conversationManager.setPinned(conversationId, dto.pinned);
+    }
+    return this.conversationManager.getConversationAny(conversationId);
+  }
+
+  @Delete('conversations/:id')
+  @ApiOperation({ summary: 'Supprime une conversation (restaurable)' })
+  async deleteConversation(@Param('id') conversationId: string, @Req() req) {
+    await this.assertOwnConversation(conversationId, req.user?.id);
+    await this.conversationManager.softDeleteConversation(conversationId);
+    return { id: conversationId, deleted: true };
+  }
+
+  @Post('conversations/:id/restore')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Restaure une conversation supprimée' })
+  async restoreConversation(@Param('id') conversationId: string, @Req() req) {
+    await this.assertOwnConversation(conversationId, req.user?.id, true);
+    await this.conversationManager.restoreConversation(conversationId);
+    return this.conversationManager.getConversationAny(conversationId);
+  }
+
+  /** La conversation existe et appartient à l'utilisateur connecté. */
+  private async assertOwnConversation(
+    conversationId: string,
+    rawUserId: unknown,
+    withDeleted = false,
+  ) {
+    const userId = String(rawUserId ?? 'anonymous');
+    const conversation = await this.conversationManager.getConversationAny(
+      conversationId,
+      { withDeleted },
+    );
+    if (!conversation) {
+      throw new NotFoundException(`Conversation ${conversationId} introuvable`);
+    }
+    if (String(conversation.userId) !== userId) {
+      throw new UnauthorizedException('Cette conversation ne vous appartient pas.');
+    }
+    return conversation;
   }
 
   @Post('conversations')
@@ -353,7 +468,8 @@ export class AiDatabaseController {
       );
     }
 
-    return this.conversationManager.getFullHistory(conversationId);
+    const history = await this.conversationManager.getFullHistory(conversationId);
+    return history.map((message) => toChatPayload(message));
   }
 
   @Get('prompt-schema')

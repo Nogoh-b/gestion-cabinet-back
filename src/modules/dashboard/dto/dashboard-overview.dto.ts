@@ -59,14 +59,16 @@ export class DashboardOverviewDto {
     successRate: number;
   }>;
 
-  // Résumé financier - pour PerformanceCharts (onglet financier)
+  // Résumé financier - pour PerformanceCharts (onglet financier).
+  // null sans view_factures / view_financial_reports (hors admin) : la
+  // facturation du cabinet n'est pas chargée (trends.factures vide aussi).
   financial: {
     totalFacture: number;
     totalPaye: number;
     totalImpaye: number;
     tauxRecouvrement: number;
     facturesEnRetard: number;
-  };
+  } | null;
 
   // Plan d'action de l'avocat - diligences à traiter, échéances, audiences.
   // Chaque liste est tronquée (voir ACTIONS_SECTION_LIMIT) ; `totaux` porte la

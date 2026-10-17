@@ -20,7 +20,8 @@ import {
 /**
  * Handler custom pour les exercices comptables.
  * Logique métier :
- *   - annee obligatoire à la création ; dateDebut/dateFin déduites si absentes
+ *   - annee par défaut : celle de dateDebut, sinon l'année en cours ;
+ *     dateDebut/dateFin déduites si absentes
  *   - dédup par "annee" (un seul exercice par année et par tenant)
  *   - statut par défaut : OUVERT
  *   - passage à CLOTURE → renseigne dateCloture automatiquement
@@ -41,9 +42,9 @@ export class ExerciceWriteHandler extends BaseWriteHandler {
     const fields = await super.getWriteableFieldsSchema();
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
       annee: {
-        description: "Année de l'exercice (obligatoire)",
+        description: "Année de l'exercice (par défaut : année en cours)",
         example: '2026',
-        required: true,
+        required: false,
       },
       dateDebut: {
         description: "Date de début (par défaut 1er janvier de l'année)",
@@ -65,11 +66,15 @@ export class ExerciceWriteHandler extends BaseWriteHandler {
     fields: Record<string, any>,
     operation: 'INSERT' | 'UPDATE',
   ): Promise<ValidationResult> {
-    const errors: string[] = [];
+    const transformed = { ...fields };
+    // Année non précisée : celle de la date de début, sinon l'année en cours.
     if (operation === 'INSERT' && !fields.annee) {
-      errors.push("L'année de l'exercice est requise");
+      const start = fields.dateDebut ? new Date(fields.dateDebut) : new Date();
+      transformed.annee = Number.isNaN(start.getTime())
+        ? new Date().getFullYear()
+        : start.getFullYear();
     }
-    return { valid: errors.length === 0, errors, transformedFields: fields };
+    return { valid: true, errors: [], transformedFields: transformed };
   }
 
   protected async doInsert(

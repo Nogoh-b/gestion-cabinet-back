@@ -20,8 +20,8 @@ import {
  *   - name requis pour INSERT
  *   - code unique : fourni par le LLM ou auto-généré depuis le nom
  *   - Dédup par code (contrainte unique) puis par name
- *   - is_subtype=true → parent_id requis, hierarchy_level=2
- *   - is_subtype=false (défaut) → hierarchy_level=1
+ *   - parent_id fourni → sous-type, hierarchy_level=2 (comme la saisie manuelle)
+ *   - sans parent → type de premier niveau, hierarchy_level=1
  *   - is_active=true par défaut
  *   - UPDATE : code immuable après création
  */
@@ -56,11 +56,12 @@ export class ProcedureTypeWriteHandler extends BaseWriteHandler {
       },
       is_subtype: {
         description:
-          "true si c'est un sous-type, false si type principal (défaut: false)",
+          'Déduit de parent_id : un type avec parent est un sous-type.',
         example: 'false',
       },
       parent_id: {
-        description: 'ID du type parent — obligatoire si is_subtype=true',
+        description:
+          'ID du type parent — sa présence fait du type un sous-type',
         example: '1',
       },
       is_active: {
@@ -93,13 +94,8 @@ export class ProcedureTypeWriteHandler extends BaseWriteHandler {
       if (!fields.name) {
         errors.push('Le nom du type de procédure est requis');
       }
-      const isSubtype =
-        fields.is_subtype === true ||
-        fields.is_subtype === 'true' ||
-        fields.is_subtype === 1;
-      if (isSubtype && !fields.parent_id) {
-        errors.push('Le type parent est requis pour un sous-type (parent_id)');
-      }
+      // Comme ProceduresService.create, c'est la présence d'un parent qui fait
+      // le sous-type : sans parent, le type est créé au premier niveau.
     }
 
     if (operation === 'UPDATE') {
@@ -171,9 +167,9 @@ export class ProcedureTypeWriteHandler extends BaseWriteHandler {
 
     // ── Construction des données ──────────────────────────────────────────────
     const isSubtype =
-      safeFields.is_subtype === true ||
-      safeFields.is_subtype === 'true' ||
-      safeFields.is_subtype === 1;
+      safeFields.parent_id !== undefined &&
+      safeFields.parent_id !== null &&
+      String(safeFields.parent_id).trim() !== '';
 
     const data = {
       ...safeFields,

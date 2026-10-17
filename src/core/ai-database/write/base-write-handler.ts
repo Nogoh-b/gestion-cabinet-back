@@ -13,7 +13,13 @@
  * Pour une logique métier spécifique (ex: génération de numéro de dossier),
  * créez un handler custom qui étend cette classe et surcharge les méthodes.
  */
-import { DataSource, EntityMetadata, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityMetadata,
+  Repository,
+  getMetadataArgsStorage,
+} from 'typeorm';
+import { ColumnMetadata } from 'typeorm/metadata/ColumnMetadata';
 import { Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 
 import { BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
@@ -32,10 +38,20 @@ import { AmbiguityException } from './ambiguity.exception';
 import { EntityIdRequiredException } from './entity-id-required.exception';
 import { EntityResolverService } from './entity-resolver.service';
 import { WriteResult } from './write-handler.registry';
+import {
+  isBlank,
+  matchEnumValue,
+  parseLenientBoolean,
+  parseLenientDate,
+  parseLenientNumber,
+  parseLenientTime,
+} from './lenient-values';
 
 /** Colonnes système jamais modifiables par l'IA */
 const SYSTEM_COLUMNS = new Set([
   'id',
+  // Injecté par TenantEntity (@BeforeInsert) : jamais choisi par le LLM.
+  'tenant_id',
   'created_at',
   'updated_at',
   'deleted_at',
@@ -209,6 +225,9 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     return false;
   }
 
+  /** Colonnes remplies par les hooks @BeforeInsert sans aucune saisie. */
+  private hookFilledColumns?: Set<string>;
+
   /** Mapping nom court → { fkColumn, referencedTable } */
   protected readonly fkMap: Map<
     string,
@@ -244,6 +263,9 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     const columnMetaMap = this.schemaMetadata.getColumnMetadataMap(
       this.entityName,
     );
+    // Colonnes remplies par les hooks même sans saisie (codes, clés…) :
+    // calculé une fois, les hooks pouvant être coûteux (génération de clés).
+    this.hookFilledColumns ??= await this.columnsFilledByInsertHooks({});
 
     for (const column of this.entityMeta.columns) {
       const dbName = column.databaseName;
@@ -295,7 +317,17 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
         name: dbName,
         label: bCol?.label || this.schemaMetadata.formatTechnicalName(dbName),
         type: fieldType,
-        required: !column.isNullable && !column.default && !column.isGenerated,
+        // Même règle que validateFields : seul ce qui n'a ni défaut, ni
+        // génération, ni hook est présenté comme obligatoire au planificateur.
+        required:
+          !column.isNullable &&
+          column.default === undefined &&
+          !column.isGenerated &&
+          !column.isCreateDate &&
+          !column.isUpdateDate &&
+          !AUTO_GENERATED_FIELDS.has(dbName) &&
+          !AUTO_GENERATED_FIELDS.has(column.propertyName) &&
+          !this.hookFilledColumns.has(column.propertyName),
         enumValues,
         referenceEntity,
         description: bCol?.description || '',
@@ -334,6 +366,9 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
 
     if (operation === 'INSERT') {
       const has = (v: any) => v !== undefined && v !== null;
+      // Colonnes remplies par les hooks @BeforeInsert de l'entité (nom complet,
+      // codes…) : la création manuelle ne les exige pas, l'IA non plus.
+      const filledByHooks = await this.columnsFilledByInsertHooks(fields);
       // Vérifier les champs requis
       for (const column of this.entityMeta.columns) {
         const dbName = column.databaseName;
@@ -347,6 +382,9 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
           continue;
         if (column.isPrimary && column.isGenerated) continue;
         if (column.isNullable || column.default !== undefined) continue;
+        if (column.isCreateDate || column.isUpdateDate || column.isVersion)
+          continue;
+        if (filledByHooks.has(propName)) continue;
 
         // Le champ est requis — fourni en snake_case OU camelCase ?
         // (validateFields reçoit des champs déjà normalisés en propertyName)
@@ -688,7 +726,14 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     //     snake_case ↔ camelCase des VRAIES colonnes + on conserve les champs non-colonnes
     //     (ex: "family", "dossier") pour que validateFields puisse les contrôler et
     //     produire un message actionnable au lieu de les perdre silencieusement.
-    const normalizedFields = this.filterKnownColumnsLenient(resolvedFields);
+    // 1c. Ramener les valeurs « humaines » du LLM au type de la colonne
+    //     (« 1 500 000 FCFA », « 15/06/2026 », « oui », « HIGH »…) comme le
+    //     ferait un formulaire ; les valeurs inexploitables sont ignorées et
+    //     signalées dans le message plutôt que de faire échouer l'écriture.
+    const { fields: normalizedFields, notes } = this.coerceFieldValues(
+      this.filterKnownColumnsLenient(resolvedFields),
+      intent.operation,
+    );
 
     // 2. Valider
     const validation = await this.validateFields(
@@ -732,7 +777,220 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
       intent.fields,
     );
 
+    if (notes.length > 0) {
+      result.message = `${result.message ?? ''} (${notes.join(' ; ')})`.trim();
+    }
+
     return result;
+  }
+
+  // ─── NORMALISATION TOLÉRANTE DES VALEURS ────────────────────────────────────
+
+  /**
+   * Convertit chaque valeur fournie vers le type de sa colonne. Une valeur
+   * inexploitable est retirée (la colonne garde sa valeur par défaut ou son
+   * ancienne valeur) et une note lisible est renvoyée.
+   */
+  protected coerceFieldValues(
+    fields: Record<string, any>,
+    operation: string,
+  ): { fields: Record<string, any>; notes: string[] } {
+    const out = { ...fields };
+    const notes: string[] = [];
+    const fkColumns = new Set([...this.fkMap.values()].map((i) => i.fkColumn));
+
+    for (const column of this.entityMeta.columns) {
+      const dbName = column.databaseName;
+      if (SYSTEM_COLUMNS.has(dbName) || column.isPrimary) continue;
+      if (fkColumns.has(dbName) || column.relationMetadata) continue;
+      const key =
+        column.propertyName in out
+          ? column.propertyName
+          : dbName in out
+            ? dbName
+            : null;
+      if (!key) continue;
+      const value = out[key];
+      if (value === undefined) continue;
+      if (typeof value === 'string' && value.startsWith('{{')) continue;
+
+      const kind = this.columnKind(column);
+      if (value === null) {
+        // NULL sur une colonne NOT NULL : on laisse le défaut / l'existant.
+        if (!column.isNullable) delete out[key];
+        continue;
+      }
+      if (kind !== 'string' && kind !== 'other' && isBlank(value)) {
+        delete out[key];
+        continue;
+      }
+
+      let coerced: any = value;
+      switch (kind) {
+        case 'number': {
+          if (typeof value === 'boolean') break;
+          const n = parseLenientNumber(value);
+          const b = n === null ? parseLenientBoolean(value) : null;
+          coerced = n ?? (b === null ? undefined : Number(b));
+          break;
+        }
+        case 'boolean': {
+          const b = parseLenientBoolean(value);
+          coerced = b ?? undefined;
+          break;
+        }
+        case 'date': {
+          if (typeof value === 'number') break;
+          coerced = parseLenientDate(value) ?? undefined;
+          break;
+        }
+        case 'time':
+          coerced = parseLenientTime(value) ?? undefined;
+          break;
+        case 'enum':
+          coerced = matchEnumValue(
+            value,
+            (column.enum ?? []) as Array<string | number>,
+            this.originalEnumOf(column),
+          );
+          break;
+        case 'string':
+          if (typeof value === 'number' || typeof value === 'boolean')
+            coerced = String(value);
+          else if (typeof value === 'string') coerced = value.trim();
+          break;
+        case 'json':
+          if (typeof value === 'string') {
+            try {
+              coerced = JSON.parse(value);
+            } catch {
+              coerced = value;
+            }
+          }
+          break;
+      }
+
+      if (coerced === undefined) {
+        delete out[key];
+        const label =
+          this.schemaMetadata.getBusinessLabel(this.entityName, dbName) ||
+          dbName;
+        notes.push(
+          `${label} ignoré(e) : valeur « ${String(value)} » non reconnue`,
+        );
+        this.logger.warn(
+          `🪶 ${operation} ${this.entityName}.${dbName} : valeur "${String(value)}" non convertible (${kind}) — ignorée`,
+        );
+      } else {
+        out[key] = coerced;
+      }
+    }
+
+    return { fields: out, notes };
+  }
+
+  private columnKind(
+    column: ColumnMetadata,
+  ):
+    | 'number'
+    | 'boolean'
+    | 'date'
+    | 'time'
+    | 'enum'
+    | 'string'
+    | 'json'
+    | 'other' {
+    const type =
+      typeof column.type === 'function'
+        ? ((column.type as { name?: string }).name?.toLowerCase() ?? '')
+        : String(column.type).toLowerCase();
+    if (type === 'enum' || type === 'simple-enum' || column.enum?.length)
+      return 'enum';
+    if (['boolean', 'bool'].includes(type)) return 'boolean';
+    if (
+      [
+        'int',
+        'integer',
+        'tinyint',
+        'smallint',
+        'mediumint',
+        'bigint',
+        'decimal',
+        'numeric',
+        'float',
+        'double',
+        'double precision',
+        'real',
+        'dec',
+        'fixed',
+        'number',
+      ].includes(type)
+    )
+      return 'number';
+    if (['date', 'datetime', 'timestamp', 'timestamptz'].includes(type))
+      return 'date';
+    if (type === 'time') return 'time';
+    if (['json', 'jsonb', 'simple-json'].includes(type)) return 'json';
+    if (
+      [
+        'varchar',
+        'char',
+        'nvarchar',
+        'nchar',
+        'character varying',
+        'text',
+        'tinytext',
+        'mediumtext',
+        'longtext',
+        'string',
+      ].includes(type)
+    )
+      return 'string';
+    return 'other';
+  }
+
+  /** Enum TypeScript d'origine (avec ses clés) déclaré sur la colonne. */
+  private originalEnumOf(
+    column: ColumnMetadata,
+  ): Record<string, string | number> | undefined {
+    const args = getMetadataArgsStorage().columns.find(
+      (c) =>
+        c.target === column.target && c.propertyName === column.propertyName,
+    );
+    const enumOption = args?.options?.enum;
+    return enumOption && !Array.isArray(enumOption)
+      ? (enumOption as Record<string, string | number>)
+      : undefined;
+  }
+
+  /**
+   * Exécute les hooks @BeforeInsert sur une copie en mémoire pour savoir
+   * quelles colonnes ils remplissent (ex: full_name dérivé de first/last_name,
+   * codes générés). Aucun accès BDD : un hook qui échoue est simplement ignoré.
+   */
+  private async columnsFilledByInsertHooks(
+    fields: Record<string, any>,
+  ): Promise<Set<string>> {
+    const filled = new Set<string>();
+    const listeners = this.entityMeta.beforeInsertListeners ?? [];
+    if (listeners.length === 0) return filled;
+    try {
+      const probe: any = this.repo.create({ ...fields });
+      for (const listener of listeners) {
+        try {
+          await listener.execute(probe);
+        } catch {
+          /* hook dépendant d'un contexte absent : ignoré */
+        }
+      }
+      for (const column of this.entityMeta.columns) {
+        const v = probe[column.propertyName];
+        if (v !== undefined && v !== null) filled.add(column.propertyName);
+      }
+    } catch {
+      /* entité non instanciable hors contexte : pas d'assouplissement */
+    }
+    return filled;
   }
 
   // ─── INSERT / UPDATE (surchargeable) ────────────────────────────────────────

@@ -43,12 +43,98 @@ describe('IntentDetectionService local classifier', () => {
     ).toBe('WRITE');
   });
 
+  it.each([
+    "corrige les points d'attention",
+    'Corrigez-les',
+    "s'il te plait renomme les periodes",
+    'répare les doublons selon tes recommandations',
+  ])('traite « %s » comme une demande d’écriture, pas un conseil', (question) => {
+    expect(service.classifyLocal(question)).toBe('WRITE');
+  });
+
+  it('ne confond pas une question sur les corrections avec une écriture', () => {
+    // Pas à l'impératif en début de phrase : laissé au classifieur LLM.
+    expect(
+      service.classifyLocal('comment corriger une periode de paie ?'),
+    ).not.toBe('WRITE');
+    expect(
+      service.classifyLocal('que me conseilles-tu de corriger ?'),
+    ).toBe('ADVICE');
+  });
+
+  describe('demande corrective « corrige les points d’attention »', () => {
+    const plan = JSON.stringify({
+      type: 'WRITE',
+      writePlan: {
+        operations: [{ operation: 'UPDATE', entity: 'payroll_period', entityId: 7, fields: { label: 'Sept-Oct 2026' } }],
+        humanReadable: 'Renommer la période',
+        confidence: 0.7,
+      },
+    });
+    const llmReturning = (...answers: string[]) => {
+      let call = 0;
+      const invoke = jest.fn(async () => ({
+        content: answers[Math.min(call++, answers.length - 1)],
+      }));
+      return { invoke } as any;
+    };
+
+    it('redemande un plan quand le planner répond ADVICE, puis exige la confirmation', async () => {
+      const planner = llmReturning('{"type":"ADVICE"}', plan);
+      const result = await service.detectIntent(
+        "corrige les point d'attenttions", llmReturning('READ'), '', { plannerLlm: planner },
+      );
+      expect(result.type).toBe('WRITE');
+      expect(result.writePlan?.operations[0]).toMatchObject({ operation: 'UPDATE', entity: 'payroll_period' });
+      expect(result.requiresConfirmation).toBe(true);
+      expect(planner.invoke).toHaveBeenCalledTimes(2);
+    });
+
+    it('ne se rabat jamais sur un conseil : échec explicite si aucun plan n’est produit', async () => {
+      const result = await service.detectIntent(
+        "corrige les point d'attenttions", llmReturning('READ'), '', {
+          plannerLlm: llmReturning('{"type":"ADVICE"}'),
+        },
+      );
+      expect(result.type).toBe('WRITE');
+      expect(result.writePlan).toBeUndefined();
+      expect(result.writePlanError).toContain('WRITE');
+    });
+  });
+
   it('detects obvious read without LLM', () => {
     expect(service.classifyLocal('Liste les dossiers ouverts')).toBe('READ');
   });
 
   it('detects simple chat without LLM', () => {
     expect(service.classifyLocal('Bonjour')).toBe('CHAT');
+  });
+
+  it('lit les données pour une synthèse de dossier, même avec « prochaines étapes »', () => {
+    const domainService = new IntentDetectionService(
+      {
+        getAllHandlers: jest.fn(() => []),
+        generateGlobalWriteSchema: jest.fn(async () => ''),
+      } as any,
+      { domainKeywords: ['dossier', 'client', 'facture'] } as any,
+    );
+
+    expect(
+      domainService.classifyLocal(
+        'Fais une synthèse du dossier CD-2026-002 : objet, parties, état de la procédure, dernières actions réalisées et prochaines étapes.',
+      ),
+    ).toBe('READ');
+    expect(domainService.classifyLocal('Fais le point sur le client Ndi')).toBe(
+      'READ',
+    );
+    // Sans enregistrement visé, « prochaines étapes » reste un conseil.
+    expect(
+      domainService.classifyLocal('quelles sont les prochaines étapes conseillées ?'),
+    ).toBe('ADVICE');
+    // Une fiche de synthèse à produire reste une écriture.
+    expect(
+      domainService.classifyLocal('rédige une fiche de synthèse du dossier'),
+    ).toBe('WRITE');
   });
 
   it('retire les tables ignorées du schéma d’écriture', async () => {

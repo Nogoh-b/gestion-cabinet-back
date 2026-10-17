@@ -69,19 +69,27 @@ export class PayrollPeriodWriteHandler extends BaseWriteHandler {
     operation: 'INSERT' | 'UPDATE',
   ): Promise<ValidationResult> {
     const errors: string[] = [];
+    const transformed = { ...fields };
     if (operation === 'INSERT') {
       if (!fields.label)
         errors.push('Le libellé est requis (ex: "Paie Mars 2026")');
       if (!fields.start_date) errors.push('La date de début est requise');
       if (!fields.end_date) errors.push('La date de fin est requise');
     }
-    if (fields.start_date && fields.end_date) {
-      const s = new Date(fields.start_date);
-      const e = new Date(fields.end_date);
-      if (e <= s)
-        errors.push('La date de fin doit être postérieure à la date de début');
+    // Dates inversées : on les remet dans l'ordre plutôt que de refuser.
+    if (
+      fields.start_date &&
+      fields.end_date &&
+      new Date(fields.end_date) < new Date(fields.start_date)
+    ) {
+      transformed.start_date = fields.end_date;
+      transformed.end_date = fields.start_date;
     }
-    return { valid: errors.length === 0, errors, transformedFields: fields };
+    return {
+      valid: errors.length === 0,
+      errors,
+      transformedFields: transformed,
+    };
   }
 
   protected async doInsert(

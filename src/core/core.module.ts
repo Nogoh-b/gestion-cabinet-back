@@ -78,6 +78,7 @@ import { TenantContext } from './tenant/tenant.context';
 import { TenantInterceptor } from './tenant/tenant.interceptor';
 import { RequestUserContext } from './security/request-user.context';
 import { RequestUserInterceptor } from './security/request-user.interceptor';
+import { RestrictedFieldsInterceptor } from './security/restricted-fields.interceptor';
 
 @Global()
 @Module({
@@ -171,6 +172,8 @@ import { RequestUserInterceptor } from './security/request-user.interceptor';
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
     RequestUserContext,
     { provide: APP_INTERCEPTOR, useClass: RequestUserInterceptor },
+    // Champs financiers retirés des réponses selon les droits de l'appelant.
+    { provide: APP_INTERCEPTOR, useClass: RestrictedFieldsInterceptor },
     TypeOrmModule,
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],

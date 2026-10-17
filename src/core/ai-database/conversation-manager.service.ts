@@ -1,14 +1,35 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 // conversation-manager.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { v4 as uuidv4 } from 'uuid';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationMessage } from './entities/conversation-message.entity';
 import type { ReferencedEntityContext } from './dto/ask-question.dto';
+import { pickConversationResource } from './conversation-resource';
+import { addTenantCondition } from '../tenant/tenant-repository.patch';
 
 @Injectable()
 export class ConversationManagerService {
+  // Ce contexte est limité à la requête et isolé entre utilisateurs concurrents.
+  // L'historique visible des questions suivantes est fourni par le navigateur.
+  private readonly temporarySession = new AsyncLocalStorage<{
+    conversation: Conversation | null;
+  }>();
+
+  runTemporary<T>(callback: () => T): T {
+    return this.temporarySession.run({ conversation: null }, callback);
+  }
+
+  /** Pièces jointes et passage cité de la question en cours, gardés avec le message utilisateur. */
+  private readonly userMessageExtras = new AsyncLocalStorage<Record<string, any>>();
+
+  withUserMessageMetadata<T>(metadata: Record<string, any> | undefined, callback: () => T): T {
+    return metadata ? this.userMessageExtras.run(metadata, callback) : callback();
+  }
+
   private readonly logger = new Logger(ConversationManagerService.name);
 
   constructor(
@@ -25,6 +46,13 @@ export class ConversationManagerService {
     userId: string,
     title?: string,
   ): Promise<Conversation> {
+    const temporary = this.temporarySession.getStore();
+    if (temporary) {
+      temporary.conversation ??= Object.assign(new Conversation(), {
+        id: uuidv4(), userId, title: title || 'Nouvelle conversation', status: 'active',
+      });
+      return temporary.conversation;
+    }
     const conversation = this.conversationRepo.create({
       id: uuidv4(),
       userId,
@@ -68,6 +96,9 @@ export class ConversationManagerService {
     references?: ReferencedEntityContext[],
     metadata?: Record<string, any>,
   ): Promise<ConversationMessage> {
+    if (this.temporarySession.getStore()) {
+      return Object.assign(new ConversationMessage(), { conversationId, role, content });
+    }
     const message = this.messageRepo.create({
       conversationId,
       role,
@@ -95,6 +126,7 @@ export class ConversationManagerService {
     conversationId: string,
     schema: string,
   ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
     // Vérifier si le message système existe déjà
     const existing = await this.messageRepo.findOne({
       where: { conversationId, role: 'system' },
@@ -144,13 +176,108 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   }
 
   /**
-   * Liste les conversations d'un utilisateur
+   * Liste les conversations d'un utilisateur : épinglées d'abord, puis les plus
+   * récentes. `search` porte sur le titre et le texte des échanges.
    */
-  async getUserConversations(userId: string): Promise<Conversation[]> {
-    return this.conversationRepo.find({
-      where: { userId, status: 'active' },
-      order: { updated_at: 'DESC' },
-    });
+  async listConversations(
+    userId: string,
+    filters: { search?: string; resourceType?: string; resourceId?: string } = {},
+  ): Promise<Conversation[]> {
+    let qb = this.conversationRepo
+      .createQueryBuilder('c')
+      .where('c.user_id = :userId', { userId })
+      .andWhere("c.status = 'active'");
+    qb = addTenantCondition(qb, 'c');
+
+    const search = String(filters.search ?? '').trim().slice(0, 100);
+    if (search) {
+      const pattern = `%${search.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+      qb = qb.andWhere(
+        new Brackets((where) => {
+          where.where('c.title LIKE :pattern', { pattern }).orWhere(
+            `EXISTS (SELECT 1 FROM conversation_messages m
+                      WHERE m.conversation_id = c.id
+                        AND m.role IN ('user', 'assistant')
+                        AND m.deleted_at IS NULL
+                        AND m.content LIKE :pattern)`,
+            { pattern },
+          );
+        }),
+      );
+    }
+    if (filters.resourceType && filters.resourceId) {
+      qb = qb
+        .andWhere('c.resource_type = :resourceType', { resourceType: filters.resourceType })
+        .andWhere('c.resource_id = :resourceId', { resourceId: String(filters.resourceId) });
+    }
+
+    return qb
+      .orderBy('c.pinned_at IS NULL', 'ASC')
+      .addOrderBy('c.pinned_at', 'DESC')
+      .addOrderBy('c.updated_at', 'DESC')
+      .limit(200)
+      .getMany();
+  }
+
+  /**
+   * Organiser l'historique (renommer, épingler, supprimer, restaurer) ne
+   * change pas la date d'activité : `updated_at = updated_at` neutralise
+   * ON UPDATE CURRENT_TIMESTAMP, la conversation garde sa place et son groupe.
+   */
+  private async updateKeepingActivity(
+    conversationId: string,
+    values: QueryDeepPartialEntity<Conversation>,
+  ): Promise<void> {
+    await this.conversationRepo
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ ...values, updated_at: () => 'updated_at' })
+      .where('id = :conversationId', { conversationId })
+      .execute();
+  }
+
+  /** Renomme une conversation (titre déjà normalisé par l'appelant). */
+  async renameConversation(conversationId: string, title: string): Promise<void> {
+    await this.updateKeepingActivity(conversationId, { title });
+  }
+
+  async setPinned(conversationId: string, pinned: boolean): Promise<void> {
+    await this.updateKeepingActivity(conversationId, { pinnedAt: pinned ? new Date() : null });
+  }
+
+  /** Suppression logique : la conversation peut être restaurée (« Annuler »). */
+  async softDeleteConversation(conversationId: string): Promise<void> {
+    await this.updateKeepingActivity(conversationId, { deleted_at: () => 'CURRENT_TIMESTAMP(6)' });
+  }
+
+  async restoreConversation(conversationId: string): Promise<void> {
+    // Requête directe : un UPDATE TypeORM ajoute « deleted_at IS NULL » et ne
+    // trouverait jamais la conversation supprimée (propriété vérifiée en amont).
+    await this.conversationRepo.query(
+      'UPDATE conversations_bot SET deleted_at = NULL, updated_at = updated_at WHERE id = ?',
+      [conversationId],
+    );
+  }
+
+  /** Rattache la conversation à la première fiche citée, une seule fois. */
+  private async attachConversationResource(
+    conversationId: string,
+    references?: ReferencedEntityContext[],
+  ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
+    const resource = pickConversationResource(references);
+    if (!resource) return;
+    await this.conversationRepo
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({
+        resourceType: resource.type,
+        resourceId: resource.id,
+        resourceLabel: resource.label,
+      })
+      .where('id = :conversationId', { conversationId })
+      .andWhere('resource_type IS NULL')
+      .execute();
   }
 
   /**
@@ -214,6 +341,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     conversationId: string,
     content: string,
   ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
     const conversation = await this.conversationRepo.findOne({
       where: { id: conversationId },
     });
@@ -230,6 +358,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
    * Vérifie si la conversation a déjà un message système
    */
   async hasSystemMessage(conversationId: string): Promise<boolean> {
+    if (this.temporarySession.getStore()) return false;
     const count = await this.messageRepo.count({
       where: { conversationId, role: 'system' },
     });
@@ -261,8 +390,10 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       undefined,
       undefined,
       references,
+      this.userMessageExtras.getStore(),
     );
     await this.updateTitleFromFirstUserMessage(conversationId, content);
+    await this.attachConversationResource(conversationId, references);
   }
 
   /**
@@ -471,6 +602,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     conversationId: string,
     options: { maxMessages?: number; maxTokens?: number } = {},
   ): Promise<Array<{ role: string; content: string }>> {
+    if (this.temporarySession.getStore()) return [];
     const maxMessages = options.maxMessages ?? 8;
     const maxTokens = options.maxTokens ?? 8000;
 
@@ -511,6 +643,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   async getStructuredFollowUpContext(
     conversationId: string,
   ): Promise<string | null> {
+    if (this.temporarySession.getStore()) return null;
     const messages = await this.messageRepo.find({
       where: { conversationId },
       order: { created_at: 'DESC' },
@@ -533,6 +666,8 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
    * Récupère une conversation active par son ID
    */
   async getConversation(conversationId: string): Promise<Conversation | null> {
+    const temporary = this.temporarySession.getStore();
+    if (temporary) return temporary.conversation;
     return this.conversationRepo.findOne({
       where: { id: conversationId, status: 'active' },
     });
@@ -544,9 +679,13 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
    */
   async getConversationAny(
     conversationId: string,
+    options: { withDeleted?: boolean } = {},
   ): Promise<Conversation | null> {
+    const temporary = this.temporarySession.getStore();
+    if (temporary) return temporary.conversation;
     return this.conversationRepo.findOne({
       where: { id: conversationId },
+      withDeleted: options.withDeleted ?? false,
     });
   }
 
@@ -570,6 +709,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     conversationId: string,
     title: string,
   ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
     await this.conversationRepo.update(conversationId, { title });
     this.logger.log(
       `📝 Titre mis à jour pour conv ${conversationId}: "${title}"`,

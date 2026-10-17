@@ -1,6 +1,8 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { stripRestrictedInput } from 'src/core/security/restricted-fields';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { CreateUserDto } from 'src/modules/iam/user/dto/create-user.dto';
@@ -159,8 +161,14 @@ export class EmployeeController {
   async updateEmployee(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateEmployeeDto,
+    @CurrentUser() user: any,
   ): Promise<EmployeeResponseDto> {
-    return this.employeeService.updateEmployee(id, dto);
+    // Salaire et taux horaire : non modifiables par qui ne peut pas les voir
+    // (le formulaire les renverrait vides, donc à 0 ou null).
+    return this.employeeService.updateEmployee(
+      id,
+      stripRestrictedInput('employee', dto, user),
+    );
   }
 
   @Get(':id')

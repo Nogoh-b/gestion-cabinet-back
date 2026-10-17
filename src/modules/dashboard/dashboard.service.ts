@@ -8,6 +8,29 @@ import { FactureStatsService } from '../facture/facture-stats.service';
 import { CustomerStatsService } from '../customer/customer/customer-stats.service';
 import { EmployeeStatsService } from '../agencies/employee/employee-stats.service';
 import { DashboardOverviewDto } from './dto/dashboard-overview.dto';
+import {
+  RestrictedFieldsUser,
+  seesAllRestrictedFields,
+} from 'src/core/security/restricted-fields';
+
+/**
+ * Droits dont UN SEUL suffit pour voir les chiffres financiers du cabinet sur
+ * le tableau de bord (CA, encaissements, impayés, factures récentes). Le
+ * tableau de bord est ouvert à tout `view_dashboard` : sans ces droits, la
+ * section factures n'est même pas calculée — voir restricted-fields.ts.
+ */
+const FINANCIAL_OVERVIEW_PERMISSIONS = ['view_factures', 'view_financial_reports'];
+
+/** Administration du cabinet, SUPER_ADMIN, ou l'un des droits financiers. */
+export function seesFinancialOverview(
+  user: RestrictedFieldsUser | null | undefined,
+): boolean {
+  if (!user) return false;
+  return (
+    seesAllRestrictedFields(user) ||
+    FINANCIAL_OVERVIEW_PERMISSIONS.some((code) => user.permissions?.includes(code))
+  );
+}
 
 /**
  * Nombre d'éléments affichés par section du plan d'action (« Actions en
@@ -31,7 +54,14 @@ export class DashboardService {
     private employeeStatsService: EmployeeStatsService,
   ) {}
 
-  async getOverview(): Promise<DashboardOverviewDto> {
+  async getOverview(
+    user?: RestrictedFieldsUser | null,
+  ): Promise<DashboardOverviewDto> {
+    // Sans droit financier, aucune statistique de facturation n'est chargée :
+    // `financial` vaut null, `trends.factures` est vide, aucune facture dans
+    // l'activité récente, et les compteurs de factures restent à 0.
+    const withFinancials = seesFinancialOverview(user);
+
     // Chaque section est isolée : une statistique en panne ne doit pas priver
     // l'utilisateur du reste du tableau de bord. L'erreur est journalisée —
     // sans trace, une section vide est indiscernable d'une absence de données.
@@ -60,7 +90,9 @@ export class DashboardService {
       safely('audiences', () => this.audienceStatsService.getStats()),
       safely('diligences', () => this.diligenceStatsService.getStats()),
       safely('documents', () => this.documentStatsService.getStats()),
-      safely('factures', () => this.factureStatsService.getStats()),
+      withFinancials
+        ? safely('factures', () => this.factureStatsService.getStats())
+        : null,
       safely('clients', () => this.customerStatsService.getStats()),
       safely('employes', () => this.employeeStatsService.getStats()),
     ]);
@@ -100,7 +132,7 @@ export class DashboardService {
         factures,
       }),
       topPerformers: this.buildTopPerformers(employes),
-      financial: this.buildFinancial(factures),
+      financial: withFinancials ? this.buildFinancial(factures) : null,
       actions: this.buildActions({ diligences, audiences }),
     };
   }

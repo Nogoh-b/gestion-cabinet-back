@@ -17,6 +17,15 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DocumentCustomer } from '../../modules/documents/document-customer/entities/document-customer.entity';
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { isSharedEntity } from '../tenant/tenant.decorator';
+import {
+  buildCapabilityAnswer,
+  buildDomainRefusal,
+  buildTableRefusal,
+  isCapabilityQuestion,
+  matchRestrictedDomains,
+  RestrictedDomain,
+  stripSchemaColumns,
+} from './ai-access-policy';
 import { buildAiCacheKey } from './ai-cache-key.util';
 import {
   AiDatabasePermissionService,
@@ -55,17 +64,41 @@ import {
 import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
-import { AmbiguityException } from './write/ambiguity.exception';
+import { AmbiguityException, UPDATE_TARGET_FIELD } from './write/ambiguity.exception';
 import { EntityIdRequiredException } from './write/entity-id-required.exception';
 import { PrepareFormDto } from './dto/prepare-form.dto';
 import { buildFormPrompt, normalizeFormDraft, parseFormFields } from './form-preparation';
 import { formatPageContext } from './page-context';
+import {
+  DisplayedRecord,
+  extractDisplayedRecords,
+  formatDisplayedRecordsForPlanner,
+} from './displayed-records';
 import {
   uploadedDocumentMessage,
   uploadedFilePlannerNote,
   withoutUploadedDocumentInserts,
 } from './uploaded-document-guard';
 import { AiContextConfigService } from './ai-context-config.service';
+import {
+  NearbyRecord,
+  NoResultsSuggestion,
+  RankedRecord,
+  buildNoResultsMessage,
+  buildNoResultsSuggestions,
+  detectNoResultsTarget,
+  extractSearchedReferences,
+  rankNearbyRecords,
+} from './no-results-answer';
+import { ImageReaderService } from './image-reader.service';
+import { PARTIAL_READING_RATIO } from './ocr-text';
+import {
+  QuotedPassage,
+  formatQuotedPassage,
+  isDocumentFollowUp,
+  parseAttachedDocuments,
+  parseQuotedPassage,
+} from './chat-attachments';
 import {
   WriteHandlerRegistry,
   WriteResult,
@@ -82,15 +115,52 @@ interface DocumentContextItem {
   content: string;
   truncated: boolean;
   error?: string;
+  /** Lecture d'une image ou d'un scan : le texte peut contenir des erreurs. */
+  method?: ExtractionMethod;
+  pages?: number;
+  /** Texte déjà lu lors d'une question précédente, renvoyé par le chat. */
+  reused?: boolean;
+  /** OCR : mots lus avec doute et confiance moyenne. */
+  uncertain?: string[];
+  confidence?: number;
+  /** OCR : part du texte lue avec doute (0-1). */
+  illegible?: number;
+  /** Lecture partielle : texte complet pour l'affichage (`content`, masqué, va au modèle). */
+  displayContent?: string;
+}
+
+type ExtractionMethod = 'text' | 'ocr' | 'vision';
+
+interface ExtractedContent {
+  text: string;
+  method: ExtractionMethod;
+  pages?: number;
+  uncertain?: string[];
+  confidence?: number;
+  illegible?: number;
+  reliableText?: string;
 }
 
 interface RequestContext {
   enrichedQuestion: string;
-  /** enrichedQuestion sans le texte des documents : base de la classification. */
+  /** enrichedQuestion sans le texte des documents ni le passage cité : base de la classification. */
   intentQuestion: string;
   fileInfo?: any;
+  filesInfo?: Array<{ name: string; size: number; type: string; error?: string }>;
   documentContext: DocumentContextItem[];
   referenced: ReferencedEntityContext[];
+  quote?: QuotedPassage | null;
+}
+
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff'];
+
+/** `file` unique (historique) ou liste de fichiers lus ensemble. */
+function toUploadedFiles(files?: Express.Multer.File | Express.Multer.File[]): Express.Multer.File[] {
+  return (Array.isArray(files) ? files : files ? [files] : []).filter(Boolean);
+}
+
+function uploadedFileNames(files: Express.Multer.File[]): string {
+  return files.map((file) => file.originalname).join('», «');
 }
 
 interface AiRequestMetrics {
@@ -113,6 +183,10 @@ interface AiRequestMetrics {
    *  CETTE requête. Porté par l'AsyncLocalStorage des métriques (actif pendant
    *  toute la requête), lu par invokeModel/streamModel. */
   reasoningKwargs?: Record<string, unknown>;
+  /** Cabinet + utilisateur : clé de la mémoire des enregistrements affichés. */
+  memoryKey?: string;
+  /** Enregistrements lus pendant CETTE requête (remplacent les précédents). */
+  displayedRecords?: DisplayedRecord[];
 }
 
 /**
@@ -143,6 +217,37 @@ interface MultiResourceDraft {
   /** Une entrée par sous-question (null si elle a échoué). Ne rejette jamais. */
   parts: Promise<Array<SubQuestionResult | null>>;
   abort: () => void;
+}
+
+/**
+ * Mise en forme des réponses rédigées : le chat rend ce Markdown léger
+ * (titres, listes, gras). Une réponse plus courte est aussi plus rapide.
+ */
+const ANSWER_FORMAT_RULES = `MISE EN FORME (Markdown léger) :
+- Commence par une phrase qui répond directement à la question, sans titre avant.
+- Plusieurs thèmes : une section courte par thème, introduite par "### Titre". Un seul thème : pas de titre.
+- Détails en listes "- **Libellé** : valeur". Le gras est réservé aux libellés et aux chiffres clés.
+- N'énumère pas les informations absentes une par une : regroupe-les en une seule ligne finale "Non renseigné : a, b, c".
+- Un code (statut numérique, valeur technique) n'est affiché qu'avec son libellé lisible ; sans libellé, omets-le.
+- Pas de tableau sauf pour comparer au moins 3 éléments sur plusieurs critères. Pas de HTML, pas d'emoji.`;
+
+/**
+ * Mots vides ignorés par la détection de tables : « d » (de « d'affaire »),
+ * « les », « moi »… donnaient des points à toute table dont le nom ou le
+ * libellé contient ces lettres, et noyaient les vraies correspondances.
+ */
+const KEYWORD_STOPWORDS = new Set([
+  'les', 'des', 'une', 'aux', 'moi', 'mon', 'mes', 'ton', 'tes', 'ses', 'son',
+  'sur', 'par', 'pour', 'avec', 'dans', 'sans', 'qui', 'que', 'quoi', 'quel',
+  'quels', 'quelle', 'quelles', 'est', 'sont', 'ont', 'tous', 'tout', 'toutes',
+  'cette', 'ces', 'cet', 'leur', 'leurs', 'nos', 'notre', 'vos', 'votre',
+  'donne', 'donner', 'liste', 'lister', 'affiche', 'afficher', 'montre',
+  'montrer', 'peux', 'peut', 'stp', 'svp', 'merci', 'cabinet',
+]);
+
+/** « aporteurs » ↔ « apporteurs », « cabinnet » ↔ « cabinet ». */
+function squashRepeatedLetters(word: string): string {
+  return word.replace(/(.)\1+/g, '$1');
 }
 
 @Injectable()
@@ -182,6 +287,12 @@ export class AiDatabaseService implements OnModuleInit {
     }
   > = new Map();
   private readonly PENDING_CLARIFICATION_TTL = 10 * 60 * 1000; // 10 minutes
+  /** Derniers enregistrements montrés par une lecture, par cabinet + utilisateur. */
+  private readonly lastDisplayedRecords = new Map<
+    string,
+    { records: DisplayedRecord[]; at: number }
+  >();
+  private readonly DISPLAYED_RECORDS_TTL = 30 * 60 * 1000; // 30 minutes
   private readonly CACHE_TTL = 3600000; // 1 heure
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
@@ -225,6 +336,7 @@ export class AiDatabaseService implements OnModuleInit {
     @Inject(AI_DATABASE_PROJECT_CONFIG)
     private readonly projectConfig?: AiDatabaseProjectConfig,
     @Optional() private readonly contextConfigs?: AiContextConfigService,
+    @Optional() private readonly imageReader?: ImageReaderService,
   ) {}
 
   private getUserId(
@@ -235,10 +347,53 @@ export class AiDatabaseService implements OnModuleInit {
     return String(user?.id ?? user?.userId ?? 'anonymous');
   }
 
+  private displayedRecordsKey(user: AiUserContext | string): string {
+    const tenant = hasActiveTenant() ? getCurrentTenantId() : 0;
+    return `${tenant}:${this.getUserId(user)}`;
+  }
+
+  /** Mémorise les enregistrements lus par la requête courante (tous les SELECT cumulés). */
+  private rememberDisplayedRecords(records: DisplayedRecord[]): void {
+    const metrics = this.metricsStorage.getStore();
+    if (!metrics?.memoryKey || !records.length) return;
+    metrics.displayedRecords = [...(metrics.displayedRecords ?? []), ...records].slice(0, 30);
+    this.lastDisplayedRecords.set(metrics.memoryKey, {
+      records: metrics.displayedRecords,
+      at: Date.now(),
+    });
+  }
+
+  /** Bloc « enregistrements affichés » de la dernière lecture de cet utilisateur. */
+  private displayedRecordsForPlanner(user: AiUserContext | string): string {
+    const key = this.displayedRecordsKey(user);
+    const entry = this.lastDisplayedRecords.get(key);
+    if (!entry) return '';
+    if (Date.now() - entry.at > this.DISPLAYED_RECORDS_TTL) {
+      this.lastDisplayedRecords.delete(key);
+      return '';
+    }
+    return formatDisplayedRecordsForPlanner(entry.records);
+  }
+
+  /**
+   * Ajoute à l'historique du planner les enregistrements de la dernière lecture,
+   * seulement pour une question de suivi (un fil existe) : une nouvelle
+   * conversation ne doit pas hériter des résultats d'une autre.
+   */
+  private withDisplayedRecords(
+    history: string,
+    user: AiUserContext | string,
+  ): string {
+    if (!history) return history;
+    const records = this.displayedRecordsForPlanner(user);
+    return records ? `${history}\n\n${records}` : history;
+  }
+
   private async withAiMetrics<T>(
     requestType: string,
     logId: number | undefined,
     fn: () => Promise<T>,
+    memoryKey?: string,
   ): Promise<T> {
     // La config IA du cabinet est chargée AVANT la moindre résolution de
     // modèle : sans ça, `getTenantEffectiveSync()` (synchrone) retomberait sur
@@ -264,6 +419,7 @@ export class AiDatabaseService implements OnModuleInit {
       cacheHit: false,
       status: 'started',
       modelMode: 'fast',
+      memoryKey,
     };
 
     // Origine de la config (cabinet ou ENV) : le mode (rapide/équilibré/précis)
@@ -1000,7 +1156,8 @@ REGLES ABSOLUES :
 11. 🚫 INTERDICTION ABSOLUE D'INVENTER : tu ne peux utiliser QUE les tables et les colonnes EXACTEMENT présentes dans le SCHEMA UTILE. Si une table ou une colonne dont tu aurais besoin n'y figure PAS, tu n'as PAS le droit de la deviner — ni un nom voisin "plausible" (ex: ne JAMAIS écrire "ecriture_lignes" si seul "lignes_ecriture_comptable" existe), ni des colonnes inventées (ex: ne JAMAIS inventer "sens"/"montant" si les colonnes réelles sont "debit"/"credit"). Recopie les noms caractère par caractère depuis le schéma.
 12. Si les données demandées ne peuvent PAS être obtenues avec les seules tables/colonnes du SCHEMA UTILE, NE devine PAS : réponds par une requête vide \`SELECT NULL AS message WHERE 1=0\` plutôt que de référencer un objet inexistant.
 13. Un identifiant LISIBLE contenant des lettres/chiffres/tirets/slashs (ex: \`F-2025-001\`, \`FAC2-202606-0001\`, \`DOS-2024-12\`) correspond TOUJOURS à une colonne d'identifiant métier (\`numero\`, \`reference\`, ou une colonne se terminant par \`_number\`/\`_reference\`), JAMAIS à la colonne \`id\` (qui est numérique ou UUID). Pour filtrer par un tel identifiant, utilise la colonne \`numero\`/\`reference\` correspondante (ex: \`WHERE f.numero = 'FAC2-202606-0001'\`), pas \`id\`. Réserve \`id\` aux valeurs purement numériques/UUID. La mention "ex:" du schéma indique le format réel de chaque colonne.
-14. Les colonnes \`id\`, \`uuid\`, \`tenant_id\` et \`*_id\` peuvent servir aux JOIN et aux filtres, mais ne doivent JAMAIS figurer dans le SELECT destiné à l'utilisateur. Sélectionne à leur place un nom, un titre, un libellé, un numéro métier ou une référence lisible. N'utilise \`SELECT *\` que dans l'exemple de syntaxe ci-dessous, jamais dans la requête finale.
+14. Les colonnes \`id\`, \`uuid\`, \`tenant_id\` et \`*_id\` peuvent servir aux JOIN et aux filtres, mais ne doivent JAMAIS figurer dans le SELECT destiné à l'utilisateur. Sélectionne à leur place un nom, un titre, un libellé, un numéro métier ou une référence lisible. N'utilise \`SELECT *\` que dans l'exemple de syntaxe ci-dessous, jamais dans la requête finale. Seule exception : l'alias \`ref__\` de la règle 15.
+15. Pour une requête qui LISTE des enregistrements (une ligne par enregistrement, sans GROUP BY ni agrégat COUNT/SUM/AVG), ajoute la clé primaire de la table principale sous l'alias \`ref__<nom_exact_de_la_table>\` (ex: \`pp.id AS ref__payroll_period\`, \`d.id AS ref__dossiers\`). Cette colonne est retirée avant l'affichage : elle permet seulement d'agir ensuite sur ces enregistrements. N'en ajoute jamais dans une requête agrégée.
 
 ${readDomainRules}
 
@@ -1561,21 +1718,61 @@ Contraintes obligatoires :
    * Extrait le contenu textuel d'un fichier uploadé
    */
   private async extractFileContent(file: Express.Multer.File): Promise<string> {
-    return this.extractBufferContent(
-      file.buffer,
-      file.mimetype,
-      file.originalname,
-    );
+    return (await this.extractFileReading(file)).text;
   }
 
-  // ── Endpoint de confirmation ──────────────────────────────
+  /** Lecture partagée avec l’assistant de configuration, sans accès métier. */
+  async readReferenceAttachment(file: Express.Multer.File): Promise<string> {
+    return this.extractFileContent(file);
+  }
+
+  private extractFileReading(file: Express.Multer.File): Promise<ExtractedContent> {
+    return this.extractBufferReading(file.buffer, file.mimetype, file.originalname);
+  }
+
   private async extractBufferContent(
     buffer: Buffer,
     mimetype = '',
     filename = '',
   ): Promise<string> {
+    return (await this.extractBufferReading(buffer, mimetype, filename)).text;
+  }
+
+  /**
+   * Texte d'un fichier. Les images et les PDF numérisés sont lus par le modèle
+   * vision configuré, sinon par l'OCR local (`method` l'indique). Une pièce
+   * sans texte lisible lève une erreur explicite, affichée telle quelle.
+   */
+  private async extractBufferReading(
+    buffer: Buffer,
+    mimetype = '',
+    filename = '',
+  ): Promise<ExtractedContent> {
+    const text = await this.extractBufferText(buffer, mimetype, filename);
+    return typeof text === 'string' ? { text, method: 'text' } : text;
+  }
+
+  private async extractBufferText(
+    buffer: Buffer,
+    mimetype = '',
+    filename = '',
+  ): Promise<string | ExtractedContent> {
     const mime = (mimetype || '').toLowerCase();
     const ext = path.extname(filename || '').toLowerCase();
+    const label = filename || 'sans nom';
+
+    if (mime.startsWith('image/') || IMAGE_EXTENSIONS.includes(ext)) {
+      if (!this.imageReader) throw new Error('La lecture des images est indisponible sur ce serveur.');
+      const reading = await this.imageReader.readImage(buffer, filename);
+      if (!reading.text) {
+        throw new Error(
+          reading.method === 'ocr'
+            ? `Aucun texte lisible n'a été détecté dans l'image « ${label} ». La lecture automatique (OCR) reconnaît le texte, pas le contenu visuel d'une photo.`
+            : `Aucun contenu lisible n'a été trouvé dans l'image « ${label} ».`,
+        );
+      }
+      return reading;
+    }
 
     if (
       mime.startsWith('text/') ||
@@ -1591,12 +1788,20 @@ Contraintes obligatoires :
       const pdfParse = require('pdf-parse');
       const data = await pdfParse(buffer);
       const text = (data.text || '').trim();
-      // PDF scanné (images sans couche texte) → pdf-parse ne renvoie (quasi) rien.
-      // On le signale honnêtement au lieu de laisser croire à un document vide :
-      // la réponse sera « ce document est un scan, OCR requis » plutôt qu'une
-      // hallucination ou un repli silencieux sur les seules métadonnées.
+      // PDF numérisé (pages en images, sans couche texte) : lecture des pages.
+      // Un échec est signalé honnêtement plutôt que de laisser croire à un
+      // document vide (hallucination ou repli silencieux sur les métadonnées).
       if (text.length < 20) {
-        return `[Document PDF "${filename || 'sans nom'}" sans texte extractible : il s'agit probablement d'un document scanné (images). Sa lecture nécessite un OCR, non activé sur le serveur.]`;
+        const scanned = await this.imageReader?.readScannedPdf(buffer, filename).catch((error: Error) => {
+          this.logger.warn(`Lecture du PDF numérisé « ${label} » impossible : ${error.message}`);
+          return null;
+        });
+        if (scanned?.text) return scanned;
+        throw new Error(
+          scanned
+            ? `Aucun texte lisible n'a été reconnu dans le PDF numérisé « ${label} » (${scanned.pages} page(s)).`
+            : `Le PDF « ${label} » n'a pas de texte et ses pages numérisées sont dans un format que la lecture automatique (OCR) ne prend pas en charge. Joignez les pages en images (JPEG, PNG) ou un PDF avec texte.`,
+        );
       }
       return text;
     }
@@ -1623,10 +1828,6 @@ Contraintes obligatoires :
       ext === '.docx'
     ) {
       return this.extractDocxText(buffer);
-    }
-
-    if (mime.startsWith('image/')) {
-      return `[Image ${filename || 'sans nom'}: analyse OCR non disponible cote serveur. Ajoutez une description ou joignez un PDF/texte si le contenu doit etre lu.]`;
     }
 
     throw new Error(
@@ -1688,9 +1889,22 @@ Contraintes obligatoires :
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
-            allowOther: true,
+            allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
             otherLabel: this.getFieldLabel(error.fieldName),
           },
+          executionTimeMs: Date.now() - startTime,
+        };
+      }
+      if (error instanceof EntityIdRequiredException) {
+        // Cible introuvable ou ambiguë : message lisible plutôt qu'une erreur 500.
+        // Le plan reste proposé tel quel pour pouvoir être relancé après précision.
+        const target = error.entity.replace(/_/g, ' ');
+        return {
+          success: false,
+          question: 'Confirmation opération',
+          analysis: error.detail
+            ? `❓ ${error.detail}`
+            : `❓ Je n'ai pas pu identifier précisément quel(le) ${target} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`,
           executionTimeMs: Date.now() - startTime,
         };
       }
@@ -1715,6 +1929,18 @@ Contraintes obligatoires :
   private buildAmbiguityMessage(
     error: import('./write/ambiguity.exception').AmbiguityException,
   ): string {
+    if (error.fieldName === UPDATE_TARGET_FIELD) {
+      const label = (
+        this.schemaMetadata.getTableLabel(error.entity) || error.entity.replace(/_/g, ' ')
+      ).toLowerCase();
+      const exact = error.candidates.some((c) => c.score === 100);
+      const recentOnly = error.candidates.every((c) => c.score === 0);
+      return exact
+        ? `🔍 Plusieurs éléments « ${label} » correspondent à **${error.searchTerm}**. Choisissez celui à modifier :`
+        : recentOnly
+          ? `🔍 Je ne retrouve pas l'élément « ${label} » décrit (**${error.searchTerm}**). Voici les plus récents, choisissez celui à modifier :`
+          : `🔍 Aucun élément « ${label} » ne correspond exactement à **${error.searchTerm}**. Voici les plus proches, choisissez celui à modifier :`;
+    }
     const parentLabel = error.parentEntity
       ? this.schemaMetadata.getTableLabel(error.parentEntity) ||
         error.parentEntity
@@ -1837,19 +2063,40 @@ Contraintes obligatoires :
   async analyzeQuestion(
     dto: AskQuestionDto,
     user: AiUserContext | string,
-    file?: Express.Multer.File,
+    uploaded?: Express.Multer.File | Express.Multer.File[],
     aiRequestLogId?: number,
   ): Promise<AnalysisResponseDto> {
-    return this.withAiMetrics('ask', aiRequestLogId, () =>
-      this.analyzeQuestionInternal(dto, user, file),
-    );
+    const files = toUploadedFiles(uploaded);
+    const metadata = this.userMessageMetadata(dto, files);
+    const run = () => this.withAiMetrics('ask', aiRequestLogId, () =>
+      this.analyzeQuestionInternal(dto.temporary === true || dto.temporary === 'true'
+        ? { ...dto, conversationId: undefined } : dto, user, files),
+    this.displayedRecordsKey(user));
+    const analyze = metadata ? () => this.conversationManager.withUserMessageMetadata(metadata, run) : run;
+    return dto.temporary === true || dto.temporary === 'true'
+      ? this.conversationManager.runTemporary(analyze) : analyze();
+  }
+
+  /**
+   * Pièces jointes et passage cité gardés avec le message utilisateur : le
+   * chat les réaffiche à la réouverture de la conversation.
+   */
+  private userMessageMetadata(dto: AskQuestionDto, files: Express.Multer.File[]): Record<string, any> | undefined {
+    const quote = parseQuotedPassage(dto.quote, dto.quoteSource);
+    const filesInfo = files.map((file) => ({ name: file.originalname, size: file.size, type: file.mimetype }));
+    if (!filesInfo.length && !quote) return undefined;
+    return {
+      ...(filesInfo.length && { filesInfo }),
+      ...(quote && { quote: { text: quote.text.slice(0, 1500), ...(quote.source && { source: quote.source }) } }),
+    };
   }
 
   private async analyzeQuestionInternal(
     dto: AskQuestionDto,
     user: AiUserContext | string,
-    file?: Express.Multer.File,
+    uploaded?: Express.Multer.File | Express.Multer.File[],
   ): Promise<AnalysisResponseDto> {
+    const files = toUploadedFiles(uploaded);
     const startTime = Date.now();
     const userId = this.getUserId(user);
     const modelSelection = this.configureRequestModel(dto.reasoningLevel);
@@ -1916,7 +2163,7 @@ Contraintes obligatoires :
               candidates: error.candidates,
               operationIndex: error.operationIndex,
               parentEntity: error.parentEntity,
-              allowOther: true,
+              allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
               otherLabel: this.getFieldLabel(error.fieldName),
             },
             conversationId,
@@ -1931,7 +2178,7 @@ Contraintes obligatoires :
             error.entity,
             userId,
           );
-          const message = `❓ Je n'ai toujours pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`;
+          const message = error.detail ? `❓ ${error.detail}` : `❓ Je n'ai toujours pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`;
           await this.conversationManager.addAssistantMessage(
             conversationId,
             message,
@@ -1967,7 +2214,7 @@ Contraintes obligatoires :
     let fileInfo: any;
 
     // ── 1. Contexte enrichi : mentions, fichiers et documents système ────────
-    const requestContext = await this.buildRequestContext(dto, file);
+    const requestContext = await this.buildRequestContext(dto, files);
     enrichedQuestion = requestContext.enrichedQuestion;
     fileInfo = requestContext.fileInfo ?? fileInfo;
     const historyOverride = parseVisibleHistory(dto.historyOverride);
@@ -2017,6 +2264,25 @@ Contraintes obligatoires :
       }
     }
 
+    // ── 1c. Questions sur les droits de l'utilisateur ────────────────────────
+    if (intentMode !== 'write') {
+      const capabilityAnswer = await this.answerCapabilityQuestion(
+        user,
+        dto.question,
+      );
+      if (capabilityAnswer) {
+        this.markMetric({ intent: 'HELP' });
+        return this.respondWithNotice(
+          capabilityAnswer,
+          dto,
+          user,
+          startTime,
+          requestContext.referenced,
+          fileInfo,
+        );
+      }
+    }
+
     // ── 2. Détection d'intention sur la question enrichie ────────────────────
     if (
       intentMode === 'auto' &&
@@ -2049,21 +2315,60 @@ Contraintes obligatoires :
       );
     }
 
-    const relevantTables = await this.detectRelevantTables(
+    // Un document joint est analysé pour lui-même : seuls les accès à la base
+    // passent par le contrôle des domaines sensibles.
+    if (!requestContext.documentContext.length) {
+      const refusal = await this.refuseRestrictedDomains(user, dto.question);
+      if (refusal) {
+        return this.respondWithNotice(
+          refusal,
+          dto,
+          user,
+          startTime,
+          requestContext.referenced,
+          fileInfo,
+        );
+      }
+    }
+
+    const detectedTables = await this.detectRelevantTables(
       enrichedQuestion,
       dto.specificTables,
       requestContext.referenced,
     );
     if (
       requestContext.documentContext.length &&
-      !relevantTables.includes('document_customer')
+      !detectedTables.includes('document_customer')
     ) {
-      relevantTables.push('document_customer');
+      detectedTables.push('document_customer');
     }
-    const schema = await this.getCompleteSchema(relevantTables);
-    const historyForIntent = historyOverride.length
-      ? this.formatVisibleHistoryForIntent(historyOverride)
-      : await this.getHistorySnippetForIntent(dto.conversationId);
+    const access = await this.restrictToReadableTables(
+      user,
+      detectedTables,
+      dto.question,
+    );
+    if (access.refusal) {
+      return this.respondWithNotice(
+        access.refusal,
+        dto,
+        user,
+        startTime,
+        requestContext.referenced,
+        fileInfo,
+      );
+    }
+    const relevantTables = access.tables;
+    const schema = await this.hideRestrictedColumns(
+      user,
+      relevantTables,
+      await this.getCompleteSchema(relevantTables),
+    );
+    const historyForIntent = this.withDisplayedRecords(
+      historyOverride.length
+        ? this.formatVisibleHistoryForIntent(historyOverride)
+        : await this.getHistorySnippetForIntent(dto.conversationId),
+      user,
+    );
     const forceWriteDespiteReadMode = this.shouldForceWriteDespiteReadMode(
       intentMode,
       dto.question,
@@ -2191,12 +2496,12 @@ Contraintes obligatoires :
 
     // ── 3b. BRANCHE ÉCRITURE ──────────────────────────────────────────────────
     if (intentResult.type === 'WRITE' && intentResult.writePlan) {
-      const { plan, removed } = file
+      const { plan, removed } = files.length
         ? withoutUploadedDocumentInserts(intentResult.writePlan)
         : { plan: intentResult.writePlan as WritePlan, removed: 0 };
       if (removed) {
         // Sans formulaire d'ajout côté client, on explique seulement la démarche.
-        const notice = `Le fichier « ${file!.originalname} » ne peut pas être joint par un plan d'écriture : ajoutez-le depuis la fiche du dossier.`;
+        const notice = `Le fichier « ${uploadedFileNames(files)} » ne peut pas être joint par un plan d'écriture : ajoutez-le depuis la fiche du dossier.`;
         if (!plan.operations.length) {
           return {
             success: true,
@@ -2347,6 +2652,11 @@ Contraintes obligatoires :
 
       if (validatedQuery && !dto.analyzeOnly) {
         results = await this.executeSafeQuery(validatedQuery);
+        results.data = await this.aiPermissionService.redactRows(
+          user as AiUserContext,
+          validatedQuery,
+          results.data,
+        );
         analysis = await this.generateBusinessAnalysis(
           dto.question,
           validatedQuery,
@@ -2401,6 +2711,28 @@ Contraintes obligatoires :
     references: ReferencedEntityContext[] = [],
     fileInfo?: any,
   ): Promise<AnalysisResponseDto> {
+    return this.respondWithNotice(
+      this.generateHelpResponse(question),
+      dto,
+      user,
+      startTime,
+      references,
+      fileInfo,
+    );
+  }
+
+  /**
+   * Réponse directe, sans SQL ni LLM (aide, droits de l'utilisateur, refus
+   * d'accès), enregistrée dans la conversation comme une réponse normale.
+   */
+  private async respondWithNotice(
+    analysis: string,
+    dto: AskQuestionDto,
+    user: AiUserContext | string,
+    startTime: number,
+    references: ReferencedEntityContext[] = [],
+    fileInfo?: any,
+  ): Promise<AnalysisResponseDto> {
     const userId = this.getUserId(user);
     let conversationId = dto.conversationId;
     if (!conversationId) {
@@ -2416,7 +2748,6 @@ Contraintes obligatoires :
       dto.question,
       references,
     );
-    const analysis = this.generateHelpResponse(question);
     await this.conversationManager.addAssistantMessage(
       conversationId,
       analysis,
@@ -2803,7 +3134,7 @@ Règles :
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
-            allowOther: true,
+            allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
             otherLabel: this.getFieldLabel(error.fieldName),
           },
           conversationId,
@@ -2822,7 +3153,7 @@ Règles :
           error.entity,
           userId,
         );
-        const message = `❓ Je n'ai pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer et je continuerai.`;
+        const message = error.detail ? `❓ ${error.detail}` : `❓ Je n'ai pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer et je continuerai.`;
         await this.conversationManager.addAssistantMessage(
           conversationId,
           message,
@@ -2936,7 +3267,13 @@ Règles :
     }
 
     // ── Option classique : resolvedId fourni ────────────────────────────────
-    op.fields[fieldName] = resolvedId;
+    if (fieldName === UPDATE_TARGET_FIELD) {
+      // Choix de l'enregistrement à modifier : il devient la cible de l'UPDATE.
+      op.entityId = resolvedId;
+      delete op.match;
+    } else {
+      op.fields[fieldName] = resolvedId;
+    }
     op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
 
     this.logger.log(
@@ -3044,6 +3381,11 @@ Règles :
       this.logger.log(
         `✅ Entité créée dans "${entityTable}" → ID ${writeResult.entityId}`,
       );
+      // Création hors plan, jamais annulée : ses actions différées (ex:
+      // identifiants d'un collaborateur) partent tout de suite.
+      await writeResult.afterCommit?.().catch((err: Error) =>
+        this.logger.warn(`⚠️ Action après création échouée: ${err.message}`),
+      );
 
       // 4. Injecter l'ID dans le plan et reprendre
       op.fields[fieldName] = writeResult.entityId;
@@ -3073,7 +3415,7 @@ Règles :
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
-            allowOther: true,
+            allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
             otherLabel: this.getFieldLabel(error.fieldName),
           },
           conversationId,
@@ -3258,7 +3600,7 @@ Règles :
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
-            allowOther: true,
+            allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
             otherLabel: this.getFieldLabel(error.fieldName),
           },
           conversationId,
@@ -3486,11 +3828,11 @@ ${lines.join('\n')}
       .map((m) =>
         `${m.role === 'user' ? 'UTILISATEUR' : 'ASSISTANT'}: ${m.content}`.substring(
           0,
-          600,
+          1200,
         ),
       )
       .join('\n---\n')
-      .substring(0, 1800);
+      .substring(0, 3000);
   }
 
   private enrichWritePlanWithReferencedEntities(
@@ -3664,7 +4006,9 @@ ${lines.join('\n')}
     const blocks = items.map((item, index) => {
       const title = item.id
         ? `Document systeme #${item.id}`
-        : `Fichier joint #${index + 1}`;
+        : item.reused
+          ? `Fichier joint precedemment #${index + 1}`
+          : `Fichier joint #${index + 1}`;
       const meta = [
         `nom="${item.name}"`,
         item.type ? `type=${item.type}` : null,
@@ -3676,7 +4020,7 @@ ${lines.join('\n')}
 
       const content = item.error
         ? `[Erreur de lecture: ${item.error}]`
-        : this.selectRelevantDocumentText(question, item.content, 8000);
+        : this.readingNotice(item) + this.selectRelevantDocumentText(question, item.content, 8000);
 
       return `### ${title} (${meta})
 ${content}
@@ -3689,6 +4033,23 @@ Base tes reponses sur ces extraits quand la question parle de "ce document", "la
 
 ${blocks.join('\n\n')}
 --- FIN DOCUMENTS ---`;
+  }
+
+  /** Le modèle doit savoir qu'un texte vient d'une lecture d'image, faillible. */
+  private readingNotice(item: DocumentContextItem): string {
+    if (item.method === 'ocr' && (item.illegible ?? 0) >= PARTIAL_READING_RATIO) {
+      return `[Lecture OCR partielle : environ ${Math.round((item.illegible ?? 0) * 100)} % du texte n'a pas pu être reconnu, très probablement de l'écriture manuscrite (la lecture locale ne lit que le texte imprimé). Les passages non reconnus sont marqués [illisible]. Restitue uniquement ce qui est lisible, ne devine jamais le contenu d'un passage [illisible], ne cite aucun fragment incompréhensible, et dis en une phrase que la partie manuscrite n'a pas pu être lue.]\n`;
+    }
+    if (item.method === 'ocr') {
+      const doubtful = item.uncertain?.length
+        ? ` Mots lus avec doute : ${item.uncertain.slice(0, 15).join(', ')}. Si la réponse s'appuie sur l'un d'eux, signale-le.`
+        : '';
+      return `[Texte reconnu automatiquement (OCR) depuis une image ou un scan : des erreurs de reconnaissance sont possibles : ne le mentionne que si une valeur paraît douteuse, sans la corriger.${doubtful}]\n`;
+    }
+    if (item.method === 'vision') {
+      return "[Transcription d'une image (écriture manuscrite comprise) par un modèle de vision : [illisible] marque un mot non lu, [?] un mot douteux ; signale-les si la réponse s'appuie dessus.]\n";
+    }
+    return '';
   }
 
   private selectRelevantDocumentText(
@@ -3811,8 +4172,9 @@ ${blocks.join('\n\n')}
 
   private async buildRequestContext(
     dto: AskQuestionDto,
-    file?: Express.Multer.File,
+    uploaded?: Express.Multer.File | Express.Multer.File[],
   ): Promise<RequestContext> {
+    const files = toUploadedFiles(uploaded);
     if (this.contextConfigs && !(await this.contextConfigs.getSettings(getCurrentTenantId())).enabled) {
       throw new ForbiddenException('L’aide intelligente est désactivée pour ce cabinet');
     }
@@ -3828,47 +4190,59 @@ ${blocks.join('\n\n')}
         if (config?.instructions) enrichedQuestion += `\nConsignes du cabinet pour ce contexte : ${config.instructions}`;
       }
     }
-    let fileInfo: any;
-
-    if (file) {
+    // Plusieurs fichiers se partagent le budget de contexte d'un seul.
+    const fileBudget = files.length > 1
+      ? Math.max(4000, Math.floor((this.MAX_FILE_CONTEXT_CHARS * 2) / files.length))
+      : this.MAX_FILE_CONTEXT_CHARS;
+    const readings = await Promise.all(files.map(async (file): Promise<DocumentContextItem> => {
+      const base = { name: file.originalname, type: file.mimetype, size: file.size, source: 'upload' as const };
       try {
-        const content = await this.extractFileContent(file);
-        const truncated = this.truncateContextText(
-          content,
-          this.MAX_FILE_CONTEXT_CHARS,
-        );
-        documentContext.push({
-          name: file.originalname,
-          type: file.mimetype,
-          size: file.size,
-          source: 'upload',
+        const reading = await this.extractFileReading(file);
+        // Lecture partielle : le modèle ne reçoit que les passages lus avec assurance.
+        const truncated = this.truncateContextText(reading.reliableText ?? reading.text, fileBudget);
+        return {
+          ...base,
           content: truncated.content,
+          ...(reading.reliableText !== undefined && {
+            displayContent: this.truncateContextText(reading.text, fileBudget).content,
+          }),
+          illegible: reading.illegible,
           truncated: truncated.truncated,
-        });
-        fileInfo = {
-          name: file.originalname,
-          size: file.size,
-          type: file.mimetype,
+          method: reading.method,
+          pages: reading.pages,
+          uncertain: reading.uncertain,
+          confidence: reading.confidence,
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        documentContext.push({
-          name: file.originalname,
-          type: file.mimetype,
-          size: file.size,
-          source: 'upload',
-          content: '',
-          truncated: false,
-          error: message,
-        });
-        fileInfo = {
-          name: file.originalname,
-          size: file.size,
-          type: file.mimetype,
-          error: message,
-        };
+        return { ...base, content: '', truncated: false, error: error instanceof Error ? error.message : String(error) };
       }
+    }));
+    documentContext.push(...readings);
+    const filesInfo = readings.map((item) => ({
+      name: item.name,
+      size: item.size ?? 0,
+      type: item.type ?? '',
+      ...(item.error && { error: item.error }),
+    }));
+    const fileInfo = filesInfo[0];
+
+    // Texte déjà lu lors des questions précédentes : un document repris
+    // automatiquement ne sert que si la question porte sur un document.
+    const attached = parseAttachedDocuments(dto.attachedDocuments);
+    const followsDocument = isDocumentFollowUp(dto.question, attached);
+    for (const item of attached) {
+      if (item.carried && !followsDocument) continue;
+      const truncated = this.truncateContextText(item.content, this.MAX_FILE_CONTEXT_CHARS);
+      documentContext.push({
+        name: item.name,
+        type: item.type,
+        source: 'upload',
+        content: truncated.content,
+        truncated: truncated.truncated,
+        reused: true,
+      });
     }
+    const quote = parseQuotedPassage(dto.quote, dto.quoteSource);
 
     const documentIds = this.parseDocumentIds(dto, referenced);
     // Repli : aucune référence explicite (@ ou documentIds) mais la question évoque
@@ -3885,17 +4259,20 @@ ${blocks.join('\n\n')}
     }
 
     const intentQuestion = enrichedQuestion;
+    if (quote) enrichedQuestion += formatQuotedPassage(quote);
     enrichedQuestion += this.buildDocumentContextBlock(
       documentContext,
-      dto.question,
+      quote ? `${dto.question}\n${quote.text}` : dto.question,
     );
 
     return {
       enrichedQuestion,
       intentQuestion,
       fileInfo,
+      ...(filesInfo.length > 1 && { filesInfo }),
       documentContext,
       referenced,
+      quote,
     };
   }
 
@@ -3926,9 +4303,9 @@ ${blocks.join('\n\n')}
         `Document #${documentId}`;
       const type = document.file_mimetype || this.inferMimeFromName(name);
       const buffer = await this.readDocumentBuffer(document);
-      const extracted = await this.extractBufferContent(buffer, type, name);
+      const extracted = await this.extractBufferReading(buffer, type, name);
       const truncated = this.truncateContextText(
-        extracted,
+        extracted.reliableText ?? extracted.text,
         this.MAX_DOCUMENT_CONTEXT_CHARS,
       );
 
@@ -3957,6 +4334,11 @@ ${blocks.join('\n\n')}
         source: 'system',
         content: `${header}\n\n${truncated.content}`.trim(),
         truncated: truncated.truncated,
+        method: extracted.method,
+        pages: extracted.pages,
+        uncertain: extracted.uncertain,
+        confidence: extracted.confidence,
+        illegible: extracted.illegible,
       };
     } catch (error) {
       return {
@@ -4021,21 +4403,28 @@ ${blocks.join('\n\n')}
   async analyzeQuestionStream(
     dto: AskQuestionDto,
     user: AiUserContext | string,
-    file: Express.Multer.File | undefined,
+    uploaded: Express.Multer.File | Express.Multer.File[] | undefined,
     sendEvent: (event: string, data: any) => void,
     aiRequestLogId?: number,
   ): Promise<void> {
-    return this.withAiMetrics('ask_stream', aiRequestLogId, () =>
-      this.analyzeQuestionStreamInternal(dto, user, file, sendEvent),
-    );
+    const files = toUploadedFiles(uploaded);
+    const metadata = this.userMessageMetadata(dto, files);
+    const run = () => this.withAiMetrics('ask_stream', aiRequestLogId, () =>
+      this.analyzeQuestionStreamInternal(dto.temporary === true || dto.temporary === 'true'
+        ? { ...dto, conversationId: undefined } : dto, user, files, sendEvent),
+    this.displayedRecordsKey(user));
+    const analyze = metadata ? () => this.conversationManager.withUserMessageMetadata(metadata, run) : run;
+    return dto.temporary === true || dto.temporary === 'true'
+      ? this.conversationManager.runTemporary(analyze) : analyze();
   }
 
   private async analyzeQuestionStreamInternal(
     dto: AskQuestionDto,
     user: AiUserContext | string,
-    file: Express.Multer.File | undefined,
+    uploaded: Express.Multer.File | Express.Multer.File[] | undefined,
     sendEvent: (event: string, data: any) => void,
   ): Promise<void> {
+    const files = toUploadedFiles(uploaded);
     const startTime = Date.now();
     const userId = this.getUserId(user);
     const tLog = (label: string) =>
@@ -4043,9 +4432,10 @@ ${blocks.join('\n\n')}
 
     /** sendEvent avec petit délai de rythme : chaque status reste lisible sans
      *  peser sur la latence (le front a déjà son propre typewriter). */
-    const emit = async (event: string, data: any, delayMs = 60) => {
+    // Les étapes (`step`) sont horodatées et affichées côté chat : aucune pause
+    // n'est nécessaire pour qu'elles soient visibles, la réponse n'attend pas.
+    const emit = async (event: string, data: any, _delayMs?: number) => {
       sendEvent(event, data);
-      if (event === 'status') await this.sleep(delayMs);
     };
 
     // Génération SQL anticipée pendant la classification (voir startSqlDraft).
@@ -4077,6 +4467,7 @@ ${blocks.join('\n\n')}
       if (resumed) {
         sendEvent('intent', { type: 'WRITE', plan: resumed.plan });
         await emit('status', {
+          step: 'execute',
           message: `⚙️ Exécution de ${resumed.plan.operations.length} opération(s)...`,
         });
         const conversationId = dto.conversationId!;
@@ -4093,6 +4484,12 @@ ${blocks.join('\n\n')}
           const results = await this.genericWriteService.executePlan(
             resumed.plan,
             userId,
+            ({ index, total, label }) =>
+              sendEvent('status', {
+                step: 'execute',
+                message: `⚙️ ${label}`,
+                detail: total > 1 ? `${index}/${total} · ${label}` : label,
+              }),
           );
           const analysis = this.formatPlanResults(results);
           await this.conversationManager.addAssistantMessage(
@@ -4120,7 +4517,7 @@ ${blocks.join('\n\n')}
               message: this.buildAmbiguityMessage(error),
               pendingWritePlan: resumed.plan,
               conversationId,
-              allowOther: true,
+              allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
               otherLabel: this.getFieldLabel(error.fieldName),
             });
           } else if (error instanceof EntityIdRequiredException) {
@@ -4131,7 +4528,7 @@ ${blocks.join('\n\n')}
               error.entity,
               userId,
             );
-            const message = `❓ Je n'ai toujours pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`;
+            const message = error.detail ? `❓ ${error.detail}` : `❓ Je n'ai toujours pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`;
             await this.conversationManager.addAssistantMessage(
               conversationId,
               message,
@@ -4157,11 +4554,40 @@ ${blocks.join('\n\n')}
 
       // ── 2. Détection d'intention ────────────────────────────────────────────
       tLog('avant status 🔍');
-      await emit('status', { message: '🔍 Analyse de la demande...' });
-      tLog('après status sleep(200ms) — DeepSeek lightClassify démarre');
-      const requestContext = await this.buildRequestContext(dto, file);
+      await emit('status', { step: 'understand', message: '🔍 Analyse de la demande...' });
+      tLog('après status — DeepSeek lightClassify démarre');
+      if (files.length) {
+        const images = files.filter((item) => item.mimetype?.startsWith('image/')).length;
+        await emit('status', {
+          step: 'document',
+          message: images
+            ? `🖼️ Lecture ${images > 1 ? `des ${images} images` : "de l'image"} (reconnaissance du texte)...`
+            : `📄 Lecture ${files.length > 1 ? `des ${files.length} fichiers` : 'du fichier'}...`,
+        });
+      }
+      const requestContext = await this.buildRequestContext(dto, files);
       enrichedQuestion = requestContext.enrichedQuestion;
       fileInfo = requestContext.fileInfo ?? fileInfo;
+      // Ce que l'IA a lu de chaque pièce jointe : le chat l'affiche et permet
+      // d'y sélectionner un passage pour poser une question.
+      const readDocuments = requestContext.documentContext.filter((item) => item.source === 'upload' && !item.reused);
+      if (readDocuments.length) {
+        sendEvent('documents', {
+          items: readDocuments.map((item) => ({
+            name: item.name,
+            type: item.type,
+            size: item.size,
+            content: item.displayContent ?? item.content,
+            truncated: item.truncated,
+            method: item.method,
+            pages: item.pages,
+            uncertain: item.uncertain,
+            confidence: item.confidence,
+            illegible: item.illegible,
+            error: item.error,
+          })),
+        });
+      }
       const historyOverride = parseVisibleHistory(dto.historyOverride);
       const intentMode = this.normalizeIntentMode(dto.intentMode);
 
@@ -4173,7 +4599,7 @@ ${blocks.join('\n\n')}
       );
       // Les mots d'une pièce jointe (« recommandation », « code »…) ne doivent
       // pas décider de l'intention : la classification locale lit la demande seule.
-      const intentText = requestContext.documentContext.length
+      const intentText = requestContext.documentContext.length || requestContext.quote
         ? this.resolveFollowUpContext(
             requestContext.intentQuestion,
             historyOverride,
@@ -4194,6 +4620,30 @@ ${blocks.join('\n\n')}
           ...(fileInfo && { fileInfo }),
         });
         return;
+      }
+      const sendNotice = async (text: string) => {
+        sendEvent('intent', { type: 'HELP' });
+        const result = await this.respondWithNotice(
+          text,
+          dto,
+          user,
+          startTime,
+          requestContext.referenced,
+          fileInfo,
+        );
+        sendEvent('token', { text: result.analysis });
+        sendEvent('result', result);
+      };
+      if (intentMode !== 'write') {
+        const capabilityAnswer = await this.answerCapabilityQuestion(
+          user,
+          dto.question,
+        );
+        if (capabilityAnswer) {
+          this.markMetric({ intent: 'HELP' });
+          await sendNotice(capabilityAnswer);
+          return;
+        }
       }
       if (
         intentMode === 'auto' &&
@@ -4233,40 +4683,63 @@ ${blocks.join('\n\n')}
       }
 
       if (requestContext.documentContext.length) {
-        await emit(
-          'status',
-          {
-            message: `📄 ${requestContext.documentContext.length} document(s) pris en compte`,
-          },
-          80,
-        );
+        await emit('status', {
+          step: 'context',
+          message: `📄 ${requestContext.documentContext.length} document(s) pris en compte`,
+        });
       }
       if (requestContext.referenced.length) {
-        await emit(
-          'status',
-          {
-            message: `🔗 ${requestContext.referenced.length} référence(s) prise(s) en compte`,
-          },
-          80,
-        );
+        await emit('status', {
+          step: 'context',
+          message: `🔗 ${requestContext.referenced.length} référence(s) prise(s) en compte`,
+          references: requestContext.referenced
+            .map((item: any) => item?.label)
+            .filter(Boolean)
+            .slice(0, 3),
+        });
       }
 
-      const relevantTables = await this.detectRelevantTables(
+      if (!requestContext.documentContext.length) {
+        const refusal = await this.refuseRestrictedDomains(user, dto.question);
+        if (refusal) {
+          await sendNotice(refusal);
+          return;
+        }
+      }
+
+      const detectedTables = await this.detectRelevantTables(
         enrichedQuestion,
         dto.specificTables,
         requestContext.referenced,
       );
       if (
         requestContext.documentContext.length &&
-        !relevantTables.includes('document_customer')
+        !detectedTables.includes('document_customer')
       ) {
-        relevantTables.push('document_customer');
+        detectedTables.push('document_customer');
       }
-      const schema = await this.getCompleteSchema(relevantTables);
+      const access = await this.restrictToReadableTables(
+        user,
+        detectedTables,
+        dto.question,
+      );
+      if (access.refusal) {
+        await sendNotice(access.refusal);
+        return;
+      }
+      const relevantTables = access.tables;
+      const schema = await this.hideRestrictedColumns(
+        user,
+        relevantTables,
+        await this.getCompleteSchema(relevantTables),
+      );
       tLog('schema prêt — appel detectIntent');
-      const historyForIntent = historyOverride.length
-        ? this.formatVisibleHistoryForIntent(historyOverride)
-        : await this.getHistorySnippetForIntent(dto.conversationId);
+      const historyForIntent = this.withDisplayedRecords(
+        historyOverride.length
+          ? this.formatVisibleHistoryForIntent(historyOverride)
+          : await this.getHistorySnippetForIntent(dto.conversationId),
+        user,
+      );
 
       // ── 2bis. Analyse directe de documents (bypass SQL) ─────────────────────
       // Si l'utilisateur a joint OU mentionné (@) un document dont le CONTENU a
@@ -4287,11 +4760,10 @@ ${blocks.join('\n\n')}
           relevantTables,
         );
         sendEvent('intent', { type: 'READ' });
-        await emit(
-          'status',
-          { message: '📄 Lecture et analyse du contenu du document...' },
-          80,
-        );
+        await emit('status', {
+          step: 'document',
+          message: '📄 Lecture et analyse du contenu du document...',
+        });
 
         let conversationId = dto.conversationId;
         if (!conversationId) {
@@ -4312,6 +4784,7 @@ ${blocks.join('\n\n')}
           requestContext.documentContext,
           sendEvent,
           requestContext.referenced,
+          requestContext.quote,
         );
         await this.conversationManager.addAssistantMessage(
           conversationId,
@@ -4384,8 +4857,8 @@ ${blocks.join('\n\n')}
           forceWriteDespiteReadMode ||
           writeWithDocument;
         intentResult = await this.intentDetectionService.detectIntent(
-          file && forceWrite
-            ? enrichedQuestion + uploadedFilePlannerNote(file.originalname)
+          files.length && forceWrite
+            ? enrichedQuestion + uploadedFilePlannerNote(uploadedFileNames(files))
             : enrichedQuestion,
           this.getRequestModel('fast', this.CLASSIFIER_MAX_TOKENS),
           schema,
@@ -4524,7 +4997,7 @@ ${blocks.join('\n\n')}
 
       // ── 3b. WRITE ────────────────────────────────────────────────────────────
       if (intentResult.type === 'WRITE' && intentResult.writePlan) {
-        const { plan, removed } = file
+        const { plan, removed } = files.length
           ? withoutUploadedDocumentInserts(intentResult.writePlan)
           : { plan: intentResult.writePlan as WritePlan, removed: 0 };
         if (plan.operations.length) {
@@ -4550,7 +5023,7 @@ ${blocks.join('\n\n')}
 
         if (removed) {
           const notice = uploadedDocumentMessage(
-            file!.originalname,
+            uploadedFileNames(files),
             plan.operations.length > 0,
           );
           if (!plan.operations.length) {
@@ -4597,6 +5070,7 @@ ${blocks.join('\n\n')}
         }
 
         await emit('status', {
+          step: 'execute',
           message: `⚙️ Exécution de ${plan.operations.length} opération(s)...`,
         });
 
@@ -4613,7 +5087,7 @@ ${blocks.join('\n\n')}
       }
 
       // ── 3c. READ ─────────────────────────────────────────────────────────────
-      await emit('status', { message: '🗄️ Génération de la requête SQL...' });
+      await emit('status', { step: 'search', message: '🗄️ Recherche des informations...' });
 
       let conversationId = dto.conversationId;
       if (!conversationId) {
@@ -4663,7 +5137,8 @@ ${blocks.join('\n\n')}
         await sqlDraft,
       );
       await emit('status', {
-        message: '✅ Requête générée, exécution en cours...',
+        step: 'fetch',
+        message: '✅ Consultation des données...',
       });
 
       // validateAndFixQuery valide déjà via EXPLAIN et s'auto-corrige (jusqu'à 2 passes
@@ -4765,6 +5240,7 @@ ${blocks.join('\n\n')}
             requestContext.referenced,
           );
           await emit('status', {
+            step: 'execute',
             message: `⚙️ Exécution de ${reroutedPlan.operations.length} opération(s)...`,
           });
           await this.executeWritePlanStream(
@@ -4796,6 +5272,11 @@ ${blocks.join('\n\n')}
       }
 
       const results = await this.executeSafeQuery(validatedQuery);
+      results.data = await this.aiPermissionService.redactRows(
+        user as AiUserContext,
+        validatedQuery,
+        results.data,
+      );
 
       // Le tableau part dès l'exécution : l'utilisateur voit les données
       // pendant que la réponse rédigée est générée.
@@ -4804,7 +5285,7 @@ ${blocks.join('\n\n')}
         results: results.data,
         rowCount: results.rowCount,
       });
-      await emit('status', { message: '📊 Analyse des résultats...' });
+      await emit('status', { step: 'answer', message: '📊 Analyse des résultats...' });
 
       // Streaming token-by-token de l'analyse métier
       const analysis = await this.generateBusinessAnalysisStream(
@@ -4871,7 +5352,9 @@ ${blocks.join('\n\n')}
     draftParts?: Promise<Array<SubQuestionResult | null>> | null,
   ): Promise<void> {
     await emit('status', {
-      message: `🧩 Question multi-ressources — ${subQuestions.length} recherches...`,
+      step: 'search',
+      message: `🧩 ${subQuestions.length} recherches en parallèle...`,
+      sources: subQuestions.map((sub) => sub.title),
     });
     await this.conversationManager.addUserMessage(
       conversationId,
@@ -4898,15 +5381,21 @@ ${blocks.join('\n\n')}
       if (part) parts.push(part);
     }
 
-    // Aucune sous-requête exploitable → message clair plutôt qu'une clarification générique.
-    if (parts.length === 0) {
-      const msg = this.getNoResultsMessage(dto.question, relevantTables);
+    // Aucune sous-requête exploitable, ou toutes vides → réponse « rien
+    // trouvé » courte avec pistes, plutôt qu'une analyse rédigée sur du vide.
+    if (parts.every((part) => part.rowCount === 0)) {
+      const { message: msg, suggestions } = await this.buildNoResultsAnswer(
+        dto.question,
+        relevantTables,
+      );
       await this.conversationManager.addAssistantMessage(
         conversationId,
         msg,
         undefined,
+        suggestions.length ? { suggestions } : undefined,
       );
       sendEvent('token', { text: msg });
+      if (suggestions.length) sendEvent('suggestions', { suggestions });
       sendEvent('result', {
         success: true,
         question: dto.question,
@@ -4926,7 +5415,7 @@ ${blocks.join('\n\n')}
       rowCount: parts.reduce((sum, p) => sum + p.rowCount, 0),
       resultSets: parts,
     });
-    await emit('status', { message: '📊 Analyse combinée des résultats...' });
+    await emit('status', { step: 'answer', message: '📊 Analyse combinée des résultats...' });
     const analysis = await this.generateCombinedAnalysisStream(
       dto.question,
       parts,
@@ -5056,11 +5545,13 @@ ${blocks.join('\n\n')}
     documentContext: DocumentContextItem[],
     sendEvent: (event: string, data: any) => void,
     referenced: ReferencedEntityContext[] = [],
+    quote?: QuotedPassage | null,
   ): Promise<string> {
     const prompt = this.buildDocumentAnalysisPrompt(
       question,
       documentContext,
       referenced,
+      quote,
     );
 
     let fullText = '';
@@ -5146,16 +5637,20 @@ ${blocks.join('\n\n')}
     question: string,
     documentContext: DocumentContextItem[],
     referenced: ReferencedEntityContext[] = [],
+    quote?: QuotedPassage | null,
   ): string {
+    // Le passage cité oriente le choix des extraits d'un long document.
+    const focus = quote ? `${question}\n${quote.text}` : question;
     const docs = documentContext
       .filter((d) => !d.error && !!d.content && d.content.trim().length > 0)
       .map((d, i) => {
         const title = d.id
           ? `Document système #${d.id} — ${d.name}`
           : `Fichier joint — ${d.name || `#${i + 1}`}`;
-        return `### ${title}\n${this.selectRelevantDocumentText(question, d.content, 8000)}`;
+        return `### ${title}\n${this.readingNotice(d)}${this.selectRelevantDocumentText(focus, d.content, 8000)}`;
       })
       .join('\n\n');
+    const unreadable = documentContext.filter((d) => d.error);
 
     const role =
       this.projectConfig?.analysisSystemPrompt ??
@@ -5165,11 +5660,19 @@ ${blocks.join('\n\n')}
 
 Tu dois répondre à la demande de l'utilisateur en t'appuyant EXCLUSIVEMENT sur le contenu des documents ci-dessous.
 ⚠️ Si une information demandée ne figure pas dans les documents, dis-le explicitement. N'invente JAMAIS de contenu.
-⚠️ Tu n'exécutes aucune action : n'affirme jamais avoir créé, ajouté, classé, enregistré ou modifié quoi que ce soit. Si la demande réclame une action, précise en une phrase que rien n'a été enregistré, puis réponds à partir des documents.
+⚠️ Tu n'exécutes aucune action : n'affirme jamais avoir créé, ajouté, classé, enregistré ou modifié quoi que ce soit. Seulement si la demande réclame explicitement une action (créer, ajouter, classer, enregistrer, modifier), précise en une phrase que rien n'a été enregistré, puis réponds à partir des documents ; sinon, n'en parle pas.
 
 ## DEMANDE DE L'UTILISATEUR
 "${question}"
 ${
+  quote
+    ? `
+## PASSAGE SÉLECTIONNÉ PAR L'UTILISATEUR${quote.source ? ` (source : ${quote.source})` : ''}
+${quote.text}
+La demande porte sur ce passage : appuie-toi sur le reste du document pour l'expliquer ou y répondre.
+`
+    : ''
+}${
   referenced.length
     ? `
 ## CONTEXTE CHOISI PAR L'UTILISATEUR
@@ -5180,7 +5683,7 @@ Ces éléments situent la demande. Un document qui ne les cite pas reste exploit
 }
 ## CONTENU DES DOCUMENTS
 ${docs}
-
+${unreadable.length ? `\nFichiers illisibles (signale-le en une phrase) :\n${unreadable.map((d) => `- ${d.name} : ${d.error}`).join('\n')}\n` : ''}
 ## CONSIGNES DE RÉPONSE
 - Réponds en français, dans un langage clair et professionnel.
 - Structure la réponse (points clés, parties, dates, montants, obligations, échéances…).
@@ -5438,7 +5941,7 @@ RÉPONSE :`;
     tables: string[],
   ): Promise<string> {
     if (!results.data || results.data.length === 0) {
-      return this.getNoResultsMessage(question, tables);
+      return (await this.buildNoResultsAnswer(question, tables)).message;
     }
 
     // Transformer les résultats avec des libellés métier
@@ -5461,11 +5964,11 @@ INSTRUCTIONS IMPORTANTES:
 3. Utilise des termes métier comme "dossier", "client", "étape", "procédure", "statut", "date"
 4. Pour les champs, utilise des noms lisibles comme "Numéro de dossier", "Nom de l'étape" au lieu de "id", "name"
 5. Si la réponse contient des dates, formate-les de façon lisible
-6. Sois concis mais précis (max 500 mots)
-7. Termine par une phrase d'action ou de recommandation si pertinent
+6. Sois concis mais précis (max 350 mots)
+7. Termine par une phrase d'action ou de recommandation seulement si elle apporte quelque chose
 8. N'affiche JAMAIS d'identifiant interne : ni ID numérique, ni UUID, ni clé se terminant par "_id", ni formule comme "utilisateur 32". Utilise uniquement les noms, numéros métier, titres et libellés fournis. Si aucun nom lisible n'est disponible, omets l'information au lieu d'afficher l'identifiant.
 9. Pour une personne (responsable, avocat, collaborateur, client), affiche son nom complet. Pour une action, affiche son titre ou son libellé. Pour un dossier ou une facture, utilise son numéro métier.
-10. Format d'affichage: texte simple uniquement. N'utilise pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes de type "- Libellé : valeur".
+${ANSWER_FORMAT_RULES}
 
 RÉPONSE (en français courant, langage métier):`;
 
@@ -5565,9 +6068,13 @@ RÉPONSE (en français courant, langage métier):`;
     sendEvent: (event: string, data: any) => void,
   ): Promise<string> {
     if (!results.data || results.data.length === 0) {
-      const msg = this.getNoResultsMessage(question, tables);
+      const { message: msg, suggestions } = await this.buildNoResultsAnswer(
+        question,
+        tables,
+      );
       this.logger.debug(`📤 token (no-results): "${msg.substring(0, 60)}"`);
       sendEvent('token', { text: msg });
+      if (suggestions.length) sendEvent('suggestions', { suggestions });
       return msg;
     }
 
@@ -5594,11 +6101,11 @@ INSTRUCTIONS IMPORTANTES:
 2. N'utilise JAMAIS de termes techniques comme "SQL", "requête", "base de données", "colonne", "table"
 3. Utilise des termes métier adaptés au contexte
 4. Si la réponse contient des dates, formate-les de façon lisible
-5. Sois concis mais précis (max 500 mots)
-6. Termine par une phrase d'action ou de recommandation si pertinent
+5. Sois concis mais précis (max 350 mots)
+6. Termine par une phrase d'action ou de recommandation seulement si elle apporte quelque chose
 7. N'affiche JAMAIS d'identifiant interne : ni ID numérique, ni UUID, ni clé se terminant par "_id", ni formule comme "utilisateur 32". Utilise les noms complets, numéros métier, titres et libellés fournis. Si aucun libellé lisible n'est disponible, omets l'information.
 8. Pour une personne, affiche son nom complet ; pour une action son titre ; pour un dossier ou une facture son numéro métier.
-9. Format d'affichage: texte simple uniquement. N'utilise pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes de type "- Libellé : valeur".
+${ANSWER_FORMAT_RULES}
 
 RÉPONSE (en langage naturel):`;
 
@@ -5805,6 +6312,11 @@ RÉPONSE (en langage naturel):`;
         validated,
       );
       const res = await this.executeSafeQuery(validated);
+      res.data = await this.aiPermissionService.redactRows(
+        user as AiUserContext,
+        validated,
+        res.data,
+      );
       this.logger.log(
         `🧩 [DECOMP] "${sub.title}" → ${res.rowCount} résultat(s)`,
       );
@@ -5853,8 +6365,8 @@ INSTRUCTIONS IMPORTANTES:
 4. N'affiche JAMAIS d'identifiant interne : ni ID numérique, ni UUID, ni clé se terminant par "_id", ni formule comme "utilisateur 32". Utilise uniquement les noms, numéros métier, titres et libellés fournis.
 5. Pour une personne, affiche son nom complet ; pour une action son titre ; pour un dossier ou une facture son numéro métier. Si aucun libellé lisible n'est disponible, omets l'information.
 6. Formate les dates de façon lisible. Si un ensemble est vide, indique-le brièvement.
-7. Format d'affichage: texte simple uniquement. Pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes "- Libellé : valeur".
-8. Sois complet mais concis (max ~700 mots).
+7. Sois complet mais concis (max ~500 mots).
+${ANSWER_FORMAT_RULES}
 
 RÉPONSE (en langage naturel):`;
   }
@@ -6074,92 +6586,102 @@ RÉPONSE (en langage naturel):`;
   }
 
   /**
-   * Message personnalisé quand aucun résultat n'est trouvé
+   * Réponse quand rien n'est trouvé : nomme ce qui a été cherché et propose
+   * les enregistrements aux numéros proches (cf. no-results-answer.ts), avec
+   * des relances cliquables qui reprennent la question avec le bon numéro.
    */
-  private getNoResultsMessage(question: string, tables: string[]): string {
-    const lower = question.toLowerCase();
-
-    const rules: Array<{ test: (q: string) => boolean; message: string }> = [
-      {
-        test: (q) => /\b[eé]tape|step|procedure|parcours/i.test(q),
-        message:
-          "Aucune etape trouvee pour ce dossier. Le dossier n'a peut-etre pas encore de parcours procedural actif, ou l'identifiant est incorrect.",
-      },
-      {
-        test: (q) => /dossier|affaire|litige/i.test(q),
-        message:
-          'Aucun dossier ne correspond a ces criteres. Verifiez le numero de dossier ou elargissez la recherche (periode, statut, client).',
-      },
-      {
-        test: (q) => /client|customer|partie/i.test(q),
-        message:
-          "Aucun client ne correspond a cette recherche. Verifiez l'orthographe du nom ou essayez avec moins de criteres.",
-      },
-      {
-        test: (q) => /audience/i.test(q),
-        message:
-          'Aucune audience trouvee pour ces criteres. Verifiez la periode ou le dossier concerne.',
-      },
-      {
-        test: (q) => /facture|honoraire/i.test(q),
-        message:
-          'Aucune facture trouvee pour ces criteres. Verifiez le client, la periode ou le statut de facturation.',
-      },
-      {
-        test: (q) => /paiement|reglement|encaissement/i.test(q),
-        message:
-          'Aucun paiement enregistre pour ces criteres. Verifiez le client ou la periode.',
-      },
-      {
-        test: (q) => /chiffre d.affaire|ca |revenu|recette/i.test(q),
-        message:
-          "Aucune donnee financiere trouvee pour cette periode. Il n'y a peut-etre pas encore de factures ou de paiements enregistres.",
-      },
-      {
-        test: (q) => /diligence|tache|echeance/i.test(q),
-        message:
-          'Aucune diligence trouvee pour ces criteres. Verifiez le dossier ou la periode concernee.',
-      },
-      {
-        test: (q) => /document|piece|fichier|contrat/i.test(q),
-        message:
-          'Aucun document ne correspond a cette recherche. Verifiez le nom du document ou le dossier associe.',
-      },
-      {
-        test: (q) => /avocat|collaborateur|employe/i.test(q),
-        message:
-          'Aucun collaborateur ne correspond a cette recherche. Verifiez le nom ou les criteres saisis.',
-      },
-      {
-        test: (q) => /comptab|ecriture|journal|compte/i.test(q),
-        message:
-          'Aucune ecriture comptable trouvee pour ces criteres. Verifiez le journal, la periode ou le compte concerne.',
-      },
-    ];
-
-    for (const rule of rules) {
-      if (rule.test(lower)) {
-        return rule.message;
+  private async buildNoResultsAnswer(
+    question: string,
+    tables: string[],
+  ): Promise<{ message: string; suggestions: NoResultsSuggestion[] }> {
+    const references = extractSearchedReferences(question);
+    const reference = references[0];
+    const target = detectNoResultsTarget(question, tables, reference);
+    let nearby: RankedRecord[] = [];
+    let example: string | undefined;
+    let empty = false;
+    // Seulement sur une table déjà autorisée pour cette question.
+    if (reference && target?.table && tables.includes(target.table)) {
+      try {
+        const records = await this.loadNearbyCandidates(target.table, tables);
+        empty = records.length === 0;
+        example = records[0]?.code;
+        nearby = rankNearbyRecords(reference, records);
+      } catch (error) {
+        this.logger.warn(
+          `Suggestions « rien trouvé » indisponibles: ${(error as Error).message}`,
+        );
       }
     }
-
-    // Dernier recours : construire un message à partir des tables détectées
-    const tableLabels: Record<string, string> = {
-      dossiers: 'dossier',
-      customer: 'client',
-      employee: 'collaborateur',
-      audiences: 'audience',
-      factures: 'facture',
-      paiements: 'paiement',
-      diligences: 'diligence',
-      document_customer: 'document',
+    return {
+      message: buildNoResultsMessage({
+        target,
+        references,
+        nearby,
+        example,
+        empty,
+      }),
+      suggestions: buildNoResultsSuggestions(question, reference, nearby),
     };
-    const primaryTable = tables.find((t) => tableLabels[t]);
-    if (primaryTable) {
-      return `Aucun(e) ${tableLabels[primaryTable]} ne correspond a votre recherche. Essayez avec des criteres differents (periode, statut, nom).`;
-    }
+  }
 
-    return `Aucun resultat pour cette recherche. Essayez de reformuler avec des criteres plus precis (nom, date, statut).`;
+  /** Identifiants récents du cabinet, comparés à la valeur cherchée. */
+  private async loadNearbyCandidates(
+    table: string,
+    tables: string[],
+  ): Promise<NearbyRecord[]> {
+    const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+    const scope = (alias: string) =>
+      tenantId ? ` AND ${alias}.tenant_id = ?` : '';
+    const params = tenantId ? [tenantId] : [];
+    const shorten = (text: unknown) => {
+      const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+      return value.length > 70 ? `${value.slice(0, 69)}…` : value;
+    };
+    if (table === 'dossiers') {
+      const withClient = tables.includes('customer');
+      const rows: any[] = await this.dataSource.query(
+        `SELECT d.dossier_number AS code, d.case_number, d.object${
+          withClient ? ', c.full_name, c.company_name' : ''
+        } FROM dossiers d${
+          withClient ? ' LEFT JOIN customer c ON c.id = d.client_id' : ''
+        } WHERE d.deleted_at IS NULL${scope('d')} ORDER BY d.id DESC LIMIT 500`,
+        params,
+      );
+      return rows.map((row) => ({
+        code: row.code,
+        label: [shorten(row.object), shorten(row.company_name || row.full_name)]
+          .filter(Boolean)
+          .join(' · '),
+        aliases: row.case_number
+          ? [{ value: String(row.case_number), label: 'n° RG' }]
+          : [],
+      }));
+    }
+    if (table === 'factures') {
+      const rows: any[] = await this.dataSource.query(
+        `SELECT f.numero AS code, f.libelle FROM factures f WHERE f.deleted_at IS NULL${scope('f')} ORDER BY f.numero DESC LIMIT 500`,
+        params,
+      );
+      return rows.map((row) => ({
+        code: row.code,
+        label: row.libelle && row.libelle !== row.code ? shorten(row.libelle) : '',
+      }));
+    }
+    if (table === 'customer') {
+      const rows: any[] = await this.dataSource.query(
+        `SELECT c.customer_code AS code, c.full_name, c.company_name FROM customer c WHERE c.deleted_at IS NULL${scope('c')} ORDER BY c.id DESC LIMIT 500`,
+        params,
+      );
+      return rows.map((row) => ({
+        code: row.code,
+        label: shorten(row.company_name || row.full_name),
+        aliases: [row.full_name, row.company_name]
+          .filter(Boolean)
+          .map((name) => ({ value: String(name), label: 'nom' })),
+      }));
+    }
+    return [];
   }
 
   /**
@@ -6271,9 +6793,12 @@ RÉPONSE (en langage naturel):`;
 
     const referenceTables = this.getReferenceTableHints(references);
     const normalizedQuestion = this.normalizeForKeywordMatch(question);
-    const keywords = normalizedQuestion.split(/\s+/).filter(Boolean);
+    const keywords = normalizedQuestion
+      .split(/\s+/)
+      .filter((k) => k.length >= 3 && !KEYWORD_STOPWORDS.has(k));
     const visibleTables = this.schemaMetadata.getAllVisibleTables();
     const keywordStems = keywords.map((k) => this.stemKeyword(k));
+    const keywordSquashed = keywordStems.map(squashRepeatedLetters);
     const effectiveTablesConfig =
       this.projectConfig?.databaseTablesConfig ?? DatabaseTablesConfig;
     const tableSynonyms =
@@ -6315,11 +6840,15 @@ RÉPONSE (en langage naturel):`;
       for (let ki = 0; ki < keywords.length; ki++) {
         const keyword = keywords[ki];
         const stem = keywordStems[ki];
+        const squashed = keywordSquashed[ki];
+        // Tolère les lettres doublées oubliées ou en trop (« aporteurs »).
+        const sameStem = (s: string) =>
+          s === keyword || s === stem || squashRepeatedLetters(s) === squashed;
 
         // 2. Word-level matching avec stemming
         // Ex: "documents" (stem="document") match "document" dans "document_customer"
         const wordMatch = tableWords.some((w) => w === keyword || w === stem);
-        const stemMatch = tableStems.some((s) => s === keyword || s === stem);
+        const stemMatch = tableStems.some(sameStem);
 
         if (wordMatch || stemMatch) {
           score += 5;
@@ -6339,9 +6868,7 @@ RÉPONSE (en langage naturel):`;
         const labelWordMatch = businessWords.some(
           (w) => w === keyword || w === stem,
         );
-        const labelStemMatch = businessStems.some(
-          (s) => s === keyword || s === stem,
-        );
+        const labelStemMatch = businessStems.some(sameStem);
 
         if (labelWordMatch || labelStemMatch) {
           score += 7;
@@ -6389,7 +6916,7 @@ RÉPONSE (en langage naturel):`;
 
     if (referenceTables.length > 0) {
       const combined = [...new Set([...referenceTables, ...detectedTables])];
-      const expanded = this.expandWithRelatedTables(combined, 10);
+      const expanded = this.expandWithRelatedTables(combined, 12);
       this.logger.log(
         `Tables contraintes par references: ${expanded.join(', ')}`,
       );
@@ -6403,6 +6930,160 @@ RÉPONSE (en langage naturel):`;
     return remember(this.expandWithRelatedTables(detectedTables));
   }
 
+  /**
+   * La détection de tables est volontairement large (tables voisines, scores
+   * bruités par le contexte des références) : on retire du schéma celles que
+   * l'utilisateur ne peut pas lire plutôt que de refuser toute la demande.
+   * Le SQL généré reste contrôlé avant exécution (assertCanReadSql). Refus
+   * clair (`refusal`) quand la question nomme une table hors des droits ;
+   * erreur quand aucune table candidate n'est lisible.
+   */
+  private async restrictToReadableTables(
+    user: AiUserContext | string,
+    tables: string[],
+    question = '',
+  ): Promise<{ tables: string[]; refusal?: string }> {
+    const { allowed, denied } =
+      await this.aiPermissionService.partitionReadableTables(
+        user as AiUserContext,
+        tables,
+      );
+    if (!denied.length) return { tables };
+
+    // « liste les apporteurs d'affaires » sans le droit correspondant : on le
+    // dit, au lieu de répondre (ou de demander une précision) sans la table.
+    const named = this.findTablesNamedInQuestion(question, denied);
+    if (named.length) {
+      this.logger.warn(
+        `🔒 Table demandée hors des droits: user=${this.getUserId(user)} | ${named.join(', ')}`,
+      );
+      const profile = await this.aiPermissionService.getAccessProfile(
+        user as AiUserContext,
+      );
+      return {
+        tables: allowed,
+        refusal: buildTableRefusal(
+          named.map((table) => ({
+            label:
+              this.schemaMetadata.getTableMetadataForPrompt(table)?.label ||
+              table,
+            permission: this.aiPermissionService.getReadPermission(table),
+          })),
+          profile.roleName,
+        ),
+      };
+    }
+
+    if (!allowed.length) {
+      await this.aiPermissionService.assertCanReadTables(
+        user as AiUserContext,
+        tables,
+      );
+    }
+    this.logger.log(
+      `🔒 Tables retirées du schéma (droits de lecture manquants): ${denied.join(', ')}`,
+    );
+    return { tables: allowed };
+  }
+
+  /**
+   * Tables que la question désigne explicitement : tous les mots significatifs
+   * du libellé métier y figurent (« Apporteurs d'affaires » ← « liste les
+   * aporteurs d'affaire »), ou l'un des synonymes configurés.
+   */
+  private findTablesNamedInQuestion(question: string, tables: string[]): string[] {
+    const normalizedQuestion = this.normalizeForKeywordMatch(question);
+    if (!normalizedQuestion) return [];
+    const significant = (text: string) =>
+      this.normalizeForKeywordMatch(text)
+        .split(' ')
+        .filter((w) => w.length >= 3 && !KEYWORD_STOPWORDS.has(w))
+        .map((w) => squashRepeatedLetters(this.stemKeyword(w)));
+    const questionWords = new Set(significant(question));
+    const squashedQuestion = squashRepeatedLetters(normalizedQuestion);
+    const tableSynonyms =
+      (
+        (this.projectConfig?.databaseTablesConfig ??
+          DatabaseTablesConfig) as AiDatabaseProjectConfig['databaseTablesConfig']
+      )?.tableSynonyms ?? {};
+
+    return tables.filter((table) => {
+      const labelWords = significant(
+        this.schemaMetadata.getTableMetadataForPrompt(table)?.label || '',
+      );
+      if (labelWords.length && labelWords.every((w) => questionWords.has(w))) {
+        return true;
+      }
+      return (tableSynonyms[table] ?? []).some((synonym) =>
+        this.containsNormalizedPhrase(
+          squashedQuestion,
+          squashRepeatedLetters(this.normalizeForKeywordMatch(synonym)),
+        ),
+      );
+    });
+  }
+
+  /**
+   * Question sur les droits (« que puis-je faire ? », « tu peux accéder aux
+   * opérations financières pour moi ? ») : réponse construite à partir du
+   * rôle réel de l'utilisateur, sans SQL ni LLM.
+   */
+  private async answerCapabilityQuestion(
+    user: AiUserContext | string,
+    question: string,
+  ): Promise<string | null> {
+    if (!isCapabilityQuestion(question)) return null;
+    const profile = await this.aiPermissionService.getAccessProfile(
+      user as AiUserContext,
+    );
+    return buildCapabilityAnswer(question, profile);
+  }
+
+  /**
+   * Demande qui vise explicitement un domaine sensible (factures, paie,
+   * comptabilité…) dont l'utilisateur ne peut lire aucune table : message de
+   * refus clair, plutôt qu'une réponse construite sans ces données.
+   */
+  private async refuseRestrictedDomains(
+    user: AiUserContext | string,
+    question: string,
+  ): Promise<string | null> {
+    const denied: RestrictedDomain[] = [];
+    for (const domain of matchRestrictedDomains(question)) {
+      const { allowed } =
+        await this.aiPermissionService.partitionReadableTables(
+          user as AiUserContext,
+          domain.tables,
+        );
+      if (!allowed.length) denied.push(domain);
+    }
+    if (!denied.length) return null;
+    this.logger.warn(
+      `🔒 Domaine IA refusé: user=${this.getUserId(user)} | ${denied.map((domain) => domain.key).join(', ')}`,
+    );
+    const profile = await this.aiPermissionService.getAccessProfile(
+      user as AiUserContext,
+    );
+    return buildDomainRefusal(denied, profile.roleName);
+  }
+
+  /** Retire du schéma les colonnes financières que l'utilisateur ne peut pas voir. */
+  private async hideRestrictedColumns(
+    user: AiUserContext | string,
+    tables: string[],
+    schema: string,
+  ): Promise<string> {
+    const hidden = await this.aiPermissionService.getHiddenColumns(
+      user as AiUserContext,
+      tables,
+    );
+    if (!hidden.size) return schema;
+    this.logger.log(
+      `🔒 Colonnes masquées: ${Array.from(hidden, ([table, columns]) => `${table}(${columns.join(', ')})`).join(' ')}`,
+    );
+    return stripSchemaColumns(schema, hidden);
+  }
+
   private getReferenceTableHints(
     references: ReferencedEntityContext[],
   ): string[] {
@@ -6414,12 +7095,20 @@ RÉPONSE (en langage naturel):`;
         'dossiers',
         'customer',
         'dossier_actions',
+        'billable_items',
+        'dossier_billing_profiles',
+        'dossier_billing_rules',
+        'case_action_definitions',
         'dossier_recommendations',
       ],
       case: [
         'dossiers',
         'customer',
         'dossier_actions',
+        'billable_items',
+        'dossier_billing_profiles',
+        'dossier_billing_rules',
+        'case_action_definitions',
         'dossier_recommendations',
       ],
       client: ['customer', 'dossiers'],
@@ -6430,6 +7119,7 @@ RÉPONSE (en langage naturel):`;
       action: [
         'dossier_actions',
         'billable_items',
+        'dossier_billing_profiles',
         'dossier_billing_rules',
         'case_action_definitions',
         'case_action_families',
@@ -6731,14 +7421,17 @@ RÉPONSE (en langage naturel):`;
       schema +=
         "⚠️ N'affiche jamais id, definition_id, responsible_user_id ni un UUID : désigne l'action par title ou definition_label. " +
         "Responsable : LEFT JOIN user u ON u.id = dossier_actions.responsible_user_id, puis CONCAT(u.first_name, ' ', u.last_name) AS responsable. " +
-        "Une action COMPLETED n'est pas automatiquement facturable : seule billing_decision = 'BILLABLE' la rend « à facturer ». " +
-        "Pour une action prête à mettre sur facture, joins billable_items sur source_type = 'ACTION' AND source_id = dossier_actions.id et exige billable_items.status = 'TO_INVOICE'.\n";
+        "Une action COMPLETED n'est pas automatiquement facturable : BILLABLE, HOURLY et VACATION sont des traitements facturables; INCLUDED_IN_PACKAGE est inclus au forfait. " +
+        "Pour une action prête à mettre sur facture, joins billable_items sur source_type = 'ACTION' AND source_id = dossier_actions.id et exige billable_items.status = 'TO_INVOICE'. " +
+        "Pour son montant, sélectionne les montants, la quantité, le prix unitaire et la devise de billable_items. Consulte aussi dossier_billing_profiles via dossier_id et les règles tarifaires avant de déclarer un tarif absent.\n";
     }
 
     if (table === 'billable_items') {
       schema +=
         '⚠️ Statuts : TO_INVOICE = prêt à facturer; NEEDS_REVIEW = tarif ou calcul à contrôler; RESERVED = réservé; ' +
-        'INVOICED = déjà facturé; WAIVED = abandonné; ADJUSTED = ajusté. Ne présente jamais NEEDS_REVIEW comme prêt à facturer.\n';
+        'INVOICED = déjà facturé; WAIVED = abandonné; ADJUSTED = ajusté. Ne présente jamais NEEDS_REVIEW comme prêt à facturer. ' +
+        'Pour une question de montant, sélectionne quantity, unit_price, net_amount, tax_rate, tax_amount, gross_amount, currency, calculation_snapshot et review_reason. ' +
+        'Ces montants enregistrés priment sur une estimation à partir de la configuration actuelle du dossier.\n';
     }
 
     return schema;
@@ -7318,6 +8011,9 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
 
     // Construire la map alias → tableName pour les tables tenant-aware
     const aliasMap = new Map<string, string>(); // alias → tableName
+    // Alias introduits uniquement par une jointure externe (LEFT/RIGHT JOIN).
+    const outerAliases = new Set<string>();
+    const innerAliases = new Set<string>();
 
     // FIX 1 — l'alias est entièrement optionnel : `(?:\s+(?:AS\s+)?alias)?`
     // Avant : `\s+` était obligatoire → `FROM table` (fin de string) ne matchait pas.
@@ -7327,15 +8023,21 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     while ((m = fromRe.exec(sql)) !== null) {
       const tbl = m[1].toLowerCase();
       const alias = resolveAlias(tbl, m[2]);
-      if (tenantTables.has(tbl)) aliasMap.set(alias, tbl);
+      if (tenantTables.has(tbl)) {
+        aliasMap.set(alias, tbl);
+        innerAliases.add(alias);
+      }
     }
 
-    // [LEFT|RIGHT|INNER|OUTER|CROSS] JOIN table [AS alias]
-    const joinRe = /\bJOIN\s+`?(\w+)`?(?:\s+(?:AS\s+)?([a-zA-Z_]\w*))?\b/gi;
+    // [LEFT|RIGHT [OUTER]|INNER|CROSS] JOIN table [AS alias]
+    const joinRe =
+      /\b(?:(LEFT|RIGHT)(?:\s+OUTER)?\s+)?JOIN\s+`?(\w+)`?(?:\s+(?:AS\s+)?([a-zA-Z_]\w*))?\b/gi;
     while ((m = joinRe.exec(sql)) !== null) {
-      const tbl = m[1].toLowerCase();
-      const alias = resolveAlias(tbl, m[2]);
-      if (tenantTables.has(tbl)) aliasMap.set(alias, tbl);
+      const tbl = m[2].toLowerCase();
+      const alias = resolveAlias(tbl, m[3]);
+      if (!tenantTables.has(tbl)) continue;
+      aliasMap.set(alias, tbl);
+      (m[1] ? outerAliases : innerAliases).add(alias);
     }
 
     if (aliasMap.size === 0) {
@@ -7355,9 +8057,19 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     const newConditions = Array.from(aliasMap.entries())
       .map(([alias, tbl]) => {
         const isShared = sharedTables.has(tbl);
-        const condition = isShared
+        const tenantCondition = isShared
           ? `${alias}.tenant_id IN (1, ${tenantId})`
           : `${alias}.tenant_id = ${tenantId}`;
+        // FIX 5 — jointure externe : sans correspondance, toutes les colonnes de
+        // l'alias valent NULL. Exiger tenant_id = X dans le WHERE supprimait
+        // alors la ligne principale (ex. dossier sans juridiction → « dossier
+        // introuvable »). tenant_id est NOT NULL partout : un NULL ne peut venir
+        // que de l'absence de correspondance, et une ligne d'un autre cabinet
+        // reste exclue.
+        const condition =
+          outerAliases.has(alias) && !innerAliases.has(alias)
+            ? `(${tenantCondition} OR ${alias}.tenant_id IS NULL)`
+            : tenantCondition;
         // Idempotence : ne pas réinjecter si la condition correcte est déjà présente
         const already = isShared
           ? new RegExp(
@@ -7574,7 +8286,16 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     sendEvent: (event: string, data: any) => void,
   ): Promise<void> {
     try {
-      const results = await this.genericWriteService.executePlan(plan, userId);
+      const results = await this.genericWriteService.executePlan(
+        plan,
+        userId,
+        ({ index, total, label }) =>
+          sendEvent('status', {
+            step: 'execute',
+            message: `⚙️ ${label}`,
+            detail: total > 1 ? `${index}/${total} · ${label}` : label,
+          }),
+      );
       const analysis = this.formatPlanResults(results);
       await this.conversationManager.addAssistantMessage(
         conversationId,
@@ -7602,7 +8323,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
           message: this.buildAmbiguityMessage(error),
           pendingWritePlan: plan,
           conversationId,
-          allowOther: true,
+          allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
           otherLabel: this.getFieldLabel(error.fieldName),
         });
       } else if (error instanceof EntityIdRequiredException) {
@@ -7615,7 +8336,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
           error.entity,
           userId,
         );
-        const message = `❓ Je n'ai pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer et je continuerai.`;
+        const message = error.detail ? `❓ ${error.detail}` : `❓ Je n'ai pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer et je continuerai.`;
         await this.conversationManager.addAssistantMessage(
           conversationId,
           message,
@@ -7672,7 +8393,12 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     try {
       // Exécuter execQuery (nettoyée + tenant injecté), pas sqlQuery (l'original brut)
       const results = await this.dataSource.query(execQuery);
-      const limitedResults = results.slice(0, this.MAX_RESULTS);
+      // Dates rendues en heure locale + colonnes ref__* retirées de l'affichage
+      // et mémorisées pour les actions de suivi.
+      const { rows: limitedResults, records } = extractDisplayedRecords(
+        results.slice(0, this.MAX_RESULTS),
+      );
+      this.rememberDisplayedRecords(records);
 
       return {
         data: limitedResults,
@@ -7748,7 +8474,11 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     const result = await this.executeSafeQuery(sqlQuery);
     return {
       success: true,
-      data: result.data,
+      data: await this.aiPermissionService.redactRows(
+        user as AiUserContext,
+        sqlQuery,
+        result.data,
+      ),
       rowCount: result.rowCount,
     };
   }

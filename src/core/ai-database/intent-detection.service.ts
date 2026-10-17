@@ -32,6 +32,21 @@ export class IntentDetectionService {
   private readonly FOLLOW_UP_SIGNALS =
     /\b(cell?(?:e|ui)(?:[- ](?:ci|la))?|ceux|celles|le(?:s)?\s+(?:dernier|premier|meme)|la\s+(?:derniere|premiere|meme)|l[ea]\s+(?:plus|moins|seul|premier|dernier)|parmi\s+(?:eux|elles|ces|les)|dans\s+(?:cette|ce|ces|la)\s+liste)\b/;
 
+  /**
+   * Verbe correctif à l'impératif en début de phrase (éventuellement précédé d'une
+   * formule de politesse). Les verbes ambigus en lecture (annule, valide) sont exclus.
+   */
+  private readonly CORRECTIVE_REQUEST =
+    /^\s*(?:(?:s'il (?:te|vous) plait|stp|svp|peux-tu|pouvez-vous|merci de|veuillez)[ ,]+)?(?:corrige|corrigez|corriger|rectifie|rectifiez|rectifier|repare|reparez|reparer|regularise|regularisez|regulariser|renomme|renommez|renommer|fusionne|fusionnez|fusionner|dedoublonne|dedoublonnez|dedoublonner|harmonise|harmonisez|harmoniser|nettoie|nettoyez|nettoyer|resous|resolvez|resoudre|applique|appliquez|appliquer)\b/;
+
+  /**
+   * Synthèse, résumé ou point de situation sur un enregistrement : une
+   * lecture des données, même quand la demande cite « prochaines étapes »
+   * (sinon classée conseil, la réponse n'interrogeait pas la base).
+   */
+  private readonly RECORD_SUMMARY_REQUEST =
+    /\b(?:synthese|resume|resumer|recapitulatif|recap|point\s+sur|faire\s+le\s+point|fais\s+le\s+point|etat\s+(?:du|de\s+la|des|d)|situation\s+(?:du|de\s+la|des|d))\b/;
+
   constructor(
     private readonly writeHandlerRegistry: WriteHandlerRegistry,
     @Optional()
@@ -97,6 +112,12 @@ export class IntentDetectionService {
       ? 'WRITE'
       : this.classifyLocal(question);
     const isObviousWrite = options.forceWrite || localClass === 'WRITE';
+    // Demande d'agir sans équivoque (mode écriture choisi, ou verbe correctif) :
+    // le planner ne peut répondre ni READ ni ADVICE, sinon « corrige les points
+    // d'attention » devient une simple liste de recommandations.
+    const strictWrite =
+      !!options.forceWrite ||
+      this.CORRECTIVE_REQUEST.test(this.normalizeText(question).trim());
 
     if (localClass === 'HELP') {
       return { type: 'HELP', requiresConfirmation: false };
@@ -159,6 +180,7 @@ export class IntentDetectionService {
       readSchema,
       writeSchema,
       options.history,
+      strictWrite,
     );
     const planner = options.plannerLlm ?? llm;
 
@@ -219,6 +241,12 @@ export class IntentDetectionService {
 
         const result = this.parseResponse(content);
 
+        if (strictWrite && result.type !== 'WRITE') {
+          // Traité comme une réponse invalide : nouvel essai avec rappel de la consigne.
+          throw new Error(
+            `type "${result.type}" renvoyé alors que la demande exige un plan d'écriture (WRITE)`,
+          );
+        }
         if (result.type === 'READ') {
           return { type: 'READ', requiresConfirmation: false };
         }
@@ -259,7 +287,7 @@ export class IntentDetectionService {
       `❌ Génération du plan WRITE impossible après ${maxAttempts} tentatives: ${lastError}`,
     );
 
-    if (options.forceWrite) {
+    if (strictWrite) {
       // L'utilisateur a explicitement demandé l'écriture : ne JAMAIS masquer
       // l'échec en READ silencieux. On remonte un échec explicite que
       // l'appelant doit afficher tel quel à l'utilisateur.
@@ -311,6 +339,20 @@ export class IntentDetectionService {
 
     if (this.isHelpIntent(question)) {
       return 'HELP';
+    }
+
+    // « corrige les points d'attention », « répare ça » : demande d'agir, jamais un
+    // simple conseil, même si le fil précédent parle de recommandations.
+    if (this.CORRECTIVE_REQUEST.test(normalized)) {
+      return 'WRITE';
+    }
+
+    if (
+      this.RECORD_SUMMARY_REQUEST.test(normalized) &&
+      this.domainKeywordsRegex.test(normalized) &&
+      !this.isWriteIntent(question)
+    ) {
+      return 'READ';
     }
 
     if (this.isAdviceIntent(question)) {
@@ -371,7 +413,17 @@ export class IntentDetectionService {
     readSchema: string,
     writeSchema: string,
     history?: string,
+    strictWrite = false,
   ): string {
+    const objective = strictWrite
+      ? `Cette demande est une ACTION à exécuter dans la base : réponds TOUJOURS par un plan WRITE (jamais READ, HELP ni ADVICE).
+- Quand elle vise des anomalies ou points d'attention déjà évoqués dans l'HISTORIQUE, déduis-en les corrections concrètes (opération UPDATE/DELETE, champs et valeurs) à partir des éléments cités.
+- Si une valeur est incertaine, propose la plus raisonnable avec une confiance basse (< 0.85) : l'utilisateur validera le plan avant toute exécution.`
+      : `Décomposer cette demande en un PLAN d'opérations.
+- Si c'est une simple lecture → { "type": "READ" }
+- Si l'utilisateur demande comment faire, où cliquer, ou une procédure à suivre → { "type": "HELP" }
+- Si l'utilisateur demande un conseil, une recommandation, quoi ajouter, quoi améliorer, ou une suggestion basée sur le contexte → { "type": "ADVICE" }
+- Si c'est une création/modification → génère un plan avec les dépendances`;
     const genericWriteExample = `{
   "type": "WRITE",
   "writePlan": {
@@ -405,11 +457,7 @@ ${history ? `\n## 🗨️ HISTORIQUE RÉCENT DE LA CONVERSATION (le plus ancien 
 "${question}"
 
 ## 🎯 OBJECTIF
-Décomposer cette demande en un PLAN d'opérations.
-- Si c'est une simple lecture → { "type": "READ" }
-- Si l'utilisateur demande comment faire, où cliquer, ou une procédure à suivre → { "type": "HELP" }
-- Si l'utilisateur demande un conseil, une recommandation, quoi ajouter, quoi améliorer, ou une suggestion basée sur le contexte → { "type": "ADVICE" }
-- Si c'est une création/modification → génère un plan avec les dépendances
+${objective}
 
 ## ⚠️ RÈGLES CRITIQUES
 
@@ -447,6 +495,16 @@ comme "entityId" de l'opération UPDATE/DELETE.
 N'invente JAMAIS un ID : si aucun identifiant exploitable n'apparaît dans l'historique
 ni dans la demande, NE METS PAS "entityId" (laisse-le absent) plutôt que de deviner —
 le système redemandera alors une précision à l'utilisateur.
+
+### 8. 🔎 Cibler un enregistrement existant (UPDATE)
+- Si l'historique contient « ENREGISTREMENTS AFFICHES A L'UTILISATEUR », c'est la liste exacte que
+  l'utilisateur a sous les yeux (« la 2e », « celle en brouillon », « les doublons » s'y rapportent) :
+  utilise l'identifiant indiqué (#N) comme "entityId". C'est la méthode à privilégier.
+- Sinon, ajoute "match" : les valeurs ACTUELLES de colonnes réelles qui désignent l'enregistrement
+  (ex: {"start_date":"2026-08-31","end_date":"2026-09-29","label":"ff"}), dates au format AAAA-MM-JJ.
+  Le système le retrouve et, en cas de doute, fait choisir l'utilisateur.
+- "fields" contient uniquement les NOUVELLES valeurs. N'invente jamais d'identifiant ni de valeur de
+  "match" ; une opération par enregistrement à modifier.
 ${this.projectConfig?.promptDomainRules ? `\n${this.projectConfig.promptDomainRules}\n` : ''}
 ## 📤 FORMAT DE RÉPONSE JSON UNIQUEMENT
 
@@ -510,6 +568,12 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
           operation: op.operation,
           entity: op.entity.toLowerCase(),
           entityId: op.entityId ?? op.fields?.id ?? op.fields?.entityId ?? null,
+          ...(op.match &&
+          typeof op.match === 'object' &&
+          !Array.isArray(op.match) &&
+          Object.keys(op.match).length > 0
+            ? { match: op.match }
+            : {}),
           fields: cleanedFields,
           tempId: op.tempId || `op_${index}`,
           dependsOn: op.dependsOn || [],
@@ -787,13 +851,14 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
 Classe la demande suivante en UN SEUL MOT parmi : READ, WRITE, HELP, ADVICE, CHAT.
 
 READ   = interroger des données existantes (lister, chercher, afficher, compter, montrer, combien, quels, qui, quel dossier...). Inclut aussi les QUESTIONS DE SUIVI qui font référence à des résultats précédents avec des pronoms ("celle qui...", "le dernier", "parmi ceux-là", "donne moi celle qui est payée").
-WRITE  = créer, modifier ou supprimer des données (créer, ajouter, enregistrer, ouvrir un dossier, modifier, supprimer, AINSI QUE les opérations comptables : passer/saisir/comptabiliser une écriture, débiter, créditer, créer un compte ou un journal, ouvrir/clôturer un exercice...)
+WRITE  = créer, modifier ou supprimer des données (créer, ajouter, enregistrer, ouvrir un dossier, modifier, supprimer, corriger, rectifier, réparer, renommer, fusionner, appliquer, AINSI QUE les opérations comptables : passer/saisir/comptabiliser une écriture, débiter, créditer, créer un compte ou un journal, ouvrir/clôturer un exercice...)
 HELP   = expliquer comment utiliser l'application, ou guider l'utilisateur dans une procédure (comment faire, comment créer, où cliquer, procédure pour, guide pour). Une demande "comment créer..." est HELP, pas WRITE.
 ADVICE = donner des conseils, recommandations, suggestions, pistes d'amélioration ou prochaines étapes, souvent à partir du contexte précédent. Une demande "que peux-tu me conseiller d'ajouter encore ?" est ADVICE, pas READ.
 CHAT   = question générale sans lien avec les données du cabinet (salutation, remerciement, question de culture générale, demande d'explication hors-métier...)
 
 Contexte du cabinet : dossiers juridiques, clients, avocats, factures, audiences, paiements, diligences, ET comptabilité (écritures comptables, comptes du plan comptable, journaux, exercices).
 ⚠️ « passer une écriture », « comptabiliser », « saisir une écriture » sont des opérations WRITE (création d'une écriture comptable), jamais READ.
+⚠️ Si l'utilisateur demande d'AGIR sur des anomalies, points d'attention ou recommandations déjà évoqués dans la conversation (« corrige-les », « corrige les points d'attention », « fais-le », « applique »), c'est WRITE, jamais ADVICE : ADVICE est réservé aux demandes de conseil sans action.
 ⚠️ Si l'utilisateur fait référence à un résultat précédent (« celle-ci », « celui-là », « la première », « parmi ceux-là ») en lien avec des données du cabinet, c'est READ, pas CHAT.
 ${historyBlock}
 Demande : "${question.replace(/"/g, "'")}"

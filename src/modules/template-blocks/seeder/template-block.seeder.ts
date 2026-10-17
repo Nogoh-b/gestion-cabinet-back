@@ -55,7 +55,7 @@ const MAIL_FOOTER = `
   <div style="margin-top:6px; font-size:11px;">© {{year}} {{cabinet.name}}. Tous droits réservés.</div>
 </div>`.trim();
 
-const BLOCK_VARS = JSON.stringify([
+export const BLOCK_VARS = JSON.stringify([
   'cabinet.name',
   'cabinet.slogan',
   'cabinet.logo',

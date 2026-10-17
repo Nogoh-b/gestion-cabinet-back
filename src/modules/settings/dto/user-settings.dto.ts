@@ -13,6 +13,7 @@ import {
   FONT_SIZES,
   SIDEBAR_STYLES,
   THEME_NAMES,
+  THEME_PATTERN,
 } from '../appearance.constants';
 
 export class UserSettingsDto {
@@ -28,7 +29,7 @@ export class UserSettingsDto {
 
   @ApiPropertyOptional({ enum: THEME_NAMES, example: 'midnight' })
   @IsOptional()
-  @IsIn(THEME_NAMES as unknown as string[])
+  @Matches(THEME_PATTERN)
   user_theme_name?: string;
 
   @ApiPropertyOptional({ example: 'outfit' })

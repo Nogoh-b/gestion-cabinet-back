@@ -50,7 +50,13 @@ function buildService(question: string, intent: any = { type: 'READ' }) {
   service.detectRelevantTables = async () => ['dossiers', 'audiences'];
   service.getCompleteSchema = async () => 'schema';
   service.getHistorySnippetForIntent = async () => '';
-  service.aiPermissionService = { assertCanReadTables: jest.fn(), assertCanWritePlan: jest.fn() };
+  service.aiPermissionService = {
+    assertCanReadTables: jest.fn(),
+    assertCanWritePlan: jest.fn(),
+    partitionReadableTables: jest.fn(async (_user, tables: string[]) => ({ allowed: tables, denied: [] })),
+    getHiddenColumns: jest.fn(async () => new Map()),
+    redactRows: jest.fn(async (_user, _sql, rows) => rows),
+  };
   service.conversationManager = {
     createConversation: jest.fn().mockResolvedValue({ id: 'conv-1' }),
     addUserMessage: jest.fn(),
@@ -99,7 +105,8 @@ describe('Pièce jointe + demande d’écriture (chat en streaming)', () => {
     await ask(service, question);
 
     expect(service.intentDetectionService.detectIntent).not.toHaveBeenCalled();
-    expect(service.analyzeDocumentsStream).toHaveBeenCalledWith(question, expect.any(Array), expect.any(Function), [dossier]);
+    // 5e argument : passage cité (aucun ici).
+    expect(service.analyzeDocumentsStream).toHaveBeenCalledWith(question, expect.any(Array), expect.any(Function), [dossier], undefined);
   });
 
   it('retombe sur l’analyse du document quand le planner ne retient aucune écriture', async () => {

@@ -55,9 +55,9 @@ export class DiligenceWriteHandler extends BaseWriteHandler {
         required: true,
       },
       start_date: {
-        description: 'Date de début (YYYY-MM-DD)',
+        description: "Date de début (YYYY-MM-DD), aujourd'hui par défaut",
         example: '2026-05-01',
-        required: true,
+        required: false,
       },
       deadline: {
         description: 'Date butoir (YYYY-MM-DD)',
@@ -126,19 +126,26 @@ export class DiligenceWriteHandler extends BaseWriteHandler {
     operation: 'INSERT' | 'UPDATE',
   ): Promise<ValidationResult> {
     const errors: string[] = [];
+    const transformed = { ...fields };
     if (operation === 'INSERT') {
       if (!fields.dossier_id)
         errors.push('Le dossier est requis (dossier_id ou dossier)');
       if (!fields.title) errors.push('Le titre est requis');
-      if (!fields.start_date) errors.push('La date de début est requise');
+      // Début non précisé : la mission démarre aujourd'hui.
+      if (!fields.start_date)
+        transformed.start_date = new Date().toISOString().slice(0, 10);
       if (!fields.deadline) errors.push('La date limite est requise');
     }
-    if (fields.start_date && fields.deadline) {
-      if (new Date(fields.deadline) < new Date(fields.start_date)) {
+    if (transformed.start_date && transformed.deadline) {
+      if (new Date(transformed.deadline) < new Date(transformed.start_date)) {
         errors.push('La date limite doit être postérieure à la date de début');
       }
     }
-    return { valid: errors.length === 0, errors, transformedFields: fields };
+    return {
+      valid: errors.length === 0,
+      errors,
+      transformedFields: transformed,
+    };
   }
 
   protected async doInsert(

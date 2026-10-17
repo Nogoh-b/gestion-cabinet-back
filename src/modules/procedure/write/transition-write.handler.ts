@@ -79,19 +79,8 @@ export class TransitionWriteHandler extends BaseWriteHandler {
       if (!fields.toStageId)
         errors.push("L'étape destination est requise (toStageId)");
     }
-    if (
-      fields.fromStageId &&
-      fields.toStageId &&
-      fields.fromStageId === fields.toStageId
-    ) {
-      errors.push(
-        "L'étape source et destination doivent être différentes (" +
-          fields.fromStageId +
-          ' === ' +
-          fields.toStageId +
-          ')',
-      );
-    }
+    // Pas de contrôle source ≠ destination : l'éditeur de modèle accepte les
+    // boucles sur une même étape (reprise, relance).
     return { valid: errors.length === 0, errors, transformedFields: fields };
   }
 

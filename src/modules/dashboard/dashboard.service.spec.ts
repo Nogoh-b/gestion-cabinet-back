@@ -186,4 +186,105 @@ describe('DashboardService', () => {
       prochainesAudiences: 8,
     });
   });
+
+  describe('section financiere selon les droits', () => {
+    const lawyer = {
+      role: 'avocat',
+      permissions: ['view_dashboard', 'view_dossiers', 'view_audiences'],
+    };
+
+    beforeEach(() => {
+      factureStats.getStats.mockClear();
+      factureStats.getStats.mockResolvedValue({
+        total: 42,
+        unpaidCount: 7,
+        overdueCount: 3,
+        totalTTC: 7654321,
+        totalPaid: 5000000,
+        totalUnpaid: 2654321,
+        financialSummary: { recoveryRate: 65 },
+        monthlyRevenue: [
+          { month: '2026-08', totalTTC: '1111111', totalHT: '933000', totalPaid: '900000' },
+          { month: '2026-09', totalTTC: '2222222', totalHT: '1866000', totalPaid: '1500000' },
+        ],
+        recentInvoices: [
+          {
+            id: 9,
+            numero: 'FAC-2026-009',
+            clientName: 'Client A',
+            dateFacture: new Date('2026-10-01'),
+            isPaid: false,
+            isOverdue: true,
+          },
+        ],
+      });
+      dossierStats.getStats.mockResolvedValue({
+        total: 3,
+        recentDossiers: [
+          {
+            id: 12,
+            dossierNumber: 'DOS-001',
+            clientName: 'Client A',
+            openingDate: new Date('2026-09-15'),
+            status: 0,
+          },
+        ],
+      });
+    });
+
+    it("ne charge ni ne renvoie la facturation a un avocat sans droit financier", async () => {
+      const overview = await service.getOverview(lawyer);
+
+      expect(factureStats.getStats).not.toHaveBeenCalled();
+      expect(overview.financial).toBeNull();
+      expect(overview.trends.factures).toEqual([]);
+      expect(overview.recentActivity.map((a) => a.type)).not.toContain('facture');
+      expect(overview.summary.totalFactures).toBe(0);
+      expect(overview.alerts.facturesImpayees).toBe(0);
+      // Aucun montant, nulle part dans la réponse.
+      const body = JSON.stringify(overview);
+      for (const amount of ['7654321', '5000000', '2654321', '1111111', '2222222', 'FAC-2026-009']) {
+        expect(body).not.toContain(amount);
+      }
+      // Le reste du tableau de bord est intact.
+      expect(overview.summary.totalDossiers).toBe(3);
+      expect(overview.recentActivity.map((a) => a.type)).toContain('dossier');
+    });
+
+    it('masque aussi la facturation sans utilisateur connu', async () => {
+      const overview = await service.getOverview();
+
+      expect(factureStats.getStats).not.toHaveBeenCalled();
+      expect(overview.financial).toBeNull();
+      expect(overview.trends.factures).toEqual([]);
+    });
+
+    it.each([
+      ['un admin', { role: 'admin', permissions: ['view_dashboard'] }],
+      ['un SUPER_ADMIN', { role: 'avocat', permissions: ['SUPER_ADMIN'] }],
+      ['view_factures', { role: 'comptable', permissions: ['view_dashboard', 'view_factures'] }],
+      [
+        'view_financial_reports',
+        { role: 'avocat', permissions: ['view_dashboard', 'view_financial_reports'] },
+      ],
+    ])('renvoie toute la facturation pour %s', async (_label, user) => {
+      const overview = await service.getOverview(user);
+
+      expect(factureStats.getStats).toHaveBeenCalledTimes(1);
+      expect(overview.financial).toEqual({
+        totalFacture: 7654321,
+        totalPaye: 5000000,
+        totalImpaye: 2654321,
+        tauxRecouvrement: 65,
+        facturesEnRetard: 3,
+      });
+      expect(overview.trends.factures).toEqual([
+        { month: '2026-08', totalTTC: 1111111, totalHT: 933000, totalPaid: 900000 },
+        { month: '2026-09', totalTTC: 2222222, totalHT: 1866000, totalPaid: 1500000 },
+      ]);
+      expect(overview.recentActivity.map((a) => a.id)).toContain('facture-9');
+      expect(overview.summary.totalFactures).toBe(42);
+      expect(overview.alerts.facturesImpayees).toBe(7);
+    });
+  });
 });

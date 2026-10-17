@@ -4,6 +4,7 @@ import { RolesGuard } from 'src/core/auth/guards/roles.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { AllowClient } from 'src/core/decorators/allow-client.decorator';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { stripRestrictedInput } from 'src/core/security/restricted-fields';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { Roles } from 'src/core/decorators/roles.decorator';
 import { UserRole } from 'src/core/enums/user-role.enum';
@@ -286,7 +287,12 @@ export class DossiersController {
     @CurrentUser() user: User,
   ): Promise<DossierResponseDto | any> {
     console.log(updateDossierDto);
-    return this.dossiersService.update(+id, updateDossierDto, user);
+    // Budget et frais : non modifiables par qui ne peut pas les voir.
+    return this.dossiersService.update(
+      +id,
+      stripRestrictedInput('dossiers', updateDossierDto, user as any),
+      user,
+    );
   }
 
   @Patch(':id/status')

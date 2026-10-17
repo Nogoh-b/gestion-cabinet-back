@@ -93,9 +93,9 @@ export class CreateUserDto {
     example: 'avocat',
     description: "Code du profil d'accès. À défaut, il est déduit du poste.",
   })
-  @IsEnum(UserRole)
+  @IsString()
   @IsOptional()
-  role?: UserRole;
+  role?: string;
 
   @ApiPropertyOptional({
     example: 1,

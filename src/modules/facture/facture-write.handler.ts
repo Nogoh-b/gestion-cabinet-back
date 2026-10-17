@@ -27,7 +27,7 @@ import {
  *   - Génération du numéro de facture (FAC-YYYY-XXXX-RAND)
  *   - Calcul automatique TVA / TTC à partir de HT + tauxTVA
  *   - Valeurs par défaut (status=BROUILLON, type=HONORAIRES)
- *   - Validation : dossier + client + montant HT > 0
+ *   - Validation : dossier + montant HT (client hérité du dossier), comme le formulaire
  */
 @Injectable()
 export class FactureWriteHandler extends BaseWriteHandler {
@@ -138,9 +138,10 @@ export class FactureWriteHandler extends BaseWriteHandler {
         required: true,
       },
       client_id: {
-        description: 'ID du client. Peut aussi fournir "client" avec son nom.',
+        description:
+          'ID du client. Facultatif : hérité du dossier. Peut aussi fournir "client" avec son nom.',
         example: '7',
-        required: true,
+        required: false,
       },
       type: {
         description: '0=HONORAIRES, 1=FRAIS_PROCEDURE, 2=DILIGENCES, 3=AUTRES',
@@ -191,17 +192,11 @@ export class FactureWriteHandler extends BaseWriteHandler {
         errors.push('Le dossier est requis (dossier_id ou dossier)');
       // if (!fields.client_id) errors.push('Le client est requis (client_id ou client)');
 
-      // montantHT est le property name TypeORM (normalisé par filterKnownColumns)
+      // montantHT est le property name TypeORM (normalisé par filterKnownColumns).
+      // Comme le formulaire, seul un montant est exigé (0 et avoirs acceptés).
       const ht = fields.montantHT ?? fields.montant_ht; // fallback sécurité
       if (ht === undefined || ht === null) {
         errors.push('Le montant HT est requis (montant_ht)');
-      } else if (Number(ht) <= 0) {
-        errors.push('Le montant HT doit être strictement positif');
-      }
-    } else if (operation === 'UPDATE') {
-      const ht = fields.montantHT ?? fields.montant_ht;
-      if (ht !== undefined && Number(ht) <= 0) {
-        errors.push('Le montant HT doit être strictement positif');
       }
     }
 
@@ -226,17 +221,16 @@ export class FactureWriteHandler extends BaseWriteHandler {
     }
 
     // TVA : valeur saisie prioritaire, sinon défaut du cabinet.
+    const cabinet = hasActiveTenant()
+      ? await this.dataSource
+          .getRepository(Cabinet)
+          .findOne({ where: { id: getCurrentTenantId() } })
+      : null;
     const rawTva = safeFields.tauxTVA ?? safeFields.taux_tva;
     const tauxTVA =
       rawTva !== undefined && rawTva !== null && String(rawTva).trim?.() !== ''
         ? Number(rawTva)
-        : Number(
-            (
-              await this.dataSource
-                .getRepository(Cabinet)
-                .findOne({ where: { id: getCurrentTenantId() } })
-            )?.default_tva_rate ?? 0,
-          );
+        : Number(cabinet?.default_tva_rate ?? 0);
     // Calculs financiers
     const montantHT = Number(safeFields.montantHT ?? 0);
     const montantTVA = Math.round(montantHT * tauxTVA) / 100;
@@ -266,6 +260,8 @@ export class FactureWriteHandler extends BaseWriteHandler {
       tauxTVA,
       montantTVA,
       montantTTC,
+      // Devise figée sur la facture, comme FactureService.createFacture.
+      currency: safeFields.currency ?? cabinet?.currency ?? 'XAF',
       type:
         safeFields.type !== undefined
           ? Number(safeFields.type)

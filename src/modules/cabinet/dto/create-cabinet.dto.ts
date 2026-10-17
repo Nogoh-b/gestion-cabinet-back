@@ -16,6 +16,10 @@ import { CabinetPlan } from '../entities/cabinet.entity';
  * PATCH /cabinets/:id/branding.
  */
 export class CreateCabinetDto {
+  @ApiPropertyOptional({ description: 'Profil de référentiels publié à attribuer au cabinet' })
+  @IsOptional()
+  @IsString()
+  reference_profile_id?: string;
   @ApiProperty({
     description: 'Nom du cabinet',
     example: 'Cabinet Dupont & Associes',

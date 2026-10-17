@@ -4,6 +4,14 @@ import { WritePlan } from '../dto/analysis-response.dto';
 
 export type OperationType = 'INSERT' | 'UPDATE' | 'DELETE' | 'READ';
 
+/** Enregistrement créé par une opération précédente du même plan. */
+export interface PlanCreatedRecord {
+  entity: string;
+  id: string | number;
+  data: any;
+  tempId?: string;
+}
+
 export interface WriteIntent {
   operation: OperationType;
   entity: string; // 'dossier', 'customer', 'employee'...
@@ -28,6 +36,12 @@ export interface WriteIntent {
    * pour que les opérations du handler soient atomiques avec le reste du plan.
    */
   queryRunner?: import('typeorm').QueryRunner;
+  /**
+   * Enregistrements créés plus tôt dans le même plan, dans l'ordre
+   * d'exécution : permet à un handler de relier ce qu'il crée aux ressources
+   * créées juste avant (ex: action → audience du même plan).
+   */
+  planCreated?: PlanCreatedRecord[];
 }
 
 export interface IntentDetectionResult {

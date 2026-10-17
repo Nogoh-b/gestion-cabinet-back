@@ -1,3 +1,4 @@
+import { ReferenceDataModule } from '../reference-data/reference-data.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -10,7 +11,7 @@ import { TenantSeederService } from './tenant-seeder.service';
 import { PlatformSetting } from '../platform/entities/platform-setting.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Cabinet, Plan, PlatformSetting])],
+  imports: [ReferenceDataModule, TypeOrmModule.forFeature([Cabinet, Plan, PlatformSetting])],
   providers: [CabinetService, TenantSeederService, CabinetSubscriber],
   controllers: [CabinetController],
   exports: [CabinetService, TenantSeederService],

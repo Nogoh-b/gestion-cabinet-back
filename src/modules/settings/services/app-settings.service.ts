@@ -1,3 +1,4 @@
+import { ReferenceDataService } from '../../reference-data/reference-data.service';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -25,6 +26,7 @@ export class AppSettingsService {
   constructor(
     @InjectRepository(Cabinet)
     private readonly cabinetRepository: Repository<Cabinet>,
+    private readonly references: ReferenceDataService,
   ) {}
 
   /** Champs réinitialisables par `reset()` (les valeurs par défaut métier). */
@@ -108,7 +110,7 @@ export class AppSettingsService {
     const cabinet = await this.findByCabinet(cabinetId);
     // Supprime le fichier logo existant avant de remettre les valeurs par défaut.
     deleteLogoFile(cabinet.logo_file);
-    Object.assign(cabinet, AppSettingsService.RESETTABLE_DEFAULTS);
+    Object.assign(cabinet, AppSettingsService.RESETTABLE_DEFAULTS, await this.references.initialSettings(cabinetId));
     return this.cabinetRepository.save(cabinet);
   }
 }

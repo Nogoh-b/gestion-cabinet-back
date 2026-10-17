@@ -15,8 +15,6 @@ import {
 } from 'src/modules/cabinet/entities/cabinet.entity';
 import { logoFileToUrl } from 'src/modules/cabinet/cabinet-logo.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-import { buildNotificationTemplateByCode } from './notification-template.defaults';
-import { buildAuthTemplateByCode } from './auth-template.defaults';
 
 export interface RenderedMail {
   subject: string;
@@ -100,7 +98,7 @@ export class MailTemplateService {
     context: Record<string, any> = {},
   ): Promise<RenderedMail> {
     const tpl = await this.findByCode(code);
-    if (!tpl) throw new NotFoundException(`Template "${code}" introuvable`);
+    if (!tpl || !tpl.is_active) throw new NotFoundException(`Template "${code}" indisponible`);
     return this.renderTemplate(tpl, context);
   }
 
@@ -108,14 +106,9 @@ export class MailTemplateService {
     code: string,
     context: Record<string, any> = {},
   ): Promise<RenderedMail> {
-    let tpl = await this.findByCode(code);
-
-    if (!tpl) {
-      tpl = await this.ensureSystemDefault(code);
-    }
-
-    if (!tpl) throw new NotFoundException(`Template "${code}" introuvable`);
-    return this.renderTemplate(tpl, context);
+    // Defaults are copied from the published profile at cabinet creation.
+    // A missing template may have been intentionally retired.
+    return this.render(code, context);
   }
 
   async preview(
@@ -139,20 +132,6 @@ export class MailTemplateService {
     const html = this.wrapWithLayout(bodyHtml, brand);
 
     return { subject, html };
-  }
-
-  private async ensureSystemDefault(
-    code: string,
-  ): Promise<MailTemplate | null> {
-    const defaults =
-      buildNotificationTemplateByCode(code) ?? buildAuthTemplateByCode(code);
-    if (!defaults) return null;
-
-    try {
-      return await this.repository.save(this.repository.create(defaults));
-    } catch {
-      return this.findByCode(code);
-    }
   }
 
   private async getCurrentCabinet(): Promise<Cabinet | null> {

@@ -40,6 +40,16 @@ function fakeDataSource(aiConfig: unknown) {
 }
 
 describe('AiModelRouterService', () => {
+  it('keeps a selected platform model when changing answer quality and rejects unconfigured choices', async () => {
+    const service = new AiModelRouterService();
+    jest.spyOn(service, 'loadPlatformConfig').mockResolvedValue({ active_provider: 'custom_test', providers: { custom_test: { base_url: 'https://llm.example.com/v1', model: 'model-one', api_key: 'test-key' } } });
+    jest.spyOn(service, 'getPlatformAssistantModels').mockResolvedValue([{ provider_id: 'custom_test', model: 'model-two', label: 'Modèle deux' }]);
+    const model = {} as any;
+    const resolve = jest.spyOn(service, 'getModelWithDescriptor').mockReturnValue({ model, descriptor: {} } as any);
+    await expect(service.getPlatformModel(7000, { provider_id: 'custom_test', model: 'model-two', quality: 'precise' })).resolves.toBe(model);
+    expect(resolve).toHaveBeenCalledWith('quality', 7000, undefined, 'precise', expect.objectContaining({ model: 'model-two', fastModel: 'model-two', qualityModel: 'model-two' }));
+    await expect(service.getPlatformModel(7000, { provider_id: 'unknown', model: 'model-two' })).rejects.toThrow('plus disponible');
+  });
   const originalEnv = process.env;
 
   beforeEach(() => {
@@ -296,6 +306,45 @@ describe('AiModelRouterService', () => {
 
       expect(descriptor.hasApiKey).toBe(false);
       expect(service.formatDescriptor(descriptor)).toContain('cle=NON');
+    });
+  });
+
+  describe('lecture des images (modèle vision)', () => {
+    it('DeepSeek lit les images avec deepseek-flash, sans réflexion, même en mode Précis', () => {
+      process.env.DEEPSEEK_API_KEY = 'sk-env-key';
+      process.env.AI_PRECISE_MODEL = 'deepseek-v4-pro';
+      delete process.env.AI_VISION_MODEL;
+      delete process.env.AI_BASE_URL;
+      delete process.env.AI_DEEPSEEK_BASE_URL;
+      delete process.env.AI_QUALITY_BASE_URL;
+      const service = new AiModelRouterService();
+
+      const vision = service.getVisionModel();
+
+      expect(vision?.label).toBe('deepseek/deepseek-flash');
+      expect((vision!.model as any).model).toBe('deepseek-flash');
+      expect((vision!.model as any).modelKwargs).toEqual({ thinking: { type: 'disabled' } });
+      expect((vision!.model as any).clientConfig.apiKey).toBe('sk-env-key');
+    });
+
+    it("un moteur sans vision (FreeLLM) laisse les images à l'OCR local", async () => {
+      process.env.FREELLM_API_KEY = 'freellm-server-key';
+      delete process.env.AI_VISION_MODEL;
+      const service = new AiModelRouterService(fakeDataSource(FREELM_AI_CONFIG));
+      await new TenantContext().run(25, async () => {
+        await service.ensureTenantConfigLoaded();
+        expect(service.getVisionModel()).toBeNull();
+      });
+    });
+
+    it('AI_VISION_MODEL impose un modèle, chez le fournisseur du moteur par défaut', () => {
+      process.env.DEEPSEEK_API_KEY = 'sk-env-key';
+      process.env.AI_VISION_MODEL = 'deepseek-vision-test';
+      delete process.env.AI_VISION_PROVIDER;
+      delete process.env.AI_VISION_BASE_URL;
+      const service = new AiModelRouterService();
+
+      expect(service.getVisionModel()?.label).toBe('deepseek/deepseek-vision-test');
     });
   });
 

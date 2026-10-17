@@ -58,6 +58,14 @@ export class UserResponseDto {
   role: string;
 
   @Expose()
+  @Transform(({ obj }) => obj.base_role || obj.roleAssignments?.find(a => a.status === 1)?.role?.base_role || obj.role)
+  base_role: string;
+
+  @Expose()
+  @Transform(({ obj }) => obj.roleAssignments?.find(a => a.status === 1)?.role?.name || obj.role)
+  role_name: string;
+
+  @Expose()
   @ApiProperty()
   @Transform(
     ({ obj }) =>

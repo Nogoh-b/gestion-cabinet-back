@@ -21,7 +21,7 @@ export const THEME_NAMES = [
   'slate',
   'lavender',
 ] as const;
-export type ThemeName = (typeof THEME_NAMES)[number];
+export type ThemeName = (typeof THEME_NAMES)[number] | `#${string}`;
 
 export const FONT_SIZES = ['sm', 'md', 'lg'] as const;
 export type FontSize = (typeof FONT_SIZES)[number];
@@ -52,10 +52,11 @@ export const APPEARANCE_FALLBACK: AppearanceDefaults = {
 };
 
 /** Clé de police : identifiant snake_case court (ex. `plus_jakarta_sans`). */
-export const FONT_KEY_PATTERN = /^[a-z0-9_]{1,50}$/;
+export const FONT_KEY_PATTERN = /^(?:[a-z0-9_]{1,50}|google:[A-Za-z][A-Za-z0-9 ]{0,42})$/;
+export const THEME_PATTERN = /^(?:ocean|silver|yellow|forest|sunset|rose|midnight|crimson|emerald|copper|slate|lavender|#[0-9a-fA-F]{6})$/;
 
 export function isThemeName(value: unknown): value is ThemeName {
-  return THEME_NAMES.includes(value as ThemeName);
+  return typeof value === 'string' && THEME_PATTERN.test(value);
 }
 
 export function isFontSize(value: unknown): value is FontSize {

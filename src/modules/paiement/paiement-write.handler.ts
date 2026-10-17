@@ -12,8 +12,12 @@ import { Facture } from '../facture/entities/facture.entity';
 import { StatutFacture } from '../facture/dto/create-facture.dto';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
-import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
+import {
+  EntityResolverService,
+  ResolveConfig,
+} from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
+import { comparableKey } from 'src/core/ai-database/write/lenient-values';
 import {
   WriteableFieldSchema,
   ValidationResult,
@@ -79,6 +83,66 @@ export class PaiementWriteHandler extends BaseWriteHandler {
     return fields;
   }
 
+  // ── Mode / statut en toutes lettres ───────────────────────────────────────
+
+  /**
+   * Le formulaire envoie des codes ; le LLM écrit « Orange Money », « chèque »,
+   * « validé »… On les traduit avant la conversion générique des enums.
+   */
+  async resolveDependencies(
+    fields: Record<string, any>,
+    userId: string,
+    createdEntities?: Map<string, any>,
+    config?: ResolveConfig,
+  ): Promise<Record<string, any>> {
+    const resolved = await super.resolveDependencies(
+      fields,
+      userId,
+      createdEntities,
+      config,
+    );
+    const modeKey = [
+      'modePaiement',
+      'mode_paiement',
+      'modePaiment',
+      'mode',
+    ].find((k) => resolved[k] !== undefined && resolved[k] !== null);
+    if (modeKey) {
+      const mode = this.toPaymentMode(resolved[modeKey]);
+      if (modeKey !== 'modePaiement') delete resolved[modeKey];
+      if (mode !== undefined) resolved.modePaiement = mode;
+    }
+    if (resolved.status !== undefined && resolved.status !== null) {
+      const status = this.toPaymentStatus(resolved.status);
+      if (status !== undefined) resolved.status = status;
+    }
+    return resolved;
+  }
+
+  private toPaymentMode(value: any): ModePaiement | any {
+    const key = comparableKey(value);
+    const synonyms: Array<[RegExp, ModePaiement]> = [
+      [/virement|transfert|bancaire|wire|transfer/, ModePaiement.VIREMENT],
+      [/cheque|check/, ModePaiement.CHEQUE],
+      [/espece|cash|liquide|numeraire/, ModePaiement.ESPECES],
+      [/carte|cb|visa|mastercard|card/, ModePaiement.CARTE],
+      [/prelevement|debit/, ModePaiement.PRELEVEMENT],
+      [/mobile|momo|orange|mtn|wave|money|airtel/, ModePaiement.Mobile],
+    ];
+    for (const [pattern, mode] of synonyms) if (pattern.test(key)) return mode;
+    return value; // code numérique ou nom exact : laissé à la conversion générique
+  }
+
+  private toPaymentStatus(value: any): StatutPaiement | any {
+    const key = comparableKey(value);
+    if (/attente|pending/.test(key)) return StatutPaiement.EN_ATTENTE;
+    if (/^(valid|encaiss|recu|paye|confirm)/.test(key))
+      return StatutPaiement.VALIDE;
+    if (/rejet|refus|reject/.test(key)) return StatutPaiement.REJETE;
+    if (/annul|cancel/.test(key)) return StatutPaiement.ANNULE;
+    return value;
+  }
+
   // ── Validation métier ──────────────────────────────────────────────────────
 
   async validateFields(
@@ -128,14 +192,19 @@ export class PaiementWriteHandler extends BaseWriteHandler {
       throw new NotFoundException(`Facture ${factureId} introuvable`);
 
     const montant = Number(safeFields.montant);
+    const status =
+      safeFields.status !== undefined
+        ? Number(safeFields.status)
+        : StatutPaiement.VALIDE;
 
-    // Refuser dépassement du reste à payer
+    // Refuser dépassement du reste à payer — comme PaiementService, seulement
+    // pour un paiement validé (un paiement en attente ne solde rien).
     const dejaPaye = (facture.paiements ?? [])
-      .filter((p) => p.status === StatutPaiement.VALIDE)
+      .filter((p) => Number(p.status) === StatutPaiement.VALIDE)
       .reduce((s, p) => s + Number(p.montant), 0);
     const resteAPayer = Number(facture.montantTTC) - dejaPaye;
 
-    if (montant > resteAPayer + 0.01) {
+    if (status === StatutPaiement.VALIDE && montant > resteAPayer + 0.01) {
       throw new BadRequestException(
         `Le montant ${montant.toFixed(2)} € dépasse le reste à payer (${resteAPayer.toFixed(2)} €)`,
       );
@@ -155,10 +224,7 @@ export class PaiementWriteHandler extends BaseWriteHandler {
         safeFields.modePaiement !== undefined
           ? Number(safeFields.modePaiement)
           : ModePaiement.ESPECES,
-      status:
-        safeFields.status !== undefined
-          ? Number(safeFields.status)
-          : StatutPaiement.VALIDE,
+      status,
     } as any;
 
     const paiement = Object.assign(new Paiement(), data);

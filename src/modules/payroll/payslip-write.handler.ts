@@ -20,7 +20,7 @@ import {
  * Handler custom pour les fiches de paie.
  * Logique métier :
  *   - employee + period obligatoires
- *   - gross_amount > 0
+ *   - gross_amount ≥ 0 (comme le DTO)
  *   - Dédup par (employee_id, period_id) — une seule fiche par couple
  *   - Status par défaut : DRAFT
  *   - Si net_amount non fourni, par défaut = gross_amount
@@ -54,7 +54,7 @@ export class PayslipWriteHandler extends BaseWriteHandler {
         required: true,
       },
       gross_amount: {
-        description: 'Salaire brut (> 0)',
+        description: 'Salaire brut (≥ 0)',
         example: '4500.00',
         required: true,
       },
@@ -85,8 +85,8 @@ export class PayslipWriteHandler extends BaseWriteHandler {
         errors.push('La période de paie est requise (period_id ou period)');
       if (fields.gross_amount === undefined || fields.gross_amount === null) {
         errors.push('Le salaire brut est requis (gross_amount)');
-      } else if (Number(fields.gross_amount) <= 0) {
-        errors.push('Le salaire brut doit être strictement positif');
+      } else if (Number(fields.gross_amount) < 0) {
+        errors.push('Le salaire brut ne peut pas être négatif');
       }
     }
     return { valid: errors.length === 0, errors, transformedFields: fields };

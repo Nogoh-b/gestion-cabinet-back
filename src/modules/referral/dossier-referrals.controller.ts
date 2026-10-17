@@ -13,6 +13,8 @@ import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { stripRestrictedInput } from 'src/core/security/restricted-fields';
 import { DossierReferralsService } from './dossier-referrals.service';
 import { CreateDossierReferralDto } from './dto/create-dossier-referral.dto';
 import { DossierReferral } from './entities/dossier-referral.entity';
@@ -89,8 +91,16 @@ export class DossierReferralsController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_dossier_referral')
   @ApiOperation({ summary: 'Modifier un apport de dossier' })
-  update(@Param('id') id: string, @Body() dto: UpdateDossierReferralDto) {
-    return this.service.update(+id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateDossierReferralDto,
+    @CurrentUser() user: any,
+  ) {
+    // Conditions de commission : non modifiables sans droit sur les commissions.
+    return this.service.update(
+      +id,
+      stripRestrictedInput('dossier_referral', dto, user),
+    );
   }
 
   @Delete(':id')

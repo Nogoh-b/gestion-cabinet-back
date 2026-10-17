@@ -18,7 +18,7 @@ import {
 /**
  * Handler custom pour les instances de procédure.
  * Logique métier :
- *   - template + title obligatoires
+ *   - template obligatoire ; titre par défaut = nom du modèle
  *   - currentStageId par défaut = première étape du template (order=0/1)
  *   - Status par défaut : ACTIVE
  */
@@ -47,9 +47,9 @@ export class ProcedureInstanceWriteHandler extends BaseWriteHandler {
         required: true,
       },
       title: {
-        description: "Titre de l'instance",
+        description: "Titre de l'instance (par défaut : nom du modèle)",
         example: 'Procédure contentieuse - Dossier Dupont',
-        required: true,
+        required: false,
       },
       currentStageId: {
         description:
@@ -77,7 +77,6 @@ export class ProcedureInstanceWriteHandler extends BaseWriteHandler {
         errors.push(
           'Le modèle de procédure est requis (templateId ou template)',
         );
-      if (!fields.title) errors.push('Le titre est requis');
     }
     return { valid: errors.length === 0, errors, transformedFields: fields };
   }
@@ -105,6 +104,14 @@ export class ProcedureInstanceWriteHandler extends BaseWriteHandler {
           `📌 Première étape auto-assignée: "${firstStage.name}"`,
         );
       }
+    }
+
+    // Titre non précisé : celui du modèle, comme proposé par le formulaire.
+    if (!String(safeFields.title ?? '').trim() && safeFields.templateId) {
+      const template = await this.templateRepo.findOne({
+        where: { id: safeFields.templateId },
+      });
+      safeFields.title = template?.name ?? 'Procédure';
     }
 
     const data = {
