@@ -215,6 +215,7 @@ export class CustomersService extends BaseServiceV1<Customer> {
           // le champ manquant à la sauvegarde.
           type_customer,
           location_city,
+          branch,
         });
         customer.status = CustomerStatus.INACTIVE;
 

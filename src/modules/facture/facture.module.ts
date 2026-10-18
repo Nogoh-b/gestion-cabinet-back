@@ -7,6 +7,8 @@ import { FactureService } from './facture.service';
 import { DossiersModule } from '../dossiers/dossiers.module';
 import { FactureStatsService } from './facture-stats.service';
 import { FactureWriteHandler } from './facture-write.handler';
+import { EnvoyerFactureAiAction, RelancerImpayesAiAction } from './facture-ai-actions';
+import { AiActionRegistry } from 'src/core/ai-database/write/ai-action.registry';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
@@ -27,6 +29,8 @@ import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
     FactureStatsService,
     FactureWriteHandler,
     FactureSubscriber,
+    EnvoyerFactureAiAction,
+    RelancerImpayesAiAction,
   ],
   exports: [FactureService, FactureStatsService, TypeOrmModule],
 })
@@ -34,9 +38,14 @@ export class FactureModule {
   constructor(
     private readonly registry: WriteHandlerRegistry,
     private readonly factureWriteHandler: FactureWriteHandler,
+    private readonly aiActions: AiActionRegistry,
+    private readonly envoyerFacture: EnvoyerFactureAiAction,
+    private readonly relancerImpayes: RelancerImpayesAiAction,
   ) {}
 
   onModuleInit() {
     this.registry.register(this.factureWriteHandler);
+    this.aiActions.register(this.envoyerFacture);
+    this.aiActions.register(this.relancerImpayes);
   }
 }

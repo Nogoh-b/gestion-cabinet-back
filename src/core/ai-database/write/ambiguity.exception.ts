@@ -18,6 +18,12 @@
  */
 export const UPDATE_TARGET_FIELD = '__target__';
 
+/**
+ * Candidat spécial d'une ambiguïté UPDATE_TARGET_FIELD : appliquer la
+ * modification à tous les enregistrements correspondants (`op.all`).
+ */
+export const ALL_MATCHING_TARGETS = '__all__';
+
 export interface AmbiguityCandidate {
   /** ID de l'entité en base */
   id: string | number;
@@ -31,6 +37,11 @@ export interface AmbiguityCandidate {
 
 export class AmbiguityException extends Error {
   readonly name = 'AmbiguityException';
+  /**
+   * Choix de la cible (UPDATE_TARGET_FIELD) : élément à modifier, ou élément
+   * visé par une action (envoi…), pour le libellé de la question.
+   */
+  purpose: 'update' | 'action' = 'update';
 
   constructor(
     /** Nom de la table TypeORM référencée (ex: "customer") */

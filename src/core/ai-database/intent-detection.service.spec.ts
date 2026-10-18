@@ -160,3 +160,33 @@ describe('IntentDetectionService local classifier', () => {
     ]);
   });
 });
+
+describe('IntentDetectionService questions de droit (mode auto)', () => {
+  const service = new IntentDetectionService({
+    getAllHandlers: jest.fn(() => []),
+    generateGlobalWriteSchema: jest.fn(async () => ''),
+  } as any);
+
+  it.each([
+    "Quels sont les délais d'appel au Cameroun ?",
+    "Qu'est-ce qu'un trouble de jouissance ?",
+    'Quelle est la procédure pour contester un licenciement abusif ?',
+    "Quelles sont les étapes d'une procédure de recouvrement OHADA ?",
+    "Que dit l'article 1382 du code civil ?",
+  ])('répond avec les connaissances du modèle : %s', (question) => {
+    expect(service.classifyLocal(question)).toBe('CHAT');
+  });
+
+  it.each([
+    'Quels sont les délais des audiences de mes dossiers ?',
+    'Quelles sont les étapes du dossier DOS-2026-0039 ?',
+    'Combien de dossiers en droit du travail sont en cours ?',
+  ])('garde les données du cabinet : %s', (question) => {
+    expect(service.classifyLocal(question)).not.toBe('CHAT');
+  });
+
+  it("garde l'aide à l'utilisation de l'application", () => {
+    expect(service.classifyLocal('procédure pour créer une facture')).toBe('HELP');
+  });
+});
+

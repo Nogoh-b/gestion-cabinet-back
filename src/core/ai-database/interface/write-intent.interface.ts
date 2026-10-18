@@ -2,7 +2,7 @@
 
 import { WritePlan } from '../dto/analysis-response.dto';
 
-export type OperationType = 'INSERT' | 'UPDATE' | 'DELETE' | 'READ';
+export type OperationType = 'INSERT' | 'UPDATE' | 'DELETE' | 'ACTION' | 'READ';
 
 /** Enregistrement créé par une opération précédente du même plan. */
 export interface PlanCreatedRecord {

@@ -121,4 +121,17 @@ describe('no-results-answer', () => {
       }),
     ).toMatch(/^Je n'ai trouvé aucune facture \*\*FAC-2026-9999\*\*/);
   });
+
+  it("ne dit jamais qu'un dossier existant est introuvable", () => {
+    const question = 'Fais une synthèse du dossier DOS-2026-0039';
+    const target = detectNoResultsTarget(question, ['dossiers'], 'DOS-2026-0039');
+    const nearby = rankNearbyRecords('DOS-2026-0039', [
+      { code: 'DOS-2026-0039', label: 'Trouble de Jouissance · OVAMBE NDONO' },
+      { code: 'DOS-2026-0038', label: 'Émilie LEFÈVRE' },
+    ]);
+    const message = buildNoResultsMessage({ target, references: ['DOS-2026-0039'], nearby });
+
+    expect(message).toMatch(/^Le dossier \*\*DOS-2026-0039\*\* \(Trouble de Jouissance · OVAMBE NDONO\) existe bien/);
+    expect(message).not.toContain("Je n'ai trouvé aucun");
+  });
 });

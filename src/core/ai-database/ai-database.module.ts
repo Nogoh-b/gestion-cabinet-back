@@ -11,6 +11,7 @@ import { DocumentCustomer } from '../../modules/documents/document-customer/enti
 import { GenericWriteService } from './generic-write.service';
 import { IntentDetectionService } from './intent-detection.service';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
+import { AiActionRegistry } from './write/ai-action.registry';
 import { EntityResolverService } from './write/entity-resolver.service';
 import { AutoHandlerFactory } from './write/auto-handler-factory.service';
 import { AiDatabasePermissionService } from './ai-database-permission.service';
@@ -49,6 +50,7 @@ import { AiContextConfigController } from './ai-context-config.controller';
     ConversationManagerService,
     GenericWriteService,
     WriteHandlerRegistry,
+    AiActionRegistry,
     IntentDetectionService,
     EntityResolverService,
     AutoHandlerFactory,
@@ -63,10 +65,12 @@ import { AiContextConfigController } from './ai-context-config.controller';
     AiDatabaseService,
     AiModelRouterService,
     WriteHandlerRegistry,
+    AiActionRegistry,
     GenericWriteService,
     EntityResolverService,
     SchemaMetadataService,
     AiDatabasePermissionService,
+    ImageReaderService,
   ],
 })
 export class AiDatabaseModule {}

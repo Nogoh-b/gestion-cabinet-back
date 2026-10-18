@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 import { GenericWriteService } from './generic-write.service';
-import { AmbiguityException, UPDATE_TARGET_FIELD } from './write/ambiguity.exception';
+import { ALL_MATCHING_TARGETS, AmbiguityException, UPDATE_TARGET_FIELD } from './write/ambiguity.exception';
 
 class PayrollPeriod {}
 
@@ -23,7 +23,10 @@ function createService(table: any[]) {
         })),
       },
     ],
-    getRepository: jest.fn(() => ({ find })),
+    getRepository: jest.fn(() => ({
+      find,
+      count: jest.fn(async ({ where = {} }: any) => (await find({ where, take: 1000 })).length),
+    })),
   };
   const service: any = new GenericWriteService(dataSource, {} as any);
   return { service, find };
@@ -50,8 +53,10 @@ describe('Résolution de la cible d’un UPDATE sans identifiant', () => {
       .catch((e: any) => e);
     expect(error).toBeInstanceOf(AmbiguityException);
     expect(error.fieldName).toBe(UPDATE_TARGET_FIELD);
-    expect(error.candidates.map((c: any) => c.id).sort()).toEqual([6, 7]);
-    expect(error.candidates[0].label).toContain('label:');
+    // « Tous » en tête, puis les deux correspondances.
+    expect(error.candidates[0]).toMatchObject({ id: ALL_MATCHING_TARGETS, data: { total: 2 } });
+    expect(error.candidates.slice(1).map((c: any) => c.id).sort()).toEqual([6, 7]);
+    expect(error.candidates[1].label).toContain('label:');
   });
 
   it('propose les plus proches quand rien ne correspond exactement (date décalée d’un jour)', async () => {

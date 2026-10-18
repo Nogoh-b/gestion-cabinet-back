@@ -6,6 +6,7 @@
     "deleteOutDir": true,
     "assets": [
       "core/shared/emails/templates/**/*",
+      { "include": "core/ai-database/help-docs/**/*.md", "outDir": "dist/src" },
       { "include": "modules/cabinet/assets/**/*", "outDir": "dist/src" }
     ],
     "watchAssets": false

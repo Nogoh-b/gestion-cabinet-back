@@ -482,6 +482,31 @@ export class FactureService extends BaseServiceV1<Facture> {
     };
   }
 
+  /**
+   * Facture et destinataire d'un envoi par e-mail, sans rien envoyer :
+   * vérification et aperçu avant un envoi demandé depuis le chat. Mêmes
+   * refus que `sendFactureByEmail`.
+   */
+  async previewFactureEmail(
+    id: string,
+    recipientOverride?: string,
+  ): Promise<{ facture: Facture; to: string }> {
+    const facture = await this.findOneV1(id, ['client', 'dossier']);
+    if (!facture) {
+      throw new NotFoundException(`Facture avec l'ID ${id} non trouvée`);
+    }
+    const to = (recipientOverride || (facture.client as any)?.email || '').trim();
+    if (!to) {
+      throw new BadRequestException(
+        "Aucune adresse e-mail n'est renseignée pour le client de cette facture.",
+      );
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      throw new BadRequestException(`Adresse e-mail invalide : « ${to} ».`);
+    }
+    return { facture, to };
+  }
+
   // ─── EXPORT COMPTABLE (CSV) ───────────────────────────────────────────────
   /**
    * Génère un export CSV (séparateur `;`, BOM UTF-8 pour Excel) des factures
@@ -563,16 +588,7 @@ export class FactureService extends BaseServiceV1<Facture> {
   async sendRelanceForDossier(
     dossierId: string,
   ): Promise<{ sent: boolean; count: number; to?: string; message: string }> {
-    const factures = await this.findAllV1(
-      { dossier_id: dossierId },
-      undefined,
-      ['paiements', 'client', 'dossier'],
-    );
-
-    const unpaid = factures.filter((f) => {
-      const reste = Number(f.montantTTC ?? 0) - this.computePaid(f);
-      return reste > 0.009 && f.status !== StatutFacture.ANNULEE;
-    });
+    const unpaid = await this.unpaidFacturesOfDossier(dossierId);
 
     if (unpaid.length === 0) {
       return {
@@ -640,6 +656,44 @@ export class FactureService extends BaseServiceV1<Facture> {
       to,
       message: `Relance envoyée à ${to} (${unpaid.length} facture(s)).`,
     };
+  }
+
+  /** Factures non soldées (hors annulées) d'un dossier, celles que vise la relance. */
+  private async unpaidFacturesOfDossier(dossierId: string): Promise<Facture[]> {
+    const factures = await this.findAllV1(
+      { dossier_id: dossierId },
+      undefined,
+      ['paiements', 'client', 'dossier'],
+    );
+    return factures.filter((f) => {
+      const reste = Number(f.montantTTC ?? 0) - this.computePaid(f);
+      return reste > 0.009 && f.status !== StatutFacture.ANNULEE;
+    });
+  }
+
+  /**
+   * Ce que la relance d'un dossier enverrait, sans rien envoyer (vérification
+   * et aperçu avant une relance demandée depuis le chat). Refuse comme le
+   * bouton ne pourrait pas envoyer : aucune facture impayée, client sans e-mail.
+   */
+  async previewRelanceForDossier(
+    dossierId: string,
+  ): Promise<{ count: number; to: string; totalReste: number }> {
+    const unpaid = await this.unpaidFacturesOfDossier(dossierId);
+    if (unpaid.length === 0) {
+      throw new BadRequestException('Aucune facture impayée pour ce dossier.');
+    }
+    const to = (unpaid[0].client as any)?.email;
+    if (!to) {
+      throw new BadRequestException(
+        "Le client n'a pas d'adresse email enregistrée.",
+      );
+    }
+    const totalReste = unpaid.reduce(
+      (sum, f) => sum + Number(f.montantTTC ?? 0) - this.computePaid(f),
+      0,
+    );
+    return { count: unpaid.length, to, totalReste };
   }
 
   async getFacturesByClient(clientId: string): Promise<Facture[]> {

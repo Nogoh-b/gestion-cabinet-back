@@ -299,6 +299,16 @@ export function buildNoResultsMessage(input: {
   if (empty)
     return `Je n'ai trouvé ${searched} : le cabinet n'a encore ${none(target)} ${target.noun} enregistré${target.feminine ? 'e' : ''}.`;
 
+  // L'enregistrement cherché existe : ce sont les éléments demandés à son
+  // sujet qui manquent. Ne jamais dire qu'il n'existe pas.
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const existing = nearby.find((record) => references.some((ref) => same(ref, record.code)));
+  if (existing) {
+    const label = existing.label ? ` (${existing.label})` : '';
+    const article = /^[aeiouéèh]/i.test(target.noun) ? "L'" : target.feminine ? 'La ' : 'Le ';
+    return `${article}${target.noun} **${existing.code}**${label} existe bien, mais la recherche n'a renvoyé aucune donnée pour les éléments demandés : ils ne sont peut-être pas encore renseignés. Demandez un point précis (parties, audiences, actions…) et je le vérifie.`;
+  }
+
   if (nearby.length) {
     const lines = nearby.map((record) => {
       const alias = record.matchedAlias

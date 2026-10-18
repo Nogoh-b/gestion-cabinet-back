@@ -395,8 +395,13 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
       options,
     );
 
-    // ✅ 4. Fusionner les conditions AND
-    const andConditions = { ...operatorConditions, ...simpleConditions };
+    // ✅ 4. Fusionner les conditions AND (+ plages `<champ>_from/_to`, qui
+    // étaient ignorées : l'export de l'agenda sortait toutes les audiences)
+    const andConditions = {
+      ...operatorConditions,
+      ...simpleConditions,
+      ...this.buildFieldDateRangeConditions(cleanCriteria, options),
+    };
 
     // ✅ 5. Conditions de recherche texte
     const searchFieldsSet = new Set<string>();
@@ -464,6 +469,44 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
         return { [field]: ILike(`%${searchTerm}%`) } as FindOptionsWhere<T>;
       }
     });
+  }
+
+  /**
+   * Plages `<champ>_from` / `<champ>_to` des `dateRangeFields` (bornes
+   * incluses). Une date seule (YYYY-MM-DD) reste une chaîne : un `Date` serait
+   * minuit UTC, décalé par le fuseau de la connexion (+01:00) — le 1er jour
+   * sortirait d'une colonne DATE. La borne haute couvre toute la journée.
+   */
+  private buildFieldDateRangeConditions(
+    criteria: SearchCriteria,
+    options: SearchOptions,
+  ): Record<string, any> {
+    const conditions: Record<string, any> = {};
+    const toBound = (value: any, endOfDay: boolean) => {
+      const text = String(value).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        return endOfDay ? `${text} 23:59:59` : text;
+      }
+      const date = new Date(text);
+      return Number.isNaN(date.getTime()) ? undefined : date;
+    };
+
+    for (const field of options.dateRangeFields ?? []) {
+      if (field.includes('.')) continue;
+      const rawFrom = criteria[`${field}_from`];
+      const rawTo = criteria[`${field}_to`];
+      const from = rawFrom ? toBound(rawFrom, false) : undefined;
+      const to = rawTo ? toBound(rawTo, true) : undefined;
+
+      if (from !== undefined && to !== undefined) {
+        conditions[field] = Between(from, to);
+      } else if (from !== undefined) {
+        conditions[field] = MoreThanOrEqual(from);
+      } else if (to !== undefined) {
+        conditions[field] = LessThanOrEqual(to);
+      }
+    }
+    return conditions;
   }
 
   /**

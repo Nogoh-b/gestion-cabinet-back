@@ -235,8 +235,9 @@ export class DossierWorkspaceController {
   updateBillingProfile(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateBillingProfileDto,
+    @CurrentUser() user: User,
   ) {
-    return this.billingService.updateProfile(id, dto);
+    return this.billingService.updateProfile(id, dto, actorId(user));
   }
 
   @Get(':id/billing-rules')

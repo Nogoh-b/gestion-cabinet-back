@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 
@@ -15,7 +16,11 @@ import {
   WriteIntent,
 } from './interface/write-intent.interface';
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
-import { AmbiguityException, UPDATE_TARGET_FIELD } from './write/ambiguity.exception';
+import {
+  ALL_MATCHING_TARGETS,
+  AmbiguityException,
+  UPDATE_TARGET_FIELD,
+} from './write/ambiguity.exception';
 import { formatSqlDate, normalizeMatchValue } from './displayed-records';
 import { EntityIdRequiredException } from './write/entity-id-required.exception';
 import {
@@ -27,6 +32,7 @@ import {
   WriteHandlerRegistry,
   WriteResult,
 } from './write/write-handler.registry';
+import { AiActionRegistry } from './write/ai-action.registry';
 
 export interface WritePlanProgress {
   index: number;
@@ -34,10 +40,14 @@ export interface WritePlanProgress {
   label: string;
 }
 
+/** Plafond d'une mise à jour groupée (`all: true`) en une seule opération. */
+const MAX_BULK_UPDATE = 200;
+
 const OPERATION_VERBS: Record<string, string> = {
   INSERT: 'Création',
   UPDATE: 'Mise à jour',
   DELETE: 'Suppression',
+  ACTION: 'Action',
 };
 
 /** « Mise à jour · audiences #26 », ou la description fournie par le plan. */
@@ -47,6 +57,13 @@ export function describeOperation(operation: WriteOperation): string {
   const verb = OPERATION_VERBS[operation.operation] ?? operation.operation;
   const entity = String(operation.entity).replace(/_/g, ' ');
   return `${verb} · ${entity}${operation.entityId ? ` #${operation.entityId}` : ''}`;
+}
+
+/** Table et champs demandés, gardés sur le résultat pour le compte rendu. */
+function withReportInfo(result: WriteResult, operation: WriteOperation): WriteResult {
+  result.entity ??= operation.entity;
+  result.changedFields ??= Object.keys(operation.fields ?? {});
+  return result;
 }
 
 @Injectable()
@@ -68,6 +85,7 @@ export class GenericWriteService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly registry: WriteHandlerRegistry,
+    @Optional() private readonly actions?: AiActionRegistry,
   ) {}
 
   /**
@@ -131,8 +149,13 @@ export class GenericWriteService {
     // Créations du plan dans l'ordre, transmises aux handlers suivants (liens)
     const planCreated: PlanCreatedRecord[] = [];
 
+    // Index de l'opération en cours : une mise à jour groupée produit
+    // plusieurs résultats, results.length ne désigne alors plus l'opération.
+    let currentIndex = 0;
+
     try {
       for (let i = 0; i < writePlan.operations.length; i++) {
+        currentIndex = i;
         const operation = writePlan.operations[i];
 
         this.logger.log(
@@ -159,7 +182,44 @@ export class GenericWriteService {
           latestByEntity,
         );
 
-        // 2b. UPDATE sans identifiant : retrouver l'enregistrement par ses valeurs actuelles
+        // 2a. Action métier (envoi d'une facture…) : vérifiée maintenant,
+        //     lancée seulement quand le plan entier est validé.
+        if (operation.operation === 'ACTION') {
+          results.push(
+            await this.prepareAction(operation, enrichedFields, createdEntities, latestByEntity, userId),
+          );
+          continue;
+        }
+
+        // 2b. Mise à jour groupée : la même modification sur chaque
+        //     enregistrement correspondant à `match`.
+        if (
+          operation.operation === 'UPDATE' &&
+          !operation.entityId &&
+          operation.match &&
+          operation.all
+        ) {
+          const ids = await this.resolveAllUpdateTargets(operation.entity, operation.match);
+          for (const id of ids) {
+            if (targetedIds.has(`${operation.entity}:${id}`)) continue;
+            targetedIds.add(`${operation.entity}:${id}`);
+            results.push(
+              withReportInfo(
+                await this.executeOperation(
+                  { ...operation, entityId: id, match: undefined, all: undefined },
+                  { ...enrichedFields },
+                  userId,
+                  queryRunner,
+                  planCreated,
+                ),
+                operation,
+              ),
+            );
+          }
+          continue;
+        }
+
+        // 2c. UPDATE sans identifiant : retrouver l'enregistrement par ses valeurs actuelles
         if (
           operation.operation === 'UPDATE' &&
           !operation.entityId &&
@@ -184,7 +244,7 @@ export class GenericWriteService {
           planCreated,
         );
 
-        results.push(result);
+        results.push(withReportInfo(result, operation));
 
         // Mémoriser l'entité créée par un handler pour cleanup si la transaction échoue
         // (les handlers utilisent repo.save() qui bypassait la transaction avant le fix,
@@ -264,15 +324,14 @@ export class GenericWriteService {
       if (error instanceof AmbiguityException) {
         // Chercher l'index de l'opération en cours si pas encore rempli
         if (error.operationIndex === -1) {
-          // Déterminé par le nombre de résultats déjà accumulés
-          error.operationIndex = results.length;
+          error.operationIndex = currentIndex;
         }
         throw error; // re-throw tel quel — pas BadRequestException
       }
 
       if (error instanceof EntityIdRequiredException) {
         if (error.operationIndex === -1) {
-          error.operationIndex = results.length;
+          error.operationIndex = currentIndex;
         }
         throw error; // re-throw tel quel — le plan doit rester exploitable pour une reprise
       }
@@ -311,6 +370,86 @@ export class GenericWriteService {
     }
   }
 
+  /**
+   * Opération ACTION : retrouve l'enregistrement visé (identifiant, `match`,
+   * ou création du même plan), vérifie que l'action est possible, et renvoie
+   * un résultat dont l'envoi réel attend la validation du plan (`afterCommit`).
+   * Un échec de l'envoi est reporté dans le résultat, sans annuler le reste.
+   */
+  private async prepareAction(
+    operation: WriteOperation,
+    fields: Record<string, any>,
+    createdEntities: Map<string, any>,
+    latestByEntity: Map<string, any>,
+    userId: string,
+  ): Promise<WriteResult> {
+    const handler = this.actions?.get(operation.action);
+    if (!handler) {
+      throw new BadRequestException(`Action inconnue : « ${operation.action ?? '?'} ».`);
+    }
+    const { definition } = handler;
+    const tableLabel = definition.entity.replace(/_/g, ' ');
+
+    let targetId: string | number | undefined = operation.entityId ?? undefined;
+    if (typeof targetId === 'string') {
+      targetId = this.resolveReferences({ id: targetId }, createdEntities).id;
+      if (typeof targetId === 'string' && (targetId.includes('{{') || !targetId.trim())) targetId = undefined;
+    }
+    if (targetId === undefined && operation.match) {
+      try {
+        targetId = await this.resolveUpdateTarget(definition.entity, operation.match);
+      } catch (error) {
+        // « Tous les éléments » n'a pas de sens pour un envoi : un choix à la fois.
+        if (error instanceof AmbiguityException) {
+          const index = error.candidates.findIndex((c) => c.id === ALL_MATCHING_TARGETS);
+          if (index >= 0) error.candidates.splice(index, 1);
+          error.purpose = 'action';
+        }
+        throw error;
+      }
+    }
+    // Enregistrement créé plus tôt dans le plan (« crée la facture et envoie-la »).
+    targetId ??= latestByEntity.get(definition.entity)?.id;
+    if (targetId === undefined || targetId === null || targetId === '') {
+      throw new EntityIdRequiredException(
+        definition.entity,
+        -1,
+        `Précisez l'élément « ${tableLabel} » concerné par l'action « ${definition.label} » (numéro, référence…).`,
+      );
+    }
+
+    const params: Record<string, any> = {};
+    for (const param of definition.params) {
+      const value = fields[param.name];
+      if (value !== undefined && value !== null && String(value).trim() !== '') params[param.name] = value;
+      else if (param.required) {
+        throw new BadRequestException(`« ${param.label} » est requis pour l'action « ${definition.label} ».`);
+      }
+    }
+
+    const prepared = await handler.prepare(targetId, params, userId);
+    const result: WriteResult = {
+      success: true,
+      operation: 'ACTION',
+      entityId: targetId,
+      affected: 0,
+      data: prepared.data,
+      message: prepared.plannedMessage,
+      entity: definition.entity,
+      changedFields: [],
+      afterCommit: async () => {
+        try {
+          result.message = await prepared.run();
+        } catch (error) {
+          result.success = false;
+          result.message = `${definition.label} : échec — ${(error as Error).message}`;
+          this.logger.warn(`⚠️  Action ${definition.name} #${targetId} échouée : ${(error as Error).message}`);
+        }
+      },
+    };
+    return result;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // executeOperation — CŒUR DE LA PRIORITÉ HANDLER vs GÉNÉRIQUE
   // ─────────────────────────────────────────────────────────────────────────────
@@ -326,6 +465,66 @@ export class GenericWriteService {
     match: Record<string, any>,
     targetedIds: Set<string> = new Set(),
   ): Promise<string | number> {
+    const { metadata, repo, criteria, scope } = await this.matchCriteria(entity, match);
+    const criteriaKeys = Object.keys(criteria);
+
+    // 1. Correspondance exacte sur tous les critères.
+    if (criteriaKeys.length) {
+      const exact: any[] = await repo.find({ where: { ...criteria, ...scope }, take: 6 });
+      if (exact.length === 1) return exact[0].id;
+      // Mise à jour groupée (« passe toutes ces audiences… ») : un enregistrement
+      // déjà visé par une opération précédente du plan n'est plus candidat.
+      const untouched = exact.filter((row) => !targetedIds.has(`${entity}:${row.id}`));
+      if (exact.length > 1 && untouched.length === 1) return untouched[0].id;
+      if (exact.length > 1) {
+        const ambiguity = this.targetAmbiguity(entity, match, exact, criteria, metadata, 100, await this.relatedLabels(metadata, exact));
+        // Choix « tous » en tête : la demande visait souvent l'ensemble
+        // (« passe toutes ses audiences… »), pas un seul enregistrement.
+        const total = await repo.count({ where: { ...criteria, ...scope } });
+        ambiguity.candidates.unshift({
+          id: ALL_MATCHING_TARGETS,
+          label: `✅ Tous les ${total} éléments correspondants`,
+          score: 100,
+          data: { total },
+        });
+        throw ambiguity;
+      }
+    }
+
+    // 2. Correspondances partielles : au moins un critère, les plus proches d'abord.
+    const partial = new Map<string | number, any>();
+    for (const column of criteriaKeys) {
+      const rows: any[] = await repo.find({
+        where: { [column]: criteria[column], ...scope },
+        take: 10,
+      });
+      for (const row of rows) partial.set(row.id, row);
+    }
+    if (partial.size) {
+      throw this.targetAmbiguity(entity, match, [...partial.values()], criteria, metadata, undefined, await this.relatedLabels(metadata, [...partial.values()]));
+    }
+
+    // 3. Rien d'approchant : proposer les plus récents plutôt que bloquer.
+    const recent: any[] = await repo.find({
+      where: scope,
+      order: { id: 'DESC' } as any,
+      take: 6,
+    });
+    if (recent.length) {
+      throw this.targetAmbiguity(entity, match, recent, criteria, metadata, 0, await this.relatedLabels(metadata, recent));
+    }
+    throw new EntityIdRequiredException(
+      entity,
+      -1,
+      `Aucun(e) ${entity.replace(/_/g, ' ')} n'existe encore dans ce cabinet.`,
+    );
+  }
+
+  /**
+   * Table visée et critères TypeORM tirés de `match` (colonnes réelles, entités
+   * liées citées par leur numéro ou leur nom), restreints au cabinet courant.
+   */
+  private async matchCriteria(entity: string, match: Record<string, any>) {
     const key = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
     const metadata = this.dataSource.entityMetadatas.find(
       (m) =>
@@ -359,48 +558,52 @@ export class GenericWriteService {
       if (target && target.propertyName !== 'id') criteria[target.propertyName] = value;
     }
     const repo = this.dataSource.getRepository(metadata.target);
-    const criteriaKeys = Object.keys(criteria);
+    return { metadata, repo, criteria, scope };
+  }
 
-    // 1. Correspondance exacte sur tous les critères.
-    if (criteriaKeys.length) {
-      const exact: any[] = await repo.find({ where: { ...criteria, ...scope }, take: 6 });
-      if (exact.length === 1) return exact[0].id;
-      // Mise à jour groupée (« passe toutes ces audiences… ») : un enregistrement
-      // déjà visé par une opération précédente du plan n'est plus candidat.
-      const untouched = exact.filter((row) => !targetedIds.has(`${entity}:${row.id}`));
-      if (exact.length > 1 && untouched.length === 1) return untouched[0].id;
-      if (exact.length > 1) {
-        throw this.targetAmbiguity(entity, match, exact, criteria, metadata, 100);
-      }
-    }
+  /** Identifiant de l'unique enregistrement du cabinet qui respecte `match`, sinon `undefined`. */
+  async findSingleMatch(entity: string, match: Record<string, any>): Promise<string | number | undefined> {
+    const { repo, criteria, scope } = await this.matchCriteria(entity, match);
+    if (!Object.keys(criteria).length) return undefined;
+    const rows: any[] = await repo.find({ where: { ...criteria, ...scope }, take: 2 });
+    return rows.length === 1 ? rows[0].id : undefined;
+  }
 
-    // 2. Correspondances partielles : au moins un critère, les plus proches d'abord.
-    const partial = new Map<string | number, any>();
-    for (const column of criteriaKeys) {
-      const rows: any[] = await repo.find({
-        where: { [column]: criteria[column], ...scope },
-        take: 10,
-      });
-      for (const row of rows) partial.set(row.id, row);
-    }
-    if (partial.size) {
-      throw this.targetAmbiguity(entity, match, [...partial.values()], criteria, metadata);
-    }
+  /** Nombre d'enregistrements du cabinet visés par `match` (carte de confirmation). */
+  async countMatches(entity: string, match: Record<string, any>): Promise<number> {
+    const { repo, criteria, scope } = await this.matchCriteria(entity, match);
+    if (!Object.keys(criteria).length) return 0;
+    return repo.count({ where: { ...criteria, ...scope } });
+  }
 
-    // 3. Rien d'approchant : proposer les plus récents plutôt que bloquer.
-    const recent: any[] = await repo.find({
-      where: scope,
-      order: { id: 'DESC' } as any,
-      take: 6,
+  /**
+   * Mise à jour groupée (`all: true`) : identifiants de TOUS les
+   * enregistrements du cabinet qui respectent `match`. Sans critère
+   * exploitable, rien n'est visé (jamais toute la table).
+   */
+  private async resolveAllUpdateTargets(
+    entity: string,
+    match: Record<string, any>,
+  ): Promise<Array<string | number>> {
+    const { repo, criteria, scope } = await this.matchCriteria(entity, match);
+    if (!Object.keys(criteria).length) {
+      throw new EntityIdRequiredException(
+        entity,
+        -1,
+        `Précisez quels éléments « ${entity.replace(/_/g, ' ')} » modifier (dossier, statut, date…).`,
+      );
+    }
+    const rows: any[] = await repo.find({
+      where: { ...criteria, ...scope },
+      order: { id: 'ASC' } as any,
+      take: MAX_BULK_UPDATE + 1,
     });
-    if (recent.length) {
-      throw this.targetAmbiguity(entity, match, recent, criteria, metadata, 0);
+    if (rows.length > MAX_BULK_UPDATE) {
+      throw new BadRequestException(
+        `Plus de ${MAX_BULK_UPDATE} éléments correspondent : affinez la demande (dossier, période, statut…).`,
+      );
     }
-    throw new EntityIdRequiredException(
-      entity,
-      -1,
-      `Aucun(e) ${entity.replace(/_/g, ' ')} n'existe encore dans ce cabinet.`,
-    );
+    return rows.map((row) => row.id);
   }
 
   /**
@@ -452,6 +655,42 @@ export class GenericWriteService {
     return asCriterion(In(rows.map((row) => row.id)));
   }
 
+  /**
+   * Identifiant métier des entités liées de chaque candidat (ex: « dossier:
+   * DOS-2026-0038 » pour une audience), pour distinguer les candidats.
+   */
+  private async relatedLabels(
+    metadata: import('typeorm').EntityMetadata,
+    rows: any[],
+  ): Promise<Map<string | number, string[]>> {
+    const labels = new Map<string | number, string[]>();
+    const identifying = ['dossier_number', 'numero', 'reference', 'code', 'full_name', 'company_name', 'name', 'label', 'title'];
+    for (const relation of (metadata.manyToOneRelations ?? []).slice(0, 3)) {
+      const fk = relation.joinColumns[0]?.databaseName;
+      const fkProperty = metadata.columns.find((c) => c.databaseName === fk)?.propertyName;
+      const display = identifying.find((c) =>
+        relation.inverseEntityMetadata.columns.some((m) => m.propertyName === c),
+      );
+      if (!fk || !fkProperty || !display) continue;
+      const ids = [...new Set(rows.map((row) => row[fkProperty]).filter((v) => v !== null && v !== undefined))];
+      if (!ids.length) continue;
+      try {
+        const related: any[] = await this.dataSource
+          .getRepository(relation.inverseEntityMetadata.target)
+          .find({ where: { id: In(ids) } as any, take: 50 });
+        const byId = new Map(related.map((r) => [String(r.id), r[display]]));
+        for (const row of rows) {
+          const value = byId.get(String(row[fkProperty]));
+          if (!value) continue;
+          labels.set(row.id, [...(labels.get(row.id) ?? []), `${relation.propertyName}: ${value}`]);
+        }
+      } catch {
+        /* libellé facultatif */
+      }
+    }
+    return labels;
+  }
+
   /** Candidats lisibles (libellé, dates, statut…) classés par nombre de critères respectés. */
   private targetAmbiguity(
     entity: string,
@@ -460,9 +699,16 @@ export class GenericWriteService {
     criteria: Record<string, any>,
     metadata: { columns: Array<{ propertyName: string }> },
     fixedScore?: number,
+    related: Map<string | number, string[]> = new Map(),
   ): AmbiguityException {
+    // Heures (audience_time…) : sans elles, deux audiences du même jour se
+    // ressemblent trait pour trait.
+    const timeColumns = metadata.columns
+      .map((m) => m.propertyName)
+      .filter((c) => /_time$|_hour$|^heure/.test(c));
     const readable = [
-      ...Object.keys(criteria),
+      ...Object.keys(criteria).filter((c) => !/_id$/.test(c)),
+      ...timeColumns,
       'label', 'name', 'title', 'numero', 'reference', 'dossier_number',
       'first_name', 'last_name', 'start_date', 'end_date', 'status',
     ].filter((c, i, all) => all.indexOf(c) === i && metadata.columns.some((m) => m.propertyName === c));
@@ -476,10 +722,13 @@ export class GenericWriteService {
     const candidates = rows
       .map((row) => {
         const hits = keys.filter((k) => row[k] !== null && row[k] !== undefined && same(row[k], criteria[k])).length;
-        const parts = readable
-          .filter((c) => row[c] !== null && row[c] !== undefined && row[c] !== '')
-          .slice(0, 5)
-          .map((c) => `${c}: ${show(row[c])}`);
+        const parts = [
+          ...(related.get(row.id) ?? []),
+          ...readable
+            .filter((c) => row[c] !== null && row[c] !== undefined && row[c] !== '')
+            .slice(0, 5)
+            .map((c) => `${c}: ${show(row[c])}`),
+        ];
         return {
           id: row.id,
           label: `#${row.id} — ${parts.join(' · ')}`,

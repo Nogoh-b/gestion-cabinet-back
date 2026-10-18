@@ -3,9 +3,25 @@ import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { ChatOpenAI } from '@langchain/openai';
 import { IntentDetectionResult } from './interface/write-intent.interface';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
+import { AiActionRegistry } from './write/ai-action.registry';
+import {
+  matchHelpDocs,
+  normalizeHelpText,
+  splitPageContext,
+} from './help-knowledge';
 import { WriteOperation, WritePlan } from './dto/analysis-response.dto';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
+import { LegalKnowledgeMatch } from './legal-knowledge';
+import {
+  SourceSignals,
+  describeSignals,
+  extractRecordReference,
+  isAnchoredInCabinet,
+  isDecisiveKnowledgeRoute,
+  isKnowledgeQuestion,
+  summarizeLegalMatches,
+} from './source-signals';
 
 type IntentClass = 'READ' | 'WRITE' | 'HELP' | 'ADVICE' | 'CHAT';
 
@@ -47,11 +63,25 @@ export class IntentDetectionService {
   private readonly RECORD_SUMMARY_REQUEST =
     /\b(?:synthese|resume|resumer|recapitulatif|recap|point\s+sur|faire\s+le\s+point|fais\s+le\s+point|etat\s+(?:du|de\s+la|des|d)|situation\s+(?:du|de\s+la|des|d))\b/;
 
+  /**
+   * Demande d'envoi à l'impératif en début de phrase (« envoie la facture… »,
+   * « relance le client… ») : une action, même quand la phrase contient
+   * « la dernière facture » qui la ferait passer pour une lecture.
+   * « envoie-moi la liste… » reste une lecture.
+   */
+  private readonly SEND_REQUEST =
+    /^\s*(?:(?:s'il (?:te|vous) plait|stp|svp|peux-tu|pouvez-vous|merci de|veuillez|je veux|je voudrais|j'aimerais)[ ,]+)?(?:re)?(?:envoie|envoyez|envoyer|relance|relancez|relancer|transmets|transmettez|transmettre)\b(?![- ]moi\b)/;
+
+  /** Verbe d'envoi n'importe où dans la phrase (mots entiers). */
+  private readonly SEND_VERB =
+    /\b(?:re)?(?:envoie|envoyez|envoyer|relance|relancez|relancer|transmets|transmettez|transmettre)\b(?![- ]moi\b)/;
+
   constructor(
     private readonly writeHandlerRegistry: WriteHandlerRegistry,
     @Optional()
     @Inject(AI_DATABASE_PROJECT_CONFIG)
     private readonly projectConfig?: AiDatabaseProjectConfig,
+    @Optional() private readonly actionRegistry?: AiActionRegistry,
   ) {
     this.buildDomainKeywordsRegex();
   }
@@ -105,6 +135,8 @@ export class IntentDetectionService {
       }) => void;
       classifierModelName?: string;
       plannerModelName?: string;
+      /** Indices locaux (voir computeSourceSignals) : guident le classifieur. */
+      signals?: SourceSignals;
     } = {},
   ): Promise<IntentDetectionResult> {
     // 1️⃣ Pré-filtre rapide : éviter un appel LLM pour les WRITE évidents
@@ -135,14 +167,29 @@ export class IntentDetectionService {
       return { type: 'READ', requiresConfirmation: false };
     }
 
+    if (!isObviousWrite && options.signals && isDecisiveKnowledgeRoute(options.signals)) {
+      // La base juridique couvre la question et rien ne la rattache au
+      // cabinet : réponse par les connaissances, sans appel au classifieur.
+      this.logger.log('🏷️ Signaux → CHAT (base juridique, sans ancrage cabinet)');
+      return { type: 'CONVERSATIONAL', requiresConfirmation: false };
+    }
+
     if (!isObviousWrite) {
       // 1b. Classification légère via LLM : READ | WRITE | CHAT
       //     (plus fiable que des heuristiques statiques)
-      const lightClass = await this.lightClassify(question, llm, {
+      let lightClass = await this.lightClassify(question, llm, {
         ...options,
         history: options.history,
       });
       this.logger.log(`🏷️ Light classify → ${lightClass}`);
+      // Un numéro d'enregistrement cité se lit dans la base, même quand le
+      // classifieur y voit une question générale.
+      if (lightClass === 'CHAT' && options.signals?.recordReference) {
+        this.logger.log(
+          `🏷️ CHAT → READ (numéro cité : ${options.signals.recordReference})`,
+        );
+        lightClass = 'READ';
+      }
 
       if (lightClass === 'HELP') {
         return { type: 'HELP', requiresConfirmation: false };
@@ -263,7 +310,11 @@ export class IntentDetectionService {
         const requiresConfirmation =
           validatedPlan.confidence < 0.85 ||
           validatedPlan.operations.length > 1 ||
-          validatedPlan.operations.some((op) => op.operation === 'DELETE');
+          // Une mise à jour groupée touche un nombre inconnu de lignes ;
+          // une action (e-mail envoyé…) ne se rattrape pas.
+          validatedPlan.operations.some(
+            (op) => op.operation === 'DELETE' || op.operation === 'ACTION' || op.all,
+          );
 
         if (attempt > 0)
           this.logger.log(`✅ Plan WRITE généré à la tentative ${attempt + 1}`);
@@ -347,6 +398,10 @@ export class IntentDetectionService {
       return 'WRITE';
     }
 
+    if (this.SEND_REQUEST.test(normalized) && this.actionRegistry?.all().length) {
+      return 'WRITE';
+    }
+
     if (
       this.RECORD_SUMMARY_REQUEST.test(normalized) &&
       this.domainKeywordsRegex.test(normalized) &&
@@ -357,6 +412,14 @@ export class IntentDetectionService {
 
     if (this.isAdviceIntent(question)) {
       return 'ADVICE';
+    }
+
+    // Question de droit générale (délais, procédures, textes, définitions)
+    // sans lien avec les données du cabinet : réponse par les connaissances
+    // du modèle, pas une requête SQL qui reviendrait vide.
+    // (isWriteIntent cherche des sous-chaînes : « recouvrement » contient « ouvre ».)
+    if (this.isLegalKnowledgeQuestion(normalized) && !this.WRITE_VERB.test(normalized)) {
+      return 'CHAT';
     }
 
     if (this.isChatIntent(normalized)) {
@@ -423,7 +486,8 @@ export class IntentDetectionService {
 - Si c'est une simple lecture → { "type": "READ" }
 - Si l'utilisateur demande comment faire, où cliquer, ou une procédure à suivre → { "type": "HELP" }
 - Si l'utilisateur demande un conseil, une recommandation, quoi ajouter, quoi améliorer, ou une suggestion basée sur le contexte → { "type": "ADVICE" }
-- Si c'est une création/modification → génère un plan avec les dépendances`;
+- Si c'est une création/modification → génère un plan avec les dépendances
+- Si c'est un envoi (facture, relance d'impayés…) → plan WRITE avec une opération "ACTION" (voir ACTIONS DISPONIBLES)`;
     const genericWriteExample = `{
   "type": "WRITE",
   "writePlan": {
@@ -452,7 +516,7 @@ ${readSchema.substring(0, 10000)}
 
 ## 📝 ENTITÉS MODIFIABLES
 ${writeSchema}
-${history ? `\n## 🗨️ HISTORIQUE RÉCENT DE LA CONVERSATION (le plus ancien en premier)\n${history}\n` : ''}
+${this.actionRegistry?.promptSection() ?? ''}${history ? `\n## 🗨️ HISTORIQUE RÉCENT DE LA CONVERSATION (le plus ancien en premier)\n${history}\n` : ''}
 ## ❓ DEMANDE UTILISATEUR
 "${question}"
 
@@ -505,6 +569,10 @@ le système redemandera alors une précision à l'utilisateur.
   Le système le retrouve et, en cas de doute, fait choisir l'utilisateur.
 - "fields" contient uniquement les NOUVELLES valeurs. N'invente jamais d'identifiant ni de valeur de
   "match" ; une opération par enregistrement à modifier.
+- Modification GROUPÉE (« toutes ses audiences », « tous les dossiers de X », « toutes celles en retard ») :
+  UNE seule opération UPDATE avec "match" (critères communs, ex: {"dossier_id":94,"status":0}) et
+  "all": true. Le système applique "fields" à chaque enregistrement correspondant du cabinet.
+  Si les enregistrements affichés ont des #N, tu peux aussi faire une opération par #N.
 ${this.projectConfig?.promptDomainRules ? `\n${this.projectConfig.promptDomainRules}\n` : ''}
 ## 📤 FORMAT DE RÉPONSE JSON UNIQUEMENT
 
@@ -564,6 +632,10 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
           }
         }
 
+        if (String(op.operation).toUpperCase() === 'ACTION') {
+          return this.enrichActionOperation(op, cleanedFields, index);
+        }
+
         return {
           operation: op.operation,
           entity: op.entity.toLowerCase(),
@@ -572,9 +644,12 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
           typeof op.match === 'object' &&
           !Array.isArray(op.match) &&
           Object.keys(op.match).length > 0
-            ? { match: op.match }
+            ? { match: op.match, ...(op.all === true && { all: true }) }
             : {}),
           fields: cleanedFields,
+          ...(typeof op.humanReadable === 'string' && op.humanReadable.trim()
+            ? { humanReadable: op.humanReadable.trim() }
+            : {}),
           tempId: op.tempId || `op_${index}`,
           dependsOn: op.dependsOn || [],
           // ✅ Préserver resolveConfig si fourni par le LLM
@@ -590,6 +665,48 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
         plan.humanReadable ||
         `Exécution de ${enrichedOperations.length} opération(s)`,
       confidence: Math.min(plan.confidence || 0.8, 1),
+    };
+  }
+
+  /**
+   * Opération ACTION du planificateur : action connue (sinon nouvel essai),
+   * table de l'action, et cible lue dans `fields` quand le modèle y a mis la
+   * référence (« numero », « dossier_number »…) au lieu de `match`.
+   */
+  private enrichActionOperation(op: any, fields: Record<string, any>, index: number): WriteOperation {
+    const handler = this.actionRegistry?.get(op.action);
+    if (!handler) {
+      const known = this.actionRegistry?.all().map((h) => h.definition.name).join(', ') || 'aucune';
+      throw new Error(`action inconnue "${op.action ?? ''}" (actions possibles : ${known})`);
+    }
+    const { definition } = handler;
+    const paramNames = new Set(definition.params.map((p) => p.name));
+    const params: Record<string, any> = {};
+    const rest: Record<string, any> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (paramNames.has(key)) params[key] = value;
+      else if (key !== 'id' && key !== 'entityId') rest[key] = value;
+    }
+    const entityId = op.entityId ?? op.fields?.id ?? op.fields?.entityId ?? null;
+    const match =
+      op.match && typeof op.match === 'object' && !Array.isArray(op.match) && Object.keys(op.match).length
+        ? op.match
+        : !entityId && Object.keys(rest).length
+          ? rest
+          : undefined;
+    return {
+      operation: 'ACTION',
+      action: definition.name,
+      entity: definition.entity,
+      entityId,
+      ...(match && { match }),
+      fields: params,
+      humanReadable:
+        typeof op.humanReadable === 'string' && op.humanReadable.trim()
+          ? op.humanReadable.trim()
+          : definition.label,
+      tempId: op.tempId || `op_${index}`,
+      dependsOn: op.dependsOn || [],
     };
   }
 
@@ -676,18 +793,73 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
    * car normalizeText() supprime les accents du texte d'entrée.
    * Il faut comparer des pommes avec des pommes.
    */
+  /** Demande d'écriture explicite (mots entiers, texte normalisé). */
+  private readonly WRITE_VERB =
+    /\b(?:cree[rz]?|ajoute[rz]?|modifie[rz]?|supprime[rz]?|enregistre[rz]?|mets?\s+a\s+jour|programme[rz]?|planifie[rz]?)\b/;
+
+  /** Marqueurs d'une question de connaissance juridique (texte normalisé). */
+  private readonly LEGAL_KNOWLEDGE =
+    /\b(?:procedures?\s+(?:pour|a\s+suivre|de\s+|d')|delais?\s+(?:d'|de\s+|pour\s+)|prescription|article\s+\d+|code\s+(?:civil|penal|du\s+travail|de\s+procedure|de\s+commerce|cima|general\s+des\s+impots)|acte\s+uniforme|ohada|jurisprudence|doctrine|loi\s+(?:n|no|du|sur|relative)\b|que\s+dit\s+la\s+loi|en\s+droit\b|droit\s+(?:camerounais|francais|ohada|civil|penal|commercial|du\s+travail|administratif|foncier|de\s+la\s+famille|des\s+affaires)|qu'est[- ]ce\s+qu|c'est\s+quoi|definition|difference\s+entre|comment\s+se\s+deroule|etapes?\s+d'une?\b|conditions?\s+(?:d'|de\s+|pour\s+)|voies?\s+de\s+recours|recours\s+possibles?|est[- ]il\s+possible\s+de|a-t-on\s+le\s+droit|peut[- ]on\b|competence\s+(?:du|d'un|des)\s+(?:tribunal|juge|juridiction))/;
+
+  /**
+   * Ancrage dans les données du cabinet : possessifs, démonstratifs, numéro
+   * de dossier, période ou demande de comptage. Sans ancrage, une question de
+   * droit se traite avec les connaissances du modèle.
+   */
+  private readonly CABINET_ANCHOR =
+    /\b(?:mes|mon|ma|nos|notre|ce|cet|cette|ces|du\s+cabinet|au\s+cabinet|le\s+cabinet|en\s+cours|enregistre(?:e|s|es)?|combien|liste|affiche|aujourd'hui|demain|cette\s+semaine|ce\s+mois)\b|[a-z]{2,6}[-/]?\d{2,}[-/]\d+|\bdossier\s+(?:de|du|d')\s+[a-z]/;
+
+  private isLegalKnowledgeQuestion(text: string): boolean {
+    const normalized = text.replace(/[’`]/g, "'");
+    if (!this.LEGAL_KNOWLEDGE.test(normalized)) return false;
+    // « qu'est-ce que » contient « ce » : retiré avant de chercher un ancrage.
+    const withoutIdioms = normalized.replace(/qu'est[- ]ce\s+qu[e']?|est[- ]ce\s+qu[e']?/g, ' ');
+    return !this.CABINET_ANCHOR.test(withoutIdioms);
+  }
+
   private isHelpIntent(question: string): boolean {
     const normalized = this.normalizeText(question);
     const patterns = [
       /comment\s+(?:faire|creer|ajouter|modifier|supprimer)/,
       /ou\s+cliquer/,
       /explique.*(?:creer|ajouter|modifier|supprimer)/,
-      /procedure\s+pour/,
-      /guide\s+pour/,
+      // « procédure pour contester un licenciement » est une question de
+      // droit (connaissances), pas une aide à l'utilisation de l'application.
+      /(?:procedure|guide)\s+pour\s+(?:creer|ajouter|modifier|supprimer|enregistrer|saisir|importer|exporter|configurer|parametrer|utiliser|generer|imprimer|envoyer|facturer|cloturer|archiver)/,
     ];
 
-    return patterns.some((pattern) => pattern.test(normalized));
+    if (patterns.some((pattern) => pattern.test(normalized))) return true;
+    return this.isDocumentedUsageQuestion(question);
   }
+
+  /**
+   * « Comment fonctionne la paie ? », « c'est quoi un élément facturable ? » :
+   * questions d'usage dont le sujet est un module documenté dans `help-docs/`.
+   * Le sujet doit correspondre à une documentation, sinon la question reste
+   * une question de droit ou de données (« qu'est-ce qu'une assignation ? »).
+   */
+  private isDocumentedUsageQuestion(question: string): boolean {
+    const { question: asked } = splitPageContext(question);
+    const text = normalizeHelpText(asked);
+    if (!text || this.DOSSIER_REFERENCE.test(text)) return false;
+
+    if (this.HOW_IT_WORKS.test(text)) {
+      return matchHelpDocs(question, { limit: 1, minScore: 1 }).length > 0;
+    }
+    if (this.WHAT_IS_IT.test(text)) {
+      // Expression précise exigée (poids >= 3) : « facture » seul est trop courant.
+      return matchHelpDocs(question, { limit: 1, minScore: 3 }).length > 0;
+    }
+    return false;
+  }
+
+  private readonly HOW_IT_WORKS =
+    /\bcomment\s+(?:ca\s+|cela\s+)?(?:fonctionne|marche)\b|\bfonctionnement\s+(?:du|de\s+la|de\s+l'|des)\b|\bcomment\s+(?:puis-je\s+|peut-on\s+|dois-je\s+|doit-on\s+|on\s+|je\s+)?(?:utiliser|configurer|parametrer|generer|emettre|facturer|cloturer|enregistrer|saisir|payer|rembourser|valider|approuver|calculer|declarer|ouvrir|etablir|regler|renseigner|activer|lancer|consulter|retrouver)\b|\bpar\s+ou\s+commencer\b/;
+
+  private readonly WHAT_IS_IT =
+    /\bc'est\s+quoi\b|\bqu'est[- ]ce\s+qu(?:e|')|\ba\s+quoi\s+(?:sert|servent)\b|\bexplique(?:-moi|z-moi)?\b|\bque\s+(?:signifie|veut\s+dire)\b|\bdifference\s+entre\b|\bprerequis\b|\bavant\s+de\s+(?:creer|facturer|commencer)\b/;
+
+  private readonly DOSSIER_REFERENCE = /\b[a-z]{2,6}-\d{4}-\d+\b/;
 
   private isAdviceIntent(question: string): boolean {
     const normalized = this.normalizeText(question);
@@ -810,6 +982,11 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       }
     }
 
+    // Envoi d'une facture, relance… (actions du chat).
+    if (this.SEND_VERB.test(normalized) && this.actionRegistry?.all().length) {
+      return true;
+    }
+
     return false;
   }
 
@@ -833,9 +1010,17 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       }) => void;
       classifierModelName?: string;
       history?: string;
+      signals?: SourceSignals;
     } = {},
   ): Promise<IntentClass> {
-    const cacheKey = this.normalizeText(question).trim();
+    const signalsBlock = options.signals ? describeSignals(options.signals) : '';
+    // La même phrase n'a pas le même sens dans une autre conversation
+    // (« et celle-ci ? ») : l'historique et les indices font partie de la clé.
+    const cacheKey = [
+      this.normalizeText(question).trim(),
+      options.history ?? '',
+      signalsBlock,
+    ].join('\n');
     const cached = this.classificationCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
       return cached.value;
@@ -854,13 +1039,21 @@ READ   = interroger des données existantes (lister, chercher, afficher, compter
 WRITE  = créer, modifier ou supprimer des données (créer, ajouter, enregistrer, ouvrir un dossier, modifier, supprimer, corriger, rectifier, réparer, renommer, fusionner, appliquer, AINSI QUE les opérations comptables : passer/saisir/comptabiliser une écriture, débiter, créditer, créer un compte ou un journal, ouvrir/clôturer un exercice...)
 HELP   = expliquer comment utiliser l'application, ou guider l'utilisateur dans une procédure (comment faire, comment créer, où cliquer, procédure pour, guide pour). Une demande "comment créer..." est HELP, pas WRITE.
 ADVICE = donner des conseils, recommandations, suggestions, pistes d'amélioration ou prochaines étapes, souvent à partir du contexte précédent. Une demande "que peux-tu me conseiller d'ajouter encore ?" est ADVICE, pas READ.
-CHAT   = question générale sans lien avec les données du cabinet (salutation, remerciement, question de culture générale, demande d'explication hors-métier...)
+CHAT   = question à laquelle on répond avec ses CONNAISSANCES, sans les données du cabinet : salutation, remerciement, culture générale, ET questions de DROIT générales (délais, procédures, voies de recours, conditions, définitions, textes de loi, OHADA, jurisprudence, rédaction d'un modèle de courrier ou d'acte, stratégie dans l'abstrait).
+⚠️ READ seulement si la réponse exige des enregistrements du cabinet (un dossier, un client, des audiences, des chiffres du cabinet). « Quels sont les délais d'appel au Cameroun ? » est CHAT ; « quelles audiences ont lieu demain ? » est READ.
 
 Contexte du cabinet : dossiers juridiques, clients, avocats, factures, audiences, paiements, diligences, ET comptabilité (écritures comptables, comptes du plan comptable, journaux, exercices).
 ⚠️ « passer une écriture », « comptabiliser », « saisir une écriture » sont des opérations WRITE (création d'une écriture comptable), jamais READ.
 ⚠️ Si l'utilisateur demande d'AGIR sur des anomalies, points d'attention ou recommandations déjà évoqués dans la conversation (« corrige-les », « corrige les points d'attention », « fais-le », « applique »), c'est WRITE, jamais ADVICE : ADVICE est réservé aux demandes de conseil sans action.
 ⚠️ Si l'utilisateur fait référence à un résultat précédent (« celle-ci », « celui-là », « la première », « parmi ceux-là ») en lien avec des données du cabinet, c'est READ, pas CHAT.
-${historyBlock}
+${historyBlock}${
+      signalsBlock
+        ? `
+Indices calculés sur la demande (fiables) :
+${signalsBlock}
+`
+        : ''
+    }
 Demande : "${question.replace(/"/g, "'")}"
 
 Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
@@ -879,9 +1072,10 @@ Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
         .replace(/[^A-Z]/g, '');
       if (!raw) {
         // Réponse vide (ex. budget de tokens épuisé par la réflexion du
-        // modèle) : repli READ, mais sans le mettre en cache.
-        this.logger.warn('🏷️ Classification vide → READ par défaut');
-        return 'READ';
+        // modèle) : repli selon les indices, sans le mettre en cache.
+        const fallback = this.fallbackClass(options.signals);
+        this.logger.warn(`🏷️ Classification vide → ${fallback} par défaut`);
+        return fallback;
       }
       const value: IntentClass = raw.startsWith('WRITE')
         ? 'WRITE'
@@ -895,8 +1089,51 @@ Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
       this.classificationCache.set(cacheKey, { value, timestamp: Date.now() });
       return value;
     } catch {
-      return 'READ'; // en cas d'erreur, on tente le SQL
+      // Classifieur injoignable : SQL seulement si la question peut viser le cabinet.
+      return this.fallbackClass(options.signals);
     }
+  }
+
+  /**
+   * Classe retenue quand le classifieur ne répond pas : une question de droit
+   * ou générale sans lien avec le cabinet reçoit une réponse de connaissance
+   * plutôt qu'une requête SQL vide (« aucune donnée »).
+   */
+  private fallbackClass(signals?: SourceSignals): IntentClass {
+    if (!signals) return 'READ';
+    if (isKnowledgeQuestion(signals)) return 'CHAT';
+    if (!isAnchoredInCabinet(signals) && !signals.domainKeyword && !signals.writeVerb) {
+      return 'CHAT';
+    }
+    return 'READ';
+  }
+
+  /**
+   * Indices locaux sur les sources à mobiliser (données du cabinet, base
+   * juridique, connaissances du modèle). Purement local : quelques regex et
+   * le classement lexical déjà fait de la base juridique.
+   */
+  public computeSourceSignals(
+    question: string,
+    legalMatches: LegalKnowledgeMatch[] = [],
+  ): SourceSignals {
+    const { question: asked, pathname } = splitPageContext(question);
+    const normalized = this.normalizeText(asked).replace(/[’`]/g, "'");
+    // « qu'est-ce que » contient « ce » : retiré avant de chercher un ancrage.
+    const withoutIdioms = normalized.replace(
+      /qu'est[- ]ce\s+qu[e']?|est[- ]ce\s+qu[e']?/g,
+      ' ',
+    );
+    return {
+      recordReference: extractRecordReference(asked),
+      cabinetAnchor: this.CABINET_ANCHOR.test(withoutIdioms),
+      followUp: this.FOLLOW_UP_SIGNALS.test(normalized),
+      domainKeyword: this.domainKeywordsRegex.test(normalized),
+      legalMarkers: this.LEGAL_KNOWLEDGE.test(normalized),
+      writeVerb: this.WRITE_VERB.test(normalized),
+      legalKb: summarizeLegalMatches(legalMatches),
+      ...(pathname && { pathname }),
+    };
   }
 
   /**

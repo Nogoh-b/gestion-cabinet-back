@@ -7,8 +7,11 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { PlatformRoute, PlatformRoles } from '../auth/platform-route.decorator';
 import { PlatformAudit } from '../audit/platform-audit.decorator';
@@ -124,6 +127,42 @@ export class PlatformAiController {
   @ApiOperation({ summary: 'Teste la connexion à un fournisseur (petite requête)' })
   testProvider(@Param('id') id: string, @Body() body: TestAiProviderDto) {
     return this.ai.testProvider(id, body?.model);
+  }
+
+  @Post('knowledge-documents')
+  @PlatformRoles('owner')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  @PlatformAudit({
+    action: 'ai.knowledge.import',
+    targetType: 'legal_knowledge_document',
+  })
+  @ApiOperation({
+    summary: 'Importe un PDF dans la base de connaissance juridique du chat',
+  })
+  importKnowledgeDocument(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentPlatformAdmin() admin: PlatformPrincipal,
+  ) {
+    return this.ai.importLegalKnowledgePdf(file, admin.id);
+  }
+
+  @Delete('knowledge-documents/:id')
+  @PlatformRoles('owner')
+  @PlatformAudit({
+    action: 'ai.knowledge.delete',
+    targetType: 'legal_knowledge_document',
+    targetParam: 'id',
+  })
+  @ApiOperation({
+    summary: 'Supprime un PDF de la base de connaissance juridique',
+  })
+  deleteKnowledgeDocument(
+    @Param('id') id: string,
+    @CurrentPlatformAdmin() admin: PlatformPrincipal,
+  ) {
+    return this.ai.deleteLegalKnowledgeDocument(id, admin.id);
   }
 
   @Get('cabinets/:cabinetId')

@@ -2,6 +2,7 @@
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -23,6 +24,17 @@ import {
   validateCustomProvider,
 } from 'src/core/ai-database/ai-provider-config';
 import { PlatformAuditContext } from '../audit/platform-audit.context';
+import { ImageReaderService } from 'src/core/ai-database/image-reader.service';
+import {
+  chunkLegalText,
+  parseLegalKnowledgeStore,
+  PLATFORM_LEGAL_KNOWLEDGE_KEY,
+  type LegalKnowledgeDocument,
+} from 'src/core/ai-database/legal-knowledge';
+
+const MAX_LEGAL_PDF_BYTES = 10 * 1024 * 1024;
+const MAX_LEGAL_DOCUMENT_CHARS = 250_000;
+const MAX_LEGAL_KNOWLEDGE_CHARS = 1_500_000;
 
 export interface PlatformAiProviderView {
   id: string;
@@ -46,6 +58,7 @@ export class PlatformAiService {
     @InjectDataSource() private readonly db: DataSource,
     private readonly router: AiModelRouterService,
     private readonly events: EventEmitter2,
+    @Optional() private readonly imageReader?: ImageReaderService,
   ) {}
 
   // ── Lecture ──────────────────────────────────────────────────────────────
@@ -73,6 +86,7 @@ export class PlatformAiService {
       },
       providers,
       overrides,
+      knowledge_documents: await this.listKnowledgeDocuments(),
     };
   }
 
@@ -269,6 +283,102 @@ export class PlatformAiService {
 
   // ── Interne ──────────────────────────────────────────────────────────────
 
+  async importLegalKnowledgePdf(
+    file: Express.Multer.File | undefined,
+    adminId?: number,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Sélectionnez un fichier PDF');
+    }
+    if (file.size > MAX_LEGAL_PDF_BYTES) {
+      throw new BadRequestException('Le PDF ne doit pas dépasser 10 Mo');
+    }
+    if (
+      file.mimetype !== 'application/pdf' ||
+      file.buffer.subarray(0, 5).toString('ascii') !== '%PDF-'
+    ) {
+      throw new BadRequestException('Le fichier doit être un PDF valide');
+    }
+
+    const pdfParse = require('pdf-parse');
+    let parsed: { text?: string; numpages?: number };
+    try {
+      parsed = await pdfParse(file.buffer);
+    } catch {
+      throw new BadRequestException('Le PDF est illisible ou endommagé');
+    }
+    let text = String(parsed.text ?? '').trim();
+    if (text.length < 80 && this.imageReader) {
+      const scanned = await this.imageReader
+        .readScannedPdf(file.buffer, file.originalname)
+        .catch(() => null);
+      text = scanned?.reliableText?.trim() || scanned?.text?.trim() || text;
+    }
+    if (text.length < 80) {
+      throw new BadRequestException(
+        "Aucun texte exploitable n'a été trouvé dans ce PDF. Utilisez un PDF avec texte ou un scan plus lisible.",
+      );
+    }
+    text = text.slice(0, MAX_LEGAL_DOCUMENT_CHARS);
+    const store = await this.readLegalKnowledgeStore();
+    const usedChars = store.documents.reduce(
+      (sum, document) => sum + Number(document.character_count || 0),
+      0,
+    );
+    if (store.documents.length >= 25) {
+      throw new BadRequestException(
+        'La base contient déjà 25 documents. Supprimez un document avant de continuer.',
+      );
+    }
+    if (usedChars + text.length > MAX_LEGAL_KNOWLEDGE_CHARS) {
+      throw new BadRequestException(
+        'La capacité de la base de connaissance est atteinte. Supprimez un document avant de continuer.',
+      );
+    }
+
+    const document: LegalKnowledgeDocument = {
+      id: randomUUID(),
+      name: this.cleanPdfName(file.originalname),
+      imported_at: new Date().toISOString(),
+      size: file.size,
+      character_count: text.length,
+      chunks: chunkLegalText(text),
+    };
+    store.documents.push(document);
+    await this.writeLegalKnowledgeStore(store, adminId);
+    PlatformAuditContext.set({
+      action: 'ai.knowledge.import',
+      targetType: 'legal_knowledge_document',
+      targetId: document.id,
+      summary: `Base juridique : import de ${document.name}`,
+      after: {
+        name: document.name,
+        size: document.size,
+        character_count: document.character_count,
+      },
+    });
+    return this.overview();
+  }
+
+  async deleteLegalKnowledgeDocument(id: string, adminId?: number) {
+    const store = await this.readLegalKnowledgeStore();
+    const document = store.documents.find((item) => item.id === id);
+    if (!document) {
+      throw new NotFoundException('Document de connaissance introuvable');
+    }
+    store.documents = store.documents.filter((item) => item.id !== id);
+    await this.writeLegalKnowledgeStore(store, adminId);
+    PlatformAuditContext.set({
+      action: 'ai.knowledge.delete',
+      targetType: 'legal_knowledge_document',
+      targetId: document.id,
+      summary: `Base juridique : suppression de ${document.name}`,
+      before: { name: document.name, size: document.size },
+      after: null,
+    });
+    return this.overview();
+  }
+
   private async validateChoice(config: AiStoredConfig, providerIdRaw: string, modelRaw: string) {
     const providerId = cleanProviderId(providerIdRaw);
     const model = cleanAiText(modelRaw, 'model', 160);
@@ -383,6 +493,44 @@ export class PlatformAiService {
       [PLATFORM_AI_SETTING_KEY],
     );
     return parseStoredAiConfig(rows?.[0]?.value) ?? {};
+  }
+
+  private async readLegalKnowledgeStore() {
+    const rows: Array<{ value: unknown }> = await this.db.query(
+      'SELECT `value` FROM platform_settings WHERE `key` = ? LIMIT 1',
+      [PLATFORM_LEGAL_KNOWLEDGE_KEY],
+    );
+    return parseLegalKnowledgeStore(rows?.[0]?.value);
+  }
+
+  private async listKnowledgeDocuments() {
+    const store = await this.readLegalKnowledgeStore();
+    return store.documents.map(({ chunks, ...document }) => ({
+      ...document,
+      chunk_count: chunks.length,
+    }));
+  }
+
+  private async writeLegalKnowledgeStore(
+    store: ReturnType<typeof parseLegalKnowledgeStore>,
+    adminId?: number,
+  ) {
+    await this.db.query(
+      `INSERT INTO platform_settings (\`key\`, \`value\`, updated_by_admin_id)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`), updated_by_admin_id = VALUES(updated_by_admin_id), updated_at = CURRENT_TIMESTAMP`,
+      [PLATFORM_LEGAL_KNOWLEDGE_KEY, JSON.stringify(store), adminId ?? null],
+    );
+  }
+
+  private cleanPdfName(name: string): string {
+    const cleaned = String(name || 'document-juridique.pdf')
+      .replace(/[\r\n\0\\/]/g, '_')
+      .trim()
+      .slice(0, 180);
+    return cleaned.toLowerCase().endsWith('.pdf')
+      ? cleaned
+      : `${cleaned}.pdf`;
   }
 
   private async writePlatformConfig(config: AiStoredConfig, adminId?: number): Promise<void> {

@@ -86,8 +86,13 @@ export interface WritePlan {
 }
 
 export interface WriteOperation {
-  operation: 'INSERT' | 'UPDATE' | 'DELETE';
+  operation: 'INSERT' | 'UPDATE' | 'DELETE' | 'ACTION';
   entity: string;
+  /**
+   * ACTION : action métier à déclencher (« envoyer_facture »…, cf.
+   * AiActionRegistry) sur l'enregistrement visé ; `fields` porte ses paramètres.
+   */
+  action?: string;
   entityId?: string | number;
   /**
    * UPDATE sans identifiant connu : valeurs ACTUELLES des colonnes qui désignent
@@ -95,6 +100,11 @@ export interface WriteOperation {
    * l'exécution ; 0 ou plusieurs correspondances → précision demandée à l'utilisateur.
    */
   match?: Record<string, any>;
+  /**
+   * UPDATE avec `match` : appliquer `fields` à TOUS les enregistrements
+   * correspondants (« passe toutes les audiences du dossier à… »).
+   */
+  all?: boolean;
   fields: Record<string, any>;
   tempId?: string;
   dependsOn?: string[];

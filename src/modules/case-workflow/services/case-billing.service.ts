@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
@@ -79,6 +80,17 @@ import { ActionDefinition } from '../entities/action-catalog.entity';
 import { CaseWorkflowEvent } from '../entities/workflow-audit.entity';
 import { WorkflowEventService } from './workflow-event.service';
 import { calculateActionBilling } from '../case-workflow.logic';
+
+/** Effet d'une modification du profil sur les éléments et factures existants. */
+export interface ProfileSyncSummary {
+  updated_items: string[];
+  created_items: string[];
+  updated_invoices: Array<{ label: string; facture_id: string; numero: string }>;
+  locked_invoices: Array<{ label: string; facture_id: string; numero: string }>;
+  needs_review: string[];
+  /** Éléments d'actions encore ouverts, à passer par « Recalculer ». */
+  recalculable_items: number;
+}
 
 @Injectable()
 export class CaseBillingService {
@@ -183,7 +195,8 @@ export class CaseBillingService {
   async updateProfile(
     dossierId: number,
     dto: UpdateBillingProfileDto,
-  ): Promise<DossierBillingProfile> {
+    actorUserId = 0,
+  ): Promise<DossierBillingProfile & { billing_sync: ProfileSyncSummary }> {
     const profile = await this.getProfile(dossierId);
     if (
       dto.expected_version != null &&
@@ -196,7 +209,280 @@ export class CaseBillingService {
     const changes = { ...dto };
     delete changes.expected_version;
     Object.assign(profile, changes);
-    return this.profileRepository.save(profile);
+    return this.dataSource.transaction(async (manager) => {
+      const saved = await manager
+        .getRepository(DossierBillingProfile)
+        .save(profile);
+      const billing_sync = await this.syncProfileDerivedItems(
+        manager,
+        saved,
+        actorUserId,
+      );
+      return Object.assign(saved, { billing_sync });
+    });
+  }
+
+  /**
+   * Répercute le profil sur les éléments qui en dérivent directement (forfait
+   * principal, frais d'ouverture) :
+   * - élément ouvert → montant / TVA / devise recalculés ;
+   * - élément sur une facture BROUILLON sans paiement → ligne et totaux de la
+   *   facture ajustés (rien n'est encore émis) ;
+   * - facture émise, payée ou annulée → inchangée, signalée (avoir ou facture
+   *   complémentaire à faire) ;
+   * - élément absent alors que le profil en prévoit un → créé « à facturer ».
+   * Les éléments issus d'actions ne bougent pas : « Recalculer les éléments
+   * ouverts » garde son aperçu avant/après.
+   */
+  private async syncProfileDerivedItems(
+    manager: EntityManager,
+    profile: DossierBillingProfile,
+    actorUserId: number,
+  ): Promise<ProfileSyncSummary> {
+    const summary: ProfileSyncSummary = {
+      updated_items: [],
+      created_items: [],
+      updated_invoices: [],
+      locked_invoices: [],
+      needs_review: [],
+      recalculable_items: 0,
+    };
+    const tenantId = getCurrentTenantId();
+    const dossier = await manager.getRepository(Dossier).findOne({
+      where: { id: profile.dossier_id, tenant_id: tenantId } as any,
+    });
+    // Avant la validation de l'ouverture, aucun élément n'existe encore : ils
+    // seront créés à l'ouverture avec le profil courant.
+    if (!dossier?.opening_validated_at) return summary;
+
+    const itemRepo = manager.getRepository(BillableItem);
+    const openStatuses = [
+      BillableItemStatus.NEEDS_REVIEW,
+      BillableItemStatus.TO_INVOICE,
+    ];
+    const syncKey = randomUUID();
+    const vatRate = Number(profile.vat_rate ?? 0);
+
+    const targets: Array<{
+      key: string;
+      label: string;
+      wanted: boolean;
+      amount: number | null;
+      offReason: string;
+      create: () => Promise<BillableItem | null>;
+    }> = [
+      {
+        key: `DOSSIER:${dossier.id}:FIXED_FEE`,
+        label: 'Forfait principal',
+        wanted:
+          profile.mode !== BillingMode.HOURLY && Number(profile.fixed_fee) > 0,
+        amount: profile.fixed_fee != null ? Number(profile.fixed_fee) : null,
+        offReason:
+          profile.mode === BillingMode.HOURLY
+            ? 'Dossier passé en facturation horaire : forfait à abandonner ou conserver'
+            : 'Montant du forfait manquant',
+        create: () => this.createFixedFeeItem(manager, dossier, actorUserId),
+      },
+      {
+        key: `DOSSIER:${dossier.id}:OPENING_FEE`,
+        label: "Frais d'ouverture",
+        wanted:
+          profile.opening_fee_enabled !== false &&
+          !profile.opening_fee_included_in_fixed_fee,
+        amount:
+          profile.opening_fee != null ? Number(profile.opening_fee) : null,
+        offReason: profile.opening_fee_included_in_fixed_fee
+          ? "Frais d'ouverture désormais inclus dans le forfait : à abandonner"
+          : "Frais d'ouverture désactivés : à abandonner",
+        create: () => this.createOpeningItem(manager, dossier, actorUserId),
+      },
+    ];
+
+    for (const target of targets) {
+      const item = await itemRepo.findOne({
+        where: { tenant_id: tenantId, source_event_key: target.key },
+      });
+      if (!item) {
+        if (target.wanted) {
+          const created = await target.create();
+          if (created) summary.created_items.push(target.label);
+        }
+        continue;
+      }
+
+      if (!target.wanted) {
+        if (
+          openStatuses.includes(item.status) &&
+          item.review_reason !== target.offReason
+        ) {
+          item.status = BillableItemStatus.NEEDS_REVIEW;
+          item.review_reason = target.offReason;
+          await itemRepo.save(item);
+          summary.needs_review.push(target.label);
+        }
+        continue;
+      }
+
+      // Montant inchangé quand le profil ne le précise pas (ex. frais
+      // d'ouverture repris du cabinet) : seule la TVA est alors reprise.
+      const net = this.round(
+        target.amount != null && target.amount > 0
+          ? target.amount
+          : Number(item.unit_price),
+      );
+      const tax = this.round((net * vatRate) / 100);
+      const before = {
+        net_amount: Number(item.net_amount),
+        tax_rate: Number(item.tax_rate),
+        tax_amount: Number(item.tax_amount),
+        gross_amount: Number(item.gross_amount),
+      };
+      const after = {
+        net_amount: net,
+        tax_rate: vatRate,
+        tax_amount: tax,
+        gross_amount: this.round(net + tax),
+      };
+      const amountsChanged = (
+        Object.keys(after) as Array<keyof typeof after>
+      ).some((key) => before[key] !== after[key]);
+      const currencyChanged =
+        !!profile.currency && item.currency !== profile.currency;
+
+      if (openStatuses.includes(item.status)) {
+        const reviewResolved =
+          item.status === BillableItemStatus.NEEDS_REVIEW && net > 0;
+        if (!amountsChanged && !currencyChanged && !reviewResolved) continue;
+        this.applyAmounts(item, net, vatRate, tax);
+        if (currencyChanged) item.currency = profile.currency;
+        if (net > 0) {
+          item.status = BillableItemStatus.TO_INVOICE;
+          item.review_reason = null;
+        }
+        item.calculation_snapshot = {
+          ...(item.calculation_snapshot ?? {}),
+          profileSyncedAt: new Date().toISOString(),
+          profileSyncedBy: actorUserId,
+        };
+        await itemRepo.save(item);
+        await this.eventService.append(manager, {
+          dossierId: dossier.id,
+          eventType: 'BILLABLE_ITEM_RECALCULATED',
+          aggregateType: 'BillableItem',
+          aggregateId: item.id,
+          actorUserId,
+          payload: { before, after, reason: 'BILLING_PROFILE_UPDATED' },
+          idempotencyKey: `EVENT:PROFILE_SYNC:${syncKey}:${item.id}`,
+        });
+        summary.updated_items.push(target.label);
+        continue;
+      }
+
+      if (item.status !== BillableItemStatus.INVOICED || !amountsChanged) {
+        continue;
+      }
+      const line = item.invoice_line_id
+        ? await manager.getRepository(InvoiceLine).findOne({
+            where: { id: item.invoice_line_id, tenant_id: tenantId } as any,
+          })
+        : null;
+      const facture = line
+        ? await manager.getRepository(Facture).findOne({
+            where: { id: line.facture_id, tenant_id: tenantId } as any,
+            relations: ['paiements'],
+            lock: { mode: 'pessimistic_write' },
+          })
+        : null;
+      if (!line || !facture) continue;
+
+      const hasPayment = (facture.paiements ?? []).some(
+        (p) =>
+          ![StatutPaiement.ANNULE, StatutPaiement.REJETE].includes(
+            Number(p.status),
+          ),
+      );
+      if (
+        Number(facture.status) !== StatutFacture.BROUILLON ||
+        hasPayment ||
+        (currencyChanged && facture.currency !== profile.currency)
+      ) {
+        summary.locked_invoices.push({
+          label: target.label,
+          facture_id: facture.id,
+          numero: facture.numero,
+        });
+        continue;
+      }
+
+      this.applyAmounts(item, net, vatRate, tax);
+      await itemRepo.save(item);
+      line.unit_price = net;
+      line.net_amount = net;
+      line.tax_rate = vatRate;
+      line.tax_amount = tax;
+      line.gross_amount = this.round(net + tax);
+      await manager.getRepository(InvoiceLine).save(line);
+
+      // Même calcul par écart que addItemsToFacture : une TVA saisie sur la
+      // facture pour d'autres lignes n'est pas écrasée.
+      facture.montantHT = this.round(
+        Number(facture.montantHT) + net - before.net_amount,
+      );
+      facture.montantTVA = this.round(
+        Number(facture.montantTVA) + tax - before.tax_amount,
+      );
+      facture.montantTTC = this.round(facture.montantHT + facture.montantTVA);
+      if (facture.montantHT !== 0) {
+        facture.tauxTVA = this.round(
+          (facture.montantTVA / facture.montantHT) * 100,
+        );
+      }
+      delete (facture as any).paiements;
+      await manager.getRepository(Facture).save(facture);
+      await this.eventService.append(manager, {
+        dossierId: dossier.id,
+        eventType: 'INVOICE_LINE_RECALCULATED',
+        aggregateType: 'Facture',
+        aggregateId: facture.id,
+        actorUserId,
+        payload: {
+          billableItemId: item.id,
+          before,
+          after,
+          reason: 'BILLING_PROFILE_UPDATED',
+        },
+        idempotencyKey: `EVENT:PROFILE_SYNC:${syncKey}:${item.id}`,
+      });
+      summary.updated_invoices.push({
+        label: target.label,
+        facture_id: facture.id,
+        numero: facture.numero,
+      });
+    }
+
+    summary.recalculable_items = await itemRepo.count({
+      where: {
+        tenant_id: tenantId,
+        dossier_id: dossier.id,
+        source_type: BillableSourceType.ACTION,
+        status: In(openStatuses),
+      },
+    });
+    return summary;
+  }
+
+  private applyAmounts(
+    item: BillableItem,
+    net: number,
+    taxRate: number,
+    tax: number,
+  ): void {
+    item.quantity = 1;
+    item.unit_price = net;
+    item.net_amount = net;
+    item.tax_rate = taxRate;
+    item.tax_amount = tax;
+    item.gross_amount = this.round(net + tax);
   }
 
   async listRules(dossierId: number): Promise<DossierBillingRule[]> {

@@ -34,6 +34,18 @@ export interface PlanOperationDescriptor {
   index: number;
   entityLabel: string;
   fields: PlanFieldDescriptor[];
+  /** Ce que fait l'opération, en une phrase (fournie par le plan). */
+  summary?: string;
+  /**
+   * Enregistrement(s) visé(s) par une modification ou une suppression :
+   * « Audience du 15/10/2025 à 09:00 · Dossier DOS-2026-0039 », ou
+   * « Tous les éléments correspondants (19) : Dossier = … · Statut = … ».
+   */
+  target?: string;
+  /** Action : ce qui va partir (« À : client@x.com · 2 facture(s) impayée(s) »). */
+  preview?: string;
+  /** Action : avertissement (irréversible…). */
+  warning?: string;
 }
 
 export interface PlanFieldsResponse {

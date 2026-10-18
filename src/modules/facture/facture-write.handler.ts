@@ -174,7 +174,9 @@ export class FactureWriteHandler extends BaseWriteHandler {
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);
     }
-    return fields;
+    // Le numéro est attribué par le serveur (séquence légale) : jamais saisi
+    // par le planificateur, ni à la création ni en modification.
+    return fields.filter((f) => f.name !== 'numero');
   }
 
   // ── Validation métier ──────────────────────────────────────────────────────
@@ -184,6 +186,9 @@ export class FactureWriteHandler extends BaseWriteHandler {
     operation: 'INSERT' | 'UPDATE',
   ): Promise<ValidationResult> {
     const errors: string[] = [];
+    // Numéro géré par le serveur : une valeur proposée est ignorée, pas refusée.
+    fields = { ...fields };
+    delete fields.numero;
 
     if (operation === 'INSERT') {
       // dossier_id peut arriver via : FK résolution (alias "dossier"), auto-injection plan,
@@ -213,12 +218,10 @@ export class FactureWriteHandler extends BaseWriteHandler {
       this.filterKnownColumns(fields),
     );
 
-    // Numéro : honoré s'il est fourni, sinon auto-généré selon les settings.
-    const provided = fields?.numero ? String(fields.numero).trim() : '';
-    let numero = provided || (await this.generateInvoiceNumber());
-    if (await this.invoiceNumberExists(numero)) {
-      numero = await this.generateInvoiceNumber();
-    }
+    // Numéro : toujours issu de la séquence du cabinet. Un numéro proposé par
+    // le LLM (« F-{{today}}-001 », « 2026/001/01 »…) casserait la numérotation
+    // légale continue ; il est donc ignoré.
+    const numero = await this.generateInvoiceNumber();
 
     // TVA : valeur saisie prioritaire, sinon défaut du cabinet.
     const cabinet = hasActiveTenant()
@@ -396,14 +399,6 @@ export class FactureWriteHandler extends BaseWriteHandler {
       numero = build(++nextSeq);
     }
     return numero;
-  }
-
-  private async invoiceNumberExists(numero: string): Promise<boolean> {
-    const existing = await this.factureRepo.findOne({
-      where: { numero },
-      withDeleted: true,
-    });
-    return !!existing;
   }
 
   private isDuplicateInvoiceNumberError(error: any): boolean {

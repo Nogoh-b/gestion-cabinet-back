@@ -19,8 +19,11 @@ import { SchemaMetadataService } from './schema-metadata.service';
 import { AUTO_GENERATED_FIELDS, BaseWriteHandler } from './write/base-write-handler';
 import { EntityResolverService, ResolveMode } from './write/entity-resolver.service';
 import { matchEnumValue, parseLenientBoolean } from './write/lenient-values';
-import { PLAN_REF, PlanFieldOption, fixedOptions, humanize, rowLabel } from './write/plan-field-options';
+import { PLAN_REF, PlanFieldOption, fixedOptions, humanize, parseValueList, rowLabel } from './write/plan-field-options';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
+import { displayValue, PARENT_LINKS, resourceTitle } from './write/write-result-summary';
+import { GenericWriteService } from './generic-write.service';
+import { AiActionRegistry } from './write/ai-action.registry';
 
 type User = AiUserContext | string | number | undefined | null;
 
@@ -90,6 +93,8 @@ export class PlanFieldsService {
     private readonly entityResolver: EntityResolverService,
     private readonly permissions: AiDatabasePermissionService,
     @Optional() @Inject(AI_DATABASE_PROJECT_CONFIG) private readonly projectConfig?: AiDatabaseProjectConfig,
+    @Optional() private readonly writes?: GenericWriteService,
+    @Optional() private readonly actions?: AiActionRegistry,
   ) {}
 
   async describePlan(user: User, plan: WritePlan): Promise<PlanFieldsResponse> {
@@ -125,6 +130,7 @@ export class PlanFieldsService {
   // ── Opération ─────────────────────────────────────────────────────────────
 
   private async describeOperation(user: User, all: WriteOperation[], index: number, op: WriteOperation): Promise<PlanOperationDescriptor> {
+    if (op.operation === 'ACTION') return this.describeAction(all, index, op);
     const meta = this.metadataFor(op.entity);
     const entityLabel = (meta && this.schemaMetadata.getTableLabel(meta.tableName)) || humanize(op.entity ?? '');
     const fields = op.fields ?? {};
@@ -161,7 +167,125 @@ export class PlanFieldsService {
           : this.describeScalar(op, meta, name, raw, handlerLabels),
       );
     }
-    return { index, entityLabel, fields: descriptors };
+    const target = await this.describeTarget(op, meta).catch((error: Error) => {
+      this.logger.debug(`Cible de l'opération ${index} non décrite : ${error.message}`);
+      return undefined;
+    });
+    return {
+      index,
+      entityLabel,
+      fields: descriptors,
+      ...(op.humanReadable && { summary: op.humanReadable }),
+      ...(target && { target }),
+    };
+  }
+
+  // ── Action (envoi d'une facture, relance…) ───────────────────────────────
+
+  /**
+   * Action du plan : ce qui part et vers qui (aperçu du handler), l'élément
+   * visé, et ses paramètres (destinataire…) modifiables avant confirmation.
+   */
+  private async describeAction(all: WriteOperation[], index: number, op: WriteOperation): Promise<PlanOperationDescriptor> {
+    const handler = this.actions?.get(op.action);
+    if (!handler) throw new BadRequestException(`Action inconnue : « ${op.action ?? '?'} »`);
+    const { definition } = handler;
+    const meta = this.metadataFor(definition.entity);
+    const fields = op.fields ?? {};
+
+    // Élément créé plus tôt dans le plan (« crée la facture et envoie-la »).
+    const placeholder = typeof op.entityId === 'string' ? op.entityId.trim().match(PLAN_REF) : null;
+    const noTarget = (op.entityId === undefined || op.entityId === null || op.entityId === '') && !op.match;
+    const creator = placeholder
+      ? all.slice(0, index).find((other) => other.tempId === placeholder[1])
+      : noTarget
+        ? [...all.slice(0, index)].reverse().find((other) => other.operation === 'INSERT' && this.metadataFor(other.entity)?.tableName === definition.entity)
+        : undefined;
+
+    let target: string | undefined;
+    let targetId: string | number | undefined;
+    if (creator) {
+      // Un numéro proposé par l'IA (« F-{{today}}-001 ») sera remplacé à la création.
+      const label = [rowLabel(creator.fields), creator.fields?.description].find(
+        (text) => typeof text === 'string' && text.trim() && !text.includes('{{'),
+      );
+      target = `${label || humanize(definition.entity)} (créé par ce plan)`;
+    } else if (!placeholder) {
+      targetId = isId(op.entityId) ? (op.entityId as string | number) : undefined;
+      if (targetId === undefined && op.match) targetId = await this.writes?.findSingleMatch(definition.entity, op.match).catch(() => undefined);
+      const described = targetId !== undefined ? { ...op, entityId: targetId, match: undefined } : op;
+      target = await this.describeTarget(described, meta).catch((error: Error) => {
+        this.logger.debug(`Cible de l'action ${index} non décrite : ${error.message}`);
+        return undefined;
+      });
+    }
+    const preview = targetId !== undefined
+      ? await handler.preview?.(targetId, fields).catch((error: Error) => `⚠️ ${error.message}`)
+      : undefined;
+
+    const descriptors: PlanFieldDescriptor[] = definition.params.map((param) => ({
+      name: param.name,
+      label: param.label,
+      kind: 'text',
+      value: fields[param.name],
+      editable: true,
+      ...(param.description && { note: param.description }),
+    }));
+    return {
+      index,
+      entityLabel: definition.label,
+      fields: descriptors,
+      ...(op.humanReadable && { summary: op.humanReadable }),
+      ...(target && { target }),
+      ...(preview && { preview }),
+      ...(definition.warning && { warning: definition.warning }),
+    };
+  }
+
+  // ── Cible d'une modification / suppression ────────────────────────────────
+
+  private async describeTarget(op: WriteOperation, meta: EntityMetadata | undefined): Promise<string | undefined> {
+    if (op.operation === 'INSERT' || !meta) return undefined;
+    const table = meta.tableName;
+    if (op.entityId !== undefined && op.entityId !== null && op.entityId !== '') {
+      const row: any = await this.dataSource.getRepository(meta.target).findOne({ where: { id: op.entityId } as any });
+      if (!row) return `#${op.entityId}`;
+      const parents = await this.parentLabels(table, row);
+      return [resourceTitle(table, row, row.id), ...parents].join(' · ');
+    }
+    if (!op.match || typeof op.match !== 'object') return undefined;
+    const criteria: string[] = [];
+    for (const [column, value] of Object.entries(op.match)) {
+      if (value === null || value === undefined || value === '') continue;
+      const parent = PARENT_LINKS.find((p) => p.column === column || p.column === `${column}_id`);
+      if (parent && isId(value)) {
+        const [label] = await this.parentLabels(table, { [parent.column]: value });
+        criteria.push(label ?? `${column} = ${value}`);
+        continue;
+      }
+      const shown =
+        parseValueList(this.schemaMetadata.getColumnDescription(table, column))?.find((o) => String(o.value) === String(value))?.label ??
+        displayValue(value);
+      criteria.push(`${this.schemaMetadata.getBusinessLabel(table, column)} = ${shown}`);
+    }
+    const what = criteria.join(' · ');
+    if (!op.all) return what ? `Élément correspondant à : ${what}` : undefined;
+    const total = await this.writes?.countMatches(table, op.match).catch(() => undefined);
+    return `Tous les éléments correspondants${total !== undefined ? ` (${total})` : ''}${what ? ` : ${what}` : ''}`;
+  }
+
+  /** « Dossier DOS-2026-0039 — Trouble de jouissance » pour les parents d'une ligne. */
+  private async parentLabels(table: string, row: Record<string, any>): Promise<string[]> {
+    const labels: string[] = [];
+    for (const parent of PARENT_LINKS) {
+      const id = row[parent.column];
+      if (parent.entity === table || !isId(id)) continue;
+      const meta = this.metadataFor(parent.entity);
+      if (!meta) continue;
+      const found: any = await this.dataSource.getRepository(meta.target).findOne({ where: { id } as any }).catch(() => null);
+      labels.push(`${this.schemaMetadata.getTableLabel(parent.entity) || humanize(parent.entity)} ${found ? resourceTitle(parent.entity, found, id) : `#${id}`}`);
+    }
+    return labels;
   }
 
   private async describeReference(

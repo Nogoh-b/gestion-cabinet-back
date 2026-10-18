@@ -93,11 +93,15 @@ export interface WritableFieldSchema {
 
 export interface WriteResult {
   success: boolean;
-  operation: 'INSERT' | 'UPDATE' | 'DELETE';
+  operation: 'INSERT' | 'UPDATE' | 'DELETE' | 'ACTION';
   entityId?: string | number;
   affected: number;
   data?: any;
   message: string;
+  /** Table écrite (renseignée par GenericWriteService.executePlan). */
+  entity?: string;
+  /** Champs demandés par le plan, pour le compte rendu (valeurs lues dans `data`). */
+  changedFields?: string[];
   /** Entités créées automatiquement en cascade lors de la résolution des dépendances */
   cascadeCreations?: Array<{
     entityName: string;

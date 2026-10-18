@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -10,8 +10,12 @@ import {
   buildPermissionRefusal,
 } from './ai-access-policy';
 import { WritePlan } from './dto/analysis-response.dto';
+import { AiActionRegistry } from './write/ai-action.registry';
 
-type AiDatabaseOperation = 'READ' | 'INSERT' | 'UPDATE' | 'DELETE';
+type AiDatabaseOperation = 'READ' | 'INSERT' | 'UPDATE' | 'DELETE' | 'ACTION';
+
+/** Droit exigé pour une opération ; `permission` l'impose (actions métier). */
+type AiRequirement = { table: string; operation: AiDatabaseOperation; permission?: string };
 
 type AiPermissionMap = Partial<Record<AiDatabaseOperation, string>>;
 
@@ -467,6 +471,7 @@ export class AiDatabasePermissionService {
     private readonly usersService: UsersService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    @Optional() private readonly actions?: AiActionRegistry,
   ) {}
 
   async assertCanReadTables(user: AiUserLike, tables: string[]): Promise<void> {
@@ -622,10 +627,21 @@ export class AiDatabasePermissionService {
     user: AiUserLike,
     writePlan: WritePlan,
   ): Promise<void> {
-    const requirements = (writePlan.operations ?? []).map((operation) => ({
-      table: operation.entity,
-      operation: operation.operation,
-    }));
+    const requirements = (writePlan.operations ?? []).map((operation): AiRequirement => {
+      if (operation.operation !== 'ACTION') {
+        return { table: operation.entity, operation: operation.operation };
+      }
+      // Action métier : la permission du bouton correspondant de l'écran manuel.
+      const handler = this.actions?.get(operation.action);
+      if (!handler) {
+        throw new BadRequestException(`Action inconnue : « ${operation.action ?? '?'} ».`);
+      }
+      return {
+        table: handler.definition.entity,
+        operation: 'ACTION',
+        permission: handler.definition.permission,
+      };
+    });
 
     await this.assertAllowed(user, requirements);
   }
@@ -662,7 +678,7 @@ export class AiDatabasePermissionService {
 
   private async findMissing(
     user: AiUserLike,
-    requirements: Array<{ table: string; operation: AiDatabaseOperation }>,
+    requirements: AiRequirement[],
   ): Promise<
     Array<{
       table: string;
@@ -677,10 +693,9 @@ export class AiDatabasePermissionService {
 
     return this.normalizeRequirements(requirements)
       .map((requirement) => {
-        const permission = this.resolvePermission(
-          requirement.table,
-          requirement.operation,
-        );
+        const permission =
+          requirement.permission ??
+          this.resolvePermission(requirement.table, requirement.operation);
         return { ...requirement, permission };
       })
       .filter(
@@ -691,7 +706,7 @@ export class AiDatabasePermissionService {
 
   private async assertAllowed(
     user: AiUserLike,
-    requirements: Array<{ table: string; operation: AiDatabaseOperation }>,
+    requirements: AiRequirement[],
   ): Promise<void> {
     const missing = await this.findMissing(user, requirements);
     if (missing.length === 0) return;
@@ -720,20 +735,17 @@ export class AiDatabasePermissionService {
     );
   }
 
-  private normalizeRequirements(
-    requirements: Array<{ table: string; operation: AiDatabaseOperation }>,
-  ): Array<{ table: string; operation: AiDatabaseOperation }> {
+  private normalizeRequirements(requirements: AiRequirement[]): AiRequirement[] {
     const seen = new Set<string>();
-    const normalized: Array<{ table: string; operation: AiDatabaseOperation }> =
-      [];
+    const normalized: AiRequirement[] = [];
 
     for (const requirement of requirements) {
       const table = this.normalizeTableName(requirement.table);
       if (!table) continue;
-      const key = `${requirement.operation}:${table}`;
+      const key = `${requirement.operation}:${table}:${requirement.permission ?? ''}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      normalized.push({ table, operation: requirement.operation });
+      normalized.push({ ...requirement, table });
     }
 
     return normalized;
