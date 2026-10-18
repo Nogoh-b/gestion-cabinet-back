@@ -219,6 +219,11 @@ describe('Questions sur les droits de l utilisateur', () => {
     "qu'est-ce que je peux faire ?",
     'ai-je accès à la comptabilité ?',
     'quels sont mes droits ?',
+    'je suis autoriser a faire quoi ?',
+    'je suis autorisé à faire quoi ?',
+    "j'ai le droit de faire quoi ?",
+    'suis-je autorisé à créer une facture ?',
+    "à quoi ai-je droit dans l'application ?",
   ])('reconnaît « %s »', (question) => {
     expect(isCapabilityQuestion(question)).toBe(true);
   });
@@ -228,6 +233,8 @@ describe('Questions sur les droits de l utilisateur', () => {
     'liste les dossiers en cours',
     'comment créer un dossier ?',
     'tu peux accéder au dossier DOS-1 et me donner son statut ?',
+    'que dois-je faire quand le client ne paie pas ?',
+    'comment je fais pour créer un dossier ?',
   ])('ignore « %s »', (question) => {
     expect(isCapabilityQuestion(question)).toBe(false);
   });

@@ -161,6 +161,17 @@ export class Paiement extends TenantEntity {
   })
   preuvePaiement: string;
 
+  @Column({ name: 'declared_by_client', type: 'tinyint', width: 1, default: 0 })
+  @BusinessColumn({
+    label: 'Déclaré par le client',
+    description:
+      'Paiement déclaré par le client depuis son espace (créé en attente, à approuver par le cabinet).',
+    importance: 'low',
+    group: 'interne',
+    ignored: true,
+  })
+  declared_by_client: boolean;
+
   // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 
   @ManyToOne(() => Facture, (facture) => facture.paiements)

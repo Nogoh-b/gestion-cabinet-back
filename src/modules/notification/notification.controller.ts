@@ -24,6 +24,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/core/auth/guards/roles.guard';
 import { Roles } from 'src/core/decorators/roles.decorator';
+import { AllowClient } from 'src/core/decorators/allow-client.decorator';
 
 @ApiTags('notifications')
 @ApiBearerAuth()
@@ -32,6 +33,8 @@ import { Roles } from 'src/core/decorators/roles.decorator';
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 
+  // Portail client : lecture et marquage bornés aux notifications de l'appelant.
+  @AllowClient()
   @Get()
   @ApiOperation({ summary: "Récupérer les notifications de l'utilisateur" })
   async getMyNotifications(
@@ -48,6 +51,8 @@ export class NotificationController {
     );
   }
 
+  // Portail client : lecture et marquage bornés aux notifications de l'appelant.
+  @AllowClient()
   @Get('unread/count')
   @ApiOperation({ summary: 'Compter les notifications non lues' })
   async countUnread(@Request() req) {
@@ -55,6 +60,8 @@ export class NotificationController {
     return { count };
   }
 
+  // Portail client : lecture et marquage bornés aux notifications de l'appelant.
+  @AllowClient()
   @Get('unread')
   @ApiOperation({ summary: 'Récupérer les notifications non lues' })
   async getUnread(@Request() req) {
@@ -87,6 +94,8 @@ export class NotificationController {
     );
   }
 
+  // Portail client : lecture et marquage bornés aux notifications de l'appelant.
+  @AllowClient()
   @Patch('mark-read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Marquer des notifications comme lues' })

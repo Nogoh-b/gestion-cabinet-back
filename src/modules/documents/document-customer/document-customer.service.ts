@@ -35,7 +35,9 @@ import {
   Inject,
   InternalServerErrorException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { DocumentType } from '../document-type/entities/document-type.entity';
@@ -51,6 +53,9 @@ import {
   DocumentCustomer,
   DocumentCustomerStatus,
 } from './entities/document-customer.entity';
+
+/** Émis quand le cabinet valide ou refuse un document en attente. */
+export const DOCUMENT_REVIEWED_EVENT = 'document-customer.reviewed';
 
 export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
   constructor(
@@ -74,6 +79,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     // private stepsService: StepsService,
     private cabinetService: CabinetService,
     private planQuotaService: PlanQuotaService,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {
     super(docRepository, paginationService);
   }
@@ -208,6 +214,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
   async create(
     createDto: CreateDocumentCustomerDto & { file: Express.Multer.File },
     uploadedByUserId?: number,
+    options?: { status?: DocumentCustomerStatus },
   ): Promise<DocumentCustomerResponseDto | any> {
     const {
       document_type_id,
@@ -315,7 +322,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
         ...restDto,
         document_type: docType ?? undefined,
         customer,
-        status: DocumentCustomerStatus.ACCEPTED,
+        status: options?.status ?? DocumentCustomerStatus.ACCEPTED,
         category: category
           ? plainToInstance(DocumentCategory, category)
           : undefined,
@@ -715,6 +722,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       file_url: uploadedFile.fileUrl,
       file_size: uploadedFile.fileSize,
       file_mimetype: uploadedFile.mimeType,
+      ...(uploadedByUserId ? { uploaded_by_id: uploadedByUserId } : {}),
       status: restParams.status || DocumentCustomerStatus.PENDING,
       category,
       required_for_hearing: restParams.required_for_hearing || false,
@@ -826,6 +834,10 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     doc.status = DocumentCustomerStatus.ACCEPTED;
     doc.date_validation = new Date();
     await this.docRepository.save(doc);
+    this.eventEmitter?.emit(DOCUMENT_REVIEWED_EVENT, {
+      documentId: doc.id,
+      status: DocumentCustomerStatus.ACCEPTED,
+    });
     const customer = await this.customerRepository.findOne({
       where: { id: doc.customer.id },
       relations: ['type_customer', 'type_customer.requiredDocuments'],
@@ -858,6 +870,10 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     doc.date_ejected = new Date();
 
     await this.docRepository.save(doc);
+    this.eventEmitter?.emit(DOCUMENT_REVIEWED_EVENT, {
+      documentId: doc.id,
+      status: DocumentCustomerStatus.REFUSED,
+    });
     // this.docRepository.update(document_id, { status: DocumentCustomerStatus.REFUSED, date_ejected: new Date() } as any)
     return await this.docRepository.findOneBy({ id: document_id });
   }
@@ -917,6 +933,14 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       jpeg: 'image/jpeg',
       png: 'image/png',
       gif: 'image/gif',
+      webp: 'image/webp',
+      bmp: 'image/bmp',
+      svg: 'image/svg+xml',
+      txt: 'text/plain',
+      csv: 'text/csv',
+      json: 'application/json',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     };
     return mimeTypes[fileType] || 'application/octet-stream';
   }

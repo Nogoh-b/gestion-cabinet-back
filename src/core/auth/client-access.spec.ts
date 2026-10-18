@@ -30,12 +30,25 @@ import {
 import { Public } from '../decorators/public.decorator';
 import { MarkPlatformRoute } from '../decorators/platform.decorator';
 import { PublicGuard } from '../decorators/public.guard';
-import { assertClientRouteAllowed, isClientUser } from './client-access';
+import {
+  assertClientRouteAllowed,
+  CLIENT_DOSSIER_VIEW,
+  isClientUser,
+  toClientDossierView,
+} from './client-access';
+import { getMetadataArgsStorage } from 'typeorm';
+import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { AuthController } from './auth.controller';
 import { DossiersController } from 'src/modules/dossiers/dossiers.controller';
 import { AppSettingsController } from 'src/modules/settings/controllers/app-settings.controller';
 import { UserSettingsController } from 'src/modules/settings/controllers/user-settings.controller';
 import { ChatController } from 'src/modules/chat/controller/chat/chat.controller';
+import { ClientAccessStaffController } from 'src/modules/client-portal/client-access.staff.controller';
+import { ClientPortalController } from 'src/modules/client-portal/client-portal.controller';
+import { DocumentCustomerController } from 'src/modules/documents/document-customer/document-customer.controller';
+import { FactureController } from 'src/modules/facture/facture.controller';
+import { NotificationController } from 'src/modules/notification/notification.controller';
+import { PaiementController } from 'src/modules/paiement/paiement.controller';
 import { MainGateway } from '../shared/services/socket/main.gateway';
 
 const CLIENT = {
@@ -244,6 +257,15 @@ describe('Liste blanche du portail client', () => {
     [UserSettingsController, 'get'],
     [UserSettingsController, 'update'],
     [ChatController, 'getUserConversations'],
+    // Espace client (contrôleur entier) et notifications de l'appelant.
+    [ClientPortalController, 'summary'],
+    [ClientPortalController, 'uploadDocument'],
+    [ClientPortalController, 'declarePayment'],
+    [ClientPortalController, 'send'],
+    [NotificationController, 'getMyNotifications'],
+    [NotificationController, 'countUnread'],
+    [NotificationController, 'getUnread'],
+    [NotificationController, 'markAsRead'],
   ])('%p.%s est ouverte au client', (cls, handler) => {
     expect(isAllowed(cls, handler)).toBe(true);
   });
@@ -265,6 +287,19 @@ describe('Liste blanche du portail client', () => {
     [ChatController, 'getConversationMessages'],
     [ChatController, 'createConversation'],
     [ChatController, 'sendMessage'],
+    // Côté cabinet : messagerie/accès d'un client, validation des paiements
+    // et documents, factures et documents du cabinet.
+    [ClientAccessStaffController, 'accessStatus'],
+    [ClientAccessStaffController, 'messages'],
+    [ClientAccessStaffController, 'reply'],
+    [ClientAccessStaffController, 'markRead'],
+    [PaiementController, 'valider'],
+    [PaiementController, 'rejeter'],
+    [PaiementController, 'create'],
+    [DocumentCustomerController, 'validate'],
+    [DocumentCustomerController, 'refuse'],
+    [FactureController, 'search1'],
+    [NotificationController, 'create'],
   ])('%p.%s reste fermée au client', (cls, handler) => {
     expect(isAllowed(cls, handler)).toBe(false);
   });
@@ -301,6 +336,229 @@ describe('Liste blanche du portail client', () => {
       'modules/settings/controllers/app-settings.controller.ts': 1,
       'modules/settings/controllers/user-settings.controller.ts': 1,
       'modules/chat/controller/chat/chat.controller.ts': 1,
+      // Espace client : contrôleur entier, chaque méthode bornée à customerId.
+      'modules/client-portal/client-portal.controller.ts': 1,
+      // Notifications de l'appelant : liste, non lues (x2), marquage lu.
+      'modules/notification/notification.controller.ts': 4,
+    });
+  });
+});
+
+describe('Dossiers : projection pour le client (liste blanche)', () => {
+  // Champs que les pages de l'espace client lisent (dossiers, dossiers/[id],
+  // tableau de bord, messagerie). Toute extension se décide ici, pas par défaut.
+  const CLIENT_FIELDS = [
+    'audiences',
+    'case_number',
+    'closing_date',
+    'court_name',
+    'danger_level',
+    'description',
+    'dossier_number',
+    'id',
+    'jurisdiction',
+    'lawyer',
+    'object',
+    'opening_date',
+    'procedure_type',
+    'status',
+  ];
+
+  /** Dossier complet tel que le renvoie le service : chaque colonne et relation. */
+  function fullDossier(): Record<string, any> {
+    const storage = getMetadataArgsStorage();
+    const names = [
+      ...storage.columns.filter((c) => c.target === Dossier),
+      ...storage.relations.filter((r) => r.target === Dossier),
+    ].map((meta) => meta.propertyName);
+
+    const dossier: Record<string, any> = {};
+    for (const name of names) dossier[name] = `interne:${name}`;
+    return Object.assign(dossier, {
+      id: 91,
+      dossier_number: 'DOS-91',
+      object: 'Litige commercial',
+      description: 'Résumé',
+      status: 'LITIGATION',
+      danger_level: 1,
+      opening_date: new Date('2026-01-10'),
+      closing_date: null,
+      court_name: 'Chambre civile',
+      case_number: 'RC/1/2026',
+      procedure_type: { id: 3, name: 'Civile', code: 'CIV', description: 'interne' },
+      jurisdiction: { id: 2, name: 'TPI Douala', phone: '+237', email: 'tpi@x.cm' },
+      lawyer: {
+        id: 48,
+        full_name: 'Me Lionel',
+        email: 'lionel@cabinet.cm',
+        specialization: 'Commercial',
+        bar_association_number: 'BA1',
+      },
+      audiences: [
+        {
+          id: 7,
+          audience_date: new Date('2026-03-12'),
+          audience_time: '09:00',
+          type: 0,
+          status: 0,
+          room: 'Salle 4',
+          judge_name: 'Juge X',
+          decision: 'interne',
+          outcome: 'interne',
+          notes: 'interne',
+          report_content: 'interne',
+        },
+      ],
+      documents: [{ id: 1, name: 'Note interne.pdf' }],
+      factures: [{ id: 'f1', montant_ttc: 5000 }],
+      collaborators: [{ id: 3 }],
+      diligences: [{ id: 4 }],
+      client: { id: 83, email: 'client@x.cm' },
+    });
+  }
+
+  it("n'expose que les champs documentés, quelles que soient les colonnes du dossier", () => {
+    const view = toClientDossierView(fullDossier());
+    expect(Object.keys(view).sort()).toEqual(CLIENT_FIELDS);
+    expect(Object.keys(CLIENT_DOSSIER_VIEW).sort()).toEqual(CLIENT_FIELDS);
+  });
+
+  it.each([
+    'analysis_notes',
+    'recommendation',
+    'success_probability',
+    'budget_estimate',
+    'actual_costs',
+    'procedure_costs',
+    'settlement_amount',
+    'settlement_terms',
+    'damages_awarded',
+    'costs_awarded',
+    'outcome',
+    'outcome_notes',
+    'client_satisfaction',
+    'client_decision',
+    'opposing_party_name',
+    'opposing_party_lawyer',
+    'opposing_party_contact',
+    'third_parties',
+    'initial_request',
+    'next_steps',
+    'key_dates',
+    'confidentiality_level',
+    'priority_level',
+    'diligences',
+    'collaborators',
+    'documents',
+    'factures',
+    'client',
+    'conversation',
+    'procedureInstance',
+    'steps',
+  ])('ne renvoie jamais %s au client', (field) => {
+    expect(toClientDossierView(fullDossier())).not.toHaveProperty(field);
+  });
+
+  it('restreint aussi les relations imbriquées', () => {
+    const view = toClientDossierView(fullDossier());
+    expect(view.procedure_type).toEqual({ id: 3, name: 'Civile' });
+    expect(view.jurisdiction).toEqual({ id: 2, name: 'TPI Douala' });
+    expect(view.lawyer).toEqual({ full_name: 'Me Lionel' });
+    expect(view.audiences).toEqual([
+      {
+        id: 7,
+        audience_date: new Date('2026-03-12'),
+        audience_time: '09:00',
+        type: 0,
+        status: 0,
+        room: 'Salle 4',
+      },
+    ]);
+  });
+
+  it('garde ce que lisent les pages du portail', () => {
+    expect(toClientDossierView(fullDossier())).toMatchObject({
+      id: 91,
+      dossier_number: 'DOS-91',
+      object: 'Litige commercial',
+      description: 'Résumé',
+      status: 'LITIGATION',
+      danger_level: 1,
+      opening_date: new Date('2026-01-10'),
+      closing_date: null,
+      court_name: 'Chambre civile',
+      case_number: 'RC/1/2026',
+    });
+  });
+
+  it("lit les getters d'entité (nom de l'avocat) et tolère les relations absentes", () => {
+    class Employee {
+      user = { full_name: 'Me Marie' };
+      get full_name() {
+        return this.user.full_name;
+      }
+    }
+    const view = toClientDossierView({
+      id: 92,
+      lawyer: new Employee(),
+      procedure_type: null,
+      jurisdiction: 'TPI Douala',
+    });
+    expect(view).toEqual({
+      id: 92,
+      lawyer: { full_name: 'Me Marie' },
+      procedure_type: null,
+      jurisdiction: 'TPI Douala',
+    });
+  });
+
+  it("ne modifie pas l'original et laisse passer les valeurs vides", () => {
+    const dossier = fullDossier();
+    toClientDossierView(dossier);
+    expect(dossier.documents).toHaveLength(1);
+    expect(dossier.analysis_notes).toBe('interne:analysis_notes');
+    expect(toClientDossierView(null)).toBeNull();
+    expect(toClientDossierView(undefined)).toBeUndefined();
+  });
+
+  describe('DossiersController', () => {
+    const service = {
+      findOne: jest.fn(async () => fullDossier()),
+      findAll: jest.fn(async () => [fullDossier(), fullDossier()]),
+    };
+    const controller = new DossiersController(
+      service as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+
+    it('GET /dossiers/:id : le client reçoit la projection', async () => {
+      const body: any = await controller.findOne('91', CLIENT as any);
+      expect(Object.keys(body).sort()).toEqual(CLIENT_FIELDS);
+      expect(service.findOne).toHaveBeenCalledWith(91, CLIENT);
+    });
+
+    it('GET /dossiers : chaque dossier de la liste est projeté', async () => {
+      const list = await controller.findAll({} as any, CLIENT as any);
+      expect(list).toHaveLength(2);
+      for (const dossier of list) {
+        expect(Object.keys(dossier).sort()).toEqual(CLIENT_FIELDS);
+      }
+    });
+
+    it.each(STAFF_ROLES)('le rôle %s voit toujours tout', async (role) => {
+      const staff = { id: 48, role, tenantId: 25 };
+      const one: any = await controller.findOne('91', staff as any);
+      expect(one.analysis_notes).toBe('interne:analysis_notes');
+      expect(one.budget_estimate).toBe('interne:budget_estimate');
+      expect(one.documents).toHaveLength(1);
+      expect(one.factures).toHaveLength(1);
+      expect(one.collaborators).toHaveLength(1);
+
+      const [first]: any[] = await controller.findAll({} as any, staff as any);
+      expect(first.settlement_amount).toBe('interne:settlement_amount');
+      expect(first.diligences).toHaveLength(1);
     });
   });
 });

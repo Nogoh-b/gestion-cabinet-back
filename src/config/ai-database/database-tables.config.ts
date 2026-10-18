@@ -88,7 +88,7 @@ export const DOMAIN_KEYWORDS: AiDatabaseProjectConfig['domainKeywords'] = [
   'reglement',
   'honoraire',
   'honoraires',
-  'du',
+  // « dû » n'est pas listé : sans accent il se confond avec l'article « du ».
   'due',
   'dues',
   'arriere',

@@ -103,13 +103,13 @@ export class AskQuestionDto {
   @ApiProperty({
     required: false,
     description:
-      "Mode d'intention explicite. 'auto' laisse le backend classifier.",
-    enum: ['auto', 'read', 'write', 'chat'],
+      "Mode d'intention explicite. 'auto' laisse le backend classifier ; 'knowledge' répond depuis la base juridique de la plateforme ; 'help' explique l'utilisation de l'application d'après ses guides.",
+    enum: ['auto', 'read', 'write', 'chat', 'knowledge', 'help'],
     default: 'auto',
   })
   @IsOptional()
-  @IsIn(['auto', 'read', 'write', 'chat'])
-  intentMode?: 'auto' | 'read' | 'write' | 'chat';
+  @IsIn(['auto', 'read', 'write', 'chat', 'knowledge', 'help'])
+  intentMode?: 'auto' | 'read' | 'write' | 'chat' | 'knowledge' | 'help';
 
   @ApiProperty({
     required: false,

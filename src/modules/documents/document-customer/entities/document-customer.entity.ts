@@ -342,6 +342,8 @@ export class DocumentCustomer extends BaseEntity {
     page_count?: number;
     language?: string;
     original_filename?: string;
+    /** 'client_portal' : déposé par le client depuis son espace. */
+    source?: string;
     audit_trail?: Array<{
       action: string;
       user_id: number;
@@ -490,6 +492,10 @@ export class DocumentCustomer extends BaseEntity {
 
   @BeforeInsert()
   beforeCreate() {
-    this.status = DocumentCustomerStatus.ACCEPTED;
+    // Validé d'office, sauf dépôt explicitement en attente (documents du
+    // portail client, à valider par le cabinet).
+    if (this.status !== DocumentCustomerStatus.PENDING) {
+      this.status = DocumentCustomerStatus.ACCEPTED;
+    }
   }
 }

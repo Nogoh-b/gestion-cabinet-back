@@ -18,8 +18,10 @@ import { AiDatabasePermissionService } from './ai-database-permission.service';
 import { IamModule } from 'src/modules/iam/iam.module';
 import { PlansModule } from 'src/modules/plans/plans.module';
 import { AiRequestLog } from './entities/ai-request-log.entity';
+import { AiConversationDocument } from './entities/ai-conversation-document.entity';
 import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { AiModelRouterService } from './ai-model-router.service';
+import { AiUsageService } from './ai-usage.service';
 import { ImageReaderService } from './image-reader.service';
 import { PlanFieldsService } from './plan-fields.service';
 import { AiAdminController } from './ai-admin.controller';
@@ -38,6 +40,7 @@ import { AiContextConfigController } from './ai-context-config.controller';
       ConversationMessage,
       DocumentCustomer,
       AiRequestLog,
+      AiConversationDocument,
       AiContextConfig,
       AiContextSuggestion,
     ]),
@@ -56,6 +59,7 @@ import { AiContextConfigController } from './ai-context-config.controller';
     AutoHandlerFactory,
     AiDatabasePermissionService,
     AiModelRouterService,
+    AiUsageService,
     ImageReaderService,
     PlanFieldsService,
     AiQuotaGuard,
@@ -64,6 +68,7 @@ import { AiContextConfigController } from './ai-context-config.controller';
   exports: [
     AiDatabaseService,
     AiModelRouterService,
+    AiUsageService,
     WriteHandlerRegistry,
     AiActionRegistry,
     GenericWriteService,

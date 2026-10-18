@@ -21,6 +21,7 @@ import { ActivitiesModule } from './modules/activities/activities.module';
 import { AgenciesModule } from './modules/agencies/agencies.module';
 import { AudiencesModule } from './modules/audiences/audiences.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { ClientPortalModule } from './modules/client-portal/client-portal.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { DossiersModule } from './modules/dossiers/dossiers.module';
@@ -103,6 +104,7 @@ dotenv.config();
     DossiersModule,
     // 4. Modules avec dépendances complexes (utilisent forwardRef)
     CustomerModule,
+    ClientPortalModule,
 
     // 5. Autres modules
     ActivitiesModule,

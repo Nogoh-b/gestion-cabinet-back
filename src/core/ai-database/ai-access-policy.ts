@@ -481,8 +481,13 @@ const CAPABILITY_PATTERNS: RegExp[] = [
   /\b(je peux|puis.je) faire quoi\b/,
   /\b(ai.je|est.ce que j ai|j ai)\b.{0,12}\b(acces|le droit|les droits|la permission|l autorisation)\b/,
   /\b(tu peux|peux.tu|pouvez.vous|est.ce que tu peux|est.ce que vous pouvez|as.tu|avez.vous)\b.{0,12}\b(acceder|acces)\b/,
-  /\b(suis.je|je suis|est.ce que je suis) (autorise|habilite)\b/,
+  // « autorisé/autorisée/autoriser » (la faute d'accord est courante à l'oral).
+  /\b(suis.je|je suis|j suis|est.ce que je suis) (autoris|habilit)\w*/,
   /\b(qu est.ce que|que) (tu peux|peux.tu|vous pouvez|pouvez.vous) faire pour moi\b/,
+  // « … faire quoi ? » en fin de phrase : « je peux / j'ai le droit / je suis autorisé à faire quoi ».
+  /\b(je|j ai|moi|me|m)\b.{0,40}\bfaire quoi\b/,
+  /\b(autoris|habilit)\w* (a|pour|de) (faire )?quoi\b/,
+  /\b(a|de) quoi (ai.je|j ai)\b.{0,12}\b(droit|acces)\b/,
 ];
 
 /** « … et me donner / lister … » : une vraie demande, pas une question de droits. */

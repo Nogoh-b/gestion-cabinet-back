@@ -32,10 +32,13 @@ export enum NotifiableEvent {
 
   // Paiements
   PAIEMENT_RECEIVED = 'paiement_received',
+  PAIEMENT_REJECTED = 'paiement_rejected',
 
   // Documents
   DOCUMENT_UPLOADED = 'document_uploaded',
   DOCUMENT_SHARED = 'document_shared',
+  DOCUMENT_VALIDATED = 'document_validated',
+  DOCUMENT_REFUSED = 'document_refused',
 
   // Diligences
   DILIGENCE_ASSIGNED = 'diligence_assigned',
@@ -43,6 +46,14 @@ export enum NotifiableEvent {
 
   // Procédure
   PROCEDURE_STAGE_CHANGED = 'procedure_stage_changed',
+
+  // Portail client — actions du client, à destination du cabinet
+  CLIENT_DOCUMENT_UPLOADED = 'client_document_uploaded',
+  CLIENT_PAYMENT_DECLARED = 'client_payment_declared',
+  CLIENT_MESSAGE_RECEIVED = 'client_message_received',
+
+  // Portail client — réponses du cabinet, à destination du client
+  CABINET_MESSAGE_RECEIVED = 'cabinet_message_received',
 }
 
 /** Canaux d'un événement notifié. */
@@ -64,6 +75,11 @@ export interface ChannelPreference {
 export interface DispatchAudience {
   client?: {
     user_id?: number;
+    /**
+     * Fiche client : sert à retrouver le compte du portail (`user.customer_id`)
+     * quand `user_id` n'est pas fourni, pour notifier aussi dans l'application.
+     */
+    customer_id?: number;
     email?: string;
     /**
      * Déclenche les notifications destinées au client pour cet évènement.

@@ -47,6 +47,14 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     entity: Paiement,
     event: InsertEvent<Paiement>,
   ): Promise<void> {
+    // Paiement déclaré par le client depuis son espace : à approuver.
+    if (
+      entity.declared_by_client &&
+      Number(entity.status) === StatutPaiement.EN_ATTENTE
+    ) {
+      await this.notifyDeclaredPayment(entity.id as any, event);
+      return;
+    }
     await this.dispatchValidatedPayment(entity.id as any, entity, event);
   }
 
@@ -59,6 +67,16 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     const change = this.getFieldChanges(event, ['status']).find(
       (c) => c.field === 'status',
     );
+
+    if (
+      change &&
+      Number(change.oldValue) === StatutPaiement.EN_ATTENTE &&
+      Number(change.newValue) === StatutPaiement.REJETE
+    ) {
+      const rejectedId = entity.id ?? event.databaseEntity?.id;
+      if (rejectedId) await this.notifyRejectedPayment(rejectedId, event);
+      return;
+    }
 
     if (
       !change ||
@@ -84,11 +102,10 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     if (Number(paiement.status) !== StatutPaiement.VALIDE) return;
 
     const facture: any = paiement.facture;
-    const notifyClient = this.resolveTransientBoolean(
-      'notify_client',
-      source,
-      paiement as any,
-    );
+    // Un paiement déclaré par le client est toujours confirmé au client.
+    const notifyClient =
+      !!paiement.declared_by_client ||
+      this.resolveTransientBoolean('notify_client', source, paiement as any);
 
     const currencySymbol = await this.getCurrencySymbol();
 
@@ -105,9 +122,11 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
         `Montant reçu : ${formatMoney(paiement.montant, currencySymbol)} ` +
         `(${formatDate(paiement.datePaiement)})`,
       link: `/facturation/factures/${facture.id}`,
+      clientLink: `/espace-client/factures/${facture.id}`,
       audience: {
         client: {
           user_id: facture.client?.user_id,
+          customer_id: facture.client?.id,
           email: facture.client?.email,
           notify: notifyClient,
         },
@@ -119,6 +138,64 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
         resourceType: 'paiement',
         resource: paiement as any,
       }),
+    });
+  }
+
+  /** Le client déclare un paiement : l'avocat du dossier et les admins l'approuvent. */
+  private async notifyDeclaredPayment(
+    id: string | number,
+    event: InsertEvent<Paiement>,
+  ): Promise<void> {
+    const paiement = await this.load(id, event);
+    if (!paiement?.facture) return;
+    const facture: any = paiement.facture;
+    const currencySymbol = await this.getCurrencySymbol();
+    const who =
+      facture.client?.company_name?.trim() ||
+      `${facture.client?.first_name ?? ''} ${facture.client?.last_name ?? ''}`.trim() ||
+      'Un client';
+
+    await this.notify({
+      event: NotifiableEvent.CLIENT_PAYMENT_DECLARED,
+      title: `Paiement déclaré — facture ${facture.numero}`,
+      content:
+        `${who} déclare avoir payé ${formatMoney(paiement.montant, currencySymbol)} ` +
+        `(${formatDate(paiement.datePaiement)}). À vérifier et valider.`,
+      link: `/facturation/factures/${facture.id}`,
+      audience: { lawyer_id: facture.dossier?.lawyer_id ?? null },
+      entity: { type: 'paiement', id: paiement.id as any },
+    });
+  }
+
+  /** Le cabinet rejette un paiement déclaré par le client : le client est informé. */
+  private async notifyRejectedPayment(
+    id: string | number,
+    event: UpdateEvent<Paiement>,
+  ): Promise<void> {
+    const paiement = await this.load(id, event);
+    if (!paiement?.facture || !paiement.declared_by_client) return;
+    const facture: any = paiement.facture;
+    const currencySymbol = await this.getCurrencySymbol();
+
+    await this.notify({
+      event: NotifiableEvent.PAIEMENT_REJECTED,
+      title: `Paiement non validé — facture ${facture.numero}`,
+      content:
+        `Le paiement de ${formatMoney(paiement.montant, currencySymbol)} que vous avez déclaré n'a pas pu être validé.` +
+        (paiement.notes
+          ? ` Motif : ${String(paiement.notes).split(/\r?\n/)[0]}`
+          : ''),
+      link: `/espace-client/factures/${facture.id}`,
+      audience: {
+        client: {
+          customer_id: facture.client?.id,
+          email: facture.client?.email,
+          notify: true,
+        },
+        lawyer_id: null,
+        admin_ids_override: [],
+      },
+      entity: { type: 'paiement', id: paiement.id as any },
     });
   }
 

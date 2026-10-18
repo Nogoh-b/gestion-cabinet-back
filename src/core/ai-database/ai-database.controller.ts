@@ -101,7 +101,7 @@ export class AiDatabaseController {
           type: 'string',
           description: 'JSON array ou liste separee par virgules',
         },
-        intentMode: { type: 'string', enum: ['auto', 'read', 'write', 'chat'] },
+        intentMode: { type: 'string', enum: ['auto', 'read', 'write', 'chat', 'knowledge', 'help'] },
         file: { type: 'string', format: 'binary' },
         files: { type: 'array', items: { type: 'string', format: 'binary' } },
       },

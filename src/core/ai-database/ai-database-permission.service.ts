@@ -9,6 +9,7 @@ import {
   AI_RESTRICTED_COLUMNS,
   buildPermissionRefusal,
 } from './ai-access-policy';
+import { pruneDeniedJoins } from './denied-join-pruning';
 import { WritePlan } from './dto/analysis-response.dto';
 import { AiActionRegistry } from './write/ai-action.registry';
 
@@ -535,6 +536,34 @@ export class AiDatabasePermissionService {
       `Acces IA refuse (colonnes): user=${this.getUserDebugId(user)} | ${Array.from(missing).join(', ')}`,
     );
     throw new ForbiddenException(buildPermissionRefusal(Array.from(missing)));
+  }
+
+  /**
+   * Retire les jointures d'enrichissement vers les tables que l'utilisateur ne
+   * peut pas lire (ex. le nom du responsable d'une action, qui joint `user`) :
+   * la question reste répondable sans ces colonnes, au lieu d'être refusée en
+   * entier. Renvoie le SQL d'origine quand rien ne peut être retiré sans changer
+   * le résultat : le refus habituel (assertCanReadSql) s'applique alors.
+   */
+  async pruneUnreadableJoins(user: AiUserLike, sqlQuery: string): Promise<string> {
+    const tables = this.extractTablesFromSql(sqlQuery);
+    if (!tables.length) return sqlQuery;
+    const missing = await this.findMissing(
+      user,
+      tables.map((table) => ({ table, operation: 'READ' as const })),
+    );
+    if (!missing.length) return sqlQuery;
+
+    const denied = Array.from(new Set(missing.map((item) => item.table)));
+    const pruned = pruneDeniedJoins(sqlQuery, denied);
+    if (!pruned) return sqlQuery;
+    if (this.extractTablesFromSql(pruned).some((table) => denied.includes(table))) {
+      return sqlQuery;
+    }
+    this.logger.log(
+      `Acces IA: jointure retiree faute de droit de lecture (user=${this.getUserDebugId(user)} | ${denied.join(', ')})`,
+    );
+    return pruned;
   }
 
   /**

@@ -18,7 +18,8 @@ export type QuotaResource =
   | 'branches'
   | 'audiences'
   | 'payslips'
-  | 'expenses';
+  | 'expenses'
+  | 'ai_requests';
 
 export type PlanModule =
   | 'payroll'
@@ -42,6 +43,14 @@ export interface StorageUsage {
   exceeded: boolean;
 }
 
+/** Requêtes IA du mois civil, comptées comme le garde de quota (une par question). */
+export interface AiRequestsUsage extends QuotaUsage {
+  /** Module IA inclus dans le plan. */
+  enabled: boolean;
+  /** Remise à zéro : 1er jour du mois suivant (ISO). */
+  resetsAt: string;
+}
+
 export interface PlanUsageStatus {
   plan: Plan | null;
   hasPlan: boolean;
@@ -50,6 +59,7 @@ export interface PlanUsageStatus {
     clients: QuotaUsage;
     dossiers: QuotaUsage;
     storage: StorageUsage;
+    ai_requests: AiRequestsUsage;
   };
 }
 
@@ -79,9 +89,15 @@ export class PlanQuotaService {
       clients: number;
       dossiers: number;
       storageBytes: number;
+      aiRequests: number;
     },
   ): Promise<PlanUsageStatus> {
     const plan = await this.getCabinetPlan(cabinetId);
+    const aiRequests = (max: number | null, enabled: boolean): AiRequestsUsage => ({
+      ...this.buildUsage('ai_requests', counts.aiRequests, max),
+      enabled,
+      resetsAt: PlanQuotaService.nextMonthStart().toISOString(),
+    });
 
     if (!plan) {
       // Pas de plan lié — pas de limites affichées
@@ -93,6 +109,7 @@ export class PlanQuotaService {
           clients: this.buildUsage('clients', counts.clients, null),
           dossiers: this.buildUsage('dossiers', counts.dossiers, null),
           storage: this.buildStorageUsage(counts.storageBytes, null),
+          ai_requests: aiRequests(null, true),
         },
       };
     }
@@ -116,8 +133,18 @@ export class PlanQuotaService {
           counts.storageBytes,
           plan.max_storage_gb,
         ),
+        ai_requests: aiRequests(plan.ai_requests_per_month, !!plan.ai_enabled),
       },
     };
+  }
+
+  /** Début du mois civil courant : période du quota IA (comme AiQuotaGuard). */
+  static monthStart(now = new Date()): Date {
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+
+  static nextMonthStart(now = new Date()): Date {
+    return new Date(now.getFullYear(), now.getMonth() + 1, 1);
   }
 
   // ── Vérifie une limite et lève ForbiddenException si dépassée ────────────
@@ -138,6 +165,7 @@ export class PlanQuotaService {
       audiences: plan.max_audiences,
       payslips: plan.max_payslips_per_month,
       expenses: plan.max_expenses_per_month,
+      ai_requests: plan.ai_requests_per_month,
     };
 
     const labelMap: Record<QuotaResource, string> = {
@@ -148,6 +176,7 @@ export class PlanQuotaService {
       audiences: 'audiences',
       payslips: 'bulletins de paie',
       expenses: 'dépenses',
+      ai_requests: 'requêtes IA ce mois',
     };
 
     const max = limitMap[resource];

@@ -39,6 +39,7 @@ function buildService(question: string, intent: any = { type: 'READ' }) {
   service.getRequestModel = () => ({});
   service.sleep = async () => undefined;
   service.markMetric = jest.fn();
+  service.computeSourceSignals = jest.fn(async () => undefined);
   service.tryConsumePendingEntityIdClarification = () => null;
   service.buildRequestContext = async () => ({
     enrichedQuestion: `${question}\n--- DOCUMENTS A ANALYSER ---\n${documentText}`,
@@ -106,7 +107,14 @@ describe('Pièce jointe + demande d’écriture (chat en streaming)', () => {
 
     expect(service.intentDetectionService.detectIntent).not.toHaveBeenCalled();
     // 5e argument : passage cité (aucun ici).
-    expect(service.analyzeDocumentsStream).toHaveBeenCalledWith(question, expect.any(Array), expect.any(Function), [dossier], undefined);
+    expect(service.analyzeDocumentsStream).toHaveBeenCalledWith(
+      question,
+      expect.any(Array),
+      expect.any(Function),
+      [dossier],
+      undefined,
+      expect.objectContaining({ allowOutsideDocument: false }),
+    );
   });
 
   it('retombe sur l’analyse du document quand le planner ne retient aucune écriture', async () => {
@@ -152,5 +160,160 @@ describe('Prompt d’analyse de document', () => {
     expect(prompt).toContain('ce n\'est jamais un motif de refus');
     expect(prompt).toContain('n\'affirme jamais avoir créé, ajouté, classé');
     expect(service.buildDocumentAnalysisPrompt('résume ce document', docs)).not.toContain('CONTEXTE CHOISI');
+  });
+});
+
+describe('Document repris après plusieurs messages', () => {
+  const carried = {
+    name: 'fiche.jpg',
+    source: 'upload',
+    content: 'Cabinet Francis EBIANG — Email : contact@cfe.cm — Affaire OVAMBE',
+    truncated: false,
+    reused: true,
+  };
+
+  function buildFollowUpService(question: string, focus: string) {
+    const service = buildService(question, { type: 'CONVERSATIONAL' });
+    service.buildRequestContext = async () => ({
+      enrichedQuestion: `${question}\n--- DOCUMENTS A ANALYSER ---\n${carried.content}`,
+      intentQuestion: question,
+      documentContext: [{ ...carried }],
+      referenced: [],
+      documentFocus: focus,
+    });
+    service.conversationManager.getRecentHistoryForPrompt = jest.fn(async () => [
+      { role: 'user', content: 'Lis cette image' },
+      { role: 'assistant', content: 'Fiche du cabinet Francis EBIANG…' },
+    ]);
+    service.generateConversationalResponseStream = jest.fn(async () => 'Bonjour');
+    return service;
+  }
+
+  async function askInConversation(service: any, question: string) {
+    const events: Array<[string, any]> = [];
+    await service.analyzeQuestionStreamInternal(
+      { question, conversationId: 'conv-1' },
+      { id: 1 },
+      undefined,
+      (event: string, data: any) => events.push([event, data]),
+    );
+    expect(events.filter(([event]) => event === 'error')).toEqual([]);
+    return events;
+  }
+
+  it("répond à partir du document avec l'historique et marque la réponse", async () => {
+    const question = "l'adresse mail du cabinet c'est quoi ?";
+    const service = buildFollowUpService(question, 'content');
+    await askInConversation(service, question);
+
+    const options = service.analyzeDocumentsStream.mock.calls[0][5];
+    expect(options.allowOutsideDocument).toBe(true);
+    expect(options.history.map((message: any) => message.content)).toEqual([
+      'Lis cette image',
+      'Fiche du cabinet Francis EBIANG…',
+    ]);
+    expect(service.conversationManager.addAssistantMessage).toHaveBeenCalledWith(
+      'conv-1',
+      'Analyse du document',
+      undefined,
+      { documentAnswer: true },
+    );
+    expect(service.intentDetectionService.detectIntent).not.toHaveBeenCalled();
+  });
+
+  it('cherche ailleurs, sans le texte du document, quand il ne traite pas de la question', async () => {
+    const question = 'bonjour, ça va ?';
+    const service = buildFollowUpService(question, 'previous');
+    service.analyzeDocumentsStream = jest.fn().mockResolvedValue(null);
+    const events = await askInConversation(service, question);
+
+    expect(service.intentDetectionService.detectIntent).toHaveBeenCalled();
+    expect(service.intentDetectionService.detectIntent.mock.calls[0][0]).not.toContain('contact@cfe.cm');
+    expect(
+      events.some(([event, data]) => event === 'status' && /ne traite pas/.test(data.message)),
+    ).toBe(true);
+    expect(service.generateConversationalResponseStream).toHaveBeenCalled();
+    // Aucune réponse « document » enregistrée.
+    expect(service.conversationManager.addAssistantMessage).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      { documentAnswer: true },
+    );
+  });
+
+  it('ne laisse pas le modèle écarter un document désigné par la question', async () => {
+    const question = 'résume ce document';
+    const service = buildFollowUpService(question, 'explicit');
+    await askInConversation(service, question);
+    expect(service.analyzeDocumentsStream.mock.calls[0][5].allowOutsideDocument).toBe(false);
+  });
+});
+
+describe('Réponse « hors document » en streaming', () => {
+  function streamingService(chunks: string[]) {
+    const service: any = Object.create(AiDatabaseService.prototype);
+    service.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+    service.recordOutput = jest.fn();
+    service.streamModel = jest.fn(async () =>
+      (async function* () {
+        for (const content of chunks) yield { content };
+      })(),
+    );
+    return service;
+  }
+  const docs = [{ name: 'fiche.jpg', source: 'upload', content: 'Cabinet Francis EBIANG', truncated: false }];
+
+  it('renvoie null sans rien afficher ni enregistrer', async () => {
+    const service = streamingService(['[HORS_', 'DOCUMENT]']);
+    const events: any[] = [];
+    const onCommit = jest.fn(async () => undefined);
+    const result = await service.analyzeDocumentsStream(
+      'bonjour',
+      docs,
+      (...event: any[]) => events.push(event),
+      [],
+      undefined,
+      { allowOutsideDocument: true, onCommit },
+    );
+    expect(result).toBeNull();
+    expect(events).toEqual([]);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('affiche la réponse une fois tranchée, après avoir enregistré la question', async () => {
+    const service = streamingService(['L’adresse', ' e-mail est ', 'contact@cfe.cm.']);
+    const order: string[] = [];
+    const result = await service.analyzeDocumentsStream(
+      "l'adresse mail ?",
+      docs,
+      (event: string, data: any) => order.push(`${event}:${data.text}`),
+      [],
+      undefined,
+      {
+        allowOutsideDocument: true,
+        onCommit: async () => {
+          order.push('commit');
+        },
+      },
+    );
+    expect(result).toBe('L’adresse e-mail est contact@cfe.cm.');
+    expect(order[0]).toBe('commit');
+    expect(order.slice(1).join('')).toBe('token:L’adresse e-mail est token:contact@cfe.cm.');
+  });
+
+  it("met l'historique et la consigne hors document dans le prompt", () => {
+    const service: any = Object.create(AiDatabaseService.prototype);
+    const prompt = service.buildDocumentAnalysisPrompt("et l'autre partie ?", docs, [], undefined, {
+      history: [
+        { role: 'user', content: 'Lis cette image' },
+        { role: 'assistant', content: 'Partie : OVAMBE NDONO' },
+      ],
+      allowOutsideDocument: true,
+    });
+    expect(prompt).toContain('## CONVERSATION RÉCENTE');
+    expect(prompt).toContain('Assistant : Partie : OVAMBE NDONO');
+    expect(prompt).toContain('[HORS_DOCUMENT]');
+    expect(service.buildDocumentAnalysisPrompt('résume', docs)).not.toContain('HORS_DOCUMENT');
   });
 });

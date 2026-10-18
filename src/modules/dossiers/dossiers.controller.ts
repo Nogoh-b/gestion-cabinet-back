@@ -3,6 +3,7 @@ import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/core/auth/guards/roles.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { AllowClient } from 'src/core/decorators/allow-client.decorator';
+import { isClientUser, toClientDossierView } from 'src/core/auth/client-access';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { stripRestrictedInput } from 'src/core/security/restricted-fields';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
@@ -197,11 +198,13 @@ export class DossiersController {
     description: 'Liste des dossiers',
     type: [DossierResponseDto],
   })
-  findAll(
+  async findAll(
     @Query() searchDto: DossierSearchDto,
     @CurrentUser() user: User,
   ): Promise<any[]> {
-    return this.dossiersService.findAll(searchDto, user);
+    const dossiers = await this.dossiersService.findAll(searchDto, user);
+    // Client : seulement les champs de CLIENT_DOSSIER_VIEW (liste blanche).
+    return isClientUser(user) ? dossiers.map(toClientDossierView) : dossiers;
   }
 
   @Get('paginated')
@@ -264,11 +267,14 @@ export class DossiersController {
     type: DossierResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Dossier non trouvé' })
-  findOne(
+  async findOne(
     @Param('id', ParseIntPipe) id: string,
     @CurrentUser() user: User,
   ): Promise<DossierResponseDto> {
-    return this.dossiersService.findOne(+id, user);
+    const dossier = await this.dossiersService.findOne(+id, user);
+    // Client : seulement les champs de CLIENT_DOSSIER_VIEW (liste blanche) ;
+    // documents et factures passent par /client-portal.
+    return isClientUser(user) ? toClientDossierView(dossier) : dossier;
   }
 
   @Patch(':id')

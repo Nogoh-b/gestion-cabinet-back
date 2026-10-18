@@ -16,6 +16,13 @@ import {
   parseStoredAiConfig,
   PLATFORM_AI_SETTING_KEY,
 } from './ai-provider-config';
+import {
+  AiUsageEvent,
+  contentLength,
+  estimateTokensFromChars,
+  ProviderUsage,
+  readUsageMetadata,
+} from './ai-usage';
 
 export type AiModelProfile = 'fast' | 'quality' | 'streaming';
 export type AiModelMode = 'fast' | 'balanced' | 'precise';
@@ -50,10 +57,10 @@ export const BUILTIN_AI_PROVIDERS: readonly AiProviderDefinition[] = [
     label: 'DeepSeek',
     base_url: 'https://api.deepseek.com',
     models: [
-      'deepseek-v4-flash',
+      'deepseek-flash',
       'deepseek-v4-pro',
-      'deepseek-chat',
-      'deepseek-reasoner',
+      // Alias historique encore accepté par l'API pour V4.1 Flash.
+      'deepseek-v4-flash',
     ],
     description: "Fournisseur DeepSeek compatible avec l'API OpenAI",
     // DeepSeek v4 réfléchit par défaut, même avec `reasoning_effort: low`.
@@ -64,6 +71,28 @@ export const BUILTIN_AI_PROVIDERS: readonly AiProviderDefinition[] = [
     reasoningDefaults: {
       fastProfile: { thinking: { type: 'disabled' } },
       fast: { thinking: { type: 'disabled' } },
+    },
+  },
+  {
+    id: 'glm',
+    label: 'GLM (Z.AI)',
+    base_url: 'https://api.z.ai/api/paas/v4',
+    models: [
+      'glm-5.3',
+      'glm-5.3-flash',
+      'glm-5.3-flashx',
+      'glm-5.2',
+      'glm-5.1',
+      'glm-5',
+      'glm-4.7',
+      'glm-4.6',
+    ],
+    description: "Modèles GLM via l'API de chat compatible OpenAI de Z.AI",
+    reasoningDefaults: {
+      fastProfile: { thinking: { type: 'enabled' }, reasoning_effort: 'low' },
+      fast: { thinking: { type: 'enabled' }, reasoning_effort: 'low' },
+      balanced: { thinking: { type: 'enabled' }, reasoning_effort: 'high' },
+      precise: { thinking: { type: 'enabled' }, reasoning_effort: 'max' },
     },
   },
   {
@@ -199,6 +228,7 @@ export class AiModelRouterService {
     { models: string[]; ts: number }
   >();
   private readonly PROVIDER_MODELS_CACHE_TTL = 5 * 60_000;
+  private usageListener?: (event: AiUsageEvent) => void;
 
   // ── Cache tenant ai_config (sync read, async refresh) ──────────────
   private readonly tenantConfigCache = new Map<
@@ -274,8 +304,9 @@ export class AiModelRouterService {
 
   /**
    * Retourne le catalogue de modeles affiche dans l'administration.
-   * FreeLLM est dynamique et suit son endpoint OpenAI-compatible `/v1/models`.
-   * Les autres fournisseurs conservent leur liste integree et deterministe.
+   * DeepSeek suit son endpoint documenté `/models`; FreeLLM et Google suivent
+   * également leur catalogue OpenAI-compatible. GLM reprend les IDs publiés
+   * dans la documentation officielle Z.AI.
    */
   async listAvailableModels(
     providerId: string,
@@ -289,7 +320,7 @@ export class AiModelRouterService {
       ]),
     ).filter(Boolean);
 
-    if (providerId !== 'freellm' && providerId !== 'google') {
+    if (!['deepseek', 'freellm', 'google'].includes(providerId)) {
       return fallback;
     }
     if (!runtime?.api_key || !runtime.base_url) {
@@ -328,22 +359,26 @@ export class AiModelRouterService {
       const payload = (await response.json()) as {
         data?: Array<{ id?: unknown; available?: unknown }>;
       };
+      const fetchedModels = (Array.isArray(payload?.data) ? payload.data : [])
+        // FreeLLM publie aussi les modeles connus mais inutilisables pour le
+        // compte courant (`available: false`, par exemple `no_key`). Ne pas
+        // les proposer dans l'administration puisqu'un test echouerait.
+        .filter((item) => item?.available !== false)
+        .map((item) => (typeof item?.id === 'string' ? item.id.trim() : ''))
+        .filter(Boolean)
+        // Google renvoie des IDs natifs `models/…` : l'endpoint OpenAI
+        // attend l'ID nu, on affiche donc la forme utilisable.
+        .map((id) =>
+          providerId === 'google' ? id.replace(/^models\//, '') : id,
+        )
+        .filter(Boolean);
       const models = Array.from(
-        new Set(
-          (Array.isArray(payload?.data) ? payload.data : [])
-            // FreeLLM publie aussi les modeles connus mais inutilisables pour le
-            // compte courant (`available: false`, par exemple `no_key`). Ne pas
-            // les proposer dans l'administration puisqu'un test echouerait.
-            .filter((item) => item?.available !== false)
-            .map((item) => (typeof item?.id === 'string' ? item.id.trim() : ''))
-            .filter(Boolean)
-            // Google renvoie des IDs natifs `models/…` : l'endpoint OpenAI
-            // attend l'ID nu, on affiche donc la forme utilisable.
-            .map((id) =>
-              providerId === 'google' ? id.replace(/^models\//, '') : id,
-            )
-            .filter(Boolean),
-        ),
+        new Set([
+          ...fetchedModels,
+          // DeepSeek maintient cet alias historique bien qu'il n'apparaisse
+          // plus dans /models : il pointe toujours vers V4.1 Flash.
+          ...(providerId === 'deepseek' ? ['deepseek-v4-flash'] : []),
+        ]),
       );
       if (!models.length) throw new Error('catalogue vide');
 
@@ -532,6 +567,11 @@ export class AiModelRouterService {
     const model = new ChatOpenAI(chatConfig);
 
     this.installApproximateTokenCounter(model);
+    this.trackUsage(model, {
+      provider: descriptor.provider,
+      model: config.model,
+      profile,
+    });
     this.models.set(cacheKey, model);
     this.logger.log(
       `[AI-MODEL] instance créée → ${this.formatDescriptor(descriptor)}`,
@@ -708,6 +748,7 @@ export class AiModelRouterService {
       // multiplie le temps par 10 et peut épuiser le budget sans réponse (mesuré).
       if (provider === 'deepseek') (chatConfig as any).modelKwargs = { thinking: { type: 'disabled' } };
       model = new ChatOpenAI(chatConfig);
+      this.trackUsage(model, { provider, model: runtime.model, profile: 'vision' });
       this.models.set(cacheKey, model);
     }
     return { model, label: `${provider}/${runtime.model}` };
@@ -869,7 +910,12 @@ export class AiModelRouterService {
         `AI_REASONING_KWARGS_${levelKey}_${this.envProviderKey(providerId)}`,
       );
       if (scoped) return scoped;
-      const builtin = this.builtinReasoningDefaults(providerId)?.[level];
+      const model = this.getConfiguredModel('quality', level);
+      const builtin = this.compatibleBuiltinReasoningDefaults(
+        providerId,
+        model,
+        level,
+      );
       if (builtin) return { ...builtin };
     }
     return this.parseKwargsEnv(`AI_REASONING_KWARGS_${levelKey}`);
@@ -907,6 +953,23 @@ export class AiModelRouterService {
   ): AiProviderDefinition['reasoningDefaults'] {
     return BUILTIN_AI_PROVIDERS.find((p) => p.id === providerId)
       ?.reasoningDefaults;
+  }
+
+  private compatibleBuiltinReasoningDefaults(
+    providerId: string,
+    model: string,
+    level: AiModelMode | 'fastProfile',
+  ): Record<string, unknown> | undefined {
+    const defaults = this.builtinReasoningDefaults(providerId)?.[level];
+    if (!defaults) return undefined;
+
+    const compatible = { ...defaults };
+    // Z.AI ne documente `reasoning_effort` que pour GLM-5.2 et suivants.
+    // GLM-5.1, GLM-5 et GLM-4.x gardent le réglage `thinking` seul.
+    if (providerId === 'glm' && !/^glm-5\.[23](?:$|-)/i.test(model)) {
+      delete compatible.reasoning_effort;
+    }
+    return compatible;
   }
 
   private envProviderKey(providerId: string): string {
@@ -970,7 +1033,7 @@ export class AiModelRouterService {
       apiKey,
       baseURL,
       modelKwargs: this.mergeModelKwargs(
-        this.getModelKwargs(profile, providerId),
+        this.getModelKwargs(profile, providerId, model),
         modelKwargsOverride,
       ),
       useResponsesApi: this.usesResponsesApi(baseURL),
@@ -1257,6 +1320,7 @@ export class AiModelRouterService {
         process.env.OPENAI_API_KEY
       );
     }
+    if (providerId === 'glm') return process.env.GLM_API_KEY;
     return undefined;
   }
 
@@ -1268,6 +1332,9 @@ export class AiModelRouterService {
     }
     if (providerId === 'deepseek') {
       return process.env.AI_DEEPSEEK_BASE_URL || process.env.AI_BASE_URL;
+    }
+    if (providerId === 'glm') {
+      return process.env.AI_GLM_BASE_URL || process.env.GLM_BASE_URL;
     }
     return undefined;
   }
@@ -1350,6 +1417,7 @@ export class AiModelRouterService {
   private getModelKwargs(
     profile: AiModelProfile,
     providerId?: string,
+    model?: string,
   ): Record<string, unknown> | undefined {
     const profileKey =
       profile === 'streaming' ? 'STREAM' : profile.toUpperCase();
@@ -1360,10 +1428,13 @@ export class AiModelRouterService {
         `AI_${this.envProviderKey(providerId)}_${profileKey}_MODEL_KWARGS`,
       );
       if (scoped) return scoped;
-      const builtin =
-        profile === 'fast'
-          ? this.builtinReasoningDefaults(providerId)?.fastProfile
-          : undefined;
+      const builtin = profile === 'fast'
+        ? this.compatibleBuiltinReasoningDefaults(
+            providerId,
+            model ?? '',
+            'fastProfile',
+          )
+        : undefined;
       if (builtin) return { ...builtin };
     }
     const raw =
@@ -1399,6 +1470,68 @@ export class AiModelRouterService {
     } catch {
       return String(input ?? '');
     }
+  }
+
+  /**
+   * Reçoit la consommation de chaque appel de modèle construit ici (chat,
+   * lecture d'images, assistant de la plateforme) : tokens renvoyés par le
+   * fournisseur, ou estimés quand il ne les donne pas.
+   */
+  onUsage(listener: (event: AiUsageEvent) => void): void {
+    this.usageListener = listener;
+  }
+
+  /**
+   * Enveloppe `invoke` et `stream` de l'instance : l'usage est lu dans la
+   * réponse (ou le dernier fragment du flux, `streamUsage` étant actif) et
+   * transmis dans le contexte de l'appelant, qui sait à quelle requête il
+   * appartient. Un appel en échec n'est pas compté.
+   */
+  private trackUsage(
+    model: ChatOpenAI,
+    info: { provider: string; model: string; profile: string },
+  ): void {
+    const report = (input: unknown, usage: ProviderUsage | null, outputChars: number) => {
+      if (!this.usageListener) return;
+      try {
+        this.usageListener({
+          ...info,
+          inputTokens: usage?.input ?? this.estimateTokens(input),
+          outputTokens: usage?.output ?? estimateTokensFromChars(outputChars),
+          cachedInputTokens: usage?.cached ?? 0,
+          reasoningTokens: usage?.reasoning ?? 0,
+          estimated: !usage,
+        });
+      } catch (error) {
+        this.logger.warn(`Suivi de consommation IA : ${(error as Error).message}`);
+      }
+    };
+    const invoke = model.invoke.bind(model);
+    const stream = model.stream.bind(model);
+    Object.assign(model, {
+      invoke: async (input: any, options?: any) => {
+        const response = await invoke(input, options);
+        report(input, readUsageMetadata(response?.usage_metadata), contentLength(response?.content));
+        return response;
+      },
+      stream: async (input: any, options?: any) => {
+        const source = await stream(input, options);
+        return (async function* () {
+          let usage: ProviderUsage | null = null;
+          let chars = 0;
+          try {
+            for await (const chunk of source) {
+              usage = readUsageMetadata((chunk as any)?.usage_metadata) ?? usage;
+              chars += contentLength((chunk as any)?.content);
+              yield chunk;
+            }
+          } finally {
+            // Flux interrompu (arrêt, brouillon SQL abandonné) : ce qui a été lu est estimé.
+            report(input, usage, chars);
+          }
+        })();
+      },
+    });
   }
 
   private installApproximateTokenCounter(model: ChatOpenAI) {

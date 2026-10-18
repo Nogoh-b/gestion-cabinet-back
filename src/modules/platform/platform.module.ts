@@ -42,6 +42,7 @@ import {
   TenantImpersonationController,
 } from './impersonation/platform-impersonation.controller';
 import { PlatformAiService } from './ai/platform-ai.service';
+import { PlatformAiUsageService } from './ai/platform-ai-usage.service';
 import { PlatformAiController } from './ai/platform-ai.controller';
 
 /**
@@ -98,6 +99,7 @@ import { PlatformAiController } from './ai/platform-ai.controller';
     PlatformRevenueService,
     PlatformImpersonationService,
     PlatformAiService,
+    PlatformAiUsageService,
     PlatformReferenceAiService,
   ],
   exports: [

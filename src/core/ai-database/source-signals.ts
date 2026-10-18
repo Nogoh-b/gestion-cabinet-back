@@ -19,7 +19,11 @@ export interface SourceSignals {
   /** Verbe d'écriture explicite (créer, ajouter, modifier…). */
   writeVerb: boolean;
   /** Meilleur extrait de la base juridique de la plateforme, s'il y en a un. */
-  legalKb: { coverage: number; matchedTerms: number; documents: string[] } | null;
+  legalKb: {
+    coverage: number;
+    matchedTerms: number;
+    documents: string[];
+  } | null;
   /** Page de l'application d'où la question est posée. */
   pathname?: string;
 }
@@ -93,6 +97,20 @@ export function isKnowledgeQuestion(signals: SourceSignals): boolean {
 }
 
 /**
+ * La base a peu de chances d'être utile : question de connaissance, ou
+ * question sans ancrage ni vocabulaire métier. Le classifieur muet y répond
+ * par les connaissances et le brouillon SQL n'y est pas lancé.
+ */
+export function isUnlikelyDatabaseQuestion(signals: SourceSignals): boolean {
+  return (
+    isKnowledgeQuestion(signals) ||
+    (!isAnchoredInCabinet(signals) &&
+      !signals.domainKeyword &&
+      !signals.writeVerb)
+  );
+}
+
+/**
  * Assez net pour répondre par les connaissances sans appeler le classifieur :
  * la base juridique couvre la question et aucun vocabulaire métier ne la
  * tire vers les données (« clients débiteurs » reste au classifieur).
@@ -110,8 +128,10 @@ export function answerSources(
   intent: string,
   signals: SourceSignals | null | undefined,
 ): AnswerSource[] {
-  const kb = !!signals?.legalKb && (signals.legalMarkers || isStrongLegalKb(signals));
-  if (intent === 'READ') return kb ? ['db', 'legal_kb', 'model'] : ['db', 'model'];
+  const kb =
+    !!signals?.legalKb && (signals.legalMarkers || isStrongLegalKb(signals));
+  if (intent === 'READ')
+    return kb ? ['db', 'legal_kb', 'model'] : ['db', 'model'];
   if (intent === 'CONVERSATIONAL' || intent === 'ADVICE') {
     return signals?.legalKb ? ['legal_kb', 'model'] : ['model'];
   }
@@ -127,16 +147,24 @@ export function describeSignals(signals: SourceSignals): string {
     );
   }
   if (signals.followUp) {
-    lines.push('- La demande renvoie à un résultat déjà affiché dans la conversation.');
+    lines.push(
+      '- La demande renvoie à un résultat déjà affiché dans la conversation.',
+    );
   }
   if (signals.cabinetAnchor && !signals.recordReference) {
-    lines.push('- La demande vise le cabinet (possessif, démonstratif, période ou comptage).');
+    lines.push(
+      '- La demande vise le cabinet (possessif, démonstratif, période ou comptage).',
+    );
   }
   if (!isAnchoredInCabinet(signals)) {
-    lines.push("- Aucun ancrage dans les données du cabinet (ni numéro, ni possessif, ni période).");
+    lines.push(
+      '- Aucun ancrage dans les données du cabinet (ni numéro, ni possessif, ni période).',
+    );
   }
   if (signals.legalMarkers) {
-    lines.push('- Formulation de question de droit (délai, procédure, texte, définition…).');
+    lines.push(
+      '- Formulation de question de droit (délai, procédure, texte, définition…).',
+    );
   }
   if (isStrongLegalKb(signals)) {
     const names = signals.legalKb!.documents.slice(0, 2).join(', ');

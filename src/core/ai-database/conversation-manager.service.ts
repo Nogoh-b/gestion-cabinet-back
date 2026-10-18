@@ -1,14 +1,33 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 // conversation-manager.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { v4 as uuidv4 } from 'uuid';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationMessage } from './entities/conversation-message.entity';
+import { AiConversationDocument } from './entities/ai-conversation-document.entity';
 import type { ReferencedEntityContext } from './dto/ask-question.dto';
 import { pickConversationResource } from './conversation-resource';
+
+/** Texte lu d'une pièce jointe, gardé avec la conversation. */
+export interface ConversationDocumentInput {
+  name: string;
+  type?: string;
+  size?: number;
+  method?: string;
+  confidence?: number;
+  pages?: number;
+  illegible?: number;
+  content: string;
+  displayContent?: string;
+}
+
+const PENDING_DOCUMENTS = Symbol('pendingDocuments');
+/** Un document plus long (≈ 200 pages) est gardé jusqu'à cette limite. */
+const MAX_STORED_DOCUMENT_CHARS = 400_000;
+const MAX_CONVERSATION_DOCUMENTS = 10;
 import { addTenantCondition } from '../tenant/tenant-repository.patch';
 
 @Injectable()
@@ -30,6 +49,73 @@ export class ConversationManagerService {
     return metadata ? this.userMessageExtras.run(metadata, callback) : callback();
   }
 
+  /**
+   * Documents lus pour la question en cours : enregistrés avec le message
+   * utilisateur (addUserMessage), quelle que soit la branche qui l'ajoute.
+   * Propriété non énumérable : elle n'entre pas dans les métadonnées du message.
+   */
+  queueUserMessageDocuments(documents: ConversationDocumentInput[]): void {
+    const store = this.userMessageExtras.getStore();
+    if (!store || !documents.length) return;
+    Object.defineProperty(store, PENDING_DOCUMENTS, {
+      value: documents,
+      enumerable: false,
+      configurable: true,
+    });
+  }
+
+  /** Documents lus dans une conversation de l'utilisateur, du plus récent au plus ancien. */
+  async getConversationDocuments(
+    conversationId: string,
+    userId?: string | number,
+  ): Promise<AiConversationDocument[]> {
+    if (this.temporarySession.getStore() || !this.documentRepo) return [];
+    try {
+      const conversation = await this.conversationRepo.findOne({
+        where: { id: conversationId },
+      });
+      if (!conversation) return [];
+      if (userId !== undefined && String(conversation.userId) !== String(userId)) return [];
+      return await this.documentRepo.find({
+        where: { conversationId },
+        order: { id: 'DESC' },
+        take: MAX_CONVERSATION_DOCUMENTS,
+      });
+    } catch (error) {
+      this.logger.warn(`Documents de la conversation indisponibles: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  private async saveQueuedDocuments(conversationId: string, messageId?: number): Promise<void> {
+    const store = this.userMessageExtras.getStore() as Record<string | symbol, any> | undefined;
+    const documents: ConversationDocumentInput[] | undefined = store?.[PENDING_DOCUMENTS];
+    if (!documents?.length || !this.documentRepo || this.temporarySession.getStore()) return;
+    delete store![PENDING_DOCUMENTS];
+    try {
+      await this.documentRepo.save(
+        documents.map((document) =>
+          this.documentRepo!.create({
+            conversationId,
+            messageId: messageId ?? null,
+            name: document.name.slice(0, 255),
+            type: document.type?.slice(0, 120) ?? null,
+            size: document.size ?? null,
+            method: document.method ?? null,
+            confidence: document.confidence ?? null,
+            pages: document.pages ?? null,
+            illegible: document.illegible ?? null,
+            content: document.content.slice(0, MAX_STORED_DOCUMENT_CHARS),
+            displayContent: document.displayContent?.slice(0, MAX_STORED_DOCUMENT_CHARS) ?? null,
+          }),
+        ),
+      );
+    } catch (error) {
+      // Le chat répond même si le texte ne peut pas être gardé (table absente…).
+      this.logger.warn(`Documents non enregistrés: ${(error as Error).message}`);
+    }
+  }
+
   private readonly logger = new Logger(ConversationManagerService.name);
 
   constructor(
@@ -37,6 +123,9 @@ export class ConversationManagerService {
     private conversationRepo: Repository<Conversation>,
     @InjectRepository(ConversationMessage)
     private messageRepo: Repository<ConversationMessage>,
+    @Optional()
+    @InjectRepository(AiConversationDocument)
+    private documentRepo?: Repository<AiConversationDocument>,
   ) {}
 
   /**
@@ -383,7 +472,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     content: string,
     references?: ReferencedEntityContext[],
   ): Promise<void> {
-    await this.addMessage(
+    const message = await this.addMessage(
       conversationId,
       'user',
       content,
@@ -392,6 +481,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       references,
       this.userMessageExtras.getStore(),
     );
+    await this.saveQueuedDocuments(conversationId, message?.id);
     await this.updateTitleFromFirstUserMessage(conversationId, content);
     await this.attachConversationResource(conversationId, references);
   }
@@ -598,6 +688,20 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
    * Les messages system sont exclus car le service AiDatabase reconstruit un
    * prompt system a jour a chaque appel (schema, tenant, documents).
    */
+  /** Métadonnées du dernier message assistant (ex. réponse fondée sur un document). */
+  async getLastAssistantMetadata(
+    conversationId: string,
+  ): Promise<Record<string, any> | null> {
+    if (this.temporarySession.getStore()) return null;
+    const message = await this.messageRepo.findOne({
+      where: { conversationId, role: 'assistant' },
+      order: { created_at: 'DESC' },
+    });
+    return message
+      ? this.normalizeJsonValue<Record<string, any>>(message.metadata, {})
+      : null;
+  }
+
   async getRecentHistoryForPrompt(
     conversationId: string,
     options: { maxMessages?: number; maxTokens?: number } = {},

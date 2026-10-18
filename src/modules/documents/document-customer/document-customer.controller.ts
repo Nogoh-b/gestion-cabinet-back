@@ -13,6 +13,7 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { inlineContentDisposition } from 'src/core/shared/utils/content-disposition.util';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 
 import { User } from 'src/modules/iam/user/entities/user.entity';
@@ -318,7 +319,9 @@ export class DocumentCustomerController {
     // relaie correctement la réponse au lieu de la réduire à un 204.
     const opts = {
       type: mimeType,
-      disposition: `inline; filename="${(document as any).original_name || document.name || 'document'}"`,
+      disposition: inlineContentDisposition(
+        (document as any).original_name || document.name,
+      ),
     };
 
     // 1) Fichier local → on lit les octets et on les renvoie.

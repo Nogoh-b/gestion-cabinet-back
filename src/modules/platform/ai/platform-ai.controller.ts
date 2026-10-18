@@ -7,12 +7,13 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Query,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { PlatformRoute, PlatformRoles } from '../auth/platform-route.decorator';
 import { PlatformAudit } from '../audit/platform-audit.decorator';
 import {
@@ -20,6 +21,7 @@ import {
   PlatformPrincipal,
 } from '../common/platform-principal';
 import { PlatformAiService } from './platform-ai.service';
+import { PlatformAiUsageService } from './platform-ai-usage.service';
 
 class AiChoiceDto {
   @IsString()
@@ -53,6 +55,35 @@ class CustomAiProviderDto {
   api_key?: string;
 }
 
+class AiModelKeyDto {
+  @IsString()
+  @MaxLength(64)
+  provider: string;
+
+  @IsString()
+  @MaxLength(128)
+  model: string;
+}
+
+/** Tarif en USD par million de tokens. */
+class AiModelPriceDto extends AiModelKeyDto {
+  @IsNumber()
+  @Min(0)
+  @Max(10_000)
+  input: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(10_000)
+  output: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(10_000)
+  cached_input?: number | null;
+}
+
 class TestAiProviderDto {
   @IsOptional()
   @IsString()
@@ -69,7 +100,44 @@ class TestAiProviderDto {
 @Controller('platform/ai')
 @PlatformRoute()
 export class PlatformAiController {
-  constructor(private readonly ai: PlatformAiService) {}
+  constructor(
+    private readonly ai: PlatformAiService,
+    private readonly usage: PlatformAiUsageService,
+  ) {}
+
+  // ── Consommation ─────────────────────────────────────────────────────────
+
+  @Get('usage')
+  @ApiOperation({ summary: 'Consommation IA : requêtes, tokens et coût, par cabinet, modèle et jour' })
+  usageOverview(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.usage.overview(from, to);
+  }
+
+  @Get('usage/cabinets/:cabinetId')
+  @ApiOperation({ summary: 'Consommation IA d’un cabinet : utilisateurs, modèles, dernières requêtes' })
+  usageCabinet(
+    @Param('cabinetId', ParseIntPipe) cabinetId: number,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.usage.cabinetDetail(cabinetId, from, to);
+  }
+
+  @Put('pricing')
+  @PlatformRoles('owner', 'finance')
+  @PlatformAudit({ action: 'ai.pricing.update', targetType: 'platform_ai_pricing' })
+  @ApiOperation({ summary: 'Tarif d’un modèle (USD par million de tokens) ; valorise les appels encore sans tarif' })
+  setPrice(@Body() body: AiModelPriceDto, @CurrentPlatformAdmin() admin: PlatformPrincipal) {
+    return this.usage.setPrice(body, admin.id);
+  }
+
+  @Delete('pricing')
+  @PlatformRoles('owner', 'finance')
+  @PlatformAudit({ action: 'ai.pricing.delete', targetType: 'platform_ai_pricing' })
+  @ApiOperation({ summary: 'Retire le tarif d’un modèle (les coûts déjà calculés restent)' })
+  removePrice(@Body() body: AiModelKeyDto, @CurrentPlatformAdmin() admin: PlatformPrincipal) {
+    return this.usage.removePrice(body, admin.id);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Moteur par défaut, fournisseurs et exceptions par cabinet' })

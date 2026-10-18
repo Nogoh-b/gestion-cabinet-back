@@ -54,3 +54,48 @@ export interface SearchUser {
   role: string;
   permissions: string[];
 }
+
+/** `GET /search/mentions` : recherche « partout » du menu @ du chat IA. */
+export class MentionSearchDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  q = '';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  limit = 3;
+}
+
+/** Mêmes clés que les catégories du menu @ (`mentionConfigs` du front). */
+export const MENTION_TYPES = [
+  'client',
+  'dossier',
+  'employee',
+  'diligence',
+  'audience',
+  'facture',
+  'document',
+  'fournisseur',
+  'apporteur',
+] as const;
+export type MentionType = (typeof MENTION_TYPES)[number];
+
+export interface MentionItem {
+  id: number | string;
+  label: string;
+  sublabel?: string;
+  /** Repères joints au contexte de la question (numéro, e-mail, date…). */
+  data: Record<string, unknown>;
+}
+
+export interface MentionGroup {
+  type: MentionType;
+  items: MentionItem[];
+  /** D'autres résultats existent : le menu propose « Voir tout ». */
+  hasMore: boolean;
+}

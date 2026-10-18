@@ -1,4 +1,6 @@
 import {
+  documentCoverage,
+  documentFocus,
   formatQuotedPassage,
   isDocumentFollowUp,
   parseAttachedDocuments,
@@ -81,5 +83,54 @@ describe('chat-attachments', () => {
     expect(quote).toEqual({ text: 'Le bail prend effet le 1er mars.', source: 'Bail.pdf' });
     expect(formatQuotedPassage(quote!)).toContain('(source : Bail.pdf)');
     expect(formatQuotedPassage(quote!)).toContain('Le bail prend effet le 1er mars.');
+  });
+});
+
+describe('documentFocus — document repris après plusieurs messages', () => {
+  const fiche = [{
+    name: 'IMG_20260824_174817.jpg.jpeg',
+    content: 'CABINET D AVOCATS FRANCIS EBIANG\nTEL +237.233.42.80.90\nEmail : feb@cfe.cm\nAffaire OVAMBE NDONO — trouble de jouissance',
+  }];
+
+  it.each([
+    ['li bien le contenu', 'reading'],
+    ['relis-le stp', 'reading'],
+    ["l'adresse mail du cabinet c'est quoi ?", 'content'],
+    ['le téléphone du cabinet Francis ?', 'content'],
+    ['résume ce document', 'explicit'],
+  ])('suit le document : %s', (question, reason) => {
+    expect(documentFocus(question, fiche)).toBe(reason);
+  });
+
+  it('suit le document juste après une réponse fondée sur lui', () => {
+    expect(documentFocus('je veux créer le dossier là', fiche)).toBeNull();
+    expect(documentFocus('je veux créer le dossier là', fiche, { previousAnswerUsedDocument: true })).toBe('previous');
+    // Une question de droit générale ne suit pas le document par simple proximité.
+    expect(documentFocus("quels sont les délais d'appel au Cameroun ?", fiche, {
+      previousAnswerUsedDocument: true,
+      knowledgeQuestion: true,
+    })).toBeNull();
+  });
+
+  it.each([
+    'combien de dossiers ouverts ?',
+    'liste mes audiences de demain',
+    'affiche toutes les factures impayées',
+    'bonjour, ça va ?',
+    'merci beaucoup',
+  ])('laisse les questions sur les données du cabinet à la base : %s', (question) => {
+    expect(documentFocus(question, fiche, { previousAnswerUsedDocument: true })).toBeNull();
+  });
+
+  it('renvoie vers la base un numéro absent du document', () => {
+    expect(documentFocus('le contenu du dossier DOS-2026-0001', fiche, { recordReference: 'DOS-2026-0001' })).toBeNull();
+    expect(documentFocus('le contenu du dossier DOS-2026-0001', [{ name: 'a.pdf', content: 'Réf. DOS-2026-0001' }], {
+      recordReference: 'DOS-2026-0001',
+    })).toBe('reading');
+  });
+
+  it('mesure la part des mots de la question présents dans le document', () => {
+    expect(documentCoverage('adresse mail cabinet', fiche[0].content)).toEqual({ coverage: 2 / 3, matched: 2 });
+    expect(documentCoverage('bonjour', fiche[0].content).matched).toBe(0);
   });
 });

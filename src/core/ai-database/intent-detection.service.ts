@@ -17,9 +17,8 @@ import {
   SourceSignals,
   describeSignals,
   extractRecordReference,
-  isAnchoredInCabinet,
   isDecisiveKnowledgeRoute,
-  isKnowledgeQuestion,
+  isUnlikelyDatabaseQuestion,
   summarizeLegalMatches,
 } from './source-signals';
 
@@ -167,10 +166,16 @@ export class IntentDetectionService {
       return { type: 'READ', requiresConfirmation: false };
     }
 
-    if (!isObviousWrite && options.signals && isDecisiveKnowledgeRoute(options.signals)) {
+    if (
+      !isObviousWrite &&
+      options.signals &&
+      isDecisiveKnowledgeRoute(options.signals)
+    ) {
       // La base juridique couvre la question et rien ne la rattache au
       // cabinet : réponse par les connaissances, sans appel au classifieur.
-      this.logger.log('🏷️ Signaux → CHAT (base juridique, sans ancrage cabinet)');
+      this.logger.log(
+        '🏷️ Signaux → CHAT (base juridique, sans ancrage cabinet)',
+      );
       return { type: 'CONVERSATIONAL', requiresConfirmation: false };
     }
 
@@ -1100,12 +1105,7 @@ Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
    * plutôt qu'une requête SQL vide (« aucune donnée »).
    */
   private fallbackClass(signals?: SourceSignals): IntentClass {
-    if (!signals) return 'READ';
-    if (isKnowledgeQuestion(signals)) return 'CHAT';
-    if (!isAnchoredInCabinet(signals) && !signals.domainKeyword && !signals.writeVerb) {
-      return 'CHAT';
-    }
-    return 'READ';
+    return signals && isUnlikelyDatabaseQuestion(signals) ? 'CHAT' : 'READ';
   }
 
   /**

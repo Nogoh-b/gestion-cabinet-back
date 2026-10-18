@@ -14,7 +14,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Les configurations d'origine sont sauvegardées dans
  * `platform_settings['ai_legacy_cabinet_configs']` pour le `down()`.
  */
-const BUILTIN_PROVIDERS = ['deepseek', 'meta', 'freellm', 'google'];
+const BUILTIN_PROVIDERS = ['deepseek', 'glm', 'meta', 'freellm', 'google'];
 const AI_KEY = 'ai';
 const BACKUP_KEY = 'ai_legacy_cabinet_configs';
 
