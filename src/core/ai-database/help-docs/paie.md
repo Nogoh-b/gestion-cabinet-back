@@ -10,8 +10,10 @@ paths: /paie, /payroll, /payslip, /salary-advances
 ## À quoi ça sert
 Le module Paie prépare la paie du cabinet **mois par mois** : on crée une **période**, on **génère les bulletins** de tous les collaborateurs, on contrôle et ajuste (primes, retenues, avances), on **clôture la période** puis on **marque chaque bulletin payé**. Le paiement d'un bulletin génère automatiquement l'écriture comptable.
 
+**Processus en bref :** collaborateurs avec salaire (Employés) → barème configuré (Paramètres de paie) → **Nouvelle période** → **Générer les bulletins** → contrôle et ajustements → **Clôturer la période** → **Marquer payée** (écriture comptable + récupération des avances).
+
 ## Où le trouver
-- Menu **Gestion des paies** (`/paie`, permission « voir la paie », module Paie inclus dans le plan d'abonnement) : l'espace unique de travail.
+- Menu **Gestion des paies** (section « Cabinet » de la barre latérale, `/paie`, permission « voir la paie », module Paie inclus dans le plan d'abonnement) : l'espace unique de travail.
 - **Paramètres de paie** (bouton en haut de l'espace Paie) : le **barème de cotisations**.
 - Onglet **Avances sur salaire** dans l'espace Paie, et onglet **Avances sur salaire** dans la fiche du collaborateur.
 - Les listes détaillées existent aussi : Périodes de paie, Fiches de paie, Lignes de paie, Cotisations, Avances.

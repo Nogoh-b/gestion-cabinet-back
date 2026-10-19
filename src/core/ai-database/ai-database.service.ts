@@ -101,7 +101,16 @@ import {
   DisplayedRecord,
   extractDisplayedRecords,
   formatDisplayedRecordsForPlanner,
+  withRecordRefs,
 } from './displayed-records';
+import {
+  formatHistoryForPlanner,
+  historyHasCitedRecords,
+  knownRecordKeys,
+  toCitedReference,
+  unverifiedTargets,
+  withCitedLine,
+} from './cited-records';
 import {
   uploadedDocumentMessage,
   uploadedFilePlannerNote,
@@ -453,6 +462,9 @@ export class AiDatabaseService implements OnModuleInit {
 
   /** Mémorise les enregistrements lus par la requête courante (tous les SELECT cumulés). */
   private rememberDisplayedRecords(records: DisplayedRecord[]): void {
+    // La réponse renvoie ces enregistrements (identifiant + libellé + lien) :
+    // le chat les garde avec le message et les renvoie dans l'historique.
+    this.conversationManager.citeRecords(records.map(toCitedReference));
     const metrics = this.metricsStorage.getStore();
     if (!metrics?.memoryKey || !records.length) return;
     metrics.displayedRecords = [...(metrics.displayedRecords ?? []), ...records].slice(0, 30);
@@ -482,8 +494,13 @@ export class AiDatabaseService implements OnModuleInit {
   private withDisplayedRecords(
     history: string,
     user: AiUserContext | string,
+    visibleHistory: VisibleHistoryMessage[] = [],
   ): string {
     if (!history) return history;
+    // L'historique du chat porte déjà les identifiants cités, message par
+    // message : la mémoire « dernière lecture » (autre fil possible) ne sert
+    // qu'aux appels sans historique visible.
+    if (historyHasCitedRecords(visibleHistory)) return history;
     const records = this.displayedRecordsForPlanner(user);
     return records ? `${history}\n\n${records}` : history;
   }
@@ -972,7 +989,9 @@ export class AiDatabaseService implements OnModuleInit {
 
     const recentHistory: Array<{ role: string; content: string }> =
       historyOverride.length
-        ? historyOverride.slice(-this.MAX_HISTORY_MESSAGES)
+        ? historyOverride
+            .slice(-this.MAX_HISTORY_MESSAGES)
+            .map((m) => ({ role: m.role, content: withCitedLine(m, 4000) }))
         : conversationId
           ? await this.conversationManager.getRecentHistoryForPrompt(
               conversationId,
@@ -2201,12 +2220,20 @@ Contraintes obligatoires :
     const files = toUploadedFiles(uploaded);
     const metadata = this.userMessageMetadata(dto, files);
     const run = () => this.withAiMetrics('ask', aiRequestLogId, () =>
-      this.analyzeQuestionInternal(dto.temporary === true || dto.temporary === 'true'
-        ? { ...dto, conversationId: undefined } : dto, user, files),
+      this.conversationManager.withCitations(async () =>
+        this.withCitedRecords(await this.analyzeQuestionInternal(dto.temporary === true || dto.temporary === 'true'
+          ? { ...dto, conversationId: undefined } : dto, user, files))),
     this.displayedRecordsKey(user));
     const analyze = metadata ? () => this.conversationManager.withUserMessageMetadata(metadata, run) : run;
     return dto.temporary === true || dto.temporary === 'true'
       ? this.conversationManager.runTemporary(analyze) : analyze();
+  }
+
+  /** Ajoute à une réponse du chat les enregistrements qu'elle cite (lectures de la requête). */
+  private withCitedRecords<T>(payload: T): T {
+    const cited = this.conversationManager.citedRecords();
+    if (!cited.length || !payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+    return (payload as any).citedRecords ? payload : { ...payload, citedRecords: cited };
   }
 
   /**
@@ -2525,6 +2552,7 @@ Contraintes obligatoires :
         ? this.formatVisibleHistoryForIntent(historyOverride)
         : await this.getHistorySnippetForIntent(dto.conversationId),
       user,
+      historyOverride,
     );
     const forceWriteDespiteReadMode = this.shouldForceWriteDespiteReadMode(
       intentMode,
@@ -2571,6 +2599,7 @@ Contraintes obligatoires :
         intentResult.writePlan,
         requestContext.referenced,
       );
+      this.confirmUnverifiedTargets(intentResult, user, dto.question, historyOverride, requestContext.referenced);
     }
 
     // Mode écriture forcé mais génération du plan impossible : message honnête,
@@ -3722,7 +3751,6 @@ ${legalContext}` : ''}`;
    *
    * Stratégie :
    *  - Injecte l'ID choisi dans le champ FK de l'opération concernée
-   *  - Ajoute resolveConfig.mode = 'best_effort' pour éviter une re-détection
    *  - Relance executePlan depuis le début (transaction = tout ou rien)
    *
    * @param pendingPlan   Le WritePlan original (retourné lors de l'ambiguïté)
@@ -3801,7 +3829,6 @@ ${legalContext}` : ''}`;
     } else {
       op.fields[fieldName] = resolvedId;
     }
-    op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
 
     this.logger.log(
       `🔄 Reprise: opération ${operationIndex} "${op.entity}" — ` +
@@ -3851,8 +3878,7 @@ ${legalContext}` : ''}`;
         `⚠️ Aucun handler pour "${entityTable}" — injection du texte brut`,
       );
       op.fields[fieldName] = customValue;
-      op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
-      return this.executePatchedPlan(
+        return this.executePatchedPlan(
         patchedPlan,
         userId,
         conversationId,
@@ -3916,8 +3942,7 @@ ${legalContext}` : ''}`;
 
       // 4. Injecter l'ID dans le plan et reprendre
       op.fields[fieldName] = writeResult.entityId;
-      op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
-
+  
       return this.executePatchedPlan(
         patchedPlan,
         userId,
@@ -4355,19 +4380,32 @@ ${lines.join('\n')}
     }
   }
 
+  /** Derniers échanges visibles, chacun suivi des enregistrements cités (table#id). */
   private formatVisibleHistoryForIntent(
     history: VisibleHistoryMessage[],
   ): string {
-    return history
-      .slice(-6)
-      .map((m) =>
-        `${m.role === 'user' ? 'UTILISATEUR' : 'ASSISTANT'}: ${m.content}`.substring(
-          0,
-          1200,
-        ),
-      )
-      .join('\n---\n')
-      .substring(0, 3000);
+    return formatHistoryForPlanner(history);
+  }
+
+  /**
+   * Un plan qui vise un identifiant jamais montré à l'utilisateur (ni cité,
+   * ni mentionné, ni tapé) ne s'exécute pas d'office : la carte de
+   * confirmation montre l'enregistrement réellement visé.
+   */
+  private confirmUnverifiedTargets(
+    intentResult: { writePlan?: WritePlan; requiresConfirmation?: boolean },
+    user: AiUserContext | string,
+    question: string,
+    history: VisibleHistoryMessage[],
+    referenced: ReferencedEntityContext[],
+  ): void {
+    if (!intentResult.writePlan || intentResult.requiresConfirmation) return;
+    const remembered = this.lastDisplayedRecords.get(this.displayedRecordsKey(user))?.records ?? [];
+    const known = knownRecordKeys(history, referenced, remembered);
+    const unverified = unverifiedTargets(intentResult.writePlan.operations, known, question);
+    if (!unverified.length) return;
+    this.logger.warn(`🛡️ Identifiant(s) jamais montré(s) à l'utilisateur : ${unverified.join(', ')} → confirmation requise`);
+    intentResult.requiresConfirmation = true;
   }
 
   private enrichWritePlanWithReferencedEntities(
@@ -5049,9 +5087,13 @@ ${blocks.join('\n\n')}
   ): Promise<void> {
     const files = toUploadedFiles(uploaded);
     const metadata = this.userMessageMetadata(dto, files);
+    // La réponse finale porte les enregistrements cités (identifiant + lien).
+    const send = (event: string, data: any) =>
+      sendEvent(event, event === 'result' ? this.withCitedRecords(data) : data);
     const run = () => this.withAiMetrics('ask_stream', aiRequestLogId, () =>
-      this.analyzeQuestionStreamInternal(dto.temporary === true || dto.temporary === 'true'
-        ? { ...dto, conversationId: undefined } : dto, user, files, sendEvent),
+      this.conversationManager.withCitations(() =>
+        this.analyzeQuestionStreamInternal(dto.temporary === true || dto.temporary === 'true'
+          ? { ...dto, conversationId: undefined } : dto, user, files, send)),
     this.displayedRecordsKey(user));
     const analyze = metadata ? () => this.conversationManager.withUserMessageMetadata(metadata, run) : run;
     return dto.temporary === true || dto.temporary === 'true'
@@ -5416,6 +5458,7 @@ ${blocks.join('\n\n')}
           ? this.formatVisibleHistoryForIntent(historyOverride)
           : await this.getHistorySnippetForIntent(dto.conversationId),
         user,
+        historyOverride,
       );
 
       // ── 2bis. Analyse directe de documents (bypass SQL) ─────────────────────
@@ -5620,6 +5663,7 @@ ${blocks.join('\n\n')}
           intentResult.writePlan,
           requestContext.referenced,
         );
+        this.confirmUnverifiedTargets(intentResult, user, dto.question, historyOverride, requestContext.referenced);
       }
       sendEvent('intent', {
         type: intentResult.type,
@@ -8996,6 +9040,16 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
    * Prépare une requête READ avant validation/exécution pour éviter les écarts
    * entre la requête "explainée" et la requête réellement lancée.
    */
+  /** La table a-t-elle une clé primaire `id` (identifiant renvoyable au chat) ? */
+  private hasIdPrimaryKey(table: string): boolean {
+    return this.dataSource.entityMetadatas.some(
+      (meta) =>
+        meta.tableName.toLowerCase() === table &&
+        meta.primaryColumns.length === 1 &&
+        meta.primaryColumns[0].databaseName === 'id',
+    );
+  }
+
   private prepareReadQuery(sqlQuery: string): string {
     let preparedQuery = sqlQuery.trim();
 
@@ -9126,6 +9180,9 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     if (placeholderError) {
       throw new Error(placeholderError);
     }
+    // Liste d'enregistrements : leur identifiant accompagne la réponse
+    // (retiré de l'affichage), même si le modèle a oublié la colonne ref__.
+    sqlQuery = withRecordRefs(sqlQuery, (table) => this.hasIdPrimaryKey(table));
 
     // execQuery est la requête nettoyée + enrichie qui sera réellement exécutée
     const execQuery = this.ensureResultLimit(this.prepareReadQuery(sqlQuery));

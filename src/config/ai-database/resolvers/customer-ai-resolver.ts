@@ -4,44 +4,52 @@ import { Repository, ILike } from 'typeorm';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import {
   ResolveResult,
-  ResolveMatch,
   ResolveConfig,
 } from 'src/core/ai-database/write/entity-resolver.service';
+import {
+  MATCH_TIER_RANK,
+  pickDeterministic,
+  searchWords,
+} from 'src/core/ai-database/write/exact-match';
 import { SpecializedEntityResolver } from 'src/core/ai-database/interfaces/ai-database-project-config.interface';
 
-function normalize(s: string | null | undefined): string {
-  if (!s) return '';
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+/** Champs qui identifient un client (nom, raison sociale, code, e-mail, téléphone). */
+const IDENTITY_FIELDS = [
+  'full_name',
+  'first_name',
+  'last_name',
+  'company_name',
+  'email',
+  'customer_code',
+  'reference',
+  'number_phone_1',
+] as const;
+
+function identityTexts(c: Partial<Customer>): unknown[] {
+  const texts: unknown[] = IDENTITY_FIELDS.map((field) => (c as any)[field]);
+  if (c.first_name && c.last_name) {
+    texts.push(`${c.first_name} ${c.last_name}`, `${c.last_name} ${c.first_name}`);
+  }
+  return texts;
 }
 
-function similarityScore(a: string, b: string): number {
-  const na = normalize(a);
-  const nb = normalize(b);
-  if (!na || !nb) return 0;
-  if (na === nb) return 100;
-  if (na.includes(nb) || nb.includes(na)) return 85;
-  const tokensA = new Set(na.split(' ').filter((t) => t.length > 1));
-  const tokensB = new Set(nb.split(' ').filter((t) => t.length > 1));
-  const common = [...tokensA].filter((t) => tokensB.has(t)).length;
-  const tokenScore = common / Math.max(tokensA.size, tokensB.size, 1);
-  const bigrams = (s: string) => {
-    const r: string[] = [];
-    for (let i = 0; i < s.length - 1; i++) r.push(s.slice(i, i + 2));
-    return r;
-  };
-  const bA = bigrams(na);
-  const bB = bigrams(nb);
-  const bi = bA.filter((bg) => bB.includes(bg)).length;
-  const bigramScore = (2 * bi) / (bA.length + bB.length || 1);
-  return Math.round(Math.max(tokenScore, bigramScore) * 80);
+function customerLabel(c: Partial<Customer>): string {
+  const name =
+    c.full_name ||
+    `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() ||
+    c.company_name ||
+    c.email ||
+    `#${c.id}`;
+  const extra = [c.customer_code, c.email && c.email !== name ? c.email : null].filter(Boolean);
+  return [name, ...extra].join(' · ').slice(0, 80);
 }
 
+/**
+ * Client désigné par un texte, SANS score : le client (propriétaire juridique
+ * du dossier) n'est retenu que si le texte correspond exactement (nom complet
+ * dans un sens ou l'autre, raison sociale, code, e-mail) ou si tous ses mots
+ * figurent dans un seul client. Sinon les clients proches sont proposés.
+ */
 @Injectable()
 export class CustomerAiResolver implements SpecializedEntityResolver {
   readonly tables = ['customer', 'customers'];
@@ -53,122 +61,52 @@ export class CustomerAiResolver implements SpecializedEntityResolver {
 
   async resolve(
     input: string,
-    config?: ResolveConfig,
+    _config?: ResolveConfig,
   ): Promise<ResolveResult<any>> {
-    const ni = normalize(input);
-    const parts = ni.split(' ');
-    const isFullIdentity = parts.length > 1;
-    const first = parts[0];
-    const rest = parts.slice(1).join(' ');
-
-    const candidates = await this.customerRepo.find({
-      where: [
-        { first_name: ILike(`%${first}%`) },
-        { last_name: ILike(`%${first}%`) },
-        ...(rest
-          ? [
-              { first_name: ILike(`%${rest}%`) },
-              { last_name: ILike(`%${rest}%`) },
-            ]
-          : []),
-        { company_name: ILike(`%${input}%`) },
-        { email: ILike(`%${input}%`) },
-      ],
-      take: 20,
-    });
-
-    if (candidates.length === 0) {
-      const conditions = parts.flatMap((t) => [
-        { first_name: ILike(`%${t}%`) },
-        { last_name: ILike(`%${t}%`) },
-        { company_name: ILike(`%${t}%`) },
-      ]);
-      candidates.push(
-        ...(await this.customerRepo.find({ where: conditions, take: 20 })),
-      );
+    const words = searchWords(input);
+    const rows = await this.findContaining(words.slice(0, 1), 200);
+    let pick = pickDeterministic(input, rows, identityTexts);
+    if (!pick.best && !pick.ambiguous && words.length > 1) {
+      // Rien de sûr : élargir aux autres mots, seulement pour proposer.
+      const more = await this.findContaining(words, 30);
+      const known = new Set(rows.map((r) => r.id));
+      pick = pickDeterministic(input, [...rows, ...more.filter((r) => !known.has(r.id))], identityTexts);
     }
 
-    const scored: ResolveMatch<Customer>[] = candidates
-      .map((c) => {
-        const fullName = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
-        const reverseName = `${c.last_name ?? ''} ${c.first_name ?? ''}`.trim();
-        const scores = [
-          { score: similarityScore(input, fullName), label: 'prénom+nom' },
-          { score: similarityScore(input, reverseName), label: 'nom+prénom' },
-          {
-            score: similarityScore(input, c.company_name),
-            label: 'entreprise',
-          },
-          { score: similarityScore(input, c.email), label: 'email' },
-          // Avec une identité complète, une égalité sur le seul prénom ou le
-          // seul nom n'est jamais suffisante pour attribuer un dossier.
-          ...(!isFullIdentity
-            ? [
-                {
-                  score: similarityScore(input, c.first_name),
-                  label: 'prénom',
-                },
-                { score: similarityScore(input, c.last_name), label: 'nom' },
-              ]
-            : []),
-        ];
-        const best = scores.reduce((a, b) => (a.score >= b.score ? a : b));
-        return {
-          entity: c,
-          score: best.score,
-          matchedOn:
-            `${best.label}: ${fullName || c.email || c.company_name || ''}`.slice(
-              0,
-              80,
-            ),
-        };
-      })
-      .sort((a, b) => b.score - a.score);
-
-    return this.buildResult(scored, input, config);
+    const candidates = pick.matches.slice(0, 10).map((m) => ({
+      entity: m.entity,
+      score: MATCH_TIER_RANK[m.tier],
+      matchedOn: customerLabel(m.entity),
+    }));
+    if (pick.best) {
+      return {
+        found: true,
+        best: pick.best,
+        score: MATCH_TIER_RANK[pick.bestTier ?? 'exact'],
+        matchedOn: customerLabel(pick.best),
+        candidates,
+        ambiguous: false,
+      };
+    }
+    return {
+      found: false,
+      best: null,
+      score: 0,
+      matchedOn: '',
+      candidates,
+      ambiguous: pick.ambiguous,
+    };
   }
 
-  private buildResult(
-    scored: ResolveMatch<any>[],
-    input: string,
-    config?: ResolveConfig,
-  ): ResolveResult<any> {
-    if (scored.length === 0) {
-      return {
-        found: false,
-        best: null,
-        score: 0,
-        matchedOn: '',
-        candidates: [],
-        ambiguous: false,
-      };
-    }
-    // Le client est le propriétaire juridique du dossier. On conserve la
-    // tolérance aux petites fautes, mais on refuse les rapprochements faibles.
-    const MIN_SCORE = config?.minScore ?? 70;
-    const AMBIGUITY_GAP = config?.ambiguityGap ?? 15;
-    const valid = scored.filter((m) => m.score >= MIN_SCORE);
-    if (valid.length === 0) {
-      return {
-        found: false,
-        best: null,
-        score: 0,
-        matchedOn: '',
-        candidates: scored.slice(0, 10),
-        ambiguous: false,
-      };
-    }
-    const best = valid[0];
-    const second = valid[1];
-    const ambiguous =
-      !!second && best.score - second.score < AMBIGUITY_GAP && best.score < 90;
-    return {
-      found: true,
-      best: best.entity,
-      score: best.score,
-      matchedOn: best.matchedOn,
-      candidates: valid,
-      ambiguous,
-    };
+  /** Clients dont un champ identifiant contient l'un des mots (cabinet courant via le patch tenant). */
+  private async findContaining(words: string[], take: number): Promise<Customer[]> {
+    const usable = words.filter((w) => w.length >= 2);
+    if (!usable.length) return [];
+    return this.customerRepo.find({
+      where: IDENTITY_FIELDS.flatMap((field) =>
+        usable.map((word) => ({ [field]: ILike(`%${word}%`) }) as any),
+      ),
+      take,
+    });
   }
 }

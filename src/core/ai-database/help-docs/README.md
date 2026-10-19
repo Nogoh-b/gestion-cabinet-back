@@ -37,6 +37,8 @@ Quand l'utilisateur demande au chat « comment ça fonctionne », « comment cr�
 
 | Fichier | Sujet |
 |---|---|
+| `modules.md` | Vue d'ensemble : tous les modules, menus, permissions et plans |
+| `tableau-bord.md` | Tableau de bord : raccourcis, indicateurs, À surveiller |
 | `dossier.md` | Dossiers : ouverture, actions, clôture |
 | `facturation-configuration.md` | Configuration de la facturation (cabinet, types de facture, catalogue d'actions, convention du dossier) |
 | `elements-facturables.md` | Éléments facturables (réserve « À facturer ») |
@@ -58,10 +60,15 @@ Quand l'utilisateur demande au chat « comment ça fonctionne », « comment cr�
 | `abonnement.md` | Abonnement, plan, quotas, paiement |
 | `recherche.md` | Recherche globale et palette de commandes |
 | `statistiques.md` | Statistiques et rapports avancés |
+| `messages-notifications.md` | Messages (e-mails), notifications (cloche) et chat interne |
+| `profil-preferences.md` | Profil, Mes demandes, sécurité du compte et préférences |
+| `cabinet-parametres.md` | Paramètres du cabinet (identité, devise, TVA, numérotation) |
+| `parcours-dossier.md` | Parcours dossier : catalogue d'actions et recommandations |
+| `espace-client.md` | Espace client (portail) : accès, dossiers, factures, messages |
+| `administration.md` | Administration : sécurité, SMTP, sauvegarde, audit, IA |
+| `import-export.md` | Exports, impressions et PDF (pas d'import en masse) |
 
 ## Reste à documenter
 
-Notifications et messagerie (menu Messages), tableau de bord, profil et préférences de
-l'utilisateur, paramètres du cabinet (menu du compte > Cabinet), parcours dossier
-(menu du compte > Parcours dossier), espace client (portail), administration
-(sécurité, SMTP, sauvegarde, audit), import/export.
+Page Aide (`/aide` : FAQ, guides, contact) et raccourcis clavier ; le reste des
+modules est couvert.

@@ -17,7 +17,7 @@ import {
 import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { AUTO_GENERATED_FIELDS, BaseWriteHandler } from './write/base-write-handler';
-import { EntityResolverService, ResolveMode } from './write/entity-resolver.service';
+import { EntityResolverService } from './write/entity-resolver.service';
 import { matchEnumValue, parseLenientBoolean } from './write/lenient-values';
 import { PLAN_REF, PlanFieldOption, fixedOptions, humanize, parseValueList, rowLabel } from './write/plan-field-options';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
@@ -120,8 +120,8 @@ export class PlanFieldsService {
     const filters = { ...this.activeWhere(reference), ...hint?.filters };
     const q = String(request.q ?? '').trim().slice(0, 100);
     if (q) {
-      const result = await this.entityResolver.resolveAnyEntity(reference.table, q, { mode: ResolveMode.BEST_EFFORT, minScore: 0, ambiguityGap: 0 }, filters);
-      const rows = this.preferOwnRows(reference, result.candidates.slice(0, SEARCH_LIMIT).map((c) => c.entity));
+      const found = await this.entityResolver.searchCandidates(reference.table, q, filters, SEARCH_LIMIT);
+      const rows = this.preferOwnRows(reference, found);
       return { options: rows.map((row) => this.toOption(row)), searchable: true };
     }
     return this.listRows(reference, filters);
@@ -347,21 +347,24 @@ export class PlanFieldsService {
         needsChoice = true;
       }
     } else if (typeof raw === 'string' && raw.trim()) {
-      // Même résolution qu'à l'exécution : présélection seulement si elle est sûre.
-      const config = op.resolveConfig
-        ? { mode: op.resolveConfig.mode as ResolveMode, minScore: op.resolveConfig.minScore, ambiguityGap: op.resolveConfig.ambiguityGap }
-        : undefined;
-      const result = await this.entityResolver.resolveAnyEntity(reference.table, raw, config, hint?.filters);
-      const best = result.found && result.best ? this.unambiguous(reference, result) : null;
+      // Même résolution (déterministe) qu'à l'exécution : présélection seulement si elle est sûre.
+      const result = await this.entityResolver.resolveAnyEntity(reference.table, raw, undefined, hint?.filters);
+      const best = result.found ? result.best : this.unambiguous(reference, result);
       if (best) {
         selected = this.toOption(best);
       } else {
         options = [...options, ...this.preferOwnRows(reference, result.candidates.slice(0, 8).map((c) => c.entity)).map((row) => this.toOption(row))];
-        const autoCreated = !this.neverAutoCreate().has(reference.table);
-        selected = { value: raw, label: `« ${raw} »${autoCreated ? ' (nouveau)' : ' (à choisir)'}` };
+        // Sans aucun enregistrement approchant, l'exécution crée la valeur ;
+        // sinon elle demandera de choisir (jamais de doublon silencieux).
+        const created = !this.neverAutoCreate().has(reference.table) && !result.candidates.length;
+        selected = { value: raw, label: `« ${raw} »${created ? ' (nouveau)' : ' (à choisir)'}` };
         note = result.ambiguous
-          ? 'Plusieurs correspondances : choisissez la bonne'
-          : autoCreated ? `Introuvable : « ${raw} » sera créé si vous ne choisissez pas` : 'Introuvable : choisissez dans la liste';
+          ? 'Plusieurs correspondances exactes : choisissez la bonne'
+          : created
+            ? `Introuvable : « ${raw} » sera créé si vous ne choisissez pas`
+            : result.candidates.length
+              ? 'Aucune correspondance exacte : choisissez dans la liste'
+              : 'Introuvable : choisissez dans la liste';
         needsChoice = true;
       }
     }
@@ -514,12 +517,12 @@ export class PlanFieldsService {
   }
 
   /** Meilleur candidat, si l'ambiguïté éventuelle ne tient qu'à ce doublon. */
-  private unambiguous(reference: ReferenceInfo, result: { best: any; ambiguous: boolean; candidates: Array<{ entity: any; score: number }> }): any | null {
-    if (!result.ambiguous) return result.best;
-    const top = result.candidates[0]?.score ?? 0;
-    const close = result.candidates.filter((candidate) => candidate.score >= top - 15).map((candidate) => candidate.entity);
-    const distinct = this.preferOwnRows(reference, close);
-    return distinct.length === 1 && close.length > 1 ? distinct[0] : null;
+  /** Plusieurs lignes égales d'un référentiel partagé : la copie du cabinet, si elle est seule. */
+  private unambiguous(reference: ReferenceInfo, result: { ambiguous: boolean; candidates: Array<{ entity: any }> }): any | null {
+    if (!result.ambiguous) return null;
+    const rows = result.candidates.map((candidate) => candidate.entity);
+    const distinct = this.preferOwnRows(reference, rows);
+    return distinct.length === 1 && rows.length > 1 ? distinct[0] : null;
   }
 
   private toOption(row: any): PlanFieldOption {

@@ -14,8 +14,10 @@ La fiche employé (aussi appelée **collaborateur** ou **membre**) représente c
 - porter le **salaire mensuel** (base de la paie) et le **taux horaire** (base de la facturation au temps passé) ;
 - suivre la disponibilité, la charge de dossiers, les permissions (congés) et les avances.
 
+**Processus en bref :** **Nouvel employé** (identité, e-mail, fonction, salaire) → compte créé, identifiants envoyés par e-mail → affectation aux dossiers (responsable / collaborateur) → salaire repris par la paie, taux horaire repris par la facturation.
+
 ## Où le trouver
-- Menu **Gestion des employés** (`/gestion-cabinet/employees`, permission « voir les utilisateurs »).
+- Menu **Gestion des employés** (section « Cabinet » de la barre latérale, `/gestion-cabinet/employees`, permission « voir les utilisateurs »).
 - Bouton **Nouvel employé** : formulaire de création (`/gestion-cabinet/employees/nouveau`).
 - Fiche détail d'un employé : onglets **Aperçu, Dossiers, Présence, Tarifs, Communication, Avances sur salaire, Audit**.
 - Référentiels liés : Agences (bureaux) et Rôles & Permissions (menu du compte > Rôles & Permissions, administrateur).

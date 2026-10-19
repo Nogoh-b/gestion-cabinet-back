@@ -11,7 +11,7 @@
  */
 
 /** Mots-clés SQL qui ne peuvent pas être des alias de table. */
-const SQL_KEYWORDS = new Set([
+export const SQL_KEYWORDS = new Set([
   'where', 'on', 'set', 'limit', 'order', 'group', 'having', 'union', 'left',
   'right', 'inner', 'outer', 'cross', 'join', 'select', 'from', 'and', 'or',
   'not', 'in', 'is', 'null', 'like', 'between', 'exists', 'case', 'when',
@@ -25,7 +25,7 @@ const SQL_KEYWORDS = new Set([
  * remplacés par des espaces : seuls les mots du niveau courant restent.
  * `subqueriesOnly` ne masque que les parenthèses qui contiennent un SELECT.
  */
-function maskNested(sql: string, subqueriesOnly = false): string {
+export function maskNested(sql: string, subqueriesOnly = false): string {
   const out = sql.split('');
   let quote: string | null = null;
   const opened: Array<{ at: number; masked: boolean }> = [];

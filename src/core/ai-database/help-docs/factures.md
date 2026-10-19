@@ -10,6 +10,8 @@ paths: /facturation/factures, /finances
 ## À quoi ça sert
 Une **facture** est le document adressé au client pour un dossier. Elle est construite à partir des **éléments facturables** du dossier (honoraires, vacations, frais, débours, frais d'ouverture, résultat), ou saisie à la main. Les **paiements** s'enregistrent ensuite sur la facture, qui change automatiquement de statut.
 
+**Processus en bref :** éléments **À facturer** sélectionnés (même dossier, même devise) → **Créer une facture** (brouillon, numéro automatique) → **Marquer envoyée** ou **Envoyer par email** (écriture de vente + commission d'apport) → **Nouveau paiement** jusqu'au solde (**Payée**, écriture d'encaissement).
+
 ## Où la trouver
 - **Plus > Finances > Facturation des dossiers > Factures** : toutes les factures (permission « voir les factures »).
 - **Dossier > Facturation** : les factures du dossier avec paiements, indicateurs et relance.

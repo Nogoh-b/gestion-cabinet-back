@@ -110,10 +110,9 @@ export interface WriteOperation {
   dependsOn?: string[];
   humanReadable: string; // Description lisible pour confirmation
   /**
-   * Configuration de résolution des dépendances pour cette opération.
-   * Permet de contrôler comment les références (FK) sont résolues :
-   * - strict : (défaut) bloque en cas d'ambiguïté
-   * - best_effort : prend automatiquement le meilleur score
+   * Ancienne configuration de résolution, gardée pour les plans enregistrés.
+   * Sans effet : les références sont résolues de façon déterministe
+   * (identifiant, ou correspondance exacte et unique, sinon choix utilisateur).
    */
   resolveConfig?: {
     mode?: 'strict' | 'best_effort';

@@ -51,6 +51,7 @@ function buildService(question: string, intent: any = { type: 'READ' }) {
   service.detectRelevantTables = async () => ['dossiers', 'audiences'];
   service.getCompleteSchema = async () => 'schema';
   service.getHistorySnippetForIntent = async () => '';
+  service.lastDisplayedRecords = new Map();
   service.aiPermissionService = {
     assertCanReadTables: jest.fn(),
     assertCanWritePlan: jest.fn(),

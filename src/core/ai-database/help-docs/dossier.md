@@ -10,6 +10,8 @@ paths: /dossiers
 ## À quoi ça sert
 Un dossier est l'affaire traitée pour un client. Il regroupe le client, l'avocat responsable, la partie adverse, la juridiction, les actions menées, les audiences, les documents, les diligences et toute la facturation. Presque tout le reste de l'application (factures, audiences, documents, éléments facturables) se rattache à un dossier.
 
+**Processus en bref (parcours V2) :** **Ouvrir le dossier** (client, objet, date) → **Valider l'ouverture** (forfait et frais d'ouverture mis à facturer) → **Nouvelle action** → **Commencer** → **Terminer l'action** (résultat, temps, facturation) → contrôle de clôture → **Clôturer le dossier** (issue obligatoire).
+
 ## Où le trouver
 - **Dossiers > Ouverture de dossier** : créer un nouveau dossier (permission « créer un dossier »).
 - **Dossiers > Gestion de dossier** : liste de tous les dossiers, filtres (statut, avocat, juridiction…), puis clic sur un dossier pour ouvrir sa fiche.

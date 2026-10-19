@@ -124,6 +124,7 @@ describe('Préparation de formulaire IA', () => {
     const service: any = Object.create(AiDatabaseService.prototype);
     service.withAiMetrics = (_name: string, _id: number, run: () => unknown) => run();
     service.logger = { log: jest.fn(), error: jest.fn() };
+    service.conversationManager = { withCitations: (run: () => unknown) => run(), citedRecords: () => [] };
     service.configureRequestModel = () => ({ mode: 'fast' }); service.markMetric = jest.fn(); service.getRequestModelName = () => 'test';
     service.tryConsumePendingEntityIdClarification = jest.fn(() => { throw new Error('Un plan a été repris'); });
     service.buildRequestContext = async (dto: any) => ({ enrichedQuestion: dto.question, referenced: [], documentContext: [] });

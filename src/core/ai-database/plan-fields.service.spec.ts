@@ -105,8 +105,13 @@ function build({ denied = [] as string[], ambiguous = false } = {}) {
       const found = exact.length ? exact : rows.filter((row) =>
         [row.name, row.full_name].some((v) => v && String(v).toLowerCase().includes(term.toLowerCase())));
       const candidates = found.map((entity) => ({ entity, score: 90, matchedOn: 'name' }));
-      return { found: found.length > 0, best: found[0] ?? null, score: 90, matchedOn: 'name', candidates, ambiguous: ambiguous && found.length > 0 };
+      // Ambiguïté = plusieurs correspondances au même niveau : rien n'est retenu.
+      const isAmbiguous = ambiguous && found.length > 0;
+      return { found: found.length > 0 && !isAmbiguous, best: isAmbiguous ? null : found[0] ?? null, score: 90, matchedOn: 'name', candidates, ambiguous: isAmbiguous };
     }),
+    searchCandidates: jest.fn(async (table: string, q: string, filters?: Record<string, any>) =>
+      (ROWS[table] ?? []).filter((row) => matches(row, filters)).filter((row) =>
+        [row.name, row.full_name, row.code].some((v) => v && String(v).toLowerCase().includes(q.toLowerCase())))),
   };
   const permissions = {
     assertCanWritePlan: jest.fn(async () => undefined),
@@ -219,8 +224,8 @@ describe('PlanFieldsService', () => {
     const response = await service.describePlan(1, plan([{ operation: 'INSERT', entity: 'customer', fields: { full_name: 'Z', type_customer: 'e' } }]) as any);
     const type = field(response, 0, 'type_customer_id');
     expect(type.needsChoice).toBe(true);
-    expect(type.selected).toEqual({ value: 'e', label: '« e » (nouveau)' });
-    expect(type.note).toBe('Plusieurs correspondances : choisissez la bonne');
+    expect(type.selected).toEqual({ value: 'e', label: '« e » (à choisir)' });
+    expect(type.note).toBe('Plusieurs correspondances exactes : choisissez la bonne');
   });
 
   it('réunit alias et colonne, met tout en lecture seule pour une suppression, sans exposer les lignes', async () => {

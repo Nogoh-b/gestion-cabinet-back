@@ -1,47 +1,41 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import {
   ResolveResult,
-  ResolveMatch,
   ResolveConfig,
 } from 'src/core/ai-database/write/entity-resolver.service';
+import {
+  MATCH_TIER_RANK,
+  pickDeterministic,
+  searchWords,
+} from 'src/core/ai-database/write/exact-match';
 import { SpecializedEntityResolver } from 'src/core/ai-database/interfaces/ai-database-project-config.interface';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
-function normalize(s: string | null | undefined): string {
-  if (!s) return '';
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+/** Nom, prénom, nom complet et e-mail du compte lié (employee n'a pas de nom propre). */
+function identityTexts(e: Employee): unknown[] {
+  const user = (e as any).user ?? {};
+  const texts: unknown[] = [user.full_name, user.first_name, user.last_name, user.email, user.username];
+  if (user.first_name && user.last_name) {
+    texts.push(`${user.first_name} ${user.last_name}`, `${user.last_name} ${user.first_name}`);
+  }
+  return texts;
 }
 
-function similarityScore(a: string, b: string): number {
-  const na = normalize(a);
-  const nb = normalize(b);
-  if (!na || !nb) return 0;
-  if (na === nb) return 100;
-  if (na.includes(nb) || nb.includes(na)) return 85;
-  const tokensA = new Set(na.split(' ').filter((t) => t.length > 1));
-  const tokensB = new Set(nb.split(' ').filter((t) => t.length > 1));
-  const common = [...tokensA].filter((t) => tokensB.has(t)).length;
-  const tokenScore = common / Math.max(tokensA.size, tokensB.size, 1);
-  const bigrams = (s: string) => {
-    const r: string[] = [];
-    for (let i = 0; i < s.length - 1; i++) r.push(s.slice(i, i + 2));
-    return r;
-  };
-  const bA = bigrams(na);
-  const bB = bigrams(nb);
-  const bi = bA.filter((bg) => bB.includes(bg)).length;
-  const bigramScore = (2 * bi) / (bA.length + bB.length || 1);
-  return Math.round(Math.max(tokenScore, bigramScore) * 80);
+function employeeLabel(e: Employee): string {
+  const user = (e as any).user ?? {};
+  const name =
+    user.full_name || `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim() || user.email || `#${e.id}`;
+  return [name, e.specialization].filter(Boolean).join(' · ').slice(0, 80);
 }
 
+/**
+ * Collaborateur désigné par un texte, SANS score : retenu seulement si le
+ * texte est son nom complet (dans un sens ou l'autre), son e-mail, ou si tous
+ * ses mots figurent dans un seul collaborateur. Sinon proposés au choix.
+ */
 @Injectable()
 export class EmployeeAiResolver implements SpecializedEntityResolver {
   private readonly logger = new Logger(EmployeeAiResolver.name);
@@ -54,137 +48,58 @@ export class EmployeeAiResolver implements SpecializedEntityResolver {
 
   async resolve(
     input: string,
-    config?: ResolveConfig,
+    _config?: ResolveConfig,
   ): Promise<ResolveResult<any>> {
-    const ni = normalize(input);
-    const parts = ni.split(' ');
-    const first = parts[0];
-    const rest = parts.slice(1).join(' ');
-
-    const orConditions: string[] = [];
-    const params: Record<string, string> = {};
-    orConditions.push(
-      'LOWER(u.first_name) LIKE :f0',
-      'LOWER(u.last_name) LIKE :f0',
-    );
-    params['f0'] = `%${first}%`;
-    if (rest) {
-      orConditions.push(
-        'LOWER(u.first_name) LIKE :r0',
-        'LOWER(u.last_name) LIKE :r0',
-      );
-      params['r0'] = `%${rest}%`;
+    const words = searchWords(input);
+    const rows = await this.findContaining(words.slice(0, 1), 200);
+    let pick = pickDeterministic(input, rows, identityTexts);
+    if (!pick.best && !pick.ambiguous && words.length > 1) {
+      const more = await this.findContaining(words, 30);
+      const known = new Set(rows.map((r) => r.id));
+      pick = pickDeterministic(input, [...rows, ...more.filter((r) => !known.has(r.id))], identityTexts);
     }
-    orConditions.push('LOWER(e.specialization) LIKE :full');
-    params['full'] = `%${ni}%`;
-    parts.forEach((p, i) => {
-      orConditions.push(`LOWER(e.specialization) LIKE :sp${i}`);
-      params[`sp${i}`] = `%${p}%`;
-    });
 
     this.logger.log(
-      `🔍 EmployeeAiResolver.resolve("${input}") | tokens=[${parts.join(', ')}] | OR conditions: ${orConditions.length}`,
+      `🔍 Collaborateur « ${input} » : ${
+        pick.best ? `#${pick.best.id} (${pick.bestTier})` : pick.ambiguous ? `${pick.matches.length} possibles` : 'aucune correspondance exacte'
+      }`,
     );
 
-    const candidates = await this.employeeRepo
-      .createQueryBuilder('e')
-      .leftJoinAndSelect('e.user', 'u')
-      .where(`(${orConditions.join(' OR ')})`, params)
-      .take(20)
-      .getMany();
-
-    this.logger.log(
-      `🔍 EmployeeAiResolver: ${candidates.length} candidat(s) trouvé(s) pour "${input}" | ` +
-        candidates
-          .slice(0, 5)
-          .map((e) => {
-            const u = (e as any).user;
-            return `#${e.id}:${u?.first_name ?? '?'} ${u?.last_name ?? '?'}`;
-          })
-          .join(', '),
-    );
-
-    const scored: ResolveMatch<Employee>[] = candidates
-      .map((e) => {
-        const user = (e as any).user;
-        const firstName = user?.first_name ?? '';
-        const lastName = user?.last_name ?? '';
-        const fullName = `${firstName} ${lastName}`.trim();
-        const reverseName = `${lastName} ${firstName}`.trim();
-        const scores = [
-          { score: similarityScore(input, fullName), label: 'prénom+nom' },
-          { score: similarityScore(input, reverseName), label: 'nom+prénom' },
-          { score: similarityScore(input, firstName), label: 'prénom' },
-          { score: similarityScore(input, lastName), label: 'nom' },
-          {
-            score: similarityScore(input, e.specialization),
-            label: 'spécialisation',
-          },
-          {
-            score: similarityScore(input, e.bar_association_city),
-            label: 'ville barreau',
-          },
-        ];
-        const best = scores.reduce((a, b) => (a.score >= b.score ? a : b));
-        return {
-          entity: e,
-          score: best.score,
-          matchedOn:
-            `${best.label}: ${fullName || e.specialization || ''}`.slice(0, 80),
-        };
-      })
-      .sort((a, b) => b.score - a.score);
-
-    this.logger.log(
-      `🔍 EmployeeAiResolver: ${scored.length} candidat(s) scoré(s) | ` +
-        scored
-          .slice(0, 5)
-          .map((s) => `${s.matchedOn} (score:${s.score})`)
-          .join(' | '),
-    );
-
-    return this.buildResult(scored, input, config);
+    const candidates = pick.matches.slice(0, 10).map((m) => ({
+      entity: m.entity,
+      score: MATCH_TIER_RANK[m.tier],
+      matchedOn: employeeLabel(m.entity),
+    }));
+    if (pick.best) {
+      return {
+        found: true,
+        best: pick.best,
+        score: MATCH_TIER_RANK[pick.bestTier ?? 'exact'],
+        matchedOn: employeeLabel(pick.best),
+        candidates,
+        ambiguous: false,
+      };
+    }
+    return { found: false, best: null, score: 0, matchedOn: '', candidates, ambiguous: pick.ambiguous };
   }
 
-  private buildResult(
-    scored: ResolveMatch<any>[],
-    input: string,
-    config?: ResolveConfig,
-  ): ResolveResult<any> {
-    if (scored.length === 0) {
-      return {
-        found: false,
-        best: null,
-        score: 0,
-        matchedOn: '',
-        candidates: [],
-        ambiguous: false,
-      };
-    }
-    const MIN_SCORE = config?.minScore ?? 40;
-    const AMBIGUITY_GAP = config?.ambiguityGap ?? 15;
-    const valid = scored.filter((m) => m.score >= MIN_SCORE);
-    if (valid.length === 0) {
-      return {
-        found: false,
-        best: null,
-        score: 0,
-        matchedOn: '',
-        candidates: scored.slice(0, 10),
-        ambiguous: false,
-      };
-    }
-    const best = valid[0];
-    const second = valid[1];
-    const ambiguous =
-      !!second && best.score - second.score < AMBIGUITY_GAP && best.score < 90;
-    return {
-      found: true,
-      best: best.entity,
-      score: best.score,
-      matchedOn: best.matchedOn,
-      candidates: valid,
-      ambiguous,
-    };
+  /** Collaborateurs du cabinet dont le compte contient l'un des mots. */
+  private async findContaining(words: string[], take: number): Promise<Employee[]> {
+    const usable = words.filter((w) => w.length >= 2);
+    if (!usable.length) return [];
+    const qb = this.employeeRepo
+      .createQueryBuilder('e')
+      .leftJoinAndSelect('e.user', 'u')
+      .where(
+        new Brackets((or) => {
+          usable.forEach((word, i) => {
+            for (const column of ['u.full_name', 'u.first_name', 'u.last_name', 'u.email']) {
+              or.orWhere(`LOWER(${column}) LIKE :w${i}`, { [`w${i}`]: `%${word}%` });
+            }
+          });
+        }),
+      )
+      .take(take);
+    return addTenantCondition(qb, 'e').getMany();
   }
 }

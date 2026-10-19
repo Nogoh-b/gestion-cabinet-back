@@ -10,6 +10,7 @@ import { ConversationMessage } from './entities/conversation-message.entity';
 import { AiConversationDocument } from './entities/ai-conversation-document.entity';
 import type { ReferencedEntityContext } from './dto/ask-question.dto';
 import { pickConversationResource } from './conversation-resource';
+import { formatCitedLine, mergeCitedReferences, type CitedReference } from './cited-records';
 
 /** Texte lu d'une pièce jointe, gardé avec la conversation. */
 export interface ConversationDocumentInput {
@@ -47,6 +48,26 @@ export class ConversationManagerService {
 
   withUserMessageMetadata<T>(metadata: Record<string, any> | undefined, callback: () => T): T {
     return metadata ? this.userMessageExtras.run(metadata, callback) : callback();
+  }
+
+  /** Enregistrements cités par la réponse en cours (lectures de la requête). */
+  private readonly citations = new AsyncLocalStorage<{ references: CitedReference[] }>();
+
+  /** Ouvre la collecte des enregistrements cités pour une requête du chat. */
+  withCitations<T>(callback: () => T): T {
+    return this.citations.run({ references: [] }, callback);
+  }
+
+  /** Ajoute des enregistrements cités à la réponse en cours (sans effet hors requête). */
+  citeRecords(references: CitedReference[]): void {
+    const store = this.citations.getStore();
+    if (!store || !references.length) return;
+    store.references = mergeCitedReferences(store.references, references);
+  }
+
+  /** Enregistrements cités par la réponse en cours. */
+  citedRecords(): CitedReference[] {
+    return this.citations.getStore()?.references ?? [];
   }
 
   /**
@@ -495,6 +516,9 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     reasoningContent?: string,
     metadata?: Record<string, any>,
   ): Promise<void> {
+    // Les enregistrements cités restent avec la réponse : rouverte plus tard,
+    // la conversation garde leurs identifiants pour les demandes suivantes.
+    const cited = this.citedRecords();
     await this.addMessage(
       conversationId,
       'assistant',
@@ -502,7 +526,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       reasoningContent,
       undefined,
       undefined,
-      metadata,
+      cited.length && !metadata?.cited ? { ...(metadata ?? {}), cited } : metadata,
     );
   }
 
@@ -571,6 +595,9 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       if (context) {
         content = `${content}\n\n${context}`;
       }
+      // Identifiants des enregistrements cités par cette réponse.
+      const cited = Array.isArray(metadata.cited) ? formatCitedLine(metadata.cited) : '';
+      if (cited) content = `${content}\n${cited}`;
     }
 
     return {

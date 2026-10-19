@@ -179,6 +179,31 @@ export interface ReferencedEntityContext {
 export interface VisibleHistoryMessage {
   role: 'user' | 'assistant';
   content: string;
+  /**
+   * Enregistrements cités par ce message (réponse : enregistrements lus ou
+   * écrits ; question : mentions @), avec leur identifiant.
+   */
+  refs?: Array<{ entity?: string; type?: string; id: string | number; label?: string }>;
+}
+
+const MAX_REFS_PER_MESSAGE = 30;
+
+/** Références renvoyées par le chat : identifiants simples uniquement, libellés courts. */
+function parseHistoryRefs(raw: unknown): VisibleHistoryMessage['refs'] {
+  if (!Array.isArray(raw)) return undefined;
+  const name = (value: unknown) =>
+    typeof value === 'string' && /^[a-z][a-z0-9_]{0,63}$/i.test(value.trim()) ? value.trim().toLowerCase() : undefined;
+  const refs = raw
+    .filter((ref) => ref && typeof ref === 'object')
+    .map((ref: any) => ({
+      entity: name(ref.entity),
+      type: name(ref.type),
+      id: typeof ref.id === 'number' ? ref.id : String(ref.id ?? '').trim(),
+      label: typeof ref.label === 'string' ? ref.label.replace(/\s+/g, ' ').trim().slice(0, 80) : undefined,
+    }))
+    .filter((ref) => (ref.entity || ref.type) && /^[A-Za-z0-9-]{1,64}$/.test(String(ref.id)))
+    .slice(0, MAX_REFS_PER_MESSAGE);
+  return refs.length ? refs : undefined;
 }
 
 export function parseVisibleHistory(raw?: string): VisibleHistoryMessage[] {
@@ -188,13 +213,17 @@ export function parseVisibleHistory(raw?: string): VisibleHistoryMessage[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((item) => item && typeof item === 'object')
-      .map((item) => ({
-        role:
-          item.role === 'assistant'
-            ? ('assistant' as const)
-            : ('user' as const),
-        content: String(item.content ?? '').trim(),
-      }))
+      .map((item) => {
+        const refs = parseHistoryRefs(item.refs);
+        return {
+          role:
+            item.role === 'assistant'
+              ? ('assistant' as const)
+              : ('user' as const),
+          content: String(item.content ?? '').trim(),
+          ...(refs && { refs }),
+        };
+      })
       .filter((item) => item.content.length > 0)
       .slice(-12);
   } catch {

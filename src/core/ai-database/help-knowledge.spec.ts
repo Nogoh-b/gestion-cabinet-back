@@ -37,6 +37,15 @@ describe('help-knowledge', () => {
         'abonnement',
         'recherche',
         'statistiques',
+        'modules',
+        'tableau-bord',
+        'messages-notifications',
+        'profil-preferences',
+        'cabinet-parametres',
+        'parcours-dossier',
+        'espace-client',
+        'administration',
+        'import-export',
       ]),
     );
     for (const doc of docs) {
@@ -92,6 +101,17 @@ describe('help-knowledge', () => {
     ['comment fonctionne la recherche globale', 'recherche'],
     ['comment comparer à la période précédente dans les rapports avancés', 'statistiques'],
     ['comment exporter le rapport en PDF', 'statistiques'],
+    ['quels sont les modules de mon cabinet ?', 'modules'],
+    ['comment fonctionne le tableau de bord ?', 'tableau-bord'],
+    ['où voir les notifications non lues ?', 'messages-notifications'],
+    ['comment envoyer un message à un client ?', 'messages-notifications'],
+    ['comment activer la double authentification ?', 'administration'],
+    ['où configurer le serveur SMTP ?', 'administration'],
+    ['comment déclarer un paiement dans le portail ?', 'espace-client'],
+    ['où changer le logo du cabinet ?', 'cabinet-parametres'],
+    ['comment créer une famille d’actions ?', 'parcours-dossier'],
+    ['comment voir mes demandes d’avance ?', 'profil-preferences'],
+    ['comment exporter une facture en PDF ?', 'import-export'],
   ])('routes "%s" to %s', (question, expected) => {
     expect(topId(question)).toBe(expected);
   });

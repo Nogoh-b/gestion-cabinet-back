@@ -542,42 +542,37 @@ ${objective}
 ### 3. Champs acceptés
 - N'utilise que les champs listés dans "ENTITÉS MODIFIABLES"
 - Les noms de champs doivent être exacts
-- Pour les références (client, lawyer), tu PEUX utiliser le NOM (sera résolu automatiquement)
+- Liaison vers un enregistrement existant (client_id, dossier_id, lawyer…) : mets son IDENTIFIANT
+  numérique s'il figure dans l'historique (« table#id ») ou le contexte ; sinon recopie EXACTEMENT
+  son numéro, son code ou son nom complet tel qu'il est écrit (jamais un nom approché ou abrégé).
 
 ### 4. Valeurs spéciales
 - "{{today}}" → date du jour
 - "{{now}}" → timestamp actuel
 
-### 6. 🔄 Résolution des ambiguïtés (optionnel)
-Si l'utilisateur dit "prends le plus probable" ou "je ne sais plus lequel",
-ajoute ceci dans l'opération concernée (dans le JSON du plan) :
-"resolveConfig": { "mode": "best_effort" }
-Cela permettra de prendre automatiquement la meilleure correspondance en cas d'homonymie.
+### 6. 🎯 Identifiants des enregistrements cités (TRÈS IMPORTANT)
+Chaque message de l'historique peut être suivi de « [Enregistrements cités (table#id) : …] » :
+ce sont les enregistrements que la réponse a montrés (ou créés/modifiés), dans l'ordre, avec leur
+identifiant exact. Les liens « [DOS-2026-0004](/dossiers/94) » donnent aussi l'identifiant (94).
+- « le », « la », « celui-ci », « ce dossier », « la 2e », « celle en brouillon », « les deux premiers »
+  se rapportent à ces enregistrements : utilise leur identifiant comme "entityId" (UPDATE/DELETE/ACTION)
+  ou comme valeur de liaison (ex: "dossier_id": 94). Prends l'enregistrement de la MÊME table que
+  l'opération, en priorité dans le message le plus récent.
+- Même règle pour « ENREGISTREMENTS AFFICHES A L'UTILISATEUR » (#N) et pour les identifiants donnés
+  par le contexte de page ou les mentions @.
+- N'invente JAMAIS un identifiant : un id absent de l'historique, du contexte et de la demande est
+  interdit. Sans identifiant connu, applique la règle 7.
 
-### 7. 🎯 Référence implicite à une entité déjà évoquée (TRÈS IMPORTANT)
-Si l'utilisateur utilise un pronom ou une référence implicite ("la", "le", "celui-ci",
-"cette audience", "ce dossier"...) SANS redonner l'identifiant, regarde
-l'HISTORIQUE RÉCENT ci-dessus : si un message précédent (utilisateur ou assistant)
-mentionne explicitement un identifiant numérique (ex: "ID: 42", "audience n°42",
-"#42") pour une entité du MÊME TYPE que celle visée par la demande, RÉUTILISE cet ID
-comme "entityId" de l'opération UPDATE/DELETE.
-N'invente JAMAIS un ID : si aucun identifiant exploitable n'apparaît dans l'historique
-ni dans la demande, NE METS PAS "entityId" (laisse-le absent) plutôt que de deviner —
-le système redemandera alors une précision à l'utilisateur.
-
-### 8. 🔎 Cibler un enregistrement existant (UPDATE)
-- Si l'historique contient « ENREGISTREMENTS AFFICHES A L'UTILISATEUR », c'est la liste exacte que
-  l'utilisateur a sous les yeux (« la 2e », « celle en brouillon », « les doublons » s'y rapportent) :
-  utilise l'identifiant indiqué (#N) comme "entityId". C'est la méthode à privilégier.
-- Sinon, ajoute "match" : les valeurs ACTUELLES de colonnes réelles qui désignent l'enregistrement
-  (ex: {"start_date":"2026-08-31","end_date":"2026-09-29","label":"ff"}), dates au format AAAA-MM-JJ.
-  Le système le retrouve et, en cas de doute, fait choisir l'utilisateur.
-- "fields" contient uniquement les NOUVELLES valeurs. N'invente jamais d'identifiant ni de valeur de
-  "match" ; une opération par enregistrement à modifier.
+### 7. 🔎 Cibler un enregistrement sans identifiant connu (UPDATE/DELETE)
+- Ajoute "match" : les valeurs ACTUELLES EXACTES de colonnes réelles qui désignent l'enregistrement
+  (ex: {"dossier_number":"DOS-2026-0004"} ou {"start_date":"2026-08-31","label":"ff"}), dates au
+  format AAAA-MM-JJ. Le système cherche une égalité exacte ; s'il en trouve plusieurs ou aucune, il
+  fait choisir l'utilisateur (aucune correspondance approchée n'est retenue d'office).
+- "fields" contient uniquement les NOUVELLES valeurs ; une opération par enregistrement à modifier.
 - Modification GROUPÉE (« toutes ses audiences », « tous les dossiers de X », « toutes celles en retard ») :
   UNE seule opération UPDATE avec "match" (critères communs, ex: {"dossier_id":94,"status":0}) et
   "all": true. Le système applique "fields" à chaque enregistrement correspondant du cabinet.
-  Si les enregistrements affichés ont des #N, tu peux aussi faire une opération par #N.
+  Si les enregistrements cités ont des identifiants, préfère une opération par identifiant.
 ${this.projectConfig?.promptDomainRules ? `\n${this.projectConfig.promptDomainRules}\n` : ''}
 ## 📤 FORMAT DE RÉPONSE JSON UNIQUEMENT
 
@@ -608,9 +603,11 @@ Pour une MODIFICATION:
 }
 
 ## 🚨 IMPORTANT
-- Les noms de clients/avocats seront automatiquement résolus en IDs
-- Il n'est PAS nécessaire de connaître les IDs à l'avance
-- Le système cherchera les correspondances ou créera les entités si nécessaire
+- Identifiant connu (historique « table#id », lien, contexte, mention @) → utilise-le tel quel.
+- Sinon donne la valeur EXACTE (numéro, code, nom complet) : le système ne retient qu'une
+  correspondance exacte et unique, sinon il fait choisir l'utilisateur ; un client sans aucun
+  homonyme approchant est créé.
+- Nouvel enregistrement à lier (« nouveau client X ») → opération INSERT avec tempId, puis "{{tempId.id}}".
 
 Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
   }
