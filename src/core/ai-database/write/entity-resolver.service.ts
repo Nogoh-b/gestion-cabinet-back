@@ -13,6 +13,7 @@ import {
   BusinessColumnMetadata,
 } from '../../decorators/business-metadata.decorator';
 import { AiDatabasePermissionService } from '../ai-database-permission.service';
+import { fillRequiredGeneratedColumns } from './base-write-handler';
 import { AI_DATABASE_PROJECT_CONFIG } from '../ai-database.tokens';
 import { AiDatabaseProjectConfig } from '../interfaces/ai-database-project-config.interface';
 import { getCurrentTenantId, hasActiveTenant } from '../../tenant/tenant.context';
@@ -784,10 +785,22 @@ export class EntityResolverService {
       `📝 Création de ${tableName} avec les champs: ${JSON.stringify(fields)}`,
     );
 
-    // Créer et sauvegarder
-    const record = repo.create(fields);
+    // Créer et sauvegarder (code obligatoire généré comme à la création manuelle)
+    const record = repo.create(await fillRequiredGeneratedColumns(repo, fields));
     const saved = await repo.save(record);
     return saved;
+  }
+
+  /**
+   * Champs d'une nouvelle ligne de `tableName` nommée `text` (nom, prénom +
+   * nom, raison sociale…), pour une création demandée explicitement.
+   */
+  creationFieldsFromText(tableName: string, text: string): Record<string, any> {
+    const entityMeta = this.dataSource.entityMetadatas.find(
+      (m) => m.tableName === tableName,
+    );
+    if (!entityMeta) throw new Error(`Table "${tableName}" inconnue dans TypeORM`);
+    return this.inferFieldsFromText(entityMeta, text);
   }
 
   /**

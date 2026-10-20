@@ -1,7 +1,7 @@
 ---
 id: assistant-ia
 title: Assistant IA (chat)
-keywords: assistant ia, assistant intelligent, chatbot, chat ia, poser une question, que peux-tu faire, que sais-tu faire, que peut faire l'assistant, modes du chat, menu slash, mode lecture, mode ecriture, mode conversation, base de connaissance, base juridique, carte de confirmation, creer depuis le chat, confirmer la creation, annuler la creation, pre-remplir un formulaire, joindre un document au chat, ecrire avec vos mots, mention, quotas ia, requetes ia, suggestions de l'assistant, contexte de la page, mon role, mes droits, profil de l'utilisateur, reponse en plusieurs parties
+keywords: assistant ia, assistant intelligent, chatbot, chat ia, poser une question, que peux-tu faire, que sais-tu faire, que peut faire l'assistant, modes du chat, menu slash, mode lecture, mode ecriture, mode conversation, base de connaissance, base juridique, carte de confirmation, creer depuis le chat, confirmer la creation, annuler la creation, pre-remplir un formulaire, joindre un document au chat, creer des dossiers a partir de fichiers, creer des dossiers a partir des fiches, classer plusieurs fichiers, ecrire avec vos mots, mention, quotas ia, requetes ia, suggestions de l'assistant, contexte de la page, mon role, mes droits, profil de l'utilisateur, reponse en plusieurs parties
 paths: /chat
 ---
 
@@ -45,11 +45,16 @@ En mode Auto, nommer la compétence avec un verbe d'action suffit souvent (« pr
 ## Créer depuis le chat — pas à pas
 1. Demandez en une phrase : « Ouvre un dossier pour Jean Dupont… », « Facture le dossier DOS-2026-0012 : 500 000 FCFA HT… », « Programme une audience… ». Donnez les éléments par leur **nom** (client, avocat, juridiction) ou leur **numéro** (`DOS-…`, `FAC-…`).
 2. L'assistant affiche une **carte de confirmation modifiable** dès que la demande comporte plusieurs opérations, une suppression, un envoi, une modification groupée, une valeur incertaine ou un élément jamais affiché : opération (**Création**, **Modification**, **Suppression**, **Action**), élément visé et champs (crayon pour corriger une valeur, listes pour les choix). Une création simple et sans ambiguïté peut être exécutée directement ; le compte rendu liste alors ce qui a été créé, avec un lien.
-3. Relisez, corrigez si besoin, puis **Confirmer** (ou **Annuler**) : rien de ce qu'affiche la carte n'est enregistré avant Confirmer. Un e-mail envoyé (facture, relance) ne peut pas être rappelé.
-4. Chaînage possible : « Facture le dossier DOS-2026-0012 et envoie-la au client » crée puis envoie, seulement si la création a réussi.
+3. Une valeur sans correspondance exacte (type ou sous-type de procédure, juridiction, client…) est signalée dans la carte : choisissez l'un des éléments proches proposés en tête de liste, ou **➕ Créer « … »**. **Confirmer** attend ce choix, puis l'applique tel quel : l'élément choisi est rattaché, ou la nouvelle valeur est créée (un sous-type sous le type choisi), sans nouvelle question. Une valeur introuvable sans rien d'approchant est proposée à la création ; une ville ou une agence n'est jamais créée depuis le chat.
+4. Relisez, corrigez si besoin, puis **Confirmer** (ou **Annuler**) : rien de ce qu'affiche la carte n'est enregistré avant Confirmer. Si une opération échoue, tout ce que le plan avait déjà créé est supprimé (rien ne reste en corbeille). Un e-mail envoyé (facture, relance) ne peut pas être rappelé.
+5. Chaînage possible : « Facture le dossier DOS-2026-0012 et envoie-la au client » crée puis envoie, seulement si la création a réussi.
 
 ## Joindre un document au chat
 Joignez le fichier à votre message avec votre consigne (« Classe ce document dans le dossier DOS-2026-0039, nature Contrat », « Résume-moi ce jugement »). Sans fichier joint, aucun document ne peut être créé ni classé.
+- **Classer** : « ajoute ces documents au dossier DOS-… », « classe ces fiches » → carte d'ajout des fichiers au dossier.
+- **Créer à partir du contenu** : « lis ces fiches et crée les différents dossiers », « crée ces clients à partir des fiches » → un dossier par affaire décrite (client réutilisé s'il existe, sinon créé), toujours présenté dans la carte de confirmation, avec le fichier d'où vient chaque opération. Ajoutez « et classe les fichiers dedans » pour que chaque fichier soit ensuite proposé dans le dossier créé à partir de lui.
+- **Demande ambiguë** (« traite ces fiches », « enregistre-les ») : l'assistant demande quoi faire — classer, créer à partir du contenu, les deux, ou seulement lire.
+- Jusqu'à 5 fichiers sont lus par message (10 pour un simple classement).
 
 ## Votre profil et plusieurs demandes à la fois
 - L'assistant connaît **votre profil** à chaque question : nom, fonction, profil d'accès et droits, cabinet, plan, abonnement et quotas. « Quel est mon rôle ? », « quel est mon plan ? », « combien de requêtes IA me reste-t-il ? » reçoivent une réponse directe, sans demande de précision.

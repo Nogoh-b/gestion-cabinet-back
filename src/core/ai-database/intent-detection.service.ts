@@ -798,6 +798,10 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
           dependsOn: op.dependsOn || [],
           // ✅ Préserver resolveConfig si fourni par le LLM
           resolveConfig: op.resolveConfig || undefined,
+          // Fichier joint d'où viennent les données (vérifié par attachSourceFiles).
+          ...(Array.isArray(op.sourceFiles) && {
+            sourceFiles: op.sourceFiles.filter((name: unknown) => typeof name === 'string'),
+          }),
         };
       },
     );

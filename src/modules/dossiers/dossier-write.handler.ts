@@ -1,5 +1,9 @@
 // src/modules/dossiers/dossier-write.handler.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import {
@@ -571,13 +575,30 @@ export class DossierWriteHandler extends BaseWriteHandler {
     fields: Record<string, any>,
     userId: string,
   ): Promise<WriteResult> {
-    // Numéro de dossier : honoré s'il est fourni, sinon auto-généré selon les
-    // settings du cabinet (dossier_prefix / dossier_number_format).
+    // Numéro de dossier : honoré s'il est fourni (référence lue dans un
+    // document…), sinon auto-généré selon les settings du cabinet
+    // (dossier_prefix / dossier_number_format).
     const providedNumber = fields?.dossier_number
       ? String(fields.dossier_number).trim()
       : '';
-    const dossierNumber =
-      providedNumber || (await this.generateDossierNumber());
+    let dossierNumber = providedNumber;
+    let numberNote = '';
+    if (providedNumber) {
+      const holder = await this.findDossierByNumber(providedNumber);
+      if (holder && !holder.deleted_at) {
+        // Même règle que la création manuelle (DossiersService.create).
+        throw new BadRequestException(
+          `Le code dossier « ${providedNumber} » est déjà utilisé par un autre dossier.`,
+        );
+      }
+      if (holder) {
+        // Numéro gardé par un dossier en corbeille (l'index unique couvre
+        // les lignes supprimées) : un numéro libre est attribué.
+        dossierNumber = await this.generateDossierNumber();
+        numberNote = ` (le numéro « ${providedNumber} » appartient à un dossier supprimé : numéro ${dossierNumber} attribué)`;
+      }
+    }
+    dossierNumber ||= await this.generateDossierNumber();
 
     // Filtrer les champs connus + stripper les champs auto-générés (codes, refs)
     // → on ne veut pas que le LLM impose un dossier_number qui causerait collision
@@ -623,7 +644,12 @@ export class DossierWriteHandler extends BaseWriteHandler {
     });
 
     const dossier = Object.assign(new Dossier(), dossierData);
-    const saved = await this.dossierRepo.save(dossier);
+    let saved: Dossier;
+    try {
+      saved = await this.dossierRepo.save(dossier);
+    } catch (error) {
+      throw new BadRequestException(this.translateDbError(error));
+    }
 
     return {
       success: true,
@@ -631,8 +657,21 @@ export class DossierWriteHandler extends BaseWriteHandler {
       entityId: saved.id,
       affected: 1,
       data: saved,
-      message: `Dossier ${saved.dossier_number} créé avec succès`,
+      message: `Dossier ${saved.dossier_number} créé avec succès${numberNote}`,
     };
+  }
+
+  /** Dossier du cabinet portant ce numéro, corbeille comprise. */
+  private async findDossierByNumber(
+    dossierNumber: string,
+  ): Promise<Dossier | null> {
+    const qb = this.dossierRepo
+      .createQueryBuilder('d')
+      .withDeleted()
+      .where('d.dossier_number = :n', { n: dossierNumber });
+    // Isolation multi-tenant.
+    addTenantCondition(qb, 'd');
+    return qb.getOne();
   }
 
   // ── UPDATE custom : préserver le numéro de dossier ─────────────────────────
@@ -655,7 +694,12 @@ export class DossierWriteHandler extends BaseWriteHandler {
     delete safeFields['opening_date'];
 
     Object.assign(dossier, safeFields, { updated_by: userId });
-    const saved = await this.dossierRepo.save(dossier);
+    let saved: Dossier;
+    try {
+      saved = await this.dossierRepo.save(dossier);
+    } catch (error) {
+      throw new BadRequestException(this.translateDbError(error));
+    }
 
     return {
       success: true,

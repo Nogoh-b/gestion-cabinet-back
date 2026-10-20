@@ -113,6 +113,7 @@ import {
   UPDATE_TARGET_FIELD,
 } from './write/ambiguity.exception';
 import { parseValueList } from './write/plan-field-options';
+import { BaseWriteHandler } from './write/base-write-handler';
 import { outerJoinRetry } from './outer-join-fallback';
 import { extractPdfText } from './pdf-text';
 import { injectTenantFilter } from './tenant-injection';
@@ -160,6 +161,7 @@ import {
   withCitedLine,
 } from './cited-records';
 import {
+  attachSourceFiles,
   uploadedDocumentMessage,
   uploadedFilePlannerNote,
   withoutUploadedDocumentInserts,
@@ -1417,6 +1419,14 @@ ${rules}`;
           this.normalizeForKeywordMatch(keyword),
         ),
       ),
+    );
+  }
+
+  /** Fichier joint d'où vient chaque opération (classement après confirmation). */
+  private withSourceFiles(plan: WritePlan, requestContext: RequestContext): WritePlan {
+    return attachSourceFiles(
+      plan,
+      requestContext.documentContext.filter((item) => item.source === 'upload' && !item.reused),
     );
   }
 
@@ -2801,8 +2811,10 @@ Contraintes obligatoires :
     // ── 3b. BRANCHE ÉCRITURE ──────────────────────────────────────────────────
     if (intentResult.type === 'WRITE' && intentResult.writePlan) {
       const { plan, removed } = files.length
-        ? withoutUploadedDocumentInserts(intentResult.writePlan)
+        ? withoutUploadedDocumentInserts(this.withSourceFiles(intentResult.writePlan, requestContext))
         : { plan: intentResult.writePlan as WritePlan, removed: 0 };
+      // Données lues dans des fichiers (OCR compris) : toujours relues avant écriture.
+      if (files.length) intentResult.requiresConfirmation = true;
       if (removed) {
         // Sans formulaire d'ajout côté client, on explique seulement la démarche.
         const notice = `Le fichier « ${uploadedFileNames(files)} » ne peut pas être joint par un plan d'écriture : ajoutez-le depuis la fiche du dossier.`;
@@ -4144,13 +4156,16 @@ ${legalContext}` : ''}`;
       fields['hierarchy_level'] = 2;
 
       // Résoudre le parent_id :
-      // 1. L'ID est directement dans les champs (cas idéal)
-      // 2. L'ID est dans procedure_type_id (parfois injecté dans le plan)
+      // 1. L'ID est dans procedure_type_id
+      // 2. L'ID est dans procedure_type : le type choisi dans une carte
+      //    précédente y est injecté (sans lui, le sous-type était créé comme
+      //    type principal, sans parent)
       // 3. Le texte procedure_type est disponible → résolution par nom en BDD
+      const typeId = [operationFields.procedure_type_id, operationFields.procedure_type].find(
+        (value) => BaseWriteHandler.isAlreadyId(value),
+      );
       let parentId: number | undefined =
-        operationFields.procedure_type_id ??
-        operationFields.procedure_subtype_id ?? // fallback rare
-        undefined;
+        typeId !== undefined ? Number(typeId) : undefined;
 
       if (
         !parentId &&
@@ -5842,7 +5857,11 @@ ${blocks.join('\n\n')}
           writeWithDocument;
         intentResult = await this.intentDetectionService.detectIntent(
           files.length && forceWrite
-            ? enrichedQuestion + uploadedFilePlannerNote(uploadedFileNames(files))
+            ? enrichedQuestion +
+              uploadedFilePlannerNote(
+                files.map((file) => file.originalname),
+                dto.question,
+              )
             : enrichedQuestion,
           this.getRequestModel('fast', this.CLASSIFIER_MAX_TOKENS),
           schema,
@@ -6051,8 +6070,10 @@ ${blocks.join('\n\n')}
       // ── 3b. WRITE ────────────────────────────────────────────────────────────
       if (intentResult.type === 'WRITE' && intentResult.writePlan) {
         const { plan, removed } = files.length
-          ? withoutUploadedDocumentInserts(intentResult.writePlan)
+          ? withoutUploadedDocumentInserts(this.withSourceFiles(intentResult.writePlan, requestContext))
           : { plan: intentResult.writePlan as WritePlan, removed: 0 };
+        // Données lues dans des fichiers (OCR compris) : toujours relues avant écriture.
+        if (files.length) intentResult.requiresConfirmation = true;
         if (plan.operations.length) {
           await this.aiPermissionService.assertCanWritePlan(
             user as AiUserContext,

@@ -189,22 +189,38 @@ describe('Annulation des créations d’un plan IA qui échoue', () => {
     expect(runner.manager.softDelete).not.toHaveBeenCalled();
   });
 
-  it('garde le soft-delete générique pour un handler sans rollbackInsert', async () => {
-    const noteHandler = {
-      entityName: 'note',
-      execute: jest.fn(async () => ({
-        success: true,
-        operation: 'INSERT',
-        entityId: 9,
-        affected: 1,
-        data: { id: 9 },
-        message: 'Note créée',
-      })),
-    };
+  const noteHandler = () => ({
+    entityName: 'note',
+    execute: jest.fn(async () => ({
+      success: true,
+      operation: 'INSERT',
+      entityId: 9,
+      affected: 1,
+      data: { id: 9 },
+      message: 'Note créée',
+    })),
+  });
+
+  it('supprime définitivement la ligne créée par le plan (rien en corbeille, valeurs uniques libérées)', async () => {
     const { service, runner } = createService(
-      { note: noteHandler, dossier: failingDossierHandler() },
+      { note: noteHandler(), dossier: failingDossierHandler() },
       [{ tableName: 'note', target: Note, deleteDateColumn: {}, relations: [] }],
     );
+
+    await expect(
+      service.executePlan(plan({ operation: 'INSERT', entity: 'note', fields: { text: 'Appeler' } }) as any, '7'),
+    ).rejects.toThrow('Client introuvable');
+
+    expect(runner.manager.delete).toHaveBeenCalledWith(Note, 9);
+    expect(runner.manager.softDelete).not.toHaveBeenCalled();
+  });
+
+  it('met en corbeille seulement si une ligne liée empêche la suppression', async () => {
+    const { service, runner } = createService(
+      { note: noteHandler(), dossier: failingDossierHandler() },
+      [{ tableName: 'note', target: Note, deleteDateColumn: {}, relations: [] }],
+    );
+    runner.manager.delete.mockRejectedValueOnce(new Error('ER_ROW_IS_REFERENCED_2') as never);
 
     await expect(
       service.executePlan(plan({ operation: 'INSERT', entity: 'note', fields: { text: 'Appeler' } }) as any, '7'),

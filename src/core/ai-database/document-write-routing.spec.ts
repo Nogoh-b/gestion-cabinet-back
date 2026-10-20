@@ -127,6 +127,23 @@ describe('Pièce jointe + demande d’écriture (chat en streaming)', () => {
     expect(service.analyzeDocumentsStream).toHaveBeenCalled();
   });
 
+  it('création à partir du fichier : dossiers source, sans classement suggéré, toujours confirmée', async () => {
+    const question = 'lie le contenu de ses fichiers et crée les différents dossiers';
+    const service = buildService(question, writePlan('customer', 'dossiers'));
+    const events = await ask(service, question);
+
+    const note = service.intentDetectionService.detectIntent.mock.calls[0][0];
+    expect(note).toContain('un enregistrement par affaire décrite');
+    expect(note).toContain('ne prévois aucune opération sur document_customer');
+    // Plan à confirmer même si le planner ne l'exigeait pas : rien n'est exécuté d'office.
+    const confirmation = events.find(([event]) => event === 'confirmation')?.[1];
+    expect(confirmation.plan.operations.map((op: any) => op.sourceFiles)).toEqual([
+      [pdf.originalname],
+      [pdf.originalname],
+    ]);
+    expect(service.executeWritePlanStream).not.toHaveBeenCalled();
+  });
+
   it('classer le fichier ouvre le formulaire d’ajout au lieu d’un plan sans fichier', async () => {
     const question = 'ajoute ce document au dossier DOS-2026-0038';
     const service = buildService(question, writePlan('document_customer'));

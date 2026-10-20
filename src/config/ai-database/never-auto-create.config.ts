@@ -48,6 +48,14 @@ export const NEVER_AUTO_CREATE_ENTITIES: string[] = [
   // Structurel, géré par admin
   'branch',
   'branches',
+  // Lieux : référentiel géré par l'admin (permission « localisations »). Une
+  // ville lue dans un document mais absente est ignorée, jamais créée : la
+  // création manuelle d'un client ne crée pas de ville non plus.
+  'country',
+  'region',
+  'division',
+  'districts',
+  'location_city',
   // Documents : nécessitent un vrai fichier uploadé via l'interface dédiée
   'documents',
   'document',

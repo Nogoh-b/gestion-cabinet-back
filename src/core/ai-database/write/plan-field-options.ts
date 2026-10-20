@@ -2,9 +2,11 @@
  * Options d'un champ de plan d'écriture IA, affichées dans la carte de
  * confirmation (listes déroulantes préremplies, libellés lisibles).
  */
+import type { CreateChoice } from './create-choice';
 
 export interface PlanFieldOption {
-  value: string | number | boolean | null;
+  /** Identifiant, valeur d'énumération… ou `{ $create: "X" }` (choix « Créer »). */
+  value: string | number | boolean | null | CreateChoice;
   label: string;
   /** Option désignant une ligne créée par une opération précédente du plan. */
   createdBy?: number;

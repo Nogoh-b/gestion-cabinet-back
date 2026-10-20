@@ -1,7 +1,7 @@
 ---
 id: competences-communication
 title: Compétences « Communication » (e-mail, WhatsApp, espace client, messagerie, factures)
-keywords: competence envoyer un e-mail, envoyer un mail depuis le chat, ecrire au client depuis le chat, programmer un e-mail, envoi programme, piece jointe e-mail chat, preparer un whatsapp, message whatsapp, ouvrir whatsapp, wa.me, message a l'espace client, message espace client, publier dans l'espace client, message a un collaborateur, messagerie interne chat, envoyer une facture depuis le chat, relancer les impayes depuis le chat, relance client chat
+keywords: competence envoyer un e-mail, envoyer un mail depuis le chat, ecrire au client depuis le chat, programmer un e-mail, envoi programme, piece jointe e-mail chat, preparer un whatsapp, message whatsapp, ouvrir whatsapp, wa.me, message a l'espace client, message espace client, publier dans l'espace client, message a un collaborateur, messagerie interne chat, envoyer une facture depuis le chat, relancer les impayes depuis le chat, relance client chat, mise en forme du message, mettre en gras, liste a puces, liste a tirets, liste numerotee, editeur du message
 paths: /chat
 ---
 
@@ -14,7 +14,7 @@ Toutes s'ouvrent avec **#** (ou **⚡**) dans le chat. Chacune se termine par un
 - **Ce que fait l'IA** : rédige l'objet et le message à partir de votre consigne et des informations de la fiche (dossier, prochaine audience, facture…), en s'inspirant des **modèles d'e-mails du cabinet** de la même catégorie. Elle ne remplit que les informations connues : aucune date ni aucun montant inventé. Une adresse ou une heure d'envoi écrite dans la consigne est reprise (« … demain à 8 h »).
 - **La carte** : Destinataire (par défaut l'e-mail du client ou du collaborateur), Copie (Cc), Objet, Message (sur plusieurs lignes), **Pièces jointes** (cases à cocher parmi les documents du dossier ou du client), **Programmer l'envoi** (date et heure ; vide = immédiat). L'aperçu indique « À : … · N pièce(s) jointe(s) · programmé le … ». Le message se modifie avant l'envoi : barre **Gras**, insertion d'un **lien** vers une fiche mentionnée (@), et **aperçu** fidèle au message reçu.
 - **Après Confirmer** : l'e-mail part avec l'en-tête et le pied de page du cabinet (SMTP du cabinet s'il est configuré) et apparaît dans l'onglet **Communication** de la fiche. Un envoi programmé part à l'heure prévue.
-- **Mise en forme** : **gras** pour l'essentiel, liens avec [texte](https://…) (dossier, facture…) — repris en gras et cliquables dans l'e-mail reçu, en texte simple dans la version texte. L'objet reste en texte simple.
+- **Mise en forme** : le message s'affiche directement tel qu'il sera reçu, sans bouton d'aperçu. Barre d'outils : **gras**, *italique*, souligné, barré, liste à tirets, liste à puces, liste numérotée, citation, lien vers une fiche mentionnée avec @ (dossier, facture…), effacer la mise en forme, annuler / rétablir. Raccourcis au clavier : Ctrl+B / Ctrl+I / Ctrl+U, « - » ou « 1. » en début de ligne pour démarrer une liste, « > » pour une citation, Maj+Entrée pour aller à la ligne sans changer de paragraphe. L'e-mail reçu reprend cette mise en forme (sa version texte garde les listes) ; l'objet reste en texte simple.
 - **Droits** : aucun droit particulier (comme le composer d'e-mail des fiches).
 - Erreurs : « Aucune adresse e-mail enregistrée… » → saisissez le destinataire dans la carte ; « Pièces jointes trop volumineuses » → 15 Mo au maximum.
 
@@ -22,7 +22,7 @@ Toutes s'ouvrent avec **#** (ou **⚡**) dans le chat. Chacune se termine par un
 - Mentionnez un client, un dossier, une audience ou une facture. L'IA rédige un message court, poli et signé.
 - **La carte** : Numéro (celui de la fiche client ; l'indicatif **+237** est ajouté à un numéro local), Message modifiable (barre **Gras**, insertion d'un **lien** vers une fiche mentionnée, **aperçu**), **Copier**, **Ouvrir WhatsApp** : WhatsApp (application ou WhatsApp Web) s'ouvre sur la conversation avec le texte prérempli ; vous appuyez sur Envoyer dans WhatsApp.
 - Le message est noté dans l'historique des communications du client (type **WhatsApp**).
-- **Mise en forme** : *gras* (astérisques simples), liens collés tels quels (WhatsApp les rend cliquables).
+- **Mise en forme** : le message s'affiche comme une bulle WhatsApp. Barre d'outils : gras, italique, barré, police fixe, liste à tirets, à puces ou numérotée, citation, lien vers une fiche (collé en clair, WhatsApp le rend cliquable). WhatsApp n'a pas de soulignement. **Copier** et **Ouvrir WhatsApp** envoient le texte avec la syntaxe de WhatsApp (*gras*, _italique_, ~barré~, « - » pour les listes) : il s'affiche mis en forme chez le client.
 - Droit requis : **modifier un client**. Aucun compte WhatsApp Business n'est nécessaire.
 
 ## Message à l'espace client

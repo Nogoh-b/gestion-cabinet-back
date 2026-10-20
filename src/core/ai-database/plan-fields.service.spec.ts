@@ -97,7 +97,7 @@ const labels: Record<string, string> = {
   'dossiers.danger_level': "Niveau d'urgence",
 };
 
-function build({ denied = [] as string[], ambiguous = false } = {}) {
+function build({ denied = [] as string[], ambiguous = false, canWrite = true } = {}) {
   const resolver = {
     resolveAnyEntity: jest.fn(async (table: string, term: string, _config?: any, filters?: Record<string, any>) => {
       const rows = (ROWS[table] ?? []).filter((row) => matches(row, filters));
@@ -115,6 +115,7 @@ function build({ denied = [] as string[], ambiguous = false } = {}) {
   };
   const permissions = {
     assertCanWritePlan: jest.fn(async () => undefined),
+    canWrite: jest.fn(async () => canWrite),
     partitionReadableTables: jest.fn(async (_user: any, tables: string[]) => ({
       allowed: tables.filter((t) => !denied.includes(t)),
       denied: tables.filter((t) => denied.includes(t)),
@@ -219,13 +220,70 @@ describe('PlanFieldsService', () => {
     expect(refreshed.options).toEqual([{ value: 8, label: 'Diffamation' }]);
   });
 
-  it("garde la valeur de l'IA quand la correspondance est ambiguë", async () => {
+  it("demande de choisir quand la correspondance est ambiguë, sans proposer de créer", async () => {
     const { service } = build({ ambiguous: true });
     const response = await service.describePlan(1, plan([{ operation: 'INSERT', entity: 'customer', fields: { full_name: 'Z', type_customer: 'e' } }]) as any);
     const type = field(response, 0, 'type_customer_id');
     expect(type.needsChoice).toBe(true);
-    expect(type.selected).toEqual({ value: 'e', label: '« e » (à choisir)' });
+    expect(type.value).toBe('e');
+    expect(type.selected).toBeNull();
+    expect(type.options.some((o: any) => typeof o.value === 'object' && o.value)).toBe(false);
     expect(type.note).toBe('Plusieurs correspondances exactes : choisissez la bonne');
+  });
+
+  it('valeur sans correspondance exacte : les plus proches en tête, puis « Créer », à choisir dans la carte', async () => {
+    const { service, resolver } = build();
+    resolver.resolveAnyEntity.mockResolvedValueOnce({
+      found: false, best: null, score: 0, matchedOn: '', ambiguous: false,
+      candidates: [{ entity: ROWS.procedure_types[1], score: 50, matchedOn: 'Civil' }],
+    } as never);
+    const response = await service.describePlan(1, plan([{ operation: 'INSERT', entity: 'dossiers', fields: { procedure_type: 'Contentieux civil', object: 'X' } }]) as any);
+    const type = field(response, 0, 'procedure_type_id');
+    expect(type.options.map((o: any) => o.value)).toEqual([null, 6, { $create: 'Contentieux civil' }, 5]);
+    expect(type.options[2].label).toBe('➕ Créer « Contentieux civil »');
+    expect(type.selected).toBeNull();
+    expect(type.needsChoice).toBe(true);
+    expect(type.note).toContain("choisissez l'élément proche ou « Créer »");
+  });
+
+  it('valeur introuvable : « Créer » présélectionné (référentiel créable sur choix explicite)', async () => {
+    const { service } = build();
+    const response = await service.describePlan(1, plan([{ operation: 'INSERT', entity: 'dossiers', fields: { procedure_type: 'Social', object: 'X' } }]) as any);
+    const type = field(response, 0, 'procedure_type_id');
+    expect(type.selected).toEqual({ value: { $create: 'Social' }, label: '➕ Créer « Social »' });
+    expect(type.needsChoice).toBeUndefined();
+    expect(type.note).toBe('« Social » introuvable : sera créé(e), ou choisissez dans la liste');
+  });
+
+  it('sans droit de création : champ facultatif laissé vide, champ obligatoire à choisir', async () => {
+    const { service } = build({ canWrite: false });
+    const response = await service.describePlan(1, plan([
+      { operation: 'INSERT', entity: 'dossiers', fields: { procedure_type: 'Social', client: 'Inconnu', object: 'X' } },
+    ]) as any);
+    const type = field(response, 0, 'procedure_type_id');
+    expect(type.selected).toEqual({ value: null, label: '— Aucun —' });
+    expect(type.needsChoice).toBeUndefined();
+    expect(type.options.some((o: any) => typeof o.value === 'object' && o.value)).toBe(false);
+    const client = field(response, 0, 'client_id');
+    expect(client.selected).toBeNull();
+    expect(client.needsChoice).toBe(true);
+  });
+
+  it('reconnaît un choix « Créer » déjà fait et le garde quand les options d’un champ dépendant changent', async () => {
+    const { service } = build();
+    const response = await service.describePlan(1, plan([
+      { operation: 'INSERT', entity: 'dossiers', fields: { procedure_type_id: 6, procedure_subtype: { $create: 'Licenciement abusif' }, object: 'X' } },
+    ]) as any);
+    expect(field(response, 0, 'procedure_subtype_id').selected).toEqual({ value: { $create: 'Licenciement abusif' }, label: '➕ Créer « Licenciement abusif »' });
+
+    const refreshed = await service.fieldOptions(1, {
+      entity: 'dossiers', operation: 'INSERT', field: 'procedure_subtype_id',
+      fields: { procedure_type_id: 5, procedure_subtype: { $create: 'Licenciement abusif' } },
+    } as any);
+    expect(refreshed.options).toEqual([
+      { value: { $create: 'Licenciement abusif' }, label: '➕ Créer « Licenciement abusif »' },
+      { value: 8, label: 'Diffamation' },
+    ]);
   });
 
   it('réunit alias et colonne, met tout en lecture seule pour une suppression, sans exposer les lignes', async () => {
@@ -273,7 +331,10 @@ describe('PlanFieldsService', () => {
   it('cherche dans une grande table à la demande', async () => {
     const { service } = build();
     const result = await service.fieldOptions(1, { entity: 'dossiers', operation: 'INSERT', field: 'client', q: 'bingo' });
-    expect(result).toEqual({ options: [{ value: 40, label: 'BINGOUNA Alexis' }], searchable: true });
+    expect(result).toEqual({
+      options: [{ value: 40, label: 'BINGOUNA Alexis' }, { value: { $create: 'bingo' }, label: '➕ Créer « bingo »' }],
+      searchable: true,
+    });
   });
 });
 

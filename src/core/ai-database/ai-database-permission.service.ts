@@ -677,6 +677,15 @@ export class AiDatabasePermissionService {
     await this.assertAllowed(user, requirements);
   }
 
+  /** Vrai si l'utilisateur peut faire `operation` sur `table` (sans lever d'erreur). */
+  async canWrite(
+    user: AiUserLike,
+    table: string,
+    operation: 'INSERT' | 'UPDATE' = 'INSERT',
+  ): Promise<boolean> {
+    return (await this.findMissing(user, [{ table, operation }])).length === 0;
+  }
+
   /** Permissions de `codes` que l'utilisateur n'a pas (admin : aucune). */
   async missingPermissions(user: AiUserLike, codes: string[]): Promise<string[]> {
     if (!codes.length || this.isAdmin(user)) return [];

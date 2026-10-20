@@ -111,6 +111,8 @@ export interface WriteResult {
   entity?: string;
   /** Champs demandés par le plan, pour le compte rendu (valeurs lues dans `data`). */
   changedFields?: string[];
+  /** Pièces jointes dont vient l'opération (`WriteOperation.sourceFiles`). */
+  sourceFiles?: string[];
   /** Entités créées automatiquement en cascade lors de la résolution des dépendances */
   cascadeCreations?: Array<{
     entityName: string;

@@ -110,6 +110,12 @@ export interface WriteOperation {
   dependsOn?: string[];
   humanReadable: string; // Description lisible pour confirmation
   /**
+   * Pièces jointes dont viennent les données de l'opération (création à partir
+   * de fichiers) : le chat classe ensuite chaque fichier dans le dossier créé
+   * à partir de lui. Ignoré à l'exécution.
+   */
+  sourceFiles?: string[];
+  /**
    * Ancienne configuration de résolution, gardée pour les plans enregistrés.
    * Sans effet : les références sont résolues de façon déterministe
    * (identifiant, ou correspondance exacte et unique, sinon choix utilisateur).

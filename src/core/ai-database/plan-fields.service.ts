@@ -17,6 +17,7 @@ import {
 import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { AUTO_GENERATED_FIELDS, BaseWriteHandler } from './write/base-write-handler';
+import { canCreateOnChoice, createChoice, createChoiceLabel, isCreateChoice } from './write/create-choice';
 import { EntityResolverService } from './write/entity-resolver.service';
 import { matchEnumValue, parseLenientBoolean } from './write/lenient-values';
 import { PLAN_REF, PlanFieldOption, fixedOptions, humanize, parseValueList, rowLabel } from './write/plan-field-options';
@@ -119,12 +120,18 @@ export class PlanFieldsService {
     const hint = FIELD_HINTS[meta.tableName]?.[reference.fkColumn]?.(resolved, op);
     const filters = { ...this.activeWhere(reference), ...hint?.filters };
     const q = String(request.q ?? '').trim().slice(0, 100);
+    // « Créer » reste proposé pour la valeur en cours (sous-type gardé quand
+    // son type change) et pour le texte recherché.
+    const current = reference.keys.map((key) => op.fields?.[key]).find((v) => v !== undefined && v !== null && v !== '');
+    const toCreate = q || (isCreateChoice(current) ? createChoiceLabel(current) : typeof current === 'string' && !isId(current) && !PLAN_REF.test(current) ? current.trim() : '');
+    const create = toCreate && (await this.canCreate(user, reference)) ? [this.createOption(toCreate)] : [];
     if (q) {
       const found = await this.entityResolver.searchCandidates(reference.table, q, filters, SEARCH_LIMIT);
       const rows = this.preferOwnRows(reference, found);
-      return { options: rows.map((row) => this.toOption(row)), searchable: true };
+      return { options: [...rows.map((row) => this.toOption(row)), ...create], searchable: true };
     }
-    return this.listRows(reference, filters);
+    const listing = await this.listRows(reference, filters);
+    return { ...listing, options: [...create, ...listing.options] };
   }
 
   // ── Opération ─────────────────────────────────────────────────────────────
@@ -365,6 +372,9 @@ export class PlanFieldsService {
         note = 'Introuvable dans ce cabinet';
         needsChoice = true;
       }
+    } else if (isCreateChoice(raw)) {
+      selected = this.createOption(createChoiceLabel(raw));
+      note = `« ${createChoiceLabel(raw)} » sera créé(e)`;
     } else if (typeof raw === 'string' && raw.trim()) {
       // Même résolution (déterministe) qu'à l'exécution : présélection seulement si elle est sûre.
       const result = await this.entityResolver.resolveAnyEntity(reference.table, raw, undefined, hint?.filters);
@@ -372,19 +382,30 @@ export class PlanFieldsService {
       if (best) {
         selected = this.toOption(best);
       } else {
-        options = [...options, ...this.preferOwnRows(reference, result.candidates.slice(0, 8).map((c) => c.entity)).map((row) => this.toOption(row))];
-        // Sans aucun enregistrement approchant, l'exécution crée la valeur ;
-        // sinon elle demandera de choisir (jamais de doublon silencieux).
-        const created = !this.neverAutoCreate().has(reference.table) && !result.candidates.length;
-        selected = { value: raw, label: `« ${raw} »${created ? ' (nouveau)' : ' (à choisir)'}` };
-        note = result.ambiguous
-          ? 'Plusieurs correspondances exactes : choisissez la bonne'
-          : created
-            ? `Introuvable : « ${raw} » sera créé si vous ne choisissez pas`
-            : result.candidates.length
-              ? 'Aucune correspondance exacte : choisissez dans la liste'
-              : 'Introuvable : choisissez dans la liste';
-        needsChoice = true;
+        // C'est ici que se décide la valeur : les plus proches en tête, puis
+        // « Créer ». L'exécution applique ce choix tel quel, sans nouvelle
+        // recherche ni carte de choix (cf. write/create-choice.ts).
+        const near = this.preferOwnRows(reference, result.candidates.slice(0, 8).map((c) => c.entity)).map((row) => this.toOption(row));
+        const create = !result.ambiguous && (await this.canCreate(user, reference)) ? [this.createOption(raw)] : [];
+        options = [...near, ...create, ...options];
+        if (result.ambiguous) {
+          note = 'Plusieurs correspondances exactes : choisissez la bonne';
+          needsChoice = true;
+        } else if (near.length) {
+          note = create.length
+            ? `Aucune correspondance exacte pour « ${raw} » : choisissez l'élément proche ou « Créer »`
+            : `Aucune correspondance exacte pour « ${raw} » : choisissez dans la liste`;
+          needsChoice = true;
+        } else if (create.length) {
+          selected = create[0];
+          note = `« ${raw} » introuvable : sera créé(e), ou choisissez dans la liste`;
+        } else if (reference.nullable) {
+          selected = { value: null, label: '— Aucun —' };
+          note = `« ${raw} » introuvable : laissé vide, ou choisissez dans la liste`;
+        } else {
+          note = `« ${raw} » introuvable : choisissez dans la liste`;
+          needsChoice = true;
+        }
       }
     }
 
@@ -546,6 +567,20 @@ export class PlanFieldsService {
 
   private toOption(row: any): PlanFieldOption {
     return { value: row?.id, label: rowLabel(row) };
+  }
+
+  /** Option « ➕ Créer « X » » : sa valeur est créée telle quelle à l'exécution. */
+  private createOption(label: string): PlanFieldOption {
+    return { value: createChoice(label), label: `➕ Créer « ${label.trim()} »` };
+  }
+
+  /**
+   * La carte propose « Créer » si la table l'accepte sur choix explicite
+   * (pas de comptes, agences, lieux…) et si l'utilisateur peut y créer.
+   */
+  private async canCreate(user: User, reference: ReferenceInfo): Promise<boolean> {
+    if (!canCreateOnChoice(reference.table, this.neverAutoCreate())) return false;
+    return this.permissions.canWrite(user, reference.table, 'INSERT').catch(() => false);
   }
 
   // ── Métadonnées ───────────────────────────────────────────────────────────
