@@ -8,10 +8,9 @@ import { htmlToText, resolveSkillTarget } from 'src/core/ai-database/skills/skil
 import { normalizeActionName } from 'src/core/ai-database/write/ai-action.registry';
 import { Permission } from 'src/core/enums/permission.enum';
 import { Audience } from '../audiences/entities/audience.entity';
-import { Facture } from '../facture/entities/facture.entity';
 import { ReportsService } from '../reports/reports.service';
 import { DRAFTING_RULES, isOutcome, senderLine, targetOrClarify } from './skill-drafting';
-import { customerName, SkillTargetsService } from './skill-targets.service';
+import { customerName, SkillTargetsService, unpaidInvoices } from './skill-targets.service';
 
 const MONTHS = ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'];
 
@@ -180,27 +179,10 @@ export class EtatImpayesSkill implements AiSkillHandler {
 
   async run(ctx: AiSkillContext): Promise<AiSkillOutcome> {
     const target = resolveSkillTarget(ctx, this.definition.targets ?? []);
-    const qb = this.dataSource.getRepository(Facture)
-      .createQueryBuilder('f')
-      .leftJoinAndSelect('f.client', 'c')
-      .leftJoinAndSelect('f.dossier', 'd')
-      // Colonnes ENUM numériques : codes BD en chaînes (brouillon, payée, annulée exclues).
-      .leftJoinAndSelect('f.paiements', 'p', "p.status = '1'")
-      .where("f.status NOT IN ('0', '3', '5')")
-      .orderBy('f.dateEcheance', 'ASC');
-    if (target?.type === 'client') qb.andWhere('f.client_id = :id', { id: target.id });
-    if (target?.type === 'dossier') qb.andWhere('f.dossier_id = :id', { id: target.id });
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const unpaid = (await qb.getMany())
-      .map((facture: any) => {
-        const paid = (facture.paiements ?? []).reduce((sum: number, p: any) => sum + Number(p?.montant ?? 0), 0);
-        const reste = Number(facture.montantTTC ?? 0) - paid;
-        const due = facture.dateEcheance ? new Date(facture.dateEcheance) : null;
-        const lateDays = due && due < today ? Math.floor((today.getTime() - due.getTime()) / 86_400_000) : 0;
-        return { facture, reste, due, lateDays };
-      })
-      .filter((row) => row.reste > 0.009);
+    const unpaid = await unpaidInvoices(this.dataSource, {
+      ...(target?.type === 'client' && { clientId: target.id }),
+      ...(target?.type === 'dossier' && { dossierId: target.id }),
+    });
 
     const scope = target ? ` — ${target.label}` : '';
     if (!unpaid.length) return { type: 'answer', markdown: `✅ Aucune facture impayée${scope}.` };
@@ -317,7 +299,7 @@ export class CompteRenduAudienceSkill implements AiSkillHandler {
     const report = minutes ? `Procès-verbal saisi :\n"""\n${minutes.slice(0, 4000)}\n"""` : '';
     const text = await ctx.llm.stream(`Tu rédiges le compte rendu d'une audience, destiné au client d'un cabinet d'avocats. Il lui sera envoyé tel quel (e-mail ou espace client).
 
-${await this.targets.facts(info, ctx.user)}
+${await this.targets.facts(info, ctx.user, ctx.question)}
 ${report}
 ${senderLine(sender, 'Rédacteur')}
 

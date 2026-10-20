@@ -141,7 +141,7 @@ abstract class LetterSkill implements AiSkillHandler {
     if (!bodyContent) {
       const draft = await draftJson<Record<string, string>>(ctx, `Tu rédiges ${this.config.article} sur le papier à en-tête d'un cabinet d'avocats. ${this.config.templateNote} Écris seulement le destinataire, l'objet et le corps.
 
-${info ? await this.targets.facts(info, ctx.user) : 'Aucune fiche mentionnée : appuie-toi sur la demande.'}
+${info ? await this.targets.facts(info, ctx.user, ctx.question) : 'Aucune fiche mentionnée : appuie-toi sur la demande.'}
 ${opposing ? `Destinataire par défaut (partie adverse) : ${opposing}` : ''}
 ${senderLine(sender, 'Signataire')}
 Date du jour : ${todayFr()}

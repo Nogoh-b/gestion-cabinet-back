@@ -332,7 +332,7 @@ export class InjonctionPayerSkill implements AiSkillHandler {
 Mentions exigées par l'article 4 AUPSRVE, toutes présentes : noms, prénoms, profession et domicile des parties (ou forme, dénomination et siège social d'une personne morale) ; montant précis de la somme réclamée avec le décompte de ses différents éléments ; fondement de la créance ; pièces justificatives ; élection de domicile dans le ressort de la juridiction si le créancier n'y demeure pas.
 La créance doit être certaine, liquide et exigible, d'origine contractuelle (ou résulter d'un effet de commerce ou d'un chèque sans provision).
 
-${info ? await this.targets.facts(info, ctx.user) : ''}
+${info ? await this.targets.facts(info, ctx.user, ctx.question) : ''}
 ${decompte ? `Décompte calculé par le logiciel (à reprendre tel quel) : ${JSON.stringify(decompte)}` : ''}
 ${senderLine(sender, 'Avocat du créancier')}
 Date du jour : ${todayFr()}
@@ -419,7 +419,7 @@ export class ConventionHonorairesSkill implements AiSkillHandler {
     const range = ctx.params?.fourchette ? `Fourchette observée sur des dossiers comparables (indicative) : ${JSON.stringify(ctx.params.fourchette)}` : '';
     const draft = await draftJson<Record<string, any>>(ctx, `Tu rédiges une convention d'honoraires entre un cabinet d'avocats et son client.
 
-${await this.targets.facts(info, ctx.user)}
+${await this.targets.facts(info, ctx.user, ctx.question)}
 Tarification du dossier (seule source des montants) :
 ${tariff}
 ${range}

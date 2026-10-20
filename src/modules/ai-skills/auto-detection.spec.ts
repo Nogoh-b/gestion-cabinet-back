@@ -47,6 +47,10 @@ describe('compétences reconnues en mode auto', () => {
 
   it.each([
     ['je veut preparer un whatsapp', 'whatsapp'],
+    // Faute de frappe signalée le 20/10/2026 (la demande partait en Aide).
+    ['je veux envoyer un whatsap à Émilie LEFÈVRE concernant le dossier #DOS-2026-0038 — Émilie LEFÈVRE', 'whatsapp'],
+    ['prépare un watsapp pour le client', 'whatsapp'],
+    ['je veux preparer un whatsapp pour le dossier #DOS-2026-0038 — Émilie LEFÈVRE concernant les factures impayées', 'whatsapp'],
     ['Préparer un WhatsApp pour Émilie Lefèvre', 'whatsapp'],
     ['envoie un SMS au client pour lui rappeler l’audience', 'whatsapp'],
     ['rédige un mail au client pour l’informer du renvoi', 'envoyer_email'],

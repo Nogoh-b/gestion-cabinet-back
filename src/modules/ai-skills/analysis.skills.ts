@@ -196,7 +196,7 @@ Réponds UNIQUEMENT en JSON : {"moyens": [{"titre": "", "resume": "", "fondement
     ctx.status('✍️ Rédaction des conclusions en réponse…');
     const draft = await draftJson<Record<string, any>>(ctx, `Tu es avocat (droit OHADA, Cameroun) et rédiges des conclusions en réponse pour le client du cabinet.
 
-${await this.targets.facts(info, ctx.user)}
+${await this.targets.facts(info, ctx.user, ctx.question)}
 ${senderLine(sender, 'Avocat')}
 
 Moyens adverses :
@@ -562,7 +562,7 @@ export class EvaluerChancesSkill implements AiSkillHandler {
     ctx.status('🎯 Évaluation du dossier…');
     const draft = await draftJson<Record<string, any>>(ctx, `Tu es avocat expérimenté (droit OHADA, Cameroun). Évalue objectivement les chances de succès du client dans ce dossier.
 
-${await this.targets.facts(info, ctx.user)}
+${await this.targets.facts(info, ctx.user, ctx.question)}
 ${info.dossier?.description ? `Description : ${String(info.dossier.description).slice(0, 2000)}` : ''}
 
 ${piecesBlock(all) || 'Aucune pièce lisible.'}
@@ -774,7 +774,7 @@ export class DossierPlaidoirieSkill implements AiSkillHandler {
     ctx.status('🎤 Préparation du dossier de plaidoirie…');
     const draft = await draftJson<Record<string, any>>(ctx, `Tu es avocat plaidant (droit OHADA, Cameroun). Prépare le dossier de plaidoirie de l'audience.
 
-${await this.targets.facts(info, ctx.user)}
+${await this.targets.facts(info, ctx.user, ctx.question)}
 
 ${piecesBlock(all) || 'Aucune pièce lisible.'}
 

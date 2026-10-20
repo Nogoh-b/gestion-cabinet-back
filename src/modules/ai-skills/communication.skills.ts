@@ -22,12 +22,22 @@ const TEMPLATE_CATEGORY: Record<string, string[]> = {
   employee: ['dossier', 'audience', 'general'],
 };
 
-/** Contexte factuel commun : cible, expéditeur, date du jour. */
+/**
+ * Contexte factuel commun : cible, expéditeur, date du jour. Un client
+ * mentionné avec l'un de ses dossiers : les faits sont ceux de ce dossier
+ * (le message porte sur lui), le destinataire reste le client.
+ */
 async function factsBlock(targets: SkillTargetsService, info: TargetInfo, ctx: AiSkillContext): Promise<string> {
   const sender = await targets.sender(ctx.userId);
+  let focus = info;
+  if (info.type === 'client') {
+    const dossierTarget = findTarget(ctx.references, ['dossier']);
+    const dossier = dossierTarget ? await targets.load(dossierTarget).catch(() => null) : null;
+    if (dossier && (!info.client || dossier.client?.id === info.client.id)) focus = dossier;
+  }
   return [
     `Destinataire : ${info.recipientName || info.label}${info.type === 'employee' ? ' (collaborateur du cabinet)' : ''}`,
-    await targets.facts(info, ctx.user),
+    await targets.facts(focus, ctx.user, ctx.question),
     senderLine(sender),
     `Date du jour : ${todayFr()}`,
   ].filter(Boolean).join('\n');
@@ -52,7 +62,7 @@ export class EnvoyerEmailSkill implements AiSkillHandler {
     examples: ["Confirme au client la date de l'audience", 'Demande au client les pièces manquantes'],
     keywords: ['mail', 'email', 'e-mail', 'courriel', 'envoyer', 'écrire', 'message'],
     autoTriggers: ['mail', 'email', 'courriel'],
-    autoExclude: ['facture', 'factures', 'impaye', 'impayes', 'relance', 'relancer', 'whatsapp'],
+    autoExclude: ['facture', 'factures', 'impaye', 'impayes', 'relance', 'relancer', 'whatsapp', 'whatsap', 'watsapp', 'watsap'],
   };
 
   constructor(
@@ -210,7 +220,7 @@ export class MessageCollaborateurSkill implements AiSkillHandler {
       const draft = await draftJson<{ content?: string }>(ctx, `Tu rédiges un court message interne entre collaborateurs d'un cabinet d'avocats.
 
 ${await factsBlock(this.targets, info, ctx)}
-${dossier ? `Dossier concerné :\n${await this.targets.facts(dossier, ctx.user)}` : ''}
+${dossier ? `Dossier concerné :\n${await this.targets.facts(dossier, ctx.user, ctx.question)}` : ''}
 
 ${requestBlock(ctx)}
 
@@ -243,7 +253,8 @@ export class WhatsappSkill implements AiSkillHandler {
     placeholder: 'Que doit dire le message WhatsApp au client ?',
     examples: ["Rappelle au client l'audience de demain", 'Demande au client de passer signer'],
     keywords: ['whatsapp', 'sms', 'texto', 'téléphone', 'message'],
-    autoTriggers: ['whatsapp', 'sms', 'texto'],
+    // Orthographes fréquentes à la saisie (« whatsap », « watsapp »…).
+    autoTriggers: ['whatsapp', 'whatsap', 'watsapp', 'watsap', 'wathsapp', 'whats app', 'sms', 'texto'],
   };
 
   constructor(private readonly targets: SkillTargetsService) {}

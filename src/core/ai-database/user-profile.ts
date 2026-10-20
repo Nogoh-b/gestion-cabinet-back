@@ -259,7 +259,7 @@ export function renderUserProfileBlock(snapshot: UserProfileSnapshot | null | un
     if (snapshot.quotas.length) lines.push(`- Utilisation : ${snapshot.quotas.map((q) => `${q.label} ${quotaText(q)}`).join(' ; ')}`);
     if (snapshot.ai) lines.push(`- Requêtes IA ce mois : ${quotaText({ label: '', used: snapshot.ai.used, max: snapshot.ai.max })}`);
   }
-  return `CONTEXTE DE L'UTILISATEUR CONNECTÉ (fourni par l'application, fiable ; sers-t'en quand la question porte sur l'utilisateur, son rôle, ses droits, son cabinet ou son abonnement, sans le recopier inutilement) :
+  return `CONTEXTE DE L'UTILISATEUR CONNECTÉ (fourni par l'application, fiable). N'en parle QUE si la question porte sur l'utilisateur (son rôle, ses droits, son cabinet, son abonnement) ou si un droit ou un module manquant l'empêche d'obtenir ce qu'il demande ; sinon ne le mentionne pas :
 ${lines.join('\n')}`;
 }
 
