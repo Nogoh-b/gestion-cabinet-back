@@ -11,13 +11,14 @@ import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
 import { AiRequestLog } from '../entities/ai-request-log.entity';
 
 /**
- * AiQuotaGuard — applique le quota mensuel `ai_requests_per_month` du plan sur
- * les routes IA (ask / ask-stream).
+ * AiQuotaGuard — applique le module IA (`ai_enabled`) et le quota mensuel
+ * `ai_requests_per_month` du plan sur les routes qui appellent le modèle
+ * (ask, ask/stream, form/prepare, analyze).
  *
  * Isolé du cœur du module ai-database (en cours de refonte) : ne dépend que de
- * son propre journal `AiRequestLog` et de PlanQuotaService. Compte les
- * tentatives du mois courant, refuse si la limite est atteinte, sinon
- * enregistre la requête.
+ * son propre journal `AiRequestLog` et de PlanQuotaService. Refuse si le plan
+ * n'inclut pas l'IA, compte les tentatives du mois courant, refuse si la limite
+ * est atteinte, sinon enregistre la requête. Aucun plan → aucune restriction.
  */
 @Injectable()
 export class AiQuotaGuard implements CanActivate {
@@ -34,6 +35,8 @@ export class AiQuotaGuard implements CanActivate {
     if (!tenantId) return true; // pas de tenant → pas de quota
 
     const plan = await this.planQuota.getCabinetPlan(tenantId);
+    // Module IA absent du plan : refus avant tout comptage ou journal.
+    this.planQuota.assertModuleEnabled(plan, 'ai');
     const limit = plan?.ai_requests_per_month;
 
     // null / -1 = illimité (ou aucun plan) → aucune limite appliquée.

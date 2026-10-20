@@ -50,8 +50,14 @@ export class ConversationManagerService {
     return metadata ? this.userMessageExtras.run(metadata, callback) : callback();
   }
 
-  /** Enregistrements cités par la réponse en cours (lectures de la requête). */
-  private readonly citations = new AsyncLocalStorage<{ references: CitedReference[] }>();
+  /**
+   * Enregistrements cités par la réponse en cours (lectures de la requête),
+   * et mode de réponse retenu (affiché avec la réponse à la réouverture).
+   */
+  private readonly citations = new AsyncLocalStorage<{
+    references: CitedReference[];
+    responseMode?: Record<string, any>;
+  }>();
 
   /** Ouvre la collecte des enregistrements cités pour une requête du chat. */
   withCitations<T>(callback: () => T): T {
@@ -65,9 +71,50 @@ export class ConversationManagerService {
     store.references = mergeCitedReferences(store.references, references);
   }
 
+  /** Une réponse du chat collecte-t-elle ses enregistrements cités ? */
+  isCollectingCitations(): boolean {
+    return !!this.citations.getStore();
+  }
+
   /** Enregistrements cités par la réponse en cours. */
   citedRecords(): CitedReference[] {
     return this.citations.getStore()?.references ?? [];
+  }
+
+  /** Mode de réponse de la requête en cours (Lire, Aide…), gardé avec la réponse. */
+  noteResponseMode(mode: Record<string, any>): void {
+    const store = this.citations.getStore();
+    if (store) store.responseMode = mode;
+    // Réponse en plusieurs parties : chaque partie garde son mode.
+    this.composition.getStore()?.modes.push(mode);
+  }
+
+  /**
+   * Réponse en plusieurs parties (une demande enchaînant Lire + compétence…) :
+   * pendant `callback`, les messages ne sont pas enregistrés mais gardés,
+   * pour n'enregistrer à la fin qu'une question et une réponse fusionnée.
+   */
+  private readonly composition = new AsyncLocalStorage<{
+    assistant: Array<{ content: string; metadata?: Record<string, any> }>;
+    modes: Array<Record<string, any>>;
+  }>();
+
+  async compose<T>(callback: () => Promise<T>): Promise<{
+    value: T;
+    assistant: Array<{ content: string; metadata?: Record<string, any> }>;
+    modes: Array<Record<string, any>>;
+  }> {
+    const buffer = { assistant: [] as Array<{ content: string; metadata?: Record<string, any> }>, modes: [] as Array<Record<string, any>> };
+    const value = await this.composition.run(buffer, callback);
+    return { value, ...buffer };
+  }
+
+  isComposing(): boolean {
+    return !!this.composition.getStore();
+  }
+
+  responseMode(): Record<string, any> | undefined {
+    return this.citations.getStore()?.responseMode;
   }
 
   /**
@@ -493,6 +540,8 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     content: string,
     references?: ReferencedEntityContext[],
   ): Promise<void> {
+    // Partie d'une réponse composée : la question entière est enregistrée à la fin.
+    if (this.composition.getStore()) return;
     const message = await this.addMessage(
       conversationId,
       'user',
@@ -516,9 +565,15 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     reasoningContent?: string,
     metadata?: Record<string, any>,
   ): Promise<void> {
+    const composing = this.composition.getStore();
+    if (composing) {
+      composing.assistant.push({ content, ...(metadata && { metadata }) });
+      return;
+    }
     // Les enregistrements cités restent avec la réponse : rouverte plus tard,
     // la conversation garde leurs identifiants pour les demandes suivantes.
     const cited = this.citedRecords();
+    const responseMode = this.responseMode();
     await this.addMessage(
       conversationId,
       'assistant',
@@ -526,7 +581,13 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       reasoningContent,
       undefined,
       undefined,
-      cited.length && !metadata?.cited ? { ...(metadata ?? {}), cited } : metadata,
+      cited.length || responseMode
+        ? {
+            ...(metadata ?? {}),
+            ...(cited.length && !metadata?.cited && { cited }),
+            ...(responseMode && !metadata?.responseMode && { responseMode }),
+          }
+        : metadata,
     );
   }
 

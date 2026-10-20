@@ -27,5 +27,7 @@ import { ReportsController } from './reports.controller';
   ],
   controllers: [ReportsController],
   providers: [ReportsService],
+  // Compétence « Rapport d'activité » du chat.
+  exports: [ReportsService],
 })
 export class ReportsModule {}

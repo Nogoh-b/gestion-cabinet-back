@@ -227,8 +227,22 @@ export class PlanQuotaService {
     cabinetId: number,
     module: PlanModule,
   ): Promise<boolean> {
-    const plan = await this.getCabinetPlan(cabinetId);
-    if (!plan) return true; // aucun plan → on n'empêche rien
+    return PlanQuotaService.planIncludes(
+      await this.getCabinetPlan(cabinetId),
+      module,
+    );
+  }
+
+  async checkModuleEnabled(
+    cabinetId: number,
+    module: PlanModule,
+  ): Promise<void> {
+    this.assertModuleEnabled(await this.getCabinetPlan(cabinetId), module);
+  }
+
+  /** Module inclus dans `plan` ; aucun plan → on n'empêche rien. */
+  static planIncludes(plan: Plan | null, module: PlanModule): boolean {
+    if (!plan) return true;
 
     const map: Record<PlanModule, boolean> = {
       payroll: !!plan.payroll_enabled,
@@ -240,13 +254,9 @@ export class PlanQuotaService {
     return map[module];
   }
 
-  async checkModuleEnabled(
-    cabinetId: number,
-    module: PlanModule,
-  ): Promise<void> {
-    const enabled = await this.isModuleEnabled(cabinetId, module);
-    if (!enabled) {
-      const plan = await this.getCabinetPlan(cabinetId);
+  /** Variante de checkModuleEnabled pour un plan déjà chargé (ex. AiQuotaGuard). */
+  assertModuleEnabled(plan: Plan | null, module: PlanModule): void {
+    if (!PlanQuotaService.planIncludes(plan, module)) {
       const labelMap: Record<PlanModule, string> = {
         payroll: 'la paie',
         expenses: 'la gestion des dépenses',

@@ -3,8 +3,10 @@ import {
   citedRecordsFromLinks,
   formatHistoryForPlanner,
   historyHasCitedRecords,
+  identifierValues,
   knownRecordKeys,
   recordFromHref,
+  tablesInSql,
   toCitedReference,
   unverifiedTargets,
 } from './cited-records';
@@ -64,6 +66,24 @@ describe('Enregistrements cités par le chat', () => {
     const text = formatHistoryForPlanner(history, { maxChars: 1000 });
     expect(text).toContain('dernière question');
     expect(text).not.toContain('AAAA');
+  });
+
+  it('repère les numéros métier et les noms d’un résultat agrégé', () => {
+    const rows = [
+      { numero: 'FAC-2026-0041', date_facture: '2026-10-12', montant_ttc: '250000.00', encaisse: 0, statut: 'Émise' },
+      { numero: 'FAC-2026-0044', date_facture: '2026-10-12', montant_ttc: '50000.00', encaisse: 5000, statut: 'En retard' },
+      { dossier: 'DOS-2026-0038', client_nom: 'Émilie LEFÈVRE', devise: 'XAF', code_postal: '75001' },
+    ];
+    expect(identifierValues(rows)).toEqual({
+      codes: ['FAC-2026-0041', 'FAC-2026-0044', 'DOS-2026-0038'],
+      names: ['Émilie LEFÈVRE'],
+    });
+  });
+
+  it('liste les tables lues par une requête, sous-requêtes comprises', () => {
+    expect(tablesInSql(
+      "SELECT f.numero, (SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id) AS encaisse FROM factures f JOIN `dossiers` d ON d.id = f.dossier_id WHERE d.dossier_number = 'join x from y' GROUP BY f.id",
+    )).toEqual(['paiements', 'factures', 'dossiers']);
   });
 
   it('signale une cible que l’utilisateur n’a jamais vue', () => {

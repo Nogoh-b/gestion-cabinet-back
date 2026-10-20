@@ -9,7 +9,8 @@ export type { PlanFieldOption };
 export interface PlanFieldDescriptor {
   name: string;
   label: string;
-  kind: 'reference' | 'enum' | 'boolean' | 'date' | 'datetime' | 'number' | 'text';
+  /** `longtext` : texte long (corps d'un message) ; `multi` : choix multiple parmi `options`. */
+  kind: 'reference' | 'enum' | 'boolean' | 'date' | 'datetime' | 'number' | 'text' | 'longtext' | 'multi';
   /** Valeur du plan proposée par l'IA (brute). */
   value: unknown;
   /** Option correspondant à la valeur du plan, quand elle est reconnue. */

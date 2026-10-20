@@ -16,17 +16,17 @@ KabySoft distingue trois canaux : les **e-mails** (menu Messages, vers l'extéri
 
 ### Où le trouver
 - **Plus > Communication > Messages** (`/mails`, permission « voir les messages ») : page **Emails**. Boutons **Actualiser** et **Nouveau message**.
-- Les modèles de texte proposés dans le compositeur se règlent dans Plus > Configuration > Modèles (voir « Modèles »).
+- Les textes des e-mails automatiques (notifications, relances, accès…) se règlent dans Plus > Configuration > Modèles (voir « Modèles »).
 - Des raccourcis existent aussi sur les fiches : **Envoyer par email** (facture), **Contacter par email** (client, employé, apporteur), onglet Communication.
 
 ### Envoyer un message — pas à pas
 1. **Messages > Nouveau message**.
-2. Choisissez le **destinataire** (client, collaborateur…), le **modèle** éventuel (suivi de dossier, relance…), l'**objet** et le **corps** ; joignez des pièces si besoin.
-3. **Envoyer**. Le message part en **En attente** puis passe **Envoyé** ; en cas de problème il passe en **Échec** avec le motif.
+2. Renseignez les **destinataires** (**À** avec autocomplétion, **Cc** et **Cci** facultatifs ; depuis un dossier, le destinataire peut être déduit automatiquement), le **Sujet**, le **Contenu** (« Rédigez votre message… », `@` pour insérer une référence : facture, document, audience…), et ajoutez des **Pièces jointes** si besoin. Cochez **Programmer l'envoi** pour un envoi différé (date et heure).
+3. **Envoyer** (ou **Programmer** si l'envoi est planifié). Le message passe en **En attente** puis **Envoyé** ; en cas de problème il passe en **Échec** avec le motif affiché sous la ligne.
 
 ### Suivre les envois
 - Onglets : **Tous**, **En attente**, **Envoyés**, **Échecs**, **Annulés**, chacun avec son compteur ; recherche libre et pagination (10 / 25 / 50 par page).
-- Statuts : **En attente** (peut être **envoyé maintenant** ou **annulé**), **Envoyé**, **Échec**, **Annulé**.
+- Statuts : **En attente** (boutons **Envoyer** et **Annuler** sur la ligne), **Envoyé**, **Échec** (motif affiché sous la ligne), **Annulé**.
 - Un e-mail envoyé ne peut pas être rappelé.
 
 ### Erreurs fréquentes
@@ -41,7 +41,7 @@ Les notifications préviennent automatiquement : **rappel d'audience** (48 h ava
 
 ### Où les trouver
 - **Cloche** en haut à droite : pastille rouge avec le nombre de **non lues** (9+ au-delà de 9). Cliquez pour ouvrir le panneau **Notifications** (« X non lues » ou « Tout est à jour »).
-- Filtres : **Toutes**, **Non lues**, **Importantes** (priorité haute ou urgente), chacun avec son compteur ; regroupement par date.
+- Filtres : **Toutes**, **Non lues**, **Importantes** (priorité haute ou urgente), chacun avec son compteur ; regroupement par date (**Aujourd'hui**, **Hier**, **Plus tôt**).
 - Cliquez une notification pour la **marquer lue** et ouvrir l'élément lié (dossier, audience, facture…) ; **Tout lire** marque tout comme lu ; chaque ligne peut être **archivée** ou **supprimée**.
 - Bouton **Préférences** du panneau (`/notifications/preferences`) : choisissez ce que vous recevez.
 
@@ -55,7 +55,7 @@ Les notifications préviennent automatiquement : **rappel d'audience** (48 h ava
 Discuter entre collaborateurs (un à un ou en groupe) et, **dans chaque dossier**, dans l'onglet **Chat** de la fiche (conversation créée automatiquement à l'ouverture du dossier, équipe notifiée).
 
 ### Où le trouver
-- Page **Chat** (`/chat`) : liste des conversations à gauche, fil de discussion à droite ; bouton de **nouvelle conversation** (choix des participants dans l'annuaire, nom si groupe) ; pièces jointes possibles.
+- Page **Chat** (`/chat`) : liste des conversations à gauche, fil de discussion à droite ; **Nouvelle conversation** (choix des participants dans l'annuaire, **« Saisir le nom du groupe »** si groupe, puis **Démarrer** / **Créer le groupe**) ; pièces jointes possibles dans les messages.
 - Onglet **Chat** de la fiche dossier : conversation liée au dossier.
 
 ### Règles

@@ -1,0 +1,42 @@
+---
+id: competences-communication
+title: Compétences « Communication » (e-mail, WhatsApp, espace client, messagerie, factures)
+keywords: competence envoyer un e-mail, envoyer un mail depuis le chat, ecrire au client depuis le chat, programmer un e-mail, envoi programme, piece jointe e-mail chat, preparer un whatsapp, message whatsapp, ouvrir whatsapp, wa.me, message a l'espace client, message espace client, publier dans l'espace client, message a un collaborateur, messagerie interne chat, envoyer une facture depuis le chat, relancer les impayes depuis le chat, relance client chat
+paths: /chat
+---
+
+# Compétences « Communication »
+
+Toutes s'ouvrent avec **#** (ou **⚡**) dans le chat. Chacune se termine par une carte à valider ; un e-mail ou un message envoyé ne peut pas être rappelé.
+
+## Envoyer un e-mail
+- **Pour qui** : le client, un collaborateur ou le client d'une fiche — mentionnez avec **@** un client, un dossier, une audience, une facture, une diligence, un collaborateur ou un document (obligatoire).
+- **Ce que fait l'IA** : rédige l'objet et le message à partir de votre consigne et des informations de la fiche (dossier, prochaine audience, facture…), en s'inspirant des **modèles d'e-mails du cabinet** de la même catégorie. Elle ne remplit que les informations connues : aucune date ni aucun montant inventé. Une adresse ou une heure d'envoi écrite dans la consigne est reprise (« … demain à 8 h »).
+- **La carte** : Destinataire (par défaut l'e-mail du client ou du collaborateur), Copie (Cc), Objet, Message (sur plusieurs lignes), **Pièces jointes** (cases à cocher parmi les documents du dossier ou du client), **Programmer l'envoi** (date et heure ; vide = immédiat). L'aperçu indique « À : … · N pièce(s) jointe(s) · programmé le … ».
+- **Après Confirmer** : l'e-mail part avec l'en-tête et le pied de page du cabinet (SMTP du cabinet s'il est configuré) et apparaît dans l'onglet **Communication** de la fiche. Un envoi programmé part à l'heure prévue.
+- **Droits** : aucun droit particulier (comme le composer d'e-mail des fiches).
+- Erreurs : « Aucune adresse e-mail enregistrée… » → saisissez le destinataire dans la carte ; « Pièces jointes trop volumineuses » → 15 Mo au maximum.
+
+## Préparer un WhatsApp
+- Mentionnez un client, un dossier, une audience ou une facture. L'IA rédige un message court, poli et signé.
+- **La carte** : Numéro (celui de la fiche client ; l'indicatif **+237** est ajouté à un numéro local), Message modifiable, **Copier**, **Ouvrir WhatsApp** : WhatsApp (application ou WhatsApp Web) s'ouvre sur la conversation avec le texte prérempli ; vous appuyez sur Envoyer dans WhatsApp.
+- Le message est noté dans l'historique des communications du client (type **WhatsApp**).
+- Droit requis : **modifier un client**. Aucun compte WhatsApp Business n'est nécessaire.
+
+## Message à l'espace client
+- Mentionnez le client (ou son dossier, une facture, une audience). L'IA rédige un message clair (4 000 caractères au maximum).
+- La carte indique l'état de l'accès du client : **accès actif**, accès désactivé, ou pas encore d'accès (envoyez-le depuis la fiche client).
+- Après Confirmer : le message est publié dans l'**espace client** (fil du dossier si un dossier est visé) et le client est prévenu par notification et e-mail.
+- Droit requis : **modifier un client**.
+
+## Message à un collaborateur
+- Mentionnez le collaborateur avec **@** (et éventuellement le dossier concerné). L'IA rédige un message interne bref.
+- Après Confirmer : le message part dans la **messagerie interne**, dans votre conversation directe avec ce collaborateur (créée si besoin).
+
+## Envoyer une facture
+- Mentionnez la facture. Une autre adresse écrite dans la consigne remplace celle du client.
+- Même envoi que le bouton **Envoyer** de la fiche facture (une facture au brouillon passe « Envoyée »). Droit requis : **envoyer les factures par e-mail**.
+
+## Relancer les impayés
+- Mentionnez le dossier (ou une de ses factures). L'aperçu indique le destinataire, le nombre de factures impayées et le reste dû.
+- Même relance que le bouton de relance du dossier. Droit requis : **envoyer les factures par e-mail**.

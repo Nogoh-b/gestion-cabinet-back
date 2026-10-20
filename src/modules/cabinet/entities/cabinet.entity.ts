@@ -430,6 +430,7 @@ export class Cabinet {
 
 /** Configuration IA stockée par cabinet (colonne `ai_config`). */
 export interface AiCabinetConfig {
+  selection_origin?: 'platform' | 'cabinet';
   active_provider?: string;
   providers?: Record<string, AiProviderConfig>;
   /** Raccourci legacy / simple : provider actif si `providers` non utilisé. */

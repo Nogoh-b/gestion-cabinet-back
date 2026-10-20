@@ -656,23 +656,33 @@ export class AiDatabasePermissionService {
     user: AiUserLike,
     writePlan: WritePlan,
   ): Promise<void> {
-    const requirements = (writePlan.operations ?? []).map((operation): AiRequirement => {
+    const requirements = (writePlan.operations ?? []).flatMap((operation): AiRequirement[] => {
       if (operation.operation !== 'ACTION') {
-        return { table: operation.entity, operation: operation.operation };
+        return [{ table: operation.entity, operation: operation.operation }];
       }
       // Action métier : la permission du bouton correspondant de l'écran manuel.
       const handler = this.actions?.get(operation.action);
       if (!handler) {
         throw new BadRequestException(`Action inconnue : « ${operation.action ?? '?'} ».`);
       }
-      return {
+      // Bouton manuel sans permission dédiée (ex. composer d'e-mail) : rien à exiger.
+      if (!handler.definition.permission) return [];
+      return [{
         table: handler.definition.entity,
         operation: 'ACTION',
         permission: handler.definition.permission,
-      };
+      }];
     });
 
     await this.assertAllowed(user, requirements);
+  }
+
+  /** Permissions de `codes` que l'utilisateur n'a pas (admin : aucune). */
+  async missingPermissions(user: AiUserLike, codes: string[]): Promise<string[]> {
+    if (!codes.length || this.isAdmin(user)) return [];
+    const permissions = await this.getUserPermissionCodes(user);
+    if (permissions.has(SUPER_ADMIN)) return [];
+    return codes.filter((code) => !permissions.has(code));
   }
 
   extractTablesFromSql(sqlQuery: string): string[] {

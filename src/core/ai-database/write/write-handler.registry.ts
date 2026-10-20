@@ -34,6 +34,15 @@ export class WriteHandlerRegistry {
   /**
    * Génère le schéma pour tous les handlers (utilisé par le prompt IA)
    */
+  /** Schéma d'écriture limité à `tables` (compétence d'écriture guidée). */
+  async generateWriteSchemaFor(tables: string[]): Promise<string> {
+    const wanted = new Set(tables.map((table) => table.toLowerCase()));
+    const excluded = [...this.handlers.values()]
+      .map((handler) => handler.entityName)
+      .filter((name) => !wanted.has(name.toLowerCase()));
+    return this.generateGlobalWriteSchema(excluded);
+  }
+
   async generateGlobalWriteSchema(
     excludedTables: string[] = [],
   ): Promise<string> {

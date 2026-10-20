@@ -1,7 +1,7 @@
 ---
 id: profil-preferences
 title: Profil et préférences
-keywords: mon profil, profil, mes informations, mes demandes, demande d'avance, demande de permission, demande de conge, changer mon mot de passe, mot de passe, double authentification, securite du compte, preferences, mes preferences, theme, mode sombre, langue, apparence, police, signature, avatar, telephone, profil self-service
+keywords: mon profil, profil, mes informations, mes demandes, demande d'avance, demande de permission, demande de conge, changer mon mot de passe, mot de passe, double authentification, securite du compte, preferences, mes preferences, theme, mode sombre, langue, apparence, police, signature, avatar, telephone, profil self-service, demander une avance, demander une permission, retirer ma demande
 paths: /profil, /settings/profile, /settings/user
 ---
 
@@ -17,8 +17,8 @@ Votre **profil** réunit vos informations personnelles, vos **demandes** (avance
 
 ## Mes demandes (collaborateurs) — pas à pas
 1. Ouvrez **Mon profil** (`/profil`) > onglet **Mes demandes**.
-2. **Nouvelle demande** : **avance sur salaire** (montant, motif ; le montant ne peut pas dépasser votre salaire) ou **permission / congé** (dates, motif).
-3. Suivez l'état : Demandée → Approuvée / Refusée (motif obligatoire) / Annulée ; une avance approuvée est ensuite **versée**, puis **récupérée** sur vos bulletins de paie.
+2. **Demander une avance** (« Demander une avance sur salaire ») : **Montant (FCFA)** obligatoire, puis **Envoyer la demande** (« Demande d'avance envoyée ») — le montant ne peut pas dépasser votre salaire. **Demander une permission** : **Date de début**, **Date de fin**, **Raison** (obligatoires — « La période et la raison sont obligatoires. »), puis **Envoyer la demande** (« Demande de permission envoyée »).
+3. Suivez l'état : permission — **En attente** → **Validée** / **Refusée** / **Annulée** ; avance — **En attente** → **Approuvée** → **Versée** → **Récupérée** (ou **Annulée**), la récupération se faisant sur vos bulletins de paie. Une demande en attente peut être **retirée** (**Retirer** → raison obligatoire → **Retirer la demande**, « Demande retirée »).
 4. Vous êtes **notifié** de chaque décision. L'administrateur traite vos demandes depuis votre fiche employé (il peut ajuster dates ou montant avant de valider).
 
 ## Sécurité du compte

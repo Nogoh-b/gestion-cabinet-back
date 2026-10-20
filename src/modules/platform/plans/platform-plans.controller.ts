@@ -10,7 +10,9 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Optional,
 } from '@nestjs/common';
+import { PlatformAiService } from '../ai/platform-ai.service';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -29,6 +31,7 @@ export class PlatformPlansController {
   constructor(
     private readonly plans: PlansService,
     @InjectDataSource() private readonly db: DataSource,
+    @Optional() private readonly ai?: PlatformAiService,
   ) {}
 
   @Get()
@@ -60,6 +63,7 @@ export class PlatformPlansController {
   @PlatformAudit({ action: 'plan.create', targetType: 'plan' })
   @ApiOperation({ summary: 'Créer un plan' })
   async create(@Body() dto: CreatePlanDto) {
+    await this.ai?.validatePlanPolicy(dto.ai_policy);
     const plan = await this.plans.create(dto);
     PlatformAuditContext.set({ targetId: plan.id, after: plan as any, summary: `Plan ${plan.name}` });
     return plan;
@@ -70,8 +74,10 @@ export class PlatformPlansController {
   @PlatformAudit({ action: 'plan.update', targetType: 'plan' })
   @ApiOperation({ summary: 'Modifier un plan (tarifs, quotas, modules, essai)' })
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePlanDto) {
+    await this.ai?.validatePlanPolicy(dto.ai_policy);
     const before = { ...(await this.plans.findOne(id)) };
     const plan = await this.plans.update(id, dto);
+    this.ai?.invalidatePlanPolicies();
     PlatformAuditContext.set({ before: before as any, after: plan as any, summary: `Plan ${plan.name}` });
     return plan;
   }

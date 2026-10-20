@@ -46,6 +46,8 @@ describe('help-knowledge', () => {
         'espace-client',
         'administration',
         'import-export',
+        'aide',
+        'assistant-ia',
       ]),
     );
     for (const doc of docs) {
@@ -112,6 +114,11 @@ describe('help-knowledge', () => {
     ['comment créer une famille d’actions ?', 'parcours-dossier'],
     ['comment voir mes demandes d’avance ?', 'profil-preferences'],
     ['comment exporter une facture en PDF ?', 'import-export'],
+    ['comment fonctionne le centre d’aide ?', 'aide'],
+    ['quels sont les raccourcis clavier ?', 'aide'],
+    ['comment contacter le support ?', 'aide'],
+    ['que peux-tu faire, assistant ?', 'assistant-ia'],
+    ['comment créer depuis le chat avec confirmation ?', 'assistant-ia'],
   ])('routes "%s" to %s', (question, expected) => {
     expect(topId(question)).toBe(expected);
   });

@@ -28,9 +28,29 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 
 ### Chiffre d'affaires encaisse
 - Si la question mentionne "encaisse", "recu", "paye", "regle" ou "paiements recus", calculer les encaissements avec paiements p.
-- Utiliser p.status = 1 pour les paiements valides.
+- Utiliser p.status = '1' pour les paiements valides.
 - Joindre factures f ON p.facture_id = f.id pour exclure les factures annulees avec f.status <> 5.
 - Pour une periode sur l'encaisse, filtrer p.date_paiement. Pour une periode sur le CA facture, filtrer f.date_facture.
+
+### Factures impayees, reste a payer, retard
+- "impayee", "non payee", "non reglee", "non soldee", "partiellement payee", "reste a payer", "restant du", "creance", "encours" : une facture est due tant que son RESTE A PAYER est > 0. Le calculer avec les montants, jamais avec le seul statut (status '4' IMPAYEE est rarement pose) :
+  reste a payer = f.montant_ttc - COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id AND p.status = '1'), 0).
+- "partiellement payee" = deja paye > 0 et reste a payer > 0. "impayee" sans autre precision couvre aussi les partiellement payees.
+- Exclure seulement les factures annulees (f.status <> '5'). Garder les brouillons (status '0') en affichant leur statut : l'utilisateur les distingue.
+- Toujours afficher : numero, date_facture, date_echeance, montant_ttc, montant paye, reste a payer, statut lisible, jours de retard = GREATEST(DATEDIFF(CURDATE(), f.date_echeance), 0).
+- Le retard est une COLONNE. Ne filtrer f.date_echeance < CURDATE() que si la question restreint aux factures "en retard", "echues", "depassees" ou "de plus de N jours".
+- Statut lisible : CASE f.status WHEN '0' THEN 'Brouillon' WHEN '1' THEN 'Envoyee' WHEN '2' THEN 'Partiellement payee' WHEN '3' THEN 'Payee' WHEN '4' THEN 'Impayee' WHEN '5' THEN 'Annulee' END.
+- Exemple (factures non soldees d'un dossier, avec le retard) :
+  SELECT f.numero, f.date_facture, f.date_echeance, f.montant_ttc,
+         COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id AND p.status = '1'), 0) AS montant_paye,
+         f.montant_ttc - COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id AND p.status = '1'), 0) AS reste_a_payer,
+         GREATEST(DATEDIFF(CURDATE(), f.date_echeance), 0) AS jours_retard,
+         CASE f.status WHEN '0' THEN 'Brouillon' WHEN '1' THEN 'Envoyee' WHEN '2' THEN 'Partiellement payee' WHEN '3' THEN 'Payee' WHEN '4' THEN 'Impayee' WHEN '5' THEN 'Annulee' END AS statut,
+         f.id AS ref__factures
+  FROM factures f JOIN dossiers d ON d.id = f.dossier_id
+  WHERE d.dossier_number = 'DOS-2026-0038' AND f.status <> '5'
+  HAVING reste_a_payer > 0
+  ORDER BY f.date_echeance LIMIT 50
 
 ### Chiffre d'affaires par client
 - Si l'utilisateur demande le chiffre d'affaires d'un client, joindre customer c ON f.client_id = c.id et filtrer le client par ses champs reels.
@@ -156,15 +176,16 @@ export const CABINET_JURIDIQUE_READ_CLARIFICATION_PRESETS = [
         label: 'Factures impayees',
         description: 'Liste des factures non reglees avec leur anciennete.',
         followUpQuestion:
-          "Liste les factures dont le statut est impaye avec le client, le montant et la date d'emission",
-        specificTables: ['factures', 'customer'],
+          "Liste les factures non soldees (reste a payer superieur a zero, hors annulees) avec le client, le montant TTC, le montant paye, le reste a payer, la date d'echeance et le nombre de jours de retard",
+        specificTables: ['factures', 'paiements', 'customer'],
       },
       {
         id: 'total_impayes',
         label: 'Total des impayes',
         description: 'Montant total des factures en attente de reglement.',
-        followUpQuestion: 'Quel est le montant total des factures impayees ?',
-        specificTables: ['factures'],
+        followUpQuestion:
+          'Quel est le montant total restant a payer sur les factures non soldees (hors annulees) ?',
+        specificTables: ['factures', 'paiements'],
       },
       {
         id: 'factures_par_client',

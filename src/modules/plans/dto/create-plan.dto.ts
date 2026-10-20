@@ -5,10 +5,19 @@ import {
   IsNumber,
   IsBoolean,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { AiPlanPolicyDto } from './ai-plan-policy.dto';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreatePlanDto {
+  @ApiPropertyOptional({ type: AiPlanPolicyDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AiPlanPolicyDto)
+  ai_policy?: AiPlanPolicyDto | null;
+
   @ApiProperty({ example: 'Plan Pro', description: 'Nom du plan' })
   @IsString()
   @IsNotEmpty()

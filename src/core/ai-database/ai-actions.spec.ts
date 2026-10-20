@@ -114,7 +114,7 @@ describe('Exécution d’une opération ACTION', () => {
       '7',
     );
 
-    expect(handler.prepare).toHaveBeenCalledWith('f-1', { email: 'compta@client.cm' }, '7');
+    expect(handler.prepare).toHaveBeenCalledWith('f-1', { email: 'compta@client.cm' }, '7', 'factures');
     expect(sent).toEqual([{ id: 'f-1', email: 'compta@client.cm' }]);
     expect(result).toMatchObject({ success: true, operation: 'ACTION', entity: 'factures', message: 'Facture FAC-f-1 envoyée à compta@client.cm.' });
     expect(result.afterCommit).toBeUndefined();
@@ -324,7 +324,7 @@ describe('Compte rendu d’une action', () => {
       labels,
       new Map([['dossiers:91', 'DOS-2026-0001']]),
     );
-    expect(text).toContain('**📧 Envoyé**');
+    expect(text).toContain('**⚡ Actions effectuées**');
     expect(text).toContain('- Facture FAC-2026-0003 envoyée à client@exemple.cm.\n  Facture [FAC-2026-0003](/facturation/factures/f-1) · Dossier [DOS-2026-0001](/dossiers/91)');
   });
 
@@ -387,7 +387,7 @@ describe('Carte de confirmation d’une action', () => {
       warning: 'Irréversible',
       fields: [{ name: 'email', label: 'Destinataire', kind: 'text', editable: true }],
     });
-    expect(handler.preview).toHaveBeenCalledWith('f-2', {});
+    expect(handler.preview).toHaveBeenCalledWith('f-2', {}, 'factures');
   });
 
   it('nomme la facture créée par le plan, sans aperçu', async () => {

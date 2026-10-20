@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ChatOpenAI } from '@langchain/openai';
 import {
@@ -10,9 +10,9 @@ import {
 import { DataSource } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
+import { readAiPlanPolicy, resolveSubscriptionAiConfig } from './ai-subscription-policy';
 import {
   AiStoredConfig,
-  mergeAiConfigs,
   parseStoredAiConfig,
   PLATFORM_AI_SETTING_KEY,
 } from './ai-provider-config';
@@ -52,6 +52,19 @@ export interface AiProviderDefinition {
  * la plateforme (`platform_settings['ai']`).
  */
 export const BUILTIN_AI_PROVIDERS: readonly AiProviderDefinition[] = [
+  {
+    id: 'mimo',
+    label: 'Xiaomi MiMo',
+    base_url: 'https://api.xiaomimimo.com/v1',
+    models: ['mimo-v2.6-flash', 'mimo-v2.6-pro', 'mimo-v2.6-pro-ultraspeed', 'mimo-v2.5-pro', 'mimo-v2.5', 'mimo-v2.5-asr', 'mimo-v2.5-tts', 'mimo-v2.5-tts-voiceclone', 'mimo-v2.5-tts-voicedesign'],
+    description: 'Modèles de conversation Xiaomi MiMo ; catalogue actualisé via /v1/models',
+    reasoningDefaults: {
+      fastProfile: { thinking: { type: 'disabled' } },
+      fast: { thinking: { type: 'disabled' } },
+      balanced: { thinking: { type: 'disabled' } },
+      precise: { thinking: { type: 'enabled' } },
+    },
+  },
   {
     id: 'deepseek',
     label: 'DeepSeek',
@@ -311,7 +324,11 @@ export class AiModelRouterService {
   async listAvailableModels(
     providerId: string,
     runtime?: AiProviderRuntimeConfig | null,
+    includeAudio = false,
   ): Promise<string[]> {
+    const visible = (models: string[]) => providerId === 'mimo' && !includeAudio
+      ? models.filter(id => !/(?:^|-)(?:asr|tts)(?:-|$)/i.test(id))
+      : models;
     const definition = this.getBuiltinProvider(providerId);
     const fallback = Array.from(
       new Set([
@@ -320,23 +337,23 @@ export class AiModelRouterService {
       ]),
     ).filter(Boolean);
 
-    if (!['deepseek', 'freellm', 'google'].includes(providerId)) {
-      return fallback;
+    if (!['deepseek', 'freellm', 'google', 'mimo'].includes(providerId)) {
+      return visible(fallback);
     }
     if (!runtime?.api_key || !runtime.base_url) {
-      return fallback;
+      return visible(fallback);
     }
 
     const unsafeReason = this.unsafeProviderUrlReason(runtime.base_url);
     if (unsafeReason) {
       this.logger.warn(`Catalogue ${providerId} ignore: ${unsafeReason}`);
-      return fallback;
+      return visible(fallback);
     }
 
     const cacheKey = `${providerId}:${runtime.base_url}`;
     const cached = this.providerModelsCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < this.PROVIDER_MODELS_CACHE_TTL) {
-      return [...cached.models];
+      return visible([...cached.models]);
     }
 
     const controller = new AbortController();
@@ -383,12 +400,12 @@ export class AiModelRouterService {
       if (!models.length) throw new Error('catalogue vide');
 
       this.providerModelsCache.set(cacheKey, { models, ts: Date.now() });
-      return [...models];
+      return visible([...models]);
     } catch (error) {
       this.logger.warn(
         `Chargement des modeles ${providerId} echoue: ${(error as Error).message}`,
       );
-      return fallback;
+      return visible(fallback);
     } finally {
       clearTimeout(timeout);
     }
@@ -495,7 +512,7 @@ export class AiModelRouterService {
 
     const tenantId = tenantIdOverride ?? getCurrentTenantId();
     const cached = this.tenantConfigCache.get(tenantId);
-    if (cached) return cached.config != null;
+    if (cached && Date.now() - cached.ts < this.TENANT_CACHE_TTL) return cached.config != null;
 
     await this.loadTenantConfigAsync(tenantId);
     return this.tenantConfigCache.get(tenantId)?.config != null;
@@ -528,6 +545,9 @@ export class AiModelRouterService {
       mode,
       effectiveOverride,
     );
+    if (descriptor.source === 'tenant' && !config.apiKey) {
+      throw new ServiceUnavailableException('La clé du moteur IA attribué est indisponible');
+    }
     const cacheKey = [
       profile,
       config.model,
@@ -562,6 +582,12 @@ export class AiModelRouterService {
 
     if (config.modelKwargs && Object.keys(config.modelKwargs).length > 0) {
       (chatConfig as any).modelKwargs = config.modelKwargs;
+    }
+
+    if (descriptor.provider === 'mimo') {
+      // MiMo documents max_completion_tokens, including reasoning tokens.
+      delete chatConfig.maxTokens;
+      chatConfig.modelKwargs = { ...chatConfig.modelKwargs, max_completion_tokens: config.maxTokens };
     }
 
     const model = new ChatOpenAI(chatConfig);
@@ -769,7 +795,9 @@ export class AiModelRouterService {
         model: provider.model,
         apiKey: provider.api_key,
         configuration: { baseURL: provider.base_url },
-        maxTokens: 5,
+        ...(new URL(provider.base_url).hostname === 'api.xiaomimimo.com'
+          ? { modelKwargs: { max_completion_tokens: 16, thinking: { type: 'disabled' } } }
+          : { maxTokens: 5 }),
         timeout: 15000,
         maxRetries: 0,
         useResponsesApi: this.usesResponsesApi(provider.base_url),
@@ -824,7 +852,7 @@ export class AiModelRouterService {
     }
   }
 
-  private unsafeProviderUrlReason(value: string): string | null {
+  unsafeProviderUrlReason(value: string): string | null {
     let url: URL;
     try {
       url = new URL(value);
@@ -1073,6 +1101,7 @@ export class AiModelRouterService {
     if (tenant?.providerId) return tenant.providerId;
     const url = (baseURL || '').toLowerCase();
     if (url.includes('deepseek')) return 'deepseek';
+    if (url.includes('xiaomimimo.com')) return 'mimo';
     if (url.includes('meta.ai')) return 'meta';
     if (url.includes('freellm') || url.includes('bisoft')) return 'freellm';
     if (url.includes('openai')) return 'openai';
@@ -1150,7 +1179,8 @@ export class AiModelRouterService {
     tenant?: TenantAiEffective | null,
   ): string | undefined {
     const t = tenant ?? this.getTenantEffectiveSync();
-    if (t?.apiKey) return t.apiKey;
+    // A configured external endpoint must never inherit another provider's secret.
+    if (t) return t.apiKey;
 
     if (mode) {
       return (
@@ -1303,6 +1333,7 @@ export class AiModelRouterService {
   }
 
   private getProviderEnvApiKey(providerId: string): string | undefined {
+    if (providerId === 'mimo') return process.env.MIMO_API_KEY;
     if (providerId === 'meta') return process.env.META_API_KEY;
     if (providerId === 'freellm') return process.env.FREELLM_API_KEY;
     if (providerId === 'google') {
@@ -1325,6 +1356,7 @@ export class AiModelRouterService {
   }
 
   private getProviderEnvBaseUrl(providerId: string): string | undefined {
+    if (providerId === 'mimo') return process.env.MIMO_BASE_URL;
     if (providerId === 'meta') return process.env.META_BASE_URL;
     if (providerId === 'freellm') return process.env.FREELLM_BASE_URL;
     if (providerId === 'google') {
@@ -1349,17 +1381,17 @@ export class AiModelRouterService {
     try {
       // Use query runner to avoid repository tenant patch
       const rows: any[] = await this.dataSource.query(
-        'SELECT ai_config FROM cabinets WHERE id = ? LIMIT 1',
+        'SELECT c.ai_config, p.ai_policy FROM cabinets c LEFT JOIN plans p ON p.id = c.plan_id WHERE c.id = ? LIMIT 1',
         [tenantId],
       );
       const cabinet = parseStoredAiConfig(rows?.[0]?.ai_config);
       const platform = await this.loadPlatformConfig();
-      return mergeAiConfigs(platform, cabinet);
+      return resolveSubscriptionAiConfig(platform, cabinet, readAiPlanPolicy(rows?.[0]?.ai_policy));
     } catch (e) {
       this.logger.warn(
         `loadTenantConfig #${tenantId} échoué: ${(e as Error).message}`,
       );
-      return null;
+      throw new ServiceUnavailableException('Impossible de vérifier la configuration IA de votre abonnement');
     }
   }
 

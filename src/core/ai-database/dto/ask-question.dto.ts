@@ -103,13 +103,33 @@ export class AskQuestionDto {
   @ApiProperty({
     required: false,
     description:
-      "Mode d'intention explicite. 'auto' laisse le backend classifier ; 'knowledge' répond depuis la base juridique de la plateforme ; 'help' explique l'utilisation de l'application d'après ses guides.",
-    enum: ['auto', 'read', 'write', 'chat', 'knowledge', 'help'],
+      "Mode d'intention explicite. 'auto' laisse le backend classifier ; 'knowledge' répond depuis la base juridique de la plateforme ; 'help' explique l'utilisation de l'application d'après ses guides ; 'advice' donne des conseils (choisi sur la carte proposée quand le mode auto hésite).",
+    enum: ['auto', 'read', 'write', 'chat', 'knowledge', 'help', 'advice'],
     default: 'auto',
   })
   @IsOptional()
-  @IsIn(['auto', 'read', 'write', 'chat', 'knowledge', 'help'])
-  intentMode?: 'auto' | 'read' | 'write' | 'chat' | 'knowledge' | 'help';
+  @IsIn(['auto', 'read', 'write', 'chat', 'knowledge', 'help', 'advice'])
+  intentMode?: 'auto' | 'read' | 'write' | 'chat' | 'knowledge' | 'help' | 'advice';
+
+  @ApiProperty({
+    required: false,
+    description:
+      "Compétence choisie dans le chat (« # ») : envoyer_email, courrier, rapport_activite… (cf. GET api/ai-database/skills). Remplace la détection d'intention.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  skill?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Préremplissage de la compétence (JSON), transmis par un bouton de suite (cible, pièce jointe…).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  skillParams?: string;
 
   @ApiProperty({
     required: false,

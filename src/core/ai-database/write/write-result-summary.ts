@@ -145,7 +145,8 @@ const SECTIONS: Array<{ operation: WriteResult['operation']; title: string; dupl
   { operation: 'INSERT', title: '♻️ Déjà existant (réutilisé)', duplicate: true },
   { operation: 'UPDATE', title: '✏️ Mis à jour' },
   { operation: 'DELETE', title: '🗑️ Supprimé' },
-  { operation: 'ACTION', title: '📧 Envoyé' },
+  // Envois d'e-mails, messages, report d'audience… (compétences du chat).
+  { operation: 'ACTION', title: '⚡ Actions effectuées' },
 ];
 
 /**

@@ -2,7 +2,8 @@ import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginat
 import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -20,6 +21,7 @@ export class PlansService extends BaseServiceV1<Plan> {
     @InjectRepository(Cabinet)
     private cabinetRepo: Repository<Cabinet>,
     private readonly quotaService: PlanQuotaService,
+    @Optional() private readonly appEvents?: EventEmitter2,
   ) {
     super(repository, paginationService);
   }
@@ -81,7 +83,9 @@ export class PlansService extends BaseServiceV1<Plan> {
 
     cabinet.plan_id = plan.id;
     cabinet.plan = plan.code as any; // synchro champ legacy
-    return this.cabinetRepo.save(cabinet);
+    const saved = await this.cabinetRepo.save(cabinet);
+    this.appEvents?.emit('ai.config.changed', { tenantId: cabinetId });
+    return saved;
   }
 
   /**

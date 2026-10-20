@@ -60,5 +60,12 @@ Correspondance fonction → profil d'accès par défaut : Avocat → Avocat ; Co
 - Quota d'employés dépassé → augmentez l'abonnement.
 - Salaire ou taux horaire invisible → permissions financières manquantes.
 
+## Exemple : embaucher une juriste
+1. **Gestion des employés > Nouvel employé** : Aïcha Bello, née le 12/04/1994 à Garoua, e-mail aicha.bello@cabinet.cm, téléphone, ville.
+2. **Fonction** Juriste (profil d'accès **Collaborateur** déduit), agence Douala, embauche 01/04/2026, **salaire** 400 000 FCFA, statut social et enfants.
+3. Enregistrez : « Collaborateur créé. Ses identifiants lui ont été envoyés. » — elle changera son mot de passe à la première connexion.
+4. Affectez-la comme **collaboratrice** de 2 dossiers ; son **taux horaire** (renseigné plus tard) servira aux vacations.
+5. À la paie d'avril : active avec salaire → bulletin généré automatiquement.
+
 ## Créer depuis le chat
 « Ajoute un employé : Sophie Martin, avocate, e-mail sophie.martin@cabinet.cm, téléphone +237 690 00 00 00, embauchée le 1er septembre 2026, salaire 350 000 FCFA. » Une carte de confirmation modifiable s'affiche. L'e-mail d'identifiants n'est envoyé qu'une fois la création confirmée.

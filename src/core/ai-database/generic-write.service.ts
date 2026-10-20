@@ -32,7 +32,7 @@ import {
   WriteHandlerRegistry,
   WriteResult,
 } from './write/write-handler.registry';
-import { AiActionRegistry } from './write/ai-action.registry';
+import { actionTargetTable, AiActionRegistry } from './write/ai-action.registry';
 
 export interface WritePlanProgress {
   index: number;
@@ -388,7 +388,9 @@ export class GenericWriteService {
       throw new BadRequestException(`Action inconnue : « ${operation.action ?? '?'} ».`);
     }
     const { definition } = handler;
-    const tableLabel = definition.entity.replace(/_/g, ' ');
+    // Table visée : celle de l'action, ou une autre qu'elle accepte (e-mail lié à un dossier…).
+    const table = actionTargetTable(handler, operation.entity);
+    const tableLabel = table.replace(/_/g, ' ');
 
     let targetId: string | number | undefined = operation.entityId ?? undefined;
     if (typeof targetId === 'string') {
@@ -397,7 +399,7 @@ export class GenericWriteService {
     }
     if (targetId === undefined && operation.match) {
       try {
-        targetId = await this.resolveUpdateTarget(definition.entity, operation.match);
+        targetId = await this.resolveUpdateTarget(table, operation.match);
       } catch (error) {
         // « Tous les éléments » n'a pas de sens pour un envoi : un choix à la fois.
         if (error instanceof AmbiguityException) {
@@ -409,10 +411,10 @@ export class GenericWriteService {
       }
     }
     // Enregistrement créé plus tôt dans le plan (« crée la facture et envoie-la »).
-    targetId ??= latestByEntity.get(definition.entity)?.id;
+    targetId ??= latestByEntity.get(table)?.id;
     if (targetId === undefined || targetId === null || targetId === '') {
       throw new EntityIdRequiredException(
-        definition.entity,
+        table,
         -1,
         `Précisez l'élément « ${tableLabel} » concerné par l'action « ${definition.label} » (numéro, référence…).`,
       );
@@ -427,7 +429,7 @@ export class GenericWriteService {
       }
     }
 
-    const prepared = await handler.prepare(targetId, params, userId);
+    const prepared = await handler.prepare(targetId, params, userId, table);
     const result: WriteResult = {
       success: true,
       operation: 'ACTION',
@@ -435,7 +437,7 @@ export class GenericWriteService {
       affected: 0,
       data: prepared.data,
       message: prepared.plannedMessage,
-      entity: definition.entity,
+      entity: table,
       changedFields: [],
       afterCommit: async () => {
         try {

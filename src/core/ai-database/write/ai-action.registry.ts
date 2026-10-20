@@ -20,6 +20,12 @@ export interface AiActionParam {
   required?: boolean;
   /** Pour le planificateur (et la note de la carte de confirmation). */
   description?: string;
+  /**
+   * Champ de la carte de confirmation : texte court (défaut), texte long
+   * (corps d'un message), date et heure, liste de choix ou choix multiple
+   * (options fournies par `paramOptions` du handler).
+   */
+  kind?: 'text' | 'longtext' | 'datetime' | 'enum' | 'multi';
 }
 
 export interface AiActionDefinition {
@@ -27,11 +33,24 @@ export interface AiActionDefinition {
   name: string;
   /** Table de l'enregistrement visé (« factures », « dossiers »). */
   entity: string;
+  /**
+   * Autres tables acceptées comme cible (ex. un e-mail lié à un dossier, une
+   * audience ou une facture) : `op.entity` désigne alors la table visée.
+   */
+  targets?: string[];
+  /**
+   * Action proposée seulement par une compétence du chat (« # »), qui rédige
+   * ses paramètres : absente du prompt du planificateur.
+   */
+  skillOnly?: boolean;
   /** Libellé court pour la carte et le compte rendu. */
   label: string;
   /** Ce que fait l'action, pour le planificateur. */
   description: string;
-  /** Permission exigée, la même que pour le bouton de l'écran manuel. */
+  /**
+   * Permission exigée, la même que pour le bouton de l'écran manuel ('' si ce
+   * bouton n'en exige aucune, ex. le composer d'e-mail).
+   */
   permission: string;
   params: AiActionParam[];
   /** Exemples de demandes qui doivent produire cette action. */
@@ -55,10 +74,13 @@ export interface AiActionHandler {
   /**
    * Vérifie que l'action est possible (enregistrement visible, destinataire
    * connu…) et la prépare sans rien envoyer. Lève une erreur lisible sinon.
+   * `table` : table visée (`definition.entity` ou l'une de `targets`).
    */
-  prepare(targetId: string | number, params: Record<string, any>, userId: string): Promise<PreparedAiAction>;
+  prepare(targetId: string | number, params: Record<string, any>, userId: string, table?: string): Promise<PreparedAiAction>;
   /** Ce que la carte de confirmation doit annoncer (« À : client@x.com · 2 facture(s) »). */
-  preview?(targetId: string | number, params: Record<string, any>): Promise<string | undefined>;
+  preview?(targetId: string | number, params: Record<string, any>, table?: string): Promise<string | undefined>;
+  /** Choix proposés pour les paramètres `enum` / `multi` (modèles, pièces jointes…). */
+  paramOptions?(targetId: string | number, table: string): Promise<Record<string, Array<{ value: string | number; label: string }>>>;
 }
 
 @Injectable()
@@ -81,7 +103,7 @@ export class AiActionRegistry {
 
   /** Section « ACTIONS DISPONIBLES » du prompt du planificateur ('' sans action). */
   promptSection(): string {
-    const handlers = this.all();
+    const handlers = this.all().filter((handler) => !handler.definition.skillOnly);
     if (!handlers.length) return '';
     const lines = handlers.map(({ definition: d }) => {
       const params = d.params.length
@@ -100,6 +122,13 @@ Si l'enregistrement est créé dans le même plan, mets "entityId": "{{tempId.id
 N'invente jamais d'adresse e-mail : laisse le paramètre absent pour utiliser celle du client.
 `;
   }
+}
+
+/** Table visée par l'opération : `entity` du plan si l'action l'accepte. */
+export function actionTargetTable(handler: AiActionHandler, entity?: string | null): string {
+  const { definition } = handler;
+  const wanted = String(entity ?? '').trim();
+  return wanted && definition.targets?.includes(wanted) ? wanted : definition.entity;
 }
 
 /** « Envoyer facture », « envoyer-facture » → « envoyer_facture ». */

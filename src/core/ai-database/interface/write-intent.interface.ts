@@ -53,7 +53,21 @@ export interface IntentDetectionResult {
     | 'ADVICE'
     | 'CONVERSATIONAL'
     | 'DOCUMENT'
-    | 'TEXT';
+    | 'TEXT'
+    /** Le classifieur hésite : le chat demande le mode à l'utilisateur. */
+    | 'UNCERTAIN'
+    /** Une compétence du chat (`skill`) répond à la demande. */
+    | 'SKILL'
+    /** Plusieurs demandes enchaînées (`parts`), traitées dans l'ordre. */
+    | 'COMPOSITE';
+  /** Compétence reconnue (type SKILL). */
+  skill?: string;
+  /** Demandes enchaînées (type COMPOSITE), dans l'ordre de la question. */
+  parts?: Array<{ kind: 'READ' | 'WRITE' | 'HELP' | 'ADVICE' | 'CHAT' | 'SKILL'; skill?: string }>;
+  /** Classes entre lesquelles le classifieur hésite (type UNCERTAIN), la plus probable d'abord. */
+  candidates?: Array<'READ' | 'WRITE' | 'HELP' | 'ADVICE' | 'CHAT'>;
+  /** Pourquoi ce type, quand une règle locale l'a décidé (affiché dans le chat). */
+  reason?: string;
   writeIntent?: WriteIntent;
   writePlan?: WritePlan;
   sqlQuery?: string; // Si READ

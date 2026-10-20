@@ -62,6 +62,47 @@ export function toCitedReference(record: DisplayedRecord): CitedReference {
   };
 }
 
+/** Colonnes qui portent un identifiant métier lisible (FAC-2026-0041, DOS-2026-0038…). */
+export const IDENTIFIER_COLUMN =
+  /^(numero|number|reference|code|dossier_number|customer_code|case_number|invoice_number|[a-z_]+_(numero|number|reference|code))$/i;
+/** Colonnes qui nomment un client ou une société. */
+export const NAME_COLUMN = /^(full_name|company_name)$/i;
+/** Colonnes de résultat qui contiennent un nom de personne ou de société. */
+const NAME_RESULT_KEY = /client|customer|nom|name|raison|company|societe|soci[eé]t[eé]|fournisseur|supplier/i;
+
+const CODE_VALUE = /^(?=.*\d)[A-Za-z0-9][A-Za-z0-9\-/_.]{2,39}$/;
+const NAME_VALUE = /^[\p{L}][\p{L}'’\- ]{1,58}[\p{L}]$/u;
+
+/**
+ * Valeurs d'un résultat qui peuvent désigner un enregistrement : codes
+ * métier (« FAC-2026-0041 ») et noms (« Émilie LEFÈVRE », pour les colonnes
+ * de nom). Les nombres et les dates ne sont jamais retenus.
+ */
+export function identifierValues(rows: any[], max = 60): { codes: string[]; names: string[] } {
+  const codes = new Set<string>();
+  const names = new Set<string>();
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    for (const [key, raw] of Object.entries(row)) {
+      if (typeof raw !== 'string') continue;
+      const value = raw.trim();
+      if (CODE_VALUE.test(value) && !/^-?\d+([.,]\d+)?$/.test(value) && !/^\d{4}-\d{2}-\d{2}/.test(value)) {
+        codes.add(value);
+      } else if (NAME_RESULT_KEY.test(key) && NAME_VALUE.test(value) && value.split(/\s+/).length <= 6) {
+        names.add(value.replace(/\s+/g, ' '));
+      }
+    }
+  }
+  return { codes: [...codes].slice(0, max), names: [...names].slice(0, max) };
+}
+
+/** Tables lues par une requête SQL (FROM / JOIN, sous-requêtes comprises). */
+export function tablesInSql(sql: string): string[] {
+  const withoutStrings = sql.replace(/'(?:\\.|''|[^'\\])*'|"(?:\\.|""|[^"\\])*"/g, "''");
+  const tables = [...withoutStrings.matchAll(/\b(?:from|join)\s+`?([a-z0-9_]+)`?/gi)].map((m) => m[1].toLowerCase());
+  return [...new Set(tables)];
+}
+
 /** Fusionne des références en gardant la première occurrence de chaque enregistrement. */
 export function mergeCitedReferences<T extends { entity?: string; type?: string; id: string | number }>(
   ...groups: T[][]

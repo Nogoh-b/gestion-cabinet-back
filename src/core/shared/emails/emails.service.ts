@@ -17,12 +17,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { CreateMailDto } from './dto/create-mail.dto';
 import { SmtpService } from './smtp.service';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import {
+  getCurrentTenantId,
+  TenantContext,
+} from 'src/core/tenant/tenant.context';
 import { signUploadUrl } from 'src/core/security/uploads-access';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
+  /** Mails programmés en cours d'envoi (le cron passe chaque minute). */
+  private readonly scheduledInFlight = new Set<string>();
 
   constructor(
     @InjectRepository(Mail)
@@ -31,6 +36,7 @@ export class MailService {
     private dossierRepository: Repository<Dossier>,
     private mailerService: MailerService,
     private smtpService: SmtpService,
+    private tenantContext: TenantContext,
   ) {}
 
   /**
@@ -115,6 +121,25 @@ export class MailService {
   }
 
   /**
+   * Enregistre l'e-mail puis l'envoie en attendant le résultat (un échec est
+   * levé et le mail marqué « failed »). Programmé : enregistré seulement, le
+   * cron l'enverra à l'heure prévue.
+   */
+  async createAndSend(createMailDto: CreateMailDto): Promise<Mail> {
+    const saved = await this.mailRepository.save(
+      this.mailRepository.create({
+        ...createMailDto,
+        scheduledAt: createMailDto.scheduledAt
+          ? new Date(createMailDto.scheduledAt)
+          : undefined,
+        status: MailStatus.PENDING,
+      }),
+    );
+    if (!saved.scheduledAt) await this.sendMail(saved.id);
+    return saved;
+  }
+
+  /**
    * Envoie un email par son ID (appelé par le worker ou manuellement)
    */
   async sendMail(id: string): Promise<void> {
@@ -128,18 +153,23 @@ export class MailService {
       this.logger.warn(`Mail ${id} déjà envoyé`);
       return;
     }
-    let attachments: AttachmentMail[] = [];
-    if (mail.attachments)
-      attachments = await this.prepareAttachmentsWithBuffers(mail.attachments);
-
     try {
+      // Dans le try : une pièce introuvable marque l'envoi en échec, sinon
+      // le cron le reprendrait chaque minute.
+      let attachments: AttachmentMail[] = [];
+      if (mail.attachments)
+        attachments = await this.prepareAttachmentsWithBuffers(
+          mail.attachments,
+        );
+
       // Préparer les options d'envoi
       const mailOptions: any = {
         to: mail.to,
         cc: mail.cc,
         bcc: mail.bcc,
         subject: mail.subject,
-        attachments: mail.attachments,
+        // Pièces récupérées (URL signée) : /uploads est privé.
+        attachments,
       };
 
       // Si template, l'utiliser
@@ -190,6 +220,11 @@ export class MailService {
       if (doc.href) {
         // Signé à l'envoi (l'URL stockée n'expire pas) : /uploads est privé.
         const response = await fetch(signUploadUrl(doc.href));
+        if (!response.ok) {
+          throw new Error(
+            `Pièce jointe « ${doc.filename} » introuvable (${response.status}).`,
+          );
+        }
         const buffer = await response.arrayBuffer();
         attachments.push({
           filename: doc.filename,
@@ -197,10 +232,19 @@ export class MailService {
           contentType: doc.contentType,
         });
       } else if (doc.content) {
-        // Contenu déjà en mémoire (ex. PDF généré à la volée).
+        // Contenu déjà en mémoire (ex. PDF généré à la volée). Relu depuis la
+        // base, un Buffer revient en `{ type: 'Buffer', data }` : on le
+        // reconstruit. Une chaîne est du base64 (contrat d'AttachmentDto, composer).
+        const raw = doc.content as any;
+        const content =
+          raw && typeof raw === 'object' && raw.type === 'Buffer' && Array.isArray(raw.data)
+            ? Buffer.from(raw.data)
+            : typeof raw === 'string'
+              ? Buffer.from(raw.replace(/^data:[^,]*;base64,/, ''), 'base64')
+              : raw;
         attachments.push({
           filename: doc.filename,
-          content: doc.content,
+          content,
           contentType: doc.contentType,
         });
       }
@@ -325,25 +369,34 @@ export class MailService {
   }
 
   /**
-   * Cron pour envoyer les emails programmés (toutes les minutes)
+   * Cron pour envoyer les emails programmés (toutes les minutes).
+   * Un cron tourne sans contexte cabinet : chaque mail est envoyé dans le
+   * contexte de son cabinet, pour utiliser son SMTP et ses lectures scopées.
    */
-  @Cron(CronExpression.EVERY_12_HOURS)
+  @Cron(CronExpression.EVERY_MINUTE)
   async handleScheduledMails() {
-    this.logger.debug('Recherche des emails programmés à envoyer...');
-
     const now = new Date();
-    const pendingMails = await this.mailRepository.find({
-      where: {
-        status: MailStatus.PENDING,
-        scheduledAt: LessThanOrEqual(now),
-      },
-    });
+    const pendingMails = await this.tenantContext.runWithoutTenant(() =>
+      this.mailRepository.find({
+        where: {
+          status: MailStatus.PENDING,
+          scheduledAt: LessThanOrEqual(now),
+        },
+        select: ['id', 'tenant_id'],
+      }),
+    );
 
     for (const mail of pendingMails) {
+      // Un envoi lent (SMTP) ne doit pas repartir au passage suivant.
+      if (this.scheduledInFlight.has(mail.id)) continue;
+      this.scheduledInFlight.add(mail.id);
       // On lance l'envoi en arrière-plan pour ne pas bloquer le cron
-      this.sendMail(mail.id).catch((err) =>
-        this.logger.error(`Erreur cron pour mail ${mail.id}`, err),
-      );
+      this.tenantContext
+        .run(mail.tenant_id, () => this.sendMail(mail.id))
+        .catch((err) =>
+          this.logger.error(`Erreur cron pour mail ${mail.id}`, err),
+        )
+        .finally(() => this.scheduledInFlight.delete(mail.id));
     }
   }
 

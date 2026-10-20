@@ -72,5 +72,12 @@ Chaque ligne du barème contient : **Code**, **Libellé**, **Taux (%) ou montant
 - « L'avance ne peut pas dépasser le salaire de l'employé. »
 - Aucun bouton de gestion visible → permissions insuffisantes (un avocat a par défaut un accès en consultation).
 
+## Exemple : la paie de mars
+1. **Nouvelle période** : libellé « Paie mars 2026 », du 1er au 31 mars, statut **Brouillon**.
+2. **Générer les bulletins** : 12 bulletins créés, 1 collaborateur ignoré (sans salaire — **Configurer les salaires**), avances de 2 collaborateurs reprises en retenue.
+3. Contrôle : sur le bulletin de Sophie Martin, ajout d'une ligne **Prime** de 50 000 FCFA (imposable).
+4. **Clôturer la période** : bulletins **Validés**, période **Validée**.
+5. Sur chaque bulletin : **Marquer payée** → statut **Payé**, écriture de paie générée, avances imputées.
+
 ## Créer depuis le chat
 Je peux créer une période de paie, un bulletin ou une ligne de bulletin si vous donnez les informations : « Crée la période de paie Mars 2026 du 1er au 31 mars 2026 », « Crée un bulletin de paie pour Sophie Martin sur la période Mars 2026, salaire de base 350 000 ». Une carte de confirmation modifiable s'affiche avant l'enregistrement.

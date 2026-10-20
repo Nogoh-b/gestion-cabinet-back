@@ -8,6 +8,7 @@ import {
   ActionDefinition,
 } from '../case-workflow/entities/action-catalog.entity';
 import { RecommendationRule } from '../case-workflow/entities/recommendation.entity';
+import { CaseWorkflowFeature } from '../case-workflow/entities/workflow-audit.entity';
 import { AudienceType } from '../audience-type/entities/audience-type.entity';
 import { TypeCustomer } from '../customer/type-customer/entities/type_customer.entity';
 import { DocumentCategory } from '../document-category/entities/document-category.entity';
@@ -43,6 +44,12 @@ export const REFERENCE_KINDS = [
     'Actions',
     'Règles de recommandation',
     RecommendationRule,
+  ],
+  [
+    'case_workflow_features',
+    'Actions',
+    'Parcours dossier',
+    CaseWorkflowFeature,
   ],
   ['currencies', 'Devises', 'Devises', null],
   ['jurisdictions', 'Métier', 'Juridictions', Jurisdiction],
@@ -484,6 +491,19 @@ export class ReferenceRegistry {
               errors.push(id + ': bloc ' + position + ' incompatible');
           }
         }
+        if (item.kind === 'case_workflow_features') {
+          if (!item.active)
+            errors.push(
+              id + ': le paramétrage du parcours ne peut pas être désactivé',
+            );
+          if (
+            item.values.default_for_new_dossiers === true &&
+            item.values.enabled !== true
+          )
+            errors.push(
+              id + ': « Nouveaux dossiers en V2 » requiert le parcours activé',
+            );
+        }
         if (item.kind === 'currencies') {
           if (item.values.code !== item.key || !/^[A-Z]{3}$/.test(item.key))
             errors.push(id + ': code devise invalide');
@@ -532,6 +552,10 @@ export class ReferenceRegistry {
         errors.push(id + ': ' + (error as Error).message);
       }
     }
+    if (
+      items.filter((i) => i.kind === 'case_workflow_features').length > 1
+    )
+      errors.push('Un seul paramétrage du parcours dossier est autorisé');
     for (const code of ['admin', 'client'])
       if (!items.some((i) => i.kind === 'roles' && i.key === code && i.active))
         errors.push('Rôle système manquant : ' + code);

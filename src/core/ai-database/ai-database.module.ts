@@ -12,6 +12,9 @@ import { GenericWriteService } from './generic-write.service';
 import { IntentDetectionService } from './intent-detection.service';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
 import { AiActionRegistry } from './write/ai-action.registry';
+import { AiSkillRegistry } from './skills/ai-skill.registry';
+import { AiSkillService } from './skills/ai-skill.service';
+import { UserProfileService } from './user-profile.service';
 import { EntityResolverService } from './write/entity-resolver.service';
 import { AutoHandlerFactory } from './write/auto-handler-factory.service';
 import { AiDatabasePermissionService } from './ai-database-permission.service';
@@ -25,6 +28,7 @@ import { AiUsageService } from './ai-usage.service';
 import { ImageReaderService } from './image-reader.service';
 import { PlanFieldsService } from './plan-fields.service';
 import { AiAdminController } from './ai-admin.controller';
+import { CabinetAiSettingsService } from './cabinet-ai-settings.service';
 import { SettingsModule } from 'src/modules/settings/settings.module';
 import { AiContextConfig, AiContextSuggestion } from './entities/ai-context-config.entity';
 import { AiContextConfigService } from './ai-context-config.service';
@@ -54,11 +58,15 @@ import { AiContextConfigController } from './ai-context-config.controller';
     GenericWriteService,
     WriteHandlerRegistry,
     AiActionRegistry,
+    AiSkillRegistry,
+    AiSkillService,
+    UserProfileService,
     IntentDetectionService,
     EntityResolverService,
     AutoHandlerFactory,
     AiDatabasePermissionService,
     AiModelRouterService,
+    CabinetAiSettingsService,
     AiUsageService,
     ImageReaderService,
     PlanFieldsService,
@@ -71,6 +79,8 @@ import { AiContextConfigController } from './ai-context-config.controller';
     AiUsageService,
     WriteHandlerRegistry,
     AiActionRegistry,
+    AiSkillRegistry,
+    UserProfileService,
     GenericWriteService,
     EntityResolverService,
     SchemaMetadataService,

@@ -67,8 +67,16 @@ Quand l'utilisateur demande au chat « comment ça fonctionne », « comment cr�
 | `espace-client.md` | Espace client (portail) : accès, dossiers, factures, messages |
 | `administration.md` | Administration : sécurité, SMTP, sauvegarde, audit, IA |
 | `import-export.md` | Exports, impressions et PDF (pas d'import en masse) |
+| `aide.md` | Centre d'aide, aide contextuelle, raccourcis clavier, support |
+| `assistant-ia.md` | Assistant IA : modes, mentions, confirmation, pré-remplissage |
+| `modes-chat.md` | Modes du chat (« / »), niveaux de réflexion, mode / compétence / mention |
+| `competences.md` | Compétences du chat (« # ») : principe, familles, cartes, droits |
+| `competences-communication.md` | Compétences Communication : e-mail, WhatsApp, espace client, messagerie, factures |
+| `competences-documents.md` | Compétences Documents : courrier, mise en demeure, modèles, traduction, bilingue, anonymisation |
+| `competences-analyse.md` | Compétences Analyse juridique : jugement, conclusions, chronologie, contrat, mentions, chances, comparables, plaidoirie |
+| `competences-actes.md` | Compétences Calculs & actes : délais, décompte de créance, injonction de payer, convention d'honoraires |
+| `competences-rapports-agenda.md` | Compétences Rapports & exports et Agenda & tâches |
 
 ## Reste à documenter
 
-Page Aide (`/aide` : FAQ, guides, contact) et raccourcis clavier ; le reste des
-modules est couvert.
+Tous les modules sont couverts — rien en attente.

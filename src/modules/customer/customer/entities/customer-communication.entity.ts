@@ -8,6 +8,8 @@ export enum CommunicationType {
   PHONE = 'phone',
   MEETING = 'meeting',
   LETTER = 'letter',
+  /** Message préparé par le chat et envoyé depuis le WhatsApp de l'utilisateur. */
+  WHATSAPP = 'whatsapp',
 }
 
 export enum CommunicationStatus {

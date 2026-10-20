@@ -45,6 +45,8 @@ import { normalizeConversationTitle } from './conversation-resource';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 import { MAX_ANALYZED_FILES, utf8FileName } from './chat-attachments';
 import { PlanFieldsService } from './plan-fields.service';
+import { AiSkillService } from './skills/ai-skill.service';
+import type { AiSkillCatalogItem } from './skills/ai-skill.types';
 import { FieldOptionsRequest, FieldOptionsResponse, PlanFieldsResponse } from './dto/plan-fields.dto';
 
 /** `file` (un fichier, historique) ou `files` (plusieurs fichiers lus ensemble). */
@@ -71,6 +73,7 @@ export class AiDatabaseController {
     private readonly conversationManager: ConversationManagerService,
     private readonly tenantContext: TenantContext,
     private readonly planFields: PlanFieldsService,
+    private readonly skills: AiSkillService,
   ) {}
   @Post('form/prepare')
   @HttpCode(HttpStatus.OK)
@@ -101,7 +104,7 @@ export class AiDatabaseController {
           type: 'string',
           description: 'JSON array ou liste separee par virgules',
         },
-        intentMode: { type: 'string', enum: ['auto', 'read', 'write', 'chat', 'knowledge', 'help'] },
+        intentMode: { type: 'string', enum: ['auto', 'read', 'write', 'chat', 'knowledge', 'help', 'advice'] },
         file: { type: 'string', format: 'binary' },
         files: { type: 'array', items: { type: 'string', format: 'binary' } },
       },
@@ -226,6 +229,16 @@ export class AiDatabaseController {
     @CurrentUser() user,
   ): Promise<AnalysisResponseDto> {
     return this.aiDbService.confirmWrite(pendingIntent, user);
+  }
+
+  /**
+   * Compétences du chat (menu « # ») utilisables par l'utilisateur : filtrées
+   * par ses droits et le plan du cabinet. N'appelle pas le modèle.
+   */
+  @Get('skills')
+  @ApiOperation({ summary: 'Compétences du chat disponibles pour l’utilisateur' })
+  async listSkills(@CurrentUser() user): Promise<AiSkillCatalogItem[]> {
+    return this.skills.catalog(user);
   }
 
   /**
@@ -354,9 +367,12 @@ export class AiDatabaseController {
   }
 
   @Post('analyze')
+  @UseGuards(AiQuotaGuard)
   async analyze(@Body() dto: AskQuestionDto, @Req() req) {
     const userId = req.user?.id || 'anonymous'; // Ton système d'auth
-    return toChatPayload(await this.aiDbService.analyzeQuestion(dto, userId));
+    return toChatPayload(
+      await this.aiDbService.analyzeQuestion(dto, userId, undefined, req?.aiRequestLogId),
+    );
   }
 
   @Get('conversations')

@@ -52,4 +52,4 @@ Dans le bandeau « Paiement requis » :
 - « Aucun moyen de paiement n'est disponible pour le moment » → contactez le support.
 
 ## Créer depuis le chat
-L'abonnement ne se modifie pas depuis le chat : utilisez la page **Abonnement**. Je peux en revanche vous dire à quoi sert chaque limite ou module, et vous guider vers **Changer de plan** quand un message d'erreur évoque un quota.
+L'abonnement ne se modifie pas depuis le chat : utilisez la page **Abonnement**. Demandez en revanche « quel est mon plan ? », « quand expire mon abonnement ? » ou « combien de requêtes IA me reste-t-il ? » : la réponse vient de l'abonnement réel du cabinet. Je peux aussi vous dire à quoi sert chaque limite ou module, et vous guider vers **Changer de plan** quand un message d'erreur évoque un quota.

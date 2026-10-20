@@ -23,7 +23,7 @@ import { PLAN_REF, PlanFieldOption, fixedOptions, humanize, parseValueList, rowL
 import { WriteHandlerRegistry } from './write/write-handler.registry';
 import { displayValue, PARENT_LINKS, resourceTitle } from './write/write-result-summary';
 import { GenericWriteService } from './generic-write.service';
-import { AiActionRegistry } from './write/ai-action.registry';
+import { actionTargetTable, AiActionRegistry } from './write/ai-action.registry';
 
 type User = AiUserContext | string | number | undefined | null;
 
@@ -190,7 +190,8 @@ export class PlanFieldsService {
     const handler = this.actions?.get(op.action);
     if (!handler) throw new BadRequestException(`Action inconnue : « ${op.action ?? '?'} »`);
     const { definition } = handler;
-    const meta = this.metadataFor(definition.entity);
+    const table = actionTargetTable(handler, op.entity);
+    const meta = this.metadataFor(table);
     const fields = op.fields ?? {};
 
     // Élément créé plus tôt dans le plan (« crée la facture et envoie-la »).
@@ -199,7 +200,7 @@ export class PlanFieldsService {
     const creator = placeholder
       ? all.slice(0, index).find((other) => other.tempId === placeholder[1])
       : noTarget
-        ? [...all.slice(0, index)].reverse().find((other) => other.operation === 'INSERT' && this.metadataFor(other.entity)?.tableName === definition.entity)
+        ? [...all.slice(0, index)].reverse().find((other) => other.operation === 'INSERT' && this.metadataFor(other.entity)?.tableName === table)
         : undefined;
 
     let target: string | undefined;
@@ -209,10 +210,10 @@ export class PlanFieldsService {
       const label = [rowLabel(creator.fields), creator.fields?.description].find(
         (text) => typeof text === 'string' && text.trim() && !text.includes('{{'),
       );
-      target = `${label || humanize(definition.entity)} (créé par ce plan)`;
+      target = `${label || humanize(table)} (créé par ce plan)`;
     } else if (!placeholder) {
       targetId = isId(op.entityId) ? (op.entityId as string | number) : undefined;
-      if (targetId === undefined && op.match) targetId = await this.writes?.findSingleMatch(definition.entity, op.match).catch(() => undefined);
+      if (targetId === undefined && op.match) targetId = await this.writes?.findSingleMatch(table, op.match).catch(() => undefined);
       const described = targetId !== undefined ? { ...op, entityId: targetId, match: undefined } : op;
       target = await this.describeTarget(described, meta).catch((error: Error) => {
         this.logger.debug(`Cible de l'action ${index} non décrite : ${error.message}`);
@@ -220,17 +221,34 @@ export class PlanFieldsService {
       });
     }
     const preview = targetId !== undefined
-      ? await handler.preview?.(targetId, fields).catch((error: Error) => `⚠️ ${error.message}`)
+      ? await handler.preview?.(targetId, fields, table).catch((error: Error) => `⚠️ ${error.message}`)
       : undefined;
+    const choices = targetId !== undefined && handler.paramOptions
+      ? await handler.paramOptions(targetId, table).catch((error: Error) => {
+          this.logger.debug(`Choix de l'action ${index} indisponibles : ${error.message}`);
+          return {} as Record<string, Array<{ value: string | number; label: string }>>;
+        })
+      : {};
 
-    const descriptors: PlanFieldDescriptor[] = definition.params.map((param) => ({
-      name: param.name,
-      label: param.label,
-      kind: 'text',
-      value: fields[param.name],
-      editable: true,
-      ...(param.description && { note: param.description }),
-    }));
+    const descriptors: PlanFieldDescriptor[] = definition.params.map((param) => {
+      const kind = param.kind ?? 'text';
+      const options = choices[param.name];
+      const value = fields[param.name];
+      const base = {
+        name: param.name,
+        label: param.label,
+        value,
+        editable: true,
+        ...(param.description && { note: param.description }),
+      };
+      if ((kind === 'enum' || kind === 'multi') && options?.length) {
+        const selected = kind === 'enum' ? options.find((option) => String(option.value) === String(value ?? '')) : undefined;
+        return { ...base, kind, options, selected: selected ?? null };
+      }
+      // Sans choix possibles (aucun modèle, aucune pièce) : champ masqué.
+      if (kind === 'enum' || kind === 'multi') return { ...base, kind: 'text' as const, editable: false, secondary: true };
+      return { ...base, kind };
+    });
     return {
       index,
       entityLabel: definition.label,

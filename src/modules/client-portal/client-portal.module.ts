@@ -37,5 +37,7 @@ import { ClientMessageSubscriber } from './subscribers/client-message.subscriber
   ],
   controllers: [ClientPortalController, ClientAccessStaffController],
   providers: [ClientPortalService, ClientMessageSubscriber],
+  // Compétence « Message à l'espace client » du chat.
+  exports: [ClientPortalService],
 })
 export class ClientPortalModule {}

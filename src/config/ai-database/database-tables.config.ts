@@ -244,7 +244,7 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
       factures:
         "Factures emises. Source du chiffre d'affaires facture HT du cabinet.",
       paiements:
-        "Paiements recus. Source des montants encaisses uniquement quand la question parle d'encaissement/paiement recu.",
+        "Paiements recus (status '1' = valide). Source des montants encaisses ET du montant deja paye / reste a payer d'une facture (impayee, partiellement payee, solde).",
       savings_account: 'Comptes epargne clients',
       loan: 'Prets accordes',
       case_action_definitions:
@@ -262,6 +262,9 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
       billable_items:
         'Source de vérité des travaux à facturer : TO_INVOICE=prêt à facturer, NEEDS_REVIEW=tarif à contrôler, INVOICED=déjà facturé.',
       invoice_lines: 'Lignes de facture issues des éléments facturables.',
+    },
+    tableCompanions: {
+      factures: ['paiements'],
     },
     tableSynonyms: {
       factures: [
@@ -282,6 +285,20 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
         'revenu encaisse',
         'montant encaisse',
         'paiements recus',
+        'impaye',
+        'impayes',
+        'impayee',
+        'impayees',
+        'reste a payer',
+        'restant du',
+        'partiellement payee',
+        'partiellement payees',
+        'non payee',
+        'non payees',
+        'non reglee',
+        'non reglees',
+        'creance',
+        'creances',
       ],
       dossier_actions: [
         'traitement',

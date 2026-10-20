@@ -148,6 +148,46 @@ export class ChatService {
     return await this.conversationRepository.save(conversation);
   }
 
+  /**
+   * Conversation directe (non groupe) entre deux collaborateurs : la
+   * conversation existante, sinon une nouvelle. `createConversation` en crée
+   * toujours une nouvelle.
+   */
+  async findOrCreateDirect(
+    creatorId: number,
+    otherId: number,
+  ): Promise<Conversation> {
+    if (Number(creatorId) === Number(otherId)) {
+      throw new BadRequestException(
+        'Impossible de vous envoyer un message à vous-même.',
+      );
+    }
+    const rows: Array<{ id: number }> = await this.conversationRepository
+      .createQueryBuilder('c')
+      .innerJoin('c.participants', 'p')
+      .select('c.id', 'id')
+      .where('c.isGroup = :group', { group: false })
+      .groupBy('c.id')
+      .having('COUNT(DISTINCT p.id) = 2')
+      .andHaving(
+        'SUM(CASE WHEN p.id IN (:...ids) THEN 1 ELSE 0 END) = 2',
+        { ids: [Number(creatorId), Number(otherId)] },
+      )
+      .orderBy('c.id', 'DESC')
+      .limit(1)
+      .getRawMany();
+    if (rows[0]?.id) {
+      const existing = await this.conversationRepository.findOne({
+        where: { id: Number(rows[0].id) },
+      });
+      if (existing) return existing;
+    }
+    return this.createConversation(
+      { participantIds: [Number(otherId)], isGroup: false } as CreateConversationDto,
+      Number(creatorId),
+    );
+  }
+
   async createGroup(
     dto: CreateGroupDto,
     creatorId: number,

@@ -9,6 +9,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import type { AiProviderConfig } from 'src/modules/cabinet/entities/cabinet.entity';
+import type { AiPlanPolicy } from 'src/core/ai-database/ai-subscription-policy';
 import {
   AI_CONFIG_CHANGED_EVENT,
   AiModelRouterService,
@@ -41,6 +42,7 @@ export interface PlatformAiProviderView {
   label: string;
   base_url: string;
   models: string[];
+  other_models?: string[];
   description: string;
   is_custom: boolean;
   selected_model: string;
@@ -113,6 +115,25 @@ export class PlatformAiService {
   }
 
   // ── Moteur par défaut ────────────────────────────────────────────────────
+
+  async validatePlanPolicy(policy: AiPlanPolicy | null | undefined) {
+    if (!policy) return;
+    const config = await this.readPlatformConfig();
+    for (const choice of [...(policy.default_model ? [policy.default_model] : []), ...policy.allowed_models]) {
+      if (choice.provider_id.startsWith('tenant_')) throw new BadRequestException('Un forfait ne peut pas utiliser une configuration privée de cabinet');
+      if (!this.router.isBuiltinProvider(choice.provider_id) && config.providers?.[choice.provider_id]?.model !== choice.model) {
+        throw new BadRequestException('Choisissez le modèle configuré dans le catalogue plateforme');
+      }
+      const validated = await this.validateChoice(config, choice.provider_id, choice.model);
+      const runtime = this.router.getProviderRuntimeConfig(validated.providerId, { ...config.providers?.[validated.providerId], model: validated.model });
+      if (!runtime?.api_key) throw new BadRequestException('Configurez la clé du fournisseur avant de l’attribuer à un forfait');
+      choice.model = validated.model;
+    }
+  }
+
+  invalidatePlanPolicies() {
+    this.events.emit(AI_CONFIG_CHANGED_EVENT, {});
+  }
 
   async setDefault(providerIdRaw: string, modelRaw: string, adminId?: number) {
     const config = await this.readPlatformConfig();
@@ -206,6 +227,11 @@ export class PlatformAiService {
     const config = await this.readPlatformConfig();
     const previous = config.providers?.[id];
     if (!previous) throw new NotFoundException('Configuration personnalisée introuvable');
+    const plans = await this.db.query('SELECT ai_policy FROM plans WHERE ai_policy IS NOT NULL');
+    if (plans.some((row: any) => {
+      const policy = typeof row.ai_policy === 'string' ? JSON.parse(row.ai_policy) : row.ai_policy;
+      return policy?.default_model?.provider_id === id || policy?.allowed_models?.some((choice: any) => choice.provider_id === id);
+    })) throw new BadRequestException('Ce fournisseur est utilisé par un forfait : modifiez d’abord ses règles IA');
     if (config.active_provider === id) {
       throw new BadRequestException('Ce fournisseur est le moteur par défaut : choisissez-en un autre avant de le supprimer');
     }
@@ -252,7 +278,12 @@ export class PlatformAiService {
     const cabinet = await this.readCabinet(cabinetId);
     const config = await this.readPlatformConfig();
     const { providerId, model } = await this.validateChoice(config, providerIdRaw, modelRaw);
-    const next: AiStoredConfig = { active_provider: providerId, providers: { [providerId]: { model } } };
+    const next: AiStoredConfig = {
+      ...cabinet.ai_config,
+      selection_origin: 'platform',
+      active_provider: providerId,
+      providers: { ...cabinet.ai_config?.providers, [providerId]: { model } },
+    };
     await this.writeCabinetConfig(cabinet.id, next);
     PlatformAuditContext.set({
       action: 'ai.cabinet_override.update',
@@ -268,7 +299,8 @@ export class PlatformAiService {
 
   async clearCabinetOverride(cabinetId: number) {
     const cabinet = await this.readCabinet(cabinetId);
-    await this.writeCabinetConfig(cabinet.id, null);
+    const personal = Object.fromEntries(Object.entries(cabinet.ai_config?.providers ?? {}).filter(([id]) => id.startsWith('tenant_')));
+    await this.writeCabinetConfig(cabinet.id, Object.keys(personal).length ? { selection_origin: 'cabinet', providers: personal } : null);
     PlatformAuditContext.set({
       action: 'ai.cabinet_override.clear',
       targetType: 'cabinet',
@@ -417,7 +449,10 @@ export class PlatformAiService {
     const builtins = await Promise.all(
       this.router.listBuiltinProviders().map(async (definition) => {
         const runtime = this.router.getProviderRuntimeConfig(definition.id, stored[definition.id]);
-        const models = await this.router.listAvailableModels(definition.id, runtime);
+        const allModels = await this.router.listAvailableModels(definition.id, runtime, true);
+        const models = definition.id === 'mimo'
+          ? allModels.filter(id => !/(?:^|-)(?:asr|tts)(?:-|$)/i.test(id))
+          : allModels;
         const selected =
           runtime?.model && models.includes(runtime.model)
             ? runtime.model
@@ -427,6 +462,7 @@ export class PlatformAiService {
           label: definition.label,
           base_url: runtime?.base_url ?? definition.base_url,
           models,
+          other_models: allModels.filter(model => !models.includes(model)),
           description: definition.description,
           is_custom: false,
           selected_model: selected,
@@ -458,7 +494,7 @@ export class PlatformAiService {
     );
     return rows
       .map((row) => ({ row, config: parseStoredAiConfig(row.ai_config) }))
-      .filter(({ config }) => hasCabinetOverride(config))
+      .filter(({ config }) => hasCabinetOverride(config) && config?.selection_origin !== 'cabinet')
       .map(({ row, config }) => ({
         cabinet_id: Number(row.id),
         cabinet_name: row.name,

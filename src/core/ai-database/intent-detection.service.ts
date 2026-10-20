@@ -3,7 +3,7 @@ import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { ChatOpenAI } from '@langchain/openai';
 import { IntentDetectionResult } from './interface/write-intent.interface';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
-import { AiActionRegistry } from './write/ai-action.registry';
+import { actionTargetTable, AiActionRegistry } from './write/ai-action.registry';
 import {
   matchHelpDocs,
   normalizeHelpText,
@@ -17,12 +17,91 @@ import {
   SourceSignals,
   describeSignals,
   extractRecordReference,
+  isAnchoredInCabinet,
   isDecisiveKnowledgeRoute,
+  isKnowledgeQuestion,
   isUnlikelyDatabaseQuestion,
   summarizeLegalMatches,
 } from './source-signals';
 
 type IntentClass = 'READ' | 'WRITE' | 'HELP' | 'ADVICE' | 'CHAT';
+
+const INTENT_CLASSES: IntentClass[] = ['READ', 'WRITE', 'HELP', 'ADVICE', 'CHAT'];
+
+/** Partie d'une demande enchaînée (« READ+SKILL:whatsapp »). */
+export interface ClassifiedPart {
+  kind: IntentClass | 'SKILL';
+  skill?: string;
+}
+
+/**
+ * Verdict du classifieur : une classe, et la seconde quand il hésite ;
+ * `SKILL` + code quand une compétence candidate répond à la demande ;
+ * `parts` quand la demande en enchaîne plusieurs.
+ */
+export interface LightClassification {
+  value: IntentClass | 'SKILL';
+  alternative?: IntentClass;
+  skill?: string;
+  parts?: ClassifiedPart[];
+}
+
+/** Compétence proposée au classifieur (code, libellé, description). */
+export interface SkillCandidate {
+  code: string;
+  label: string;
+  description: string;
+}
+
+const CLASS_TOKEN = /^(READ|WRITE|HELP|ADVICE|CHAT)$|^SKILL\s*[:=]\s*([A-Z0-9_]+)$/;
+
+function parseClassToken(token: string): ClassifiedPart | null {
+  const match = CLASS_TOKEN.exec(token.trim().replace(/^\W+|[^\w]+$/g, ''));
+  if (!match) return null;
+  return match[1]
+    ? { kind: match[1] as IntentClass }
+    : { kind: 'SKILL', skill: match[2].toLowerCase() };
+}
+
+/** Raison affichée dans le chat quand une règle locale décide du mode. */
+export const LOCAL_ROUTE_REASONS: Record<IntentClass, string> = {
+  HELP: "question sur l'utilisation de l'application",
+  ADVICE: 'demande de conseil',
+  CHAT: 'question générale, sans les données du cabinet',
+  READ: 'consultation des données du cabinet',
+  WRITE: 'demande de création ou de modification',
+};
+
+/**
+ * Réponse du classifieur → classe retenue, et la seconde quand il répond
+ * explicitement « READ|CHAT » (première ligne). Un texte après le premier mot
+ * est toléré ; une réponse qui ne commence pas par une classe (raisonnement
+ * en prose, avis de modération…) est illisible : null, comme une réponse vide.
+ */
+export function parseLightClassification(raw: string): LightClassification | null {
+  const text = raw.toUpperCase().trim();
+  const firstLine = text.split('\n').map((line) => line.trim()).find(Boolean) ?? '';
+  // Demandes enchaînées : « HELP+READ », « READ+SKILL:WHATSAPP » (3 au plus).
+  if (firstLine.includes('+')) {
+    const parts = firstLine.split('+').map(parseClassToken);
+    if (parts.length >= 2 && parts.length <= 3 && parts.every(Boolean)) {
+      const valid = parts as ClassifiedPart[];
+      return { value: valid[0].kind, ...(valid[0].skill && { skill: valid[0].skill }), parts: valid };
+    }
+  }
+  const skillAnswer = /^\W*SKILL\s*[:=]\s*([A-Z0-9_]+)/.exec(firstLine);
+  if (skillAnswer) return { value: 'SKILL', skill: skillAnswer[1].toLowerCase() };
+  const pair = firstLine.match(
+    /^\W*(READ|WRITE|HELP|ADVICE|CHAT)\s*(?:\||\/|,|\bOU\b|\bOR\b)\s*(READ|WRITE|HELP|ADVICE|CHAT)\W*$/,
+  );
+  if (pair) {
+    const [value, alternative] = [pair[1], pair[2]] as IntentClass[];
+    return alternative !== value ? { value, alternative } : { value };
+  }
+  const letters = text.replace(/[^A-Z]/g, '');
+  const value = INTENT_CLASSES.find((item) => letters.startsWith(item));
+  return value ? { value } : null;
+}
 
 @Injectable()
 export class IntentDetectionService {
@@ -30,7 +109,7 @@ export class IntentDetectionService {
   private readonly CACHE_TTL = 2 * 60 * 1000;
   private readonly classificationCache = new Map<
     string,
-    { value: IntentClass; timestamp: number }
+    { result: LightClassification; timestamp: number }
   >();
   private writeSchemaCache: { value: string; timestamp: number } | null = null;
 
@@ -136,6 +215,24 @@ export class IntentDetectionService {
       plannerModelName?: string;
       /** Indices locaux (voir computeSourceSignals) : guident le classifieur. */
       signals?: SourceSignals;
+      /**
+       * Compétence d'écriture guidée (« Programmer une audience »…) : le
+       * planificateur ne voit que ces tables.
+       */
+      onlyTables?: string[];
+      /**
+       * Le chat peut demander le mode à l'utilisateur : quand le classifieur
+       * hésite entre deux classes, le résultat est UNCERTAIN (avec les deux
+       * candidates) au lieu d'un choix au hasard.
+       */
+      allowModeChoice?: boolean;
+      /**
+       * Compétences évoquées par la demande (mode auto) : le classifieur peut
+       * répondre SKILL:<code> quand l'une d'elles y répond clairement.
+       */
+      skillCandidates?: SkillCandidate[];
+      /** Le chat sait traiter plusieurs demandes enchaînées dans une réponse. */
+      allowComposite?: boolean;
     } = {},
   ): Promise<IntentDetectionResult> {
     // 1️⃣ Pré-filtre rapide : éviter un appel LLM pour les WRITE évidents
@@ -151,20 +248,22 @@ export class IntentDetectionService {
       this.CORRECTIVE_REQUEST.test(this.normalizeText(question).trim());
 
     if (localClass === 'HELP') {
-      return { type: 'HELP', requiresConfirmation: false };
+      return { type: 'HELP', requiresConfirmation: false, reason: LOCAL_ROUTE_REASONS.HELP };
     }
 
     if (localClass === 'ADVICE') {
-      return { type: 'ADVICE', requiresConfirmation: false };
+      return { type: 'ADVICE', requiresConfirmation: false, reason: LOCAL_ROUTE_REASONS.ADVICE };
     }
 
     if (localClass === 'CHAT') {
-      return { type: 'CONVERSATIONAL', requiresConfirmation: false };
+      return { type: 'CONVERSATIONAL', requiresConfirmation: false, reason: LOCAL_ROUTE_REASONS.CHAT };
     }
 
     if (localClass === 'READ') {
-      return { type: 'READ', requiresConfirmation: false };
+      return { type: 'READ', requiresConfirmation: false, reason: LOCAL_ROUTE_REASONS.READ };
     }
+    const writeReason =
+      !options.forceWrite && localClass === 'WRITE' ? LOCAL_ROUTE_REASONS.WRITE : undefined;
 
     if (
       !isObviousWrite &&
@@ -176,24 +275,62 @@ export class IntentDetectionService {
       this.logger.log(
         '🏷️ Signaux → CHAT (base juridique, sans ancrage cabinet)',
       );
-      return { type: 'CONVERSATIONAL', requiresConfirmation: false };
+      return {
+        type: 'CONVERSATIONAL',
+        requiresConfirmation: false,
+        reason: 'sujet couvert par la base juridique de la plateforme',
+      };
     }
 
     if (!isObviousWrite) {
       // 1b. Classification légère via LLM : READ | WRITE | CHAT
       //     (plus fiable que des heuristiques statiques)
-      let lightClass = await this.lightClassify(question, llm, {
+      const classified = await this.lightClassify(question, llm, {
         ...options,
         history: options.history,
       });
-      this.logger.log(`🏷️ Light classify → ${lightClass}`);
+      this.logger.log(
+        `🏷️ Light classify → ${classified.parts ? classified.parts.map((part) => part.skill ? `SKILL:${part.skill}` : part.kind).join('+') : classified.skill ? `SKILL:${classified.skill}` : classified.value}${classified.alternative ? ` (hésite avec ${classified.alternative})` : ''}`,
+      );
+      const knownSkill = (code?: string) =>
+        !!code && (options.skillCandidates ?? []).some((candidate) => candidate.code === code);
+      // Plusieurs demandes enchaînées : le chat les traite l'une après l'autre.
+      if (classified.parts && options.allowComposite) {
+        const parts = classified.parts.filter((part) => part.kind !== 'SKILL' || knownSkill(part.skill));
+        if (parts.length >= 2 && new Set(parts.map((part) => part.skill ?? part.kind)).size >= 2) {
+          return { type: 'COMPOSITE', parts, requiresConfirmation: false, reason: 'plusieurs demandes dans la même question' };
+        }
+      }
+      if (classified.value === 'SKILL' || classified.parts?.[0]?.kind === 'SKILL') {
+        const skill = classified.skill ?? classified.parts?.[0]?.skill;
+        if (knownSkill(skill)) {
+          return { type: 'SKILL', skill, requiresConfirmation: false, reason: 'compétence reconnue dans la demande' };
+        }
+      }
+      let lightClass: IntentClass =
+        classified.value === 'SKILL'
+          ? this.fallbackClass(options.signals)
+          : classified.value;
+      let alternative = classified.alternative;
+      let reason: string | undefined;
       // Un numéro d'enregistrement cité se lit dans la base, même quand le
       // classifieur y voit une question générale.
-      if (lightClass === 'CHAT' && options.signals?.recordReference) {
-        this.logger.log(
-          `🏷️ CHAT → READ (numéro cité : ${options.signals.recordReference})`,
-        );
+      const recordReference = options.signals?.recordReference;
+      if (lightClass === 'CHAT' && recordReference) {
+        this.logger.log(`🏷️ CHAT → READ (numéro cité : ${recordReference})`);
         lightClass = 'READ';
+        reason = `numéro cité (${recordReference})`;
+      }
+      if (alternative === lightClass || (alternative === 'CHAT' && recordReference)) {
+        alternative = undefined;
+      }
+      // Le classifieur hésite : le chat propose les deux modes avant d'aller plus loin.
+      if (alternative && options.allowModeChoice) {
+        return {
+          type: 'UNCERTAIN',
+          candidates: [lightClass, alternative],
+          requiresConfirmation: false,
+        };
       }
 
       if (lightClass === 'HELP') {
@@ -210,7 +347,7 @@ export class IntentDetectionService {
         return { type: 'CONVERSATIONAL', requiresConfirmation: false };
       }
       if (lightClass === 'READ') {
-        return { type: 'READ', requiresConfirmation: false };
+        return { type: 'READ', requiresConfirmation: false, ...(reason && { reason }) };
       }
       // lightClass === 'WRITE' → on laisse tomber dans la branche WRITE ci-dessous
     }
@@ -221,7 +358,11 @@ export class IntentDetectionService {
       `📝 Handlers enregistrés: ${handlers.length} → [${handlers.map((h) => h.entityName).join(', ')}]`,
     );
 
-    const writeSchema = await this.getCachedWriteSchema();
+    const writeSchema = options.onlyTables?.length
+      ? `${await this.writeHandlerRegistry.generateWriteSchemaFor(options.onlyTables)}
+Le plan ne porte que sur : ${options.onlyTables.join(', ')} (les autres éléments sont désignés par leur identifiant ou leur numéro).
+`
+      : await this.getCachedWriteSchema();
     this.logger.log(
       `📝 Schéma d'écriture généré (${writeSchema.length} chars)`,
     );
@@ -327,6 +468,7 @@ export class IntentDetectionService {
           type: 'WRITE',
           writePlan: validatedPlan,
           requiresConfirmation,
+          ...(writeReason && { reason: writeReason }),
         };
       } catch (error) {
         lastWasConnectionError = this.isConnectionError(error);
@@ -678,7 +820,7 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
   private enrichActionOperation(op: any, fields: Record<string, any>, index: number): WriteOperation {
     const handler = this.actionRegistry?.get(op.action);
     if (!handler) {
-      const known = this.actionRegistry?.all().map((h) => h.definition.name).join(', ') || 'aucune';
+      const known = this.actionRegistry?.all().filter((h) => !h.definition.skillOnly).map((h) => h.definition.name).join(', ') || 'aucune';
       throw new Error(`action inconnue "${op.action ?? ''}" (actions possibles : ${known})`);
     }
     const { definition } = handler;
@@ -699,7 +841,7 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
     return {
       operation: 'ACTION',
       action: definition.name,
-      entity: definition.entity,
+      entity: actionTargetTable(handler, op.entity),
       entityId,
       ...(match && { match }),
       fields: params,
@@ -1013,19 +1155,24 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       classifierModelName?: string;
       history?: string;
       signals?: SourceSignals;
+      skillCandidates?: SkillCandidate[];
+      allowComposite?: boolean;
     } = {},
-  ): Promise<IntentClass> {
+  ): Promise<LightClassification> {
     const signalsBlock = options.signals ? describeSignals(options.signals) : '';
+    const candidates = (options.skillCandidates ?? []).slice(0, 3);
     // La même phrase n'a pas le même sens dans une autre conversation
     // (« et celle-ci ? ») : l'historique et les indices font partie de la clé.
     const cacheKey = [
       this.normalizeText(question).trim(),
       options.history ?? '',
       signalsBlock,
+      candidates.map((candidate) => candidate.code).join(','),
+      options.allowComposite ? '+' : '',
     ].join('\n');
     const cached = this.classificationCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      return cached.value;
+      return cached.result;
     }
 
     // Inclure l'historique récent pour que le LLM comprenne les questions
@@ -1056,9 +1203,17 @@ ${signalsBlock}
 `
         : ''
     }
+${candidates.length ? `
+Compétences du chat qui pourraient répondre (actions spécialisées qui préparent un brouillon ou un calcul, toujours validé par l'utilisateur) :
+${candidates.map((candidate) => `- ${candidate.code} : ${candidate.label} — ${candidate.description}`).join('\n')}
+Si la demande demande de RÉALISER l'une de ces actions (préparer, rédiger, envoyer, calculer, analyser… pour un client, un dossier ou un document du cabinet), réponds SKILL:<code> (ex. SKILL:${candidates[0].code}). Une simple question de connaissance (« quel est le délai d'appel ? ») reste CHAT ; une consultation des données reste READ.
+` : ''}${options.allowComposite ? `
+Si la demande enchaîne EXPLICITEMENT deux demandes de natures différentes (reliées par « et », « puis », « ensuite »), réponds leurs types dans l'ordre, reliés par « + » (ex. HELP+READ${candidates.length ? `, READ+SKILL:${candidates[0].code}` : ''}). Une seule demande, même longue : un seul type.
+` : ''}
 Demande : "${question.replace(/"/g, "'")}"
 
-Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
+Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT${candidates.length ? ' (ou SKILL:<code>)' : ''}. Rien d'autre.
+Si la demande est ambiguë — quelques mots sans verbe ni contexte (« rapport », « la TVA »), ou pouvant viser aussi bien les données du cabinet qu'une question générale ou l'utilisation de l'application — réponds les deux types les plus probables séparés par « | », le plus probable d'abord (ex. READ|CHAT). Si le sens est clair (y compris grâce à l'historique), un seul mot.`;
 
     try {
       const input = [{ role: 'user', content: prompt }];
@@ -1068,31 +1223,24 @@ Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
         modelName: options.classifierModelName,
       });
       const response = await llm.invoke(input);
-      const raw = this.extractLlmText(response)
-        .trim()
-        .toUpperCase()
-        .replace(/[^A-Z]/g, '');
-      if (!raw) {
-        // Réponse vide (ex. budget de tokens épuisé par la réflexion du
-        // modèle) : repli selon les indices, sans le mettre en cache.
+      const result = parseLightClassification(this.extractLlmText(response).trim());
+      if (!result) {
+        // Réponse vide (budget de tokens épuisé par la réflexion du modèle)
+        // ou illisible (raisonnement en prose) : repli selon les indices, sans
+        // le mettre en cache. Sans indice net, le chat demande le mode plutôt
+        // que de deviner.
         const fallback = this.fallbackClass(options.signals);
-        this.logger.warn(`🏷️ Classification vide → ${fallback} par défaut`);
-        return fallback;
+        this.logger.warn(`🏷️ Classification vide ou illisible → ${fallback} par défaut`);
+        const signals = options.signals;
+        return signals && !isKnowledgeQuestion(signals) && !isAnchoredInCabinet(signals)
+          ? { value: fallback, alternative: fallback === 'CHAT' ? 'READ' : 'CHAT' }
+          : { value: fallback };
       }
-      const value: IntentClass = raw.startsWith('WRITE')
-        ? 'WRITE'
-        : raw.startsWith('HELP')
-          ? 'HELP'
-          : raw.startsWith('ADVICE')
-            ? 'ADVICE'
-            : raw.startsWith('CHAT')
-              ? 'CHAT'
-              : 'READ';
-      this.classificationCache.set(cacheKey, { value, timestamp: Date.now() });
-      return value;
+      this.classificationCache.set(cacheKey, { result, timestamp: Date.now() });
+      return result;
     } catch {
       // Classifieur injoignable : SQL seulement si la question peut viser le cabinet.
-      return this.fallbackClass(options.signals);
+      return { value: this.fallbackClass(options.signals) };
     }
   }
 

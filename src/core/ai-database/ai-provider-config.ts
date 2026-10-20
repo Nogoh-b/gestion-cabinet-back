@@ -11,8 +11,8 @@ import type {
  *   chiffrées) + moteur par défaut de tous les cabinets (`active_provider` et
  *   son `model`). Absent → variables d'environnement serveur.
  * - `cabinets.ai_config` : EXCEPTION facultative posée par la plateforme pour un
- *   cabinet (`active_provider` + `providers[active].model`). Les cabinets ne la
- *   modifient plus eux-mêmes.
+ *   cabinet (`active_provider` + `providers[active].model`). Les choix personnels
+ *   portent `selection_origin: cabinet` et sont soumis à la politique du forfait.
  */
 export const PLATFORM_AI_SETTING_KEY = 'ai';
 

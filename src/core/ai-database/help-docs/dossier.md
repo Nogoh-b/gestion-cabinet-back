@@ -99,5 +99,12 @@ Le bouton **Clôturer le dossier** se trouve dans la gestion du dossier ; sur un
 - « L'issue du dossier est obligatoire pour la clôture » → choisissez une issue autre que « Non renseignée ».
 - Bouton d'action absent → vérifiez le rôle (permissions) et les fonctionnalités du plan d'abonnement.
 
+## Exemple de bout en bout
+1. **Ouverture** : dossier pour la cliente Amina Diallo, objet « Licenciement contesté », avocat responsable Maître Kamga, TPI de Douala, convention **Forfait** 1 500 000 FCFA, frais d'ouverture 50 000 FCFA. Cliquez **Ouvrir le dossier**.
+2. **Valider l'ouverture** : le forfait et les frais deviennent des éléments **À facturer**, facturés aussitôt en **brouillon** ; le dossier passe en **Traitement**.
+3. **Actions** : **Nouvelle action** « Consultation client » → **Commencer** → **Terminer l'action** (résultat, 90 min, incluse dans le forfait) ; de même pour la rédaction puis l'audience.
+4. **Facturation** : sélectionnez les éléments **À facturer** → **Créer une facture** → **Envoyer par email** → enregistrez les paiements jusqu'au solde.
+5. **Clôture** : contrôle de clôture (traitez bloquants et avertissements), issue **Gagné**, notes, satisfaction → **Clôturer le dossier**.
+
 ## Créer un dossier depuis le chat
 Vous pouvez me demander de créer le dossier en une phrase : « Ouvre un dossier pour le client Jean Dupont, avocat responsable Maître Ngono, procédure Contentieux civil, objet litige commercial pour 3 500 000 FCFA, tribunal de première instance de Douala, urgence élevée. » Le client, l'avocat, la procédure et la juridiction se donnent par leur nom ; le numéro de dossier est généré tout seul. Un client inconnu peut être créé à la volée. Une carte de confirmation modifiable s'affiche avant l'enregistrement.

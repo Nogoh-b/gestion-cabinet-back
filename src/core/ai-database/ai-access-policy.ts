@@ -542,6 +542,27 @@ function describeGroup(group: CapabilityGroup, profile: AccessProfile): string[]
     .map((code) => lowerFirst(permissionLabel(code, profile.permissions.get(code))));
 }
 
+/** Droits du rôle regroupés par module : ce qui est permis et ce qui ne l'est pas. */
+export function summarizeCapabilities(profile: AccessProfile): {
+  allowed: Array<{ label: string; actions: string[] }>;
+  denied: string[];
+} {
+  if (profile.isAdmin) {
+    return {
+      allowed: AI_CAPABILITY_GROUPS.map((group) => ({ label: group.label, actions: ['tous les droits'] })),
+      denied: [],
+    };
+  }
+  const allowed: Array<{ label: string; actions: string[] }> = [];
+  const denied: string[] = [];
+  for (const group of AI_CAPABILITY_GROUPS) {
+    const actions = describeGroup(group, profile);
+    if (actions.length) allowed.push({ label: group.label, actions });
+    else denied.push(group.label);
+  }
+  return { allowed, denied };
+}
+
 /**
  * Réponse déterministe à « que puis-je faire ? », « ai-je accès à la
  * comptabilité ? », « tu peux accéder aux opérations financières pour moi ? » :

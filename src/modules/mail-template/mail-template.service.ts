@@ -134,6 +134,15 @@ export class MailTemplateService {
     return { subject, html };
   }
 
+  /**
+   * Corps HTML rédigé hors modèle (compétence « Envoyer un e-mail » du chat)
+   * habillé comme les modèles : en-tête et pied de page du cabinet courant.
+   */
+  async wrapForCabinet(bodyHtml: string): Promise<string> {
+    const brand = this.buildBrandContext(await this.getCurrentCabinet());
+    return this.wrapWithLayout(bodyHtml, brand);
+  }
+
   private async getCurrentCabinet(): Promise<Cabinet | null> {
     const tenantId = getCurrentTenantId();
     if (!tenantId) return null;

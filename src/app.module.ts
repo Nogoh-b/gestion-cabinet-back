@@ -65,6 +65,7 @@ import { BackupModule } from './modules/backup/backup.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ExportModule } from './modules/export/export.module';
+import { AiSkillsModule } from './modules/ai-skills/ai-skills.module';
 import { CaseWorkflowModule } from './modules/case-workflow/case-workflow.module';
 import { GlobalSearchModule } from './modules/search/search.module';
 
@@ -227,6 +228,7 @@ dotenv.config();
     PlatformModule,
     ReportsModule,
     ExportModule,
+    AiSkillsModule,
     CaseWorkflowModule,
     GlobalSearchModule,
   ],

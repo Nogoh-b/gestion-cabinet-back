@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import type { AiPlanPolicy } from 'src/core/ai-database/ai-subscription-policy';
 
 @Entity('plans')
 export class Plan {
@@ -78,6 +79,9 @@ export class Plan {
 
   @Column({ type: 'int', nullable: true, name: 'ai_requests_per_month' })
   ai_requests_per_month: number | null;
+
+  @Column({ type: 'json', nullable: true })
+  ai_policy: AiPlanPolicy | null;
 
   // ── Tarification ──────────────────────────────────────────────────────────
 

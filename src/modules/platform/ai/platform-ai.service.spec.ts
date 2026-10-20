@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { BadRequestException } from '@nestjs/common';
 import { AI_CONFIG_CHANGED_EVENT, AiModelRouterService } from 'src/core/ai-database/ai-model-router.service';
 import { PlatformAiService } from './platform-ai.service';
@@ -6,6 +6,7 @@ import { PlatformAiService } from './platform-ai.service';
 /** Base en mémoire : platform_settings['ai'] + colonne cabinets.ai_config. */
 function memoryDb() {
   const state = {
+    plans: [] as Array<{ ai_policy: unknown }>,
     platform: null as string | null,
     cabinets: new Map<number, { id: number; name: string; ai_config: string | null }>([
       [7, { id: 7, name: 'Cabinet Sept', ai_config: null }],
@@ -14,6 +15,7 @@ function memoryDb() {
   };
   const db = {
     query: jest.fn(async (sql: string, params: any[] = []) => {
+      if (sql.startsWith('SELECT ai_policy FROM plans')) return state.plans;
       if (sql.startsWith('SELECT `value` FROM platform_settings')) {
         return state.platform ? [{ value: state.platform }] : [];
       }
@@ -45,6 +47,7 @@ describe('PlatformAiService', () => {
   let service: PlatformAiService;
 
   beforeEach(() => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('Catalogue hors ligne pour le test'));
     process.env.DEEPSEEK_API_KEY = 'deepseek-secret-from-server';
     process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
     const mem = memoryDb();
@@ -55,6 +58,7 @@ describe('PlatformAiService', () => {
     const router = new AiModelRouterService();
     service = new PlatformAiService(mem.db as any, router, events as any);
   });
+  afterEach(() => { jest.restoreAllMocks(); });
 
   it('définit le moteur par défaut de tous les cabinets et purge le cache IA', async () => {
     const result = await service.setDefault('deepseek', 'deepseek-v4-pro', 1);
@@ -96,5 +100,21 @@ describe('PlatformAiService', () => {
     await service.setCabinetOverride(8, id, 'x');
 
     await expect(service.deleteProvider(id)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('refuse de supprimer une configuration attribuée à un forfait', async () => {
+    const created = await service.createProvider({ label: 'X', base_url: 'https://x.example.com/v1', model: 'x', api_key: 'k' });
+    const id = created.providers.find(p => p.label === 'X')!.id;
+    state.plans.push({ ai_policy: { default_model: { provider_id: id, model: 'x' }, allowed_models: [] } });
+    await expect(service.deleteProvider(id)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('valide uniquement les configurations plateforme et le modèle exact des fournisseurs personnalisés', async () => {
+    const created = await service.createProvider({ label: 'X', base_url: 'https://x.example.com/v1', model: 'x', api_key: 'k' });
+    const id = created.providers.find(p => p.label === 'X')!.id;
+    const policy = { default_model: { provider_id: id, model: 'x' }, allow_model_selection: false, allow_custom_providers: false, allowed_models: [] };
+    await expect(service.validatePlanPolicy(policy)).resolves.toBeUndefined();
+    await expect(service.validatePlanPolicy({ ...policy, default_model: { provider_id: id, model: 'other' } })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.validatePlanPolicy({ ...policy, default_model: { provider_id: 'tenant_private', model: 'x' } })).rejects.toBeInstanceOf(BadRequestException);
   });
 });

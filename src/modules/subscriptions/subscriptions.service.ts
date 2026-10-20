@@ -4,7 +4,9 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { DataSource, LessThan, Repository, In } from 'typeorm';
@@ -106,6 +108,7 @@ export class SubscriptionsService {
     private readonly coupons: CouponsService,
     private readonly events: SubscriptionEventsService,
     @InjectDataSource() private readonly dataSource: DataSource,
+    @Optional() private readonly appEvents?: EventEmitter2,
   ) {}
 
   /** Une période exige un paiement amont si elle est payante et hors essai. */
@@ -128,6 +131,7 @@ export class SubscriptionsService {
     if (planId) cabinet.plan_id = planId;
     this.markSuspended(cabinet, 'payment_required');
     await this.cabinetRepo.save(cabinet);
+    this.appEvents?.emit('ai.config.changed', { tenantId: cabinetId });
   }
 
   // ── Création (onboarding / changement de plan) ────────────────────────────
@@ -1397,6 +1401,7 @@ export class SubscriptionsService {
       clearSuspension(cabinet);
     }
     await this.cabinetRepo.save(cabinet);
+    this.appEvents?.emit('ai.config.changed', { tenantId: cabinetId });
   }
 
   private async suspendCabinet(

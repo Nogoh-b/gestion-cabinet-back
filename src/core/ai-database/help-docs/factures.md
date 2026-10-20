@@ -73,6 +73,13 @@ Une facture émise **ne s'annule pas directement** (« Créez un avoir ou une li
 - *Pourquoi mon paiement est refusé ?* Montant supérieur au reste à payer, nul/négatif, ou facture annulée.
 - *Comment facturer sans élément facturable ?* Création manuelle d'une facture (dossier, type, dates, montant HT).
 
+## Exemple de bout en bout
+1. Le dossier DOS-2026-0012 a 750 000 FCFA HT d'éléments **À facturer** (forfait + 2 vacations).
+2. **Dossier > Facturation** : cochez les éléments → **Créer une facture** (date du jour, échéance 30 jours, TVA 19,25 %) → facture **Brouillon** FAC-2026-0041, éléments **Facturé**.
+3. **Envoyer par email** au client : la facture passe **Envoyée**, écriture de vente générée, commission d'apport calculée (dossier apporté, base facturé).
+4. **Nouveau paiement** : 400 000 FCFA par virement → facture **Partiellement payée**, écriture d'encaissement.
+5. Second paiement du solde → facture **Payée**, **Reste à payer** à zéro.
+
 ## Créer une facture depuis le chat
 « Facture le dossier DOS-2026-0012 : honoraires de 500 000 FCFA HT, TVA 19,25 %, échéance dans 30 jours. » Le dossier se donne par son numéro `DOS-…` (le client est repris du dossier), le numéro de facture est automatique, et une carte de confirmation modifiable s'affiche avant l'enregistrement. Pour enregistrer un paiement : « Enregistre un paiement de 250 000 FCFA par virement sur la facture FAC-2026-0003 ».
 

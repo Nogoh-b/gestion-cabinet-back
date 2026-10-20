@@ -154,6 +154,13 @@ export class ReferenceAdapter {
           return true;
         });
       }
+      if (!source && !row && item.kind === 'case_workflow_features') {
+        // Ligne unique par cabinet (UQ_case_workflow_feature_tenant), sans
+        // code ni libellé : rattacher la ligne locale pour comparer plutôt
+        // que créer un doublon. Une valeur locale différente devient un
+        // conflit, préservé par défaut.
+        row = candidates.find((r) => !r.deleted_at) ?? null;
+      }
       local.set(id, row ?? null);
       if (row) localKeys.set(item.kind + '/' + row.id, item.key);
       if (!row || row.deleted_at) {
