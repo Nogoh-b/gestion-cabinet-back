@@ -6,7 +6,7 @@ import {
   AiActionHandler,
   PreparedAiAction,
 } from 'src/core/ai-database/write/ai-action.registry';
-import { canonicalTargetType, recordId, SKILL_TARGET_TABLES, textToHtml } from 'src/core/ai-database/skills/skill-helpers';
+import { canonicalTargetType, recordId, richTextToHtml, richTextToPlain, SKILL_TARGET_TABLES, stripRichMarkup } from 'src/core/ai-database/skills/skill-helpers';
 import type { AiSkillTargetType } from 'src/core/ai-database/skills/ai-skill.types';
 import { Permission } from 'src/core/enums/permission.enum';
 import { MailService } from 'src/core/shared/emails/emails.service';
@@ -77,7 +77,7 @@ export class EnvoyerEmailAiAction implements AiActionHandler {
       { name: 'to', label: 'Destinataire', description: "Par défaut, l'adresse du client (ou du collaborateur)." },
       { name: 'cc', label: 'Copie (Cc)' },
       { name: 'subject', label: 'Objet', required: true },
-      { name: 'body', label: 'Message', required: true, kind: 'longtext' },
+      { name: 'body', label: 'Message', required: true, kind: 'longtext', format: 'email' },
       { name: 'attachments', label: 'Pièces jointes', kind: 'multi', description: 'Documents du dossier à joindre.' },
       { name: 'scheduledAt', label: "Programmer l'envoi", kind: 'datetime', description: 'Vide : envoi immédiat.' },
     ],
@@ -132,7 +132,7 @@ export class EnvoyerEmailAiAction implements AiActionHandler {
     const to = this.recipients(info, params);
     const cc = params.cc ? parseEmailList(params.cc, 'Copie') : [];
     const scheduled = parseSchedule(params.scheduledAt);
-    const subject = String(params.subject ?? '').trim();
+    const subject = stripRichMarkup(params.subject);
     const body = String(params.body ?? '').trim();
     if (!subject || !body) throw new BadRequestException("L'objet et le message de l'e-mail sont requis.");
 
@@ -156,8 +156,8 @@ export class EnvoyerEmailAiAction implements AiActionHandler {
           to,
           ...(cc.length && { cc }),
           subject,
-          html: await this.mailTemplates.wrapForCabinet(textToHtml(body)),
-          text: body,
+          html: await this.mailTemplates.wrapForCabinet(richTextToHtml(body)),
+          text: richTextToPlain(body),
           ...(attachments.length && { attachments }),
           ...(scheduled && { scheduledAt: scheduled.toISOString() }),
           metadata: {

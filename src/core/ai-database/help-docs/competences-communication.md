@@ -7,20 +7,22 @@ paths: /chat
 
 # Compétences « Communication »
 
-Toutes s'ouvrent avec **#** (ou **⚡**) dans le chat. Chacune se termine par une carte à valider ; un e-mail ou un message envoyé ne peut pas être rappelé.
+Toutes s'ouvrent avec **#** (ou **⚡**) dans le chat. Chacune se termine par une carte à valider ; un e-mail ou un message envoyé ne peut pas être rappelé. Modifier votre question ou régénérer la réponse relance la même compétence (la carte réapparaît).
 
 ## Envoyer un e-mail
 - **Pour qui** : le client, un collaborateur ou le client d'une fiche — mentionnez avec **@** un client, un dossier, une audience, une facture, une diligence, un collaborateur ou un document (obligatoire).
 - **Ce que fait l'IA** : rédige l'objet et le message à partir de votre consigne et des informations de la fiche (dossier, prochaine audience, facture…), en s'inspirant des **modèles d'e-mails du cabinet** de la même catégorie. Elle ne remplit que les informations connues : aucune date ni aucun montant inventé. Une adresse ou une heure d'envoi écrite dans la consigne est reprise (« … demain à 8 h »).
-- **La carte** : Destinataire (par défaut l'e-mail du client ou du collaborateur), Copie (Cc), Objet, Message (sur plusieurs lignes), **Pièces jointes** (cases à cocher parmi les documents du dossier ou du client), **Programmer l'envoi** (date et heure ; vide = immédiat). L'aperçu indique « À : … · N pièce(s) jointe(s) · programmé le … ».
+- **La carte** : Destinataire (par défaut l'e-mail du client ou du collaborateur), Copie (Cc), Objet, Message (sur plusieurs lignes), **Pièces jointes** (cases à cocher parmi les documents du dossier ou du client), **Programmer l'envoi** (date et heure ; vide = immédiat). L'aperçu indique « À : … · N pièce(s) jointe(s) · programmé le … ». Le message se modifie avant l'envoi : barre **Gras**, insertion d'un **lien** vers une fiche mentionnée (@), et **aperçu** fidèle au message reçu.
 - **Après Confirmer** : l'e-mail part avec l'en-tête et le pied de page du cabinet (SMTP du cabinet s'il est configuré) et apparaît dans l'onglet **Communication** de la fiche. Un envoi programmé part à l'heure prévue.
+- **Mise en forme** : **gras** pour l'essentiel, liens avec [texte](https://…) (dossier, facture…) — repris en gras et cliquables dans l'e-mail reçu, en texte simple dans la version texte. L'objet reste en texte simple.
 - **Droits** : aucun droit particulier (comme le composer d'e-mail des fiches).
 - Erreurs : « Aucune adresse e-mail enregistrée… » → saisissez le destinataire dans la carte ; « Pièces jointes trop volumineuses » → 15 Mo au maximum.
 
 ## Préparer un WhatsApp
 - Mentionnez un client, un dossier, une audience ou une facture. L'IA rédige un message court, poli et signé.
-- **La carte** : Numéro (celui de la fiche client ; l'indicatif **+237** est ajouté à un numéro local), Message modifiable, **Copier**, **Ouvrir WhatsApp** : WhatsApp (application ou WhatsApp Web) s'ouvre sur la conversation avec le texte prérempli ; vous appuyez sur Envoyer dans WhatsApp.
+- **La carte** : Numéro (celui de la fiche client ; l'indicatif **+237** est ajouté à un numéro local), Message modifiable (barre **Gras**, insertion d'un **lien** vers une fiche mentionnée, **aperçu**), **Copier**, **Ouvrir WhatsApp** : WhatsApp (application ou WhatsApp Web) s'ouvre sur la conversation avec le texte prérempli ; vous appuyez sur Envoyer dans WhatsApp.
 - Le message est noté dans l'historique des communications du client (type **WhatsApp**).
+- **Mise en forme** : *gras* (astérisques simples), liens collés tels quels (WhatsApp les rend cliquables).
 - Droit requis : **modifier un client**. Aucun compte WhatsApp Business n'est nécessaire.
 
 ## Message à l'espace client

@@ -29,6 +29,8 @@ export interface PlanFieldDescriptor {
   /** Valeur par défaut, vide ou champ technique : affiché sous « autres champs ». */
   secondary?: boolean;
   note?: string;
+  /** Corps de message enrichi : gras + liens et aperçu fidèle à l'envoi. */
+  format?: 'email' | 'whatsapp';
 }
 
 export interface PlanOperationDescriptor {

@@ -240,6 +240,7 @@ export class PlanFieldsService {
         value,
         editable: true,
         ...(param.description && { note: param.description }),
+        ...(param.format && { format: param.format }),
       };
       if ((kind === 'enum' || kind === 'multi') && options?.length) {
         const selected = kind === 'enum' ? options.find((option) => String(option.value) === String(value ?? '')) : undefined;

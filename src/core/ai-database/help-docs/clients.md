@@ -14,7 +14,7 @@ La fiche client représente chaque personne ou société que le cabinet défend 
 - Menu **Clients** (`/clients`, section « Relation client », permission « voir les clients ») : la liste, avec recherche par nom, e-mail ou téléphone, filtre **Statut du client** (Tous les statuts, Actif, Inactif), filtre **Type de client** et cartes de statistiques.
 - Bouton **Nouveau client** en haut de la liste (`/clients/nouveau`, permission « créer un client »).
 - Menu **Plus > Cabinet > Groupes de clients** (`/clients/groupes`) : la liste des **types de clients** (page « Types de Clients »).
-- Fiche d'un client (`/clients/<id>`) : onglets **Aperçu**, **Dossiers**, **Factures** et **Documents** (ces deux derniers n'apparaissent que si le client en a), **Communication** (e-mails) et **Journal** (appels, réunions, courriers). Les onglets Communication et Journal sont réservés aux rôles administrateur, avocat et secrétaire.
+- Fiche d'un client (`/clients/<id>`, redirigée vers `/clients/<id>/fiche`) : **Identité**, **Coordonnées**, **Informations**, boutons **Compléter** (champs manquants), **Modifier**, **Envoyer les accès** (espace client) et **Gestion complète**. La page **Gestion complète** (`/clients/<id>/gestion`) porte les onglets **Aperçu**, **Dossiers**, **Factures** et **Documents** (ces deux derniers n'apparaissent que si le client en a), **Communication** (e-mails) et **Journal** (appels, réunions, courriers). Les onglets Communication et Journal sont réservés aux rôles administrateur, avocat et secrétaire.
 
 ## Prérequis
 - Au moins une **agence** active (Agences) : un client est toujours rattaché à une agence.
@@ -37,14 +37,15 @@ La fiche client représente chaque personne ou société que le cabinet défend 
 - Un client nouvellement créé est **Actif**. Les statuts possibles sont Actif, Inactif, Supprimé, Bloqué, Suspendu et Verrouillé ; la liste filtre sur Actif et Inactif.
 - À la **modification** (bouton **Modifier** de la fiche) : le **SIRET** doit comporter 14 chiffres, le **NUI** uniquement des chiffres, le **type de facturation** doit être Forfait, Temps passé ou Mixte, et l'e-mail ne doit pas déjà appartenir à un autre client.
 - Le **type de facturation** du client est la valeur par défaut proposée à la configuration de la facturation de ses dossiers (voir Configuration de la facturation).
-- La fiche affiche aussi la **situation financière** (Total facturé, Montant payé, Solde impayé, Santé financière) ; ces montants ne sont visibles qu'avec la permission de voir les factures.
+- La page **Gestion complète** (onglet **Aperçu**) affiche aussi la **situation financière** (Total facturé, Montant payé, Solde impayé, Santé financière) ; ces montants ne sont visibles qu'avec la permission de voir les factures.
 - **Supprimer** un client demande la permission « supprimer un client » ; l'action est précédée d'un court délai d'annulation. Un client déjà utilisé dans des dossiers ou des factures est à conserver : ne le supprimez pas sans nécessité.
 
-## Actions de la fiche client
-- **Modifier**, **Créer un dossier** (ouvre l'ouverture de dossier avec ce client déjà choisi), **Exporter** (fiche client, attestation selon vos droits).
-- Actions rapides : **Contacter par email**, **Appeler**, **Voir les dossiers**, **Voir les factures**, **Envoyer les accès**, **Archiver**, **Supprimer**.
+## Actions de la fiche et de la gestion complète
+- Fiche : **Compléter** (champs manquants uniquement), **Modifier**, **Envoyer les accès**, **Gestion complète**.
+- Gestion complète : **Modifier**, **Créer un dossier** (ouvre l'ouverture de dossier avec ce client déjà choisi), **Exporter** (fiche client, attestation selon vos droits).
+- Actions rapides (gestion complète) : **Contacter par email**, **Appeler**, **Voir les dossiers**, **Voir les factures**, **Envoyer les accès**, **Archiver**, **Supprimer**.
 - **Envoyer les accès** : crée (ou réinitialise) le compte de connexion du client à l'espace client et lui envoie par e-mail son identifiant et un mot de passe temporaire. Le client doit avoir une adresse e-mail, sinon l'action est impossible (« Ce client n'a pas d'adresse email enregistrée »). Un client connecté au portail ne voit que ses propres informations.
-- Onglet **Journal** : consigner manuellement un appel, une réunion ou un courrier (type et objet obligatoires). L'onglet **Communication** sert à écrire et suivre les e-mails envoyés au client.
+- Gestion complète, onglet **Journal** : consigner manuellement un appel, une réunion ou un courrier (type et objet obligatoires). L'onglet **Communication** sert à écrire et suivre les e-mails envoyés au client.
 
 ## Les types de clients (Groupes de clients)
 Un type de client a un **Nom** (obligatoire) et un **Code** (facultatif, généré automatiquement si laissé vide). Créez-en un depuis **Nouveau type de client** sur la page Groupes de clients. Les types servent à classer les clients, à filtrer la liste et à définir les documents exigés à l'ouverture d'un compte.

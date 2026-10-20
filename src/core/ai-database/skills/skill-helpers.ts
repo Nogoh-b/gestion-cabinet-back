@@ -1,5 +1,6 @@
 // src/core/ai-database/skills/skill-helpers.ts
 import type { ReferencedEntityContext } from '../dto/ask-question.dto';
+import { messageToHtml, messageToPlain, messageToWhatsApp, stripMessageMarkup } from './message-markup';
 import type { AiSkillContext, AiSkillTargetType } from './ai-skill.types';
 
 /** Type de mention du chat → table. */
@@ -213,6 +214,61 @@ export function htmlToText(html: string): string {
     .replace(/&#39;/g, "'")
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/** URL publique de l'application (liens cliquables des e-mails et WhatsApp). */
+export function appFrontendUrl(): string {
+  return (process.env.APP_FRONTEND_URL || process.env.FRONTEND_URL || '').replace(/\/+$/, '');
+}
+
+/** Route front d'une fiche par table. */
+const ENTITY_PATHS: Record<string, (id: number | string) => string> = {
+  dossiers: (id) => `/dossiers/${id}`,
+  factures: (id) => `/facturation/factures/${id}`,
+  audiences: (id) => `/audiences/${id}`,
+  diligences: (id) => `/dossiers/diligences/${id}`,
+  customer: (id) => `/clients/${id}`,
+  employee: (id) => `/gestion-cabinet/employees/${id}`,
+  document_customer: (id) => `/documents/${id}`,
+};
+
+/** Liens absolus vers des fiches ([] sans URL publique configurée : pas de lien cassé). */
+export function entityLinks(targets: Array<{ table: string; id: number | string; label: string }>): Array<{ label: string; url: string }> {
+  const base = appFrontendUrl();
+  if (!base) return [];
+  return targets
+    .filter((target) => ENTITY_PATHS[target.table] && target.id !== undefined && target.id !== null && target.id !== '')
+    .map((target) => ({ label: target.label, url: `${base}${ENTITY_PATHS[target.table](target.id)}` }));
+}
+
+/** Bloc « Liens utilisables » des prompts de rédaction ('' sans lien). */
+export function linksBlock(links: Array<{ label: string; url: string }>): string {
+  if (!links.length) return '';
+  return `Liens utilisables dans le message (ne mets aucun autre lien) :\n${links.map((link) => `— ${link.label} : ${link.url}`).join('\n')}`;
+}
+
+/**
+ * Texte rédigé (IA ou éditeur du chat) → HTML d'e-mail : paragraphes, gras,
+ * italique, souligné, barré, listes à tirets / à puces / numérotées,
+ * citations, liens [libellé](https://…) et URLs brutes. Voir message-markup.
+ */
+export function richTextToHtml(text: string): string {
+  return messageToHtml(text, 'email');
+}
+
+/** Même texte en version lisible (partie texte de l'e-mail) : `étiquette (URL)`. */
+export function richTextToPlain(text: string): string {
+  return messageToPlain(text);
+}
+
+/** Objet d'e-mail : sans mise en forme ni URL (libellés seuls). */
+export function stripRichMarkup(text: string): string {
+  return stripMessageMarkup(text);
+}
+
+/** Syntaxe WhatsApp : *gras*, ~barré~, listes, liens visibles (WhatsApp les rend cliquables). */
+export function toWhatsAppMarkup(text: string): string {
+  return messageToWhatsApp(text);
 }
 
 /** Contexte commun des prompts de rédaction (demande, citation, pièces). */

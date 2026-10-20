@@ -34,7 +34,7 @@ KabySoft est organisé en **modules**, chacun accessible par un **menu** de la b
 - **Audiences** (Plus > Pilotage, `/audiences`, permission « voir les audiences ») : liste, **Nouvelle audience**, fiche (Aperçu, Communication, Rapport, Décision, Documents, Historique). Cycle : Planifiée → Tenue / Reportée / Annulée ; rappel automatique 48 h avant. Voir « Audiences et agenda ».
 
 ### Clients
-- **Clients** (`/clients`, permission « voir les clients ») : liste, **Nouveau client**, fiche (Aperçu, Dossiers, Factures, Documents, Communication, Journal). Voir « Clients ».
+- **Clients** (`/clients`, permission « voir les clients ») : liste, **Nouveau client**, fiche (`/clients/<id>/fiche` : Identité, Coordonnées, Informations) et **Gestion complète** (`/clients/<id>/gestion` : onglets Aperçu, Dossiers, Factures, Documents, Communication, Journal). Voir « Clients ».
 - **Groupes de clients** (Plus > Cabinet, `/clients/groupes`) : types de clients (Particulier, Entreprise…). Voir « Clients ».
 
 ### Documents

@@ -160,6 +160,14 @@ describe('Compétence « Envoyer un e-mail »', () => {
     expect(context.llm.complete).not.toHaveBeenCalled();
     expect((outcome as any).plan.operations[0].fields).toMatchObject({ subject: 'Compte rendu', body: 'Texte', attachments: [5] });
   });
+
+  it('signale une rédaction vide au lieu de produire une carte sans message', async () => {
+    const skill = new EnvoyerEmailSkill(targetsMock() as any, { getRepository: () => ({ createQueryBuilder: () => ({ where: () => ({ andWhere: () => ({ andWhere: () => ({ orderBy: () => ({ take: () => ({ getMany: async () => [] }) }) }) }) }) }) }) } as any);
+    const context = ctx();
+    (context.llm.complete as jest.Mock).mockResolvedValue('{}');
+    await expect(skill.run(context)).rejects.toThrow(BadRequestException);
+    await expect(skill.run(context)).rejects.toThrow('pas abouti');
+  });
 });
 
 describe('Action « envoyer_email »', () => {
@@ -219,6 +227,14 @@ describe('Compétence « WhatsApp »', () => {
       type: 'message_draft',
       draft: { channel: 'whatsapp', customerId: 83, phone: '677123456', text: 'Bonjour M. Dupont, votre audience est confirmée.' },
     });
+  });
+
+  it('signale une rédaction vide au lieu de produire une carte sans message', async () => {
+    const skill = new WhatsappSkill(targetsMock() as any);
+    const context = ctx();
+    (context.llm.complete as jest.Mock).mockResolvedValue('{}');
+    await expect(skill.run(context)).rejects.toThrow(BadRequestException);
+    await expect(skill.run(context)).rejects.toThrow('pas abouti');
   });
 });
 

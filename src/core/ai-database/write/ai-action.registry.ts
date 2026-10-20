@@ -26,6 +26,11 @@ export interface AiActionParam {
    * (options fournies par `paramOptions` du handler).
    */
   kind?: 'text' | 'longtext' | 'datetime' | 'enum' | 'multi';
+  /**
+   * Corps de message enrichi : la carte propose gras + liens et un aperçu
+   * fidèle à l'envoi (`email` : **gras** et [libellé](URL)).
+   */
+  format?: 'email' | 'whatsapp';
 }
 
 export interface AiActionDefinition {

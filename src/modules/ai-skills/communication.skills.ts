@@ -1,10 +1,10 @@
 // src/modules/ai-skills/communication.skills.ts
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import type { AiSkillContext, AiSkillDefinition, AiSkillHandler, AiSkillOutcome } from 'src/core/ai-database/skills/ai-skill.types';
-import { findTarget, htmlToText, SKILL_TARGET_TABLES, todayFr } from 'src/core/ai-database/skills/skill-helpers';
+import { entityLinks, findTarget, htmlToText, linksBlock, SKILL_TARGET_TABLES, todayFr, toWhatsAppMarkup } from 'src/core/ai-database/skills/skill-helpers';
 import { Permission } from 'src/core/enums/permission.enum';
 import { Facture } from '../facture/entities/facture.entity';
 import { MailTemplate } from '../mail-template/entities/mail-template.entity';
@@ -45,6 +45,21 @@ async function factsBlock(targets: SkillTargetsService, info: TargetInfo, ctx: A
 
 /** Signature demandée : celle de l'expéditeur indiqué, sinon celle du cabinet. */
 const SIGNATURE_RULE = "- Signe avec le nom de l'expéditeur indiqué (et son cabinet) ; s'il n'est pas indiqué, signe au nom du cabinet. N'invente pas de nom.";
+
+/** Liens du contexte : la cible puis son dossier parent (sans doublon). */
+function contextLinks(info: TargetInfo): Array<{ label: string; url: string }> {
+  const targets = [{ table: info.table, id: info.id, label: info.label }];
+  if (info.dossier?.id && info.dossier.id !== info.id) {
+    targets.push({ table: 'dossiers', id: info.dossier.id, label: (info.dossier as { dossier_number?: string }).dossier_number || 'Dossier lié' });
+  }
+  return entityLinks(targets);
+}
+
+/** Mise en forme des e-mails rédigés (celle de l'éditeur du chat, voir message-markup). */
+const EMAIL_FORMAT_RULE = "- Mise en forme (seule syntaxe autorisée, la carte l'affiche mise en forme) : **gras** pour 2 à 4 éléments importants au plus (montants, dates, demandes clés) ; une liste quand tu énumères au moins deux éléments (factures, pièces à fournir, étapes) : une ligne par élément commençant par « - » (tirets) ou « 1. » (étapes dans l'ordre) ; liens avec [libellé](URL) en reprenant exactement les liens de la liste « Liens utilisables » (aucun autre lien, aucune URL inventée ; sans liste, cite les numéros en texte simple). Ni titre, ni tableau, ni autre symbole.";
+
+/** Mise en forme des messages WhatsApp : la syntaxe de WhatsApp. */
+const WHATSAPP_FORMAT_RULE = "- Mise en forme WhatsApp : *gras* (astérisques simples) pour 1 à 2 éléments importants au plus ; une liste quand tu énumères au moins deux éléments : une ligne par élément commençant par « - » ou « 1. » ; colle les liens de la liste « Liens utilisables » tels quels dans le texte (WhatsApp les rend cliquables ; aucun autre lien ; sans liste, cite les numéros en texte simple).";
 
 // ── E-mail ──────────────────────────────────────────────────────────────────
 
@@ -104,11 +119,14 @@ ${await factsBlock(this.targets, info, ctx)}
 
 ${await this.templateHints(info)}
 
+${linksBlock(contextLinks(info))}
+
 ${requestBlock(ctx)}
 
 ${DRAFTING_RULES}
 - Commence par une formule d'appel (« Madame, Monsieur, » ou « Bonjour <nom>, »), termine par une formule de politesse puis la signature. Le corps ne répète pas l'objet.
 ${SIGNATURE_RULE}
+${EMAIL_FORMAT_RULE}
 - scheduledAt : seulement si l'utilisateur demande d'envoyer l'e-mail plus tard (« envoie-le demain à 8 h », « programme l'envoi lundi »). Une date citée dans le message (audience, délai, rendez-vous) n'est pas une date d'envoi : laisse alors scheduledAt vide.
 
 Réponds UNIQUEMENT en JSON (retours à la ligne écrits \\n dans les chaînes) :
@@ -118,6 +136,11 @@ Réponds UNIQUEMENT en JSON (retours à la ligne écrits \\n dans les chaînes) 
       to = to || (str(draft.to).includes('@') ? str(draft.to) : '');
       scheduledAt = scheduledAt || (/^\d{4}-\d{2}-\d{2}/.test(str(draft.scheduledAt)) ? str(draft.scheduledAt) : '');
     }
+    // Un brouillon vide donnerait une carte sans message : erreur lisible plutôt qu'une carte vide.
+    if (!subject || !body)
+      throw new BadRequestException(
+        'La rédaction de l’e-mail n’a pas abouti (objet ou message manquant). Reformulez votre demande.',
+      );
     return {
       type: 'plan',
       plan: actionPlan('envoyer_email', info.table, info.id, {
@@ -271,15 +294,23 @@ export class WhatsappSkill implements AiSkillHandler {
 
 ${await factsBlock(this.targets, info, ctx)}
 
+${linksBlock(contextLinks(info))}
+
 ${requestBlock(ctx)}
 
 ${DRAFTING_RULES}
 - Message bref (moins de 600 caractères), poli, lisible sur téléphone, signé. Pas d'émoji.
 ${SIGNATURE_RULE}
+${WHATSAPP_FORMAT_RULE}
 
 Réponds UNIQUEMENT en JSON (retours à la ligne écrits \\n) : {"text": "le message"}`, 1500);
-      text = str(draft.text, 3000);
+      text = toWhatsAppMarkup(str(draft.text, 3000));
     }
+    // Un brouillon vide donnerait une carte sans message : erreur lisible plutôt qu'une carte vide.
+    if (!text)
+      throw new BadRequestException(
+        'La rédaction du message WhatsApp n’a pas abouti. Reformulez votre demande.',
+      );
     const phone = info.phone ?? '';
     return {
       type: 'message_draft',
