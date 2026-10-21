@@ -14,11 +14,11 @@ import { htmlToText, resolveSkillTarget, todayFr } from 'src/core/ai-database/sk
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { PdfTemplate } from '../pdf-templates/entities/pdf-template.entity';
 import { PdfTemplatesService } from '../pdf-templates/pdf-templates.service';
-import { draftJson, DRAFTING_RULES, isOutcome, pastedText, requestBlock, senderLine, str, targetOrClarify } from './skill-drafting';
+import { draftJson, DRAFTING_RULES, pastedText, requestBlock, senderLine, str } from './skill-drafting';
 import { customerName, SkillTargetsService, TargetInfo } from './skill-targets.service';
 
 /** Type de mention → `pdf_templates.entity_type`. */
-const TEMPLATE_ENTITY: Partial<Record<AiSkillTargetType, string>> = {
+export const TEMPLATE_ENTITY: Partial<Record<AiSkillTargetType, string>> = {
   client: 'client',
   dossier: 'dossier',
   audience: 'audience',
@@ -27,7 +27,7 @@ const TEMPLATE_ENTITY: Partial<Record<AiSkillTargetType, string>> = {
 };
 
 /** Le modèle du cabinet l'emporte sur le modèle de la plateforme de même code. */
-function preferOwn(templates: PdfTemplate[]): PdfTemplate[] {
+export function preferOwn(templates: PdfTemplate[]): PdfTemplate[] {
   const tenantId = getCurrentTenantId();
   const byCode = new Map<string, PdfTemplate>();
   for (const template of templates) {
@@ -246,65 +246,6 @@ export class MiseEnDemeureSkill extends LetterSkill {
       defaultRecipient: 'opposing',
       subjectPrefix: MISE_EN_DEMEURE_PREFIX,
     }, targets, templates);
-  }
-}
-
-// ── Document depuis un modèle de fiche (attestation, convocation…) ─────────
-
-@Injectable()
-export class DocumentModeleSkill implements AiSkillHandler {
-  readonly definition: AiSkillDefinition = {
-    code: 'document_modele',
-    label: 'Document depuis un modèle',
-    description: 'Attestation, avis d’audience, fiche, synthèse… rempli avec la fiche',
-    icon: 'clipboard-list',
-    category: 'documents',
-    targets: ['dossier', 'client', 'audience', 'diligence', 'facture'],
-    targetRequired: true,
-    placeholder: 'Quel document ? (ex. attestation de suivi, avis d’audience au client)',
-    examples: ['Attestation de suivi pour @client', "Avis d'audience pour @audience"],
-    keywords: ['attestation', 'convocation', 'avis', 'fiche', 'synthèse', 'rapport', 'ordre', 'mission', 'modèle', 'pdf'],
-    autoTriggers: ['attestation', 'convocation', 'fiche de synthese', 'ordre de mission'],
-  };
-
-  constructor(
-    private readonly targets: SkillTargetsService,
-    private readonly templates: PdfTemplatesService,
-  ) {}
-
-  async run(ctx: AiSkillContext): Promise<AiSkillOutcome> {
-    const target = targetOrClarify(ctx, this.definition);
-    if (isOutcome(target)) return target;
-    const entityType = TEMPLATE_ENTITY[target.type];
-    const available = entityType ? preferOwn(await this.templates.findByEntity(entityType)) : [];
-    if (!available.length) {
-      return { type: 'clarify', markdown: '⚠️ Aucun modèle PDF actif pour ce type de fiche (Paramètres › Modèles PDF).' };
-    }
-    const template = pickTemplate(available, ctx.question);
-    if (!template) {
-      return {
-        type: 'clarify',
-        markdown: `❓ Quel modèle utiliser ? Modèles disponibles : ${available.map((item) => `« ${item.name} »`).join(', ')}. Renvoyez la demande en le nommant.`,
-      };
-    }
-    const info = await this.targets.load(target);
-    const draft: DocumentDraft = {
-      templateId: template.id,
-      templateCode: template.code,
-      templateName: template.name,
-      entityType: entityType!,
-      entityId: info.id,
-      ...(info.dossier && { dossierId: info.dossier.id, dossierLabel: info.dossier.dossier_number }),
-      fileName: fileName(template.name.replace(/^[^—]*—\s*/, ''), info),
-      variables: {},
-      editable: [],
-      ...(info.client && { recipient: { type: 'client', id: info.client.id, label: customerName(info.client) } }),
-    };
-    return {
-      type: 'document_draft',
-      markdown: `Le document « **${template.name}** » est prêt pour ${info.label}, rempli avec les données de la fiche. Générez l'aperçu${info.dossier ? ' ou classez-le dans le dossier' : ''}.`,
-      draft,
-    };
   }
 }
 

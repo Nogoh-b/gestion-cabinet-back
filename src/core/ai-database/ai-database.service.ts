@@ -6976,6 +6976,8 @@ RÉPONSE :`;
     );
 
     let streamed = false;
+    /** Document écrit en direct dans la bulle : la réponse finale le remplace. */
+    let liveDrafted = false;
     const ctx: AiSkillContext = {
       question,
       references,
@@ -7000,6 +7002,48 @@ RÉPONSE :`;
           streamed = true;
           sendEvent('status', { step: 'answer', message: '✍️ Rédaction...' });
           return this.generateTextOnlyResponseStream(withCurrentDate(prompt), sendEvent);
+        },
+        draft: async (prompt, draftOptions = {}) => {
+          // Réflexion du niveau « rapide », quel que soit le niveau choisi : mesuré le
+          // 2026-10-20 sur DeepSeek v4 (réflexion active), une assignation passait
+          // 35 s à réfléchir et 6 300 des 8 000 jetons y partaient (acte tronqué).
+          const stream = await this.streamModel(
+            'quality',
+            [{ role: 'user', content: withCurrentDate(prompt) }],
+            draftOptions.maxTokens ?? 8000,
+            this.aiModelRouter.reasoningKwargs('fast'),
+          );
+          let text = '';
+          let shown = 0;
+          let reported = 0;
+          let notes = false;
+          for await (const chunk of stream) {
+            text += this.extractChunkText(chunk);
+            if (text.length - reported >= 700) {
+              reported = text.length;
+              const words = text.split(/\s+/).filter(Boolean).length;
+              sendEvent('status', { step: 'skill', message: `✍️ Rédaction en cours… (≈ ${words} mots)`, detail: label });
+            }
+            // Le document s'écrit dans la bulle, ligne par ligne, jusqu'aux notes.
+            if (draftOptions.live && !notes) {
+              const end = text.lastIndexOf('\n');
+              if (end > shown) {
+                const lines = text.slice(shown, end + 1).split('\n');
+                const stop = lines.findIndex((line) => /^\s*={2,}\s*NOTES\s*={2,}\s*$/i.test(line));
+                if (stop >= 0) notes = true;
+                const visible = (stop >= 0 ? lines.slice(0, stop) : lines)
+                  .map((line) => line.replace(/^(\s*#*\s*)\[\[[^\]]{1,20}\]\]\s*/, '$1'))
+                  .join('\n');
+                if (visible) {
+                  liveDrafted = true;
+                  sendEvent('token', { text: visible.endsWith('\n') ? visible : `${visible}\n` });
+                }
+                shown = end + 1;
+              }
+            }
+          }
+          this.recordOutput(text);
+          return text;
         },
       },
       status: (message) => sendEvent('status', { step: 'skill', message, detail: `${label} · ${message}` }),
@@ -7067,7 +7111,7 @@ RÉPONSE :`;
     // Écriture guidée déjà convertie en plan ou en demande de précision.
     if (outcome.type === 'write') return;
     const markdown = outcome.markdown;
-    if (!(outcome.type === 'answer' && outcome.streamed && streamed)) {
+    if (!(outcome.type === 'answer' && outcome.streamed && streamed) && !(outcome.type === 'document_draft' && liveDrafted)) {
       sendEvent('token', { text: markdown });
     }
     const extras: Record<string, any> = {};

@@ -105,6 +105,49 @@ export interface DocumentDraft {
   template?: InlinePdfTemplate;
   /** Enregistrement à mentionner pour l'envoi par e-mail. */
   recipient?: { type: string; id: number; label: string };
+  /**
+   * Document complet (studio du chat) : la carte affiche l'aperçu, l'éditeur
+   * et l'export Word / PDF au lieu des champs `editable`.
+   */
+  studio?: StudioDocument;
+}
+
+/**
+ * Document rédigé ou rempli par l'IA, ou modèle à enregistrer. Le corps est un
+ * HTML sûr (construit par `document-markup`) ; les variables qui y restent
+ * ({{client.full_name}}, {{cabinetName}}…) sont remplies par le chat avec la
+ * fiche `entityType` / `entityId` et les informations du cabinet.
+ */
+export interface StudioDocument {
+  /** document : à générer ; template : modèle à enregistrer dans « Modèles PDF ». */
+  mode: 'document' | 'template';
+  html: string;
+  /** Titre encadré en tête du document (vide : aucun, le corps porte son titre). */
+  title: string;
+  /** En-tête, pied de page, police et format repris d'un modèle du cabinet. */
+  layout?: StudioLayout;
+  /** Pièces lues pour la rédaction. */
+  sources?: Array<{ name: string; origin: 'dossier' | 'chat' }>;
+  /** Points à vérifier ou à compléter avant usage. */
+  checks?: string[];
+  /** Modèle du cabinet dont le document est tiré. */
+  basedOn?: { id: number; name: string };
+  /** Mode template : fiche du modèle à enregistrer. */
+  template?: {
+    name: string;
+    entity_type: string;
+    description: string;
+    variables: Array<{ name: string; description: string }>;
+  };
+}
+
+export interface StudioLayout {
+  templateId?: number;
+  orientation: 'portrait' | 'landscape';
+  paper_size: string;
+  font_family: string | null;
+  header_block_id: number | null;
+  footer_block_id: number | null;
 }
 
 /** Modèle PDF intégré à une compétence (mêmes champs que `pdf_templates`). */
@@ -164,6 +207,12 @@ export interface AiSkillLlm {
   complete(prompt: string, maxTokens?: number): Promise<string>;
   /** Réponse affichée au fil de l'eau dans le chat ; renvoie le texte complet. */
   stream(prompt: string): Promise<string>;
+  /**
+   * Rédaction longue (acte, contrat, modèle) : lue en flux, sans le délai
+   * global des appels courts. `live` affiche le texte ligne à ligne dans le
+   * chat jusqu'à la ligne `===NOTES===` ; la progression passe dans le statut.
+   */
+  draft?(prompt: string, options?: { maxTokens?: number; live?: boolean }): Promise<string>;
 }
 
 export interface AiSkillContext {

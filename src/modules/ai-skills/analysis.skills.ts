@@ -52,7 +52,7 @@ function piecesBlock(pieces: Array<{ name: string; content: string }>): string {
 }
 
 /** Extraits de la base juridique, à citer sans inventer d'article. */
-async function legalBlock(ctx: AiSkillContext, query: string): Promise<string> {
+export async function legalBlock(ctx: AiSkillContext, query: string): Promise<string> {
   const sources = (await ctx.legalSources(query.slice(0, 2000)).catch(() => '')).trim();
   return sources
     ? `Extraits de la base juridique de la plateforme (cite-les quand tu t'en sers ; n'invente aucun article absent de ces extraits) :\n${sources.slice(0, 9000)}`

@@ -1,7 +1,7 @@
 ---
 id: modeles-documents
 title: Modèles de mails, de PDF et en-têtes / pieds de page
-keywords: modele de mail, modeles de mail, modeles de mails, template de mail, templates de mail, templates d'e-mail, modele d'e-mail, modele pdf, modeles pdf, modeles de documents pdf, modele de facture, personnaliser la facture, personnaliser un document, en-tete, en-tetes, pied de page, pieds de page, en-tetes et pieds de page, bloc d'en-tete, variables de modele, variable dans un mail, apercu du modele, logo du document, modele systeme, police du modele
+keywords: creer un modele avec l ia, generer un modele, modele de contrat, modele word, modele de mail, modeles de mail, modeles de mails, template de mail, templates de mail, templates d'e-mail, modele d'e-mail, modele pdf, modeles pdf, modeles de documents pdf, modele de facture, personnaliser la facture, personnaliser un document, en-tete, en-tetes, pied de page, pieds de page, en-tetes et pieds de page, bloc d'en-tete, variables de modele, variable dans un mail, apercu du modele, logo du document, modele systeme, police du modele
 paths: /mail-templates, /pdf-templates, /template-blocks
 ---
 
@@ -51,5 +51,8 @@ Réservé à l'**administrateur**. Menu **Plus > Configuration > Modèles** :
 - Menu absent → ces pages sont réservées à l'administrateur.
 - Logo ou couleurs absents des documents → complétez d'abord les paramètres du cabinet.
 
-## Créer depuis le chat
-La rédaction des modèles se fait dans ces pages, pas depuis le chat. Pour envoyer un message à un client, utilisez le menu **Messages** (le compositeur propose les modèles actifs).
+## Créer ou utiliser un modèle PDF avec l'IA
+- **Créer avec l'IA** (en haut de la page Modèles PDF), ou la compétence **Créer un modèle de document** du chat (**#**) : décrivez le modèle (« contrat de bail commercial ») ou joignez un document existant à transformer. L'IA écrit le texte type et remplace les informations propres à chaque affaire par des champs `{{…}}` (ceux de la fiche choisie se remplissent seuls). Vérifiez-le dans la carte (champs surlignés, éditeur plein écran), puis **Enregistrer dans mes modèles** (droit « Créer un modèle PDF »).
+- **Générer un document avec l'IA** (sous un modèle ouvert), ou la compétence **Document depuis un modèle** : mentionnez le dossier ou le client avec **@** ; la fiche remplit ses champs, l'IA remplit les autres d'après les pièces du dossier et vos fichiers joints. Vous obtenez l'aperçu, le **Word** et le **PDF**.
+- Les modèles créés par vous ou par l'IA peuvent être **supprimés** (bouton Supprimer) ; les modèles système se désactivent seulement.
+- Les modèles de mails, eux, se rédigent dans leur page. Pour envoyer un message à un client, utilisez le menu **Messages** (le compositeur propose les modèles actifs).

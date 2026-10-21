@@ -124,11 +124,12 @@ export class AskQuestionDto {
   @ApiProperty({
     required: false,
     description:
-      'Préremplissage de la compétence (JSON), transmis par un bouton de suite (cible, pièce jointe…).',
+      'Préremplissage de la compétence (JSON), transmis par un bouton de suite (cible, pièce jointe…) ou par le studio de documents (document complet à modifier).',
   })
   @IsOptional()
   @IsString()
-  @MaxLength(20000)
+  // Un acte ou un contrat repris pour modification dépasse largement 20 000 caractères de HTML.
+  @MaxLength(400000)
   skillParams?: string;
 
   @ApiProperty({

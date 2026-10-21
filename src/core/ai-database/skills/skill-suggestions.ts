@@ -99,8 +99,28 @@ function sameWord(a: string, b: string): boolean {
   return common >= 4 && ENDINGS.has(a.slice(common)) && ENDINGS.has(b.slice(common));
 }
 
+/**
+ * Déclencheur « /motif/ » : expression régulière testée sur la demande
+ * normalisée (minuscules, sans accents ni ponctuation). Il porte son verbe
+ * (« crée un modèle », « à partir du modèle ») et l'emporte sur les mots seuls.
+ */
+const PATTERN_SCORE = 10;
+
+function isPattern(expression: string): boolean {
+  return expression.length > 2 && expression.startsWith('/') && expression.endsWith('/');
+}
+
+function matchesPattern(normalized: string, expression: string): boolean {
+  try {
+    return new RegExp(expression.slice(1, -1)).test(normalized);
+  } catch {
+    return false;
+  }
+}
+
 /** Tous les mots porteurs de l'expression figurent dans la demande. */
-function containsExpression(asked: string[], expression: string): number {
+function containsExpression(asked: string[], expression: string, normalized = ''): number {
+  if (isPattern(expression)) return matchesPattern(normalized, expression) ? PATTERN_SCORE : 0;
   const needed = words(expression);
   if (!needed.length) return 0;
   return needed.every((word) => asked.some((item) => sameWord(item, word))) ? needed.length : 0;
@@ -138,16 +158,17 @@ export function detectSkillRequest(question: string, catalog: AiSkillCatalogItem
   const scored = catalog
     .map((skill) => {
       if (!skill.autoTriggers?.length) return { skill, score: 0, trigger: '' };
-      if ((skill.autoExclude ?? []).some((expression) => containsExpression(asked, expression))) {
+      if ((skill.autoExclude ?? []).some((expression) => containsExpression(asked, expression, normalized))) {
         return { skill, score: 0, trigger: '' };
       }
       let score = 0;
       let trigger = '';
       for (const expression of skill.autoTriggers) {
-        const matched = containsExpression(asked, expression);
+        const matched = containsExpression(asked, expression, normalized);
         if (matched > score) {
           score = matched;
-          trigger = expression;
+          // Un motif est cité par le passage reconnu (« cree un modele »), pas par son expression.
+          trigger = isPattern(expression) ? new RegExp(expression.slice(1, -1)).exec(normalized)?.[0].trim() ?? '' : expression;
         }
       }
       return { skill, score, trigger };
@@ -159,7 +180,9 @@ export function detectSkillRequest(question: string, catalog: AiSkillCatalogItem
   const [best, second] = scored;
   const usage = USAGE_QUESTION.test(normalized);
   const consultation = READ_QUESTION.test(normalized) && !hasModalCue(normalized);
-  const decisive = !usage && !consultation && hasActionCue(question) && (!second || best.score > second.score);
+  const decisive = !usage && !consultation
+    && (best.score >= PATTERN_SCORE || hasActionCue(question))
+    && (!second || best.score > second.score);
   return {
     code: best.skill.code,
     decisive,

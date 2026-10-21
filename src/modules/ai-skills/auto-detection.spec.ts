@@ -8,13 +8,14 @@ import * as agenda from './agenda.skills';
 import * as analysis from './analysis.skills';
 import * as communication from './communication.skills';
 import * as documents from './document.skills';
+import * as studio from './document-studio.skills';
 import * as legal from './legal-tools.skills';
 import * as reports from './report.skills';
 
 /** Catalogue complet, comme `AiSkillService.catalog` pour un administrateur. */
 function fullCatalog(): AiSkillCatalogItem[] {
   const handlers: AiSkillHandler[] = [];
-  for (const exported of [agenda, analysis, communication, documents, legal, reports]) {
+  for (const exported of [agenda, analysis, communication, documents, studio, legal, reports]) {
     for (const value of Object.values(exported)) {
       if (typeof value !== 'function' || !/Skill$/.test(value.name) || typeof value.prototype?.run !== 'function') continue;
       handlers.push(new (value as any)());
@@ -41,8 +42,8 @@ const catalog = fullCatalog();
 const detect = (question: string) => detectSkillRequest(question, catalog);
 
 describe('compétences reconnues en mode auto', () => {
-  it('charge les 32 compétences', () => {
-    expect(catalog).toHaveLength(32);
+  it('charge les 34 compétences', () => {
+    expect(catalog).toHaveLength(34);
   });
 
   it.each([
@@ -70,6 +71,15 @@ describe('compétences reconnues en mode auto', () => {
     ['exporte le dossier en zip', 'export_dossier'],
     ['trouve les dossiers similaires', 'dossiers_comparables'],
     ['relis ce contrat et repère les clauses risquées', 'audit_contrat'],
+    // Studio de documents (20/10/2026).
+    ['rédige un contrat de bail commercial', 'rediger_document'],
+    ['prépare une assignation en paiement à partir des pièces du dossier', 'rediger_document'],
+    ['génère le procès-verbal de conciliation en word', 'rediger_document'],
+    ['crée un modèle de contrat de bail', 'creer_modele'],
+    ['crée-moi un nouveau modèle de lettre de relance', 'creer_modele'],
+    ['transforme ce document en modèle', 'creer_modele'],
+    ['rédige le contrat selon mon modèle pour ce dossier', 'document_modele'],
+    ['génère le document à partir du modèle de bail', 'document_modele'],
   ])('« %s » → %s', (question, code) => {
     const result = detect(question);
     expect(result.code).toBe(code);
@@ -91,8 +101,8 @@ describe('compétences reconnues en mode auto', () => {
     // Écritures guidées : jamais devinées.
     'programme une audience pour le dossier DOS-2026-0038 le 12 novembre',
     'crée une diligence pour relancer le greffe',
-    // Rédiger un contrat n'est pas l'auditer.
-    'rédige un contrat de bail commercial',
+    // Questions d'usage sur les modèles.
+    'comment créer un modèle ?',
     // Questions sur le compte.
     'quel est mon role dans le cabinet',
     "quels est mon plan d'abonement actuel",

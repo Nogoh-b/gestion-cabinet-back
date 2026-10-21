@@ -27,7 +27,8 @@ import {
   RelancerImpayesSkill,
   WhatsappSkill,
 } from './communication.skills';
-import { CourrierSkill, DocumentModeleSkill, MiseEnDemeureSkill, TraduireSkill } from './document.skills';
+import { CourrierSkill, MiseEnDemeureSkill, TraduireSkill } from './document.skills';
+import { CreerModeleSkill, DocumentModeleSkill, RedigerDocumentSkill } from './document-studio.skills';
 import {
   CompteRenduAudienceSkill,
   EtatImpayesSkill,
@@ -73,9 +74,11 @@ const SKILLS = [
   EnvoyerFactureSkill,
   RelancerImpayesSkill,
   // Documents
+  RedigerDocumentSkill,
+  DocumentModeleSkill,
+  CreerModeleSkill,
   CourrierSkill,
   MiseEnDemeureSkill,
-  DocumentModeleSkill,
   TraduireSkill,
   VersionBilingueSkill,
   AnonymiserSkill,
