@@ -19,6 +19,7 @@ describe('Guides des compétences et des modes du chat', () => {
       'competences-analyse',
       'competences-actes',
       'competences-rapports-agenda',
+      'competences-facturation',
       'modes-chat',
     ]));
   });
@@ -46,6 +47,12 @@ describe('Guides des compétences et des modes du chat', () => {
     ['Pourquoi la compétence a été lancée automatiquement ?', 'modes-chat'],
     ['Que veut dire compétence en attente de précision ?', 'competences'],
     ['Comment faire un récapitulatif des actions menées sur le dossier ?', 'competences'],
+    // 21/10/2026 : facturation, actions recommandées, cartes.
+    ['Comment faire un devis avec le chat ?', 'competences-facturation'],
+    ['Comment configurer la facturation avec l’IA ?', 'competences-facturation'],
+    ['À quoi servent les actions recommandées ?', 'competences'],
+    ['Comment réduire la carte du courrier ?', 'competences'],
+    ['Comment corriger la réponse d’une compétence ?', 'competences'],
   ])('« %s » → %s', (question, expected) => {
     expect(top(question)).toBe(expected);
   });

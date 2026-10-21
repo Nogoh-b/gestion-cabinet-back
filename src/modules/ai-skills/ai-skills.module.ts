@@ -1,5 +1,5 @@
 // src/modules/ai-skills/ai-skills.module.ts
-import { Module, OnModuleInit } from '@nestjs/common';
+import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
@@ -7,6 +7,7 @@ import { AiSkillRegistry } from 'src/core/ai-database/skills/ai-skill.registry';
 import type { AiSkillHandler } from 'src/core/ai-database/skills/ai-skill.types';
 import { AiActionRegistry, type AiActionHandler } from 'src/core/ai-database/write/ai-action.registry';
 import { AudiencesModule } from '../audiences/audiences.module';
+import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
 import { ChatModule } from '../chat/chat.module';
 import { ClientPortalModule } from '../client-portal/client-portal.module';
 import { DocumentsModule } from '../documents/documents.module';
@@ -42,6 +43,7 @@ import {
   ReporterAudienceAiAction,
 } from './skill-actions';
 import { SkillTargetsService } from './skill-targets.service';
+import { ConfigurerFacturationAiAction, ConfigurerFacturationSkill, DevisHonorairesSkill } from './billing.skills';
 import { findTarget } from 'src/core/ai-database/skills/skill-helpers';
 import {
   AuditContratSkill,
@@ -62,7 +64,7 @@ import {
   VersionBilingueSkill,
 } from './legal-tools.skills';
 
-const ACTIONS = [EnvoyerEmailAiAction, MessagePortailAiAction, MessageCollaborateurAiAction, ReporterAudienceAiAction];
+const ACTIONS = [EnvoyerEmailAiAction, MessagePortailAiAction, MessageCollaborateurAiAction, ReporterAudienceAiAction, ConfigurerFacturationAiAction];
 
 /** Ordre du menu « # » dans chaque famille. */
 const SKILLS = [
@@ -96,6 +98,9 @@ const SKILLS = [
   DecompteCreanceSkill,
   InjonctionPayerSkill,
   ConventionHonorairesSkill,
+  // Facturation
+  ConfigurerFacturationSkill,
+  DevisHonorairesSkill,
   // Rapports & exports
   RapportActiviteSkill,
   EtatImpayesSkill,
@@ -123,6 +128,8 @@ const SKILLS = [
     MailTemplateModule,
     PdfTemplatesModule,
     ReportsModule,
+    // Facturation des dossiers (profil, éléments facturables) : même service que l'onglet Facturation.
+    forwardRef(() => CaseWorkflowModule),
   ],
   providers: [SkillTargetsService, ...ACTIONS, ...SKILLS],
 })
@@ -143,6 +150,12 @@ export class AiSkillsModule implements OnModuleInit {
       if (!target) return '';
       const info = await targets.load(target);
       return `${info.label}\n${await targets.facts(info, user)}`;
+    });
+    // Brouillons (e-mail, WhatsApp, courrier) : références de la fiche à insérer.
+    this.skills.registerReferencesProvider(async (references, user) => {
+      const target = findTarget(references, ['dossier', 'audience', 'facture', 'diligence', 'client']);
+      if (!target) return [];
+      return targets.draftReferences(await targets.load(target), user);
     });
   }
 }

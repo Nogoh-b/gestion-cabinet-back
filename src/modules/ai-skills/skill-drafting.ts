@@ -144,3 +144,14 @@ export function diligenceOperation(dossierId: number, title: string, deadline: s
     humanReadable: `Créer la diligence « ${title} » (échéance ${deadline.split('-').reverse().join('/')})`,
   };
 }
+
+/**
+ * Extraits de la base juridique de la plateforme utiles à la demande (vide
+ * sans extrait pertinent) : les rédactions peuvent s'y appuyer.
+ */
+export async function legalBlockFor(ctx: AiSkillContext): Promise<string> {
+  const sources = await ctx.legalSources?.(ctx.question).catch(() => '');
+  return sources?.trim()
+    ? `Extraits de la base juridique (cite-les seulement s'ils servent la demande, sans inventer d'autre texte) :\n${sources.slice(0, 6000)}`
+    : '';
+}

@@ -4,7 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, In } from 'typeorm';
 
 import type { SkillTarget } from 'src/core/ai-database/skills/skill-helpers';
-import type { AiSkillTargetType } from 'src/core/ai-database/skills/ai-skill.types';
+import type { AiSkillTargetType, DraftReference } from 'src/core/ai-database/skills/ai-skill.types';
 import { Audience } from '../audiences/entities/audience.entity';
 import { Customer } from '../customer/customer/entities/customer.entity';
 import { Diligence } from '../diligence/entities/diligence.entity';
@@ -135,6 +135,20 @@ export function customerName(client: Partial<Customer> | null | undefined): stri
 
 export function customerPhone(client: Partial<Customer> | null | undefined): string | null {
   return client?.number_phone_1 || client?.number_phone_2 || client?.professional_phone || null;
+}
+
+/** Numéros connus d'un client, sans doublon, dans l'ordre de `customerPhone`. */
+export function customerPhones(client: Partial<Customer> | null | undefined): Array<{ label: string; value: string }> {
+  const phones: Array<{ label: string; value: string }> = [];
+  for (const [label, value] of [
+    ['Téléphone', client?.number_phone_1],
+    ['Téléphone 2', client?.number_phone_2],
+    ['Professionnel', client?.professional_phone],
+  ] as const) {
+    const phone = String(value ?? '').trim();
+    if (phone && !phones.some((item) => item.value.replace(/\D/g, '') === phone.replace(/\D/g, ''))) phones.push({ label, value: phone });
+  }
+  return phones;
 }
 
 export function employeeName(employee: Employee | null | undefined): string {
@@ -305,6 +319,63 @@ export class SkillTargetsService {
       lines.push(`Collaborateur : ${employeeName(info.employee)}${(info.employee as any)?.position ? ` (${(info.employee as any).position})` : ''}`);
     }
     return lines.join('\n');
+  }
+
+  /**
+   * Éléments de la fiche insérables dans un brouillon (menu « Insérer une
+   * référence ») : dossier, client, audience, factures dues (avec le droit de
+   * les voir), chacun avec son lien dans l'application.
+   */
+  async draftReferences(info: TargetInfo, user?: any): Promise<DraftReference[]> {
+    const refs: DraftReference[] = [];
+    const add = (group: string, label: string, value: unknown, href?: string) => {
+      const text = htmlToText(String(value ?? '')).replace(/\s+/g, ' ').trim();
+      if (text) refs.push({ group, label, value: text.slice(0, 300), ...(href && { href }) });
+    };
+    const { dossier, client, resource } = info;
+    if (dossier) {
+      const href = `/dossiers/${dossier.id}`;
+      add('Dossier', 'N° de dossier', dossier.dossier_number, href);
+      add('Dossier', 'Objet', dossier.object);
+      add('Dossier', 'N° d’affaire (RG)', dossier.case_number);
+      add('Dossier', 'Juridiction', (dossier as any).jurisdiction?.name ?? dossier.court_name);
+      add('Dossier', 'Partie adverse', dossier.opposing_party_name);
+      add('Dossier', 'Avocat adverse', dossier.opposing_party_lawyer);
+      if ((dossier as any).lawyer) add('Dossier', 'Avocat en charge', employeeName((dossier as any).lawyer));
+      const next = await this.dataSource.getRepository(Audience)
+        .createQueryBuilder('a')
+        .leftJoinAndSelect('a.jurisdiction', 'j')
+        .where('a.dossier_id = :id', { id: dossier.id })
+        .andWhere('a.audience_date >= CURDATE()')
+        .orderBy('a.audience_date', 'ASC')
+        .getOne()
+        .catch(() => null);
+      if (next) {
+        add('Audience', 'Prochaine audience', `${dateFr(next.audience_date)}${next.audience_time ? ` à ${String(next.audience_time).slice(0, 5)}` : ''}${(next as any).jurisdiction?.name ? ` — ${(next as any).jurisdiction.name}` : ''}${next.room ? `, salle ${next.room}` : ''}`, `/audiences/${next.id}`);
+      }
+    }
+    if (info.type === 'audience' && resource) {
+      add('Audience', 'Audience', `${dateFr(resource.audience_date)}${resource.audience_time ? ` à ${String(resource.audience_time).slice(0, 5)}` : ''}${resource.jurisdiction?.name ? ` — ${resource.jurisdiction.name}` : ''}${resource.room ? `, salle ${resource.room}` : ''}`, `/audiences/${resource.id}`);
+    }
+    if (client) {
+      const href = `/clients/${client.id}`;
+      add('Client', 'Nom', customerName(client), href);
+      add('Client', 'Adresse', client.address);
+      add('Client', 'E-mail', client.email);
+      for (const phone of customerPhones(client)) add('Client', phone.label, phone.value);
+    }
+    const canSeeInvoices = !this.permissions || !user
+      || !(await this.permissions.missingPermissions(user, ['view_factures']).catch(() => ['view_factures'])).length;
+    if (canSeeInvoices && (dossier || client)) {
+      const rows = await unpaidInvoices(this.dataSource, dossier ? { dossierId: dossier.id } : { clientId: client!.id }).catch(() => [] as UnpaidInvoice[]);
+      for (const { facture, reste, due } of rows.slice(0, 5)) {
+        add('Factures dues', `Facture ${facture.numero}`, `${facture.numero} — reste dû ${money(reste)}${due ? `, échéance ${dateFr(due)}` : ''}`, `/facturation/factures/${facture.id}`);
+      }
+    }
+    if (info.type === 'facture' && resource) {
+      add('Facture', 'Facture', `${resource.numero} — ${money(resource.montantTTC)} TTC`, `/facturation/factures/${resource.id}`);
+    }
+    return refs.slice(0, 40);
   }
 
   /**

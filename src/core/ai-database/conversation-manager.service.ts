@@ -23,12 +23,17 @@ export interface ConversationDocumentInput {
   illegible?: number;
   content: string;
   displayContent?: string;
+  /** Mise en forme d'origine (Word lu) : gardée pour la traduction et l'éditeur. */
+  html?: string;
 }
 
 const PENDING_DOCUMENTS = Symbol('pendingDocuments');
 /** Un document plus long (≈ 200 pages) est gardé jusqu'à cette limite. */
 const MAX_STORED_DOCUMENT_CHARS = 400_000;
-const MAX_CONVERSATION_DOCUMENTS = 10;
+/** Pièces lues et documents rédigés gardés pour les questions suivantes (les plus récents). */
+const MAX_CONVERSATION_DOCUMENTS = 20;
+/** Métadonnées d'un message (brouillon de document compris). */
+const MAX_MESSAGE_METADATA_CHARS = 600_000;
 import { addTenantCondition } from '../tenant/tenant-repository.patch';
 
 @Injectable()
@@ -57,6 +62,8 @@ export class ConversationManagerService {
   private readonly citations = new AsyncLocalStorage<{
     references: CitedReference[];
     responseMode?: Record<string, any>;
+    /** Réponse enregistrée (id renvoyé au chat : brouillons, actions, statut des cartes). */
+    messageId?: number;
   }>();
 
   /** Ouvre la collecte des enregistrements cités pour une requête du chat. */
@@ -117,6 +124,45 @@ export class ConversationManagerService {
     return this.citations.getStore()?.responseMode;
   }
 
+  /** Id de la réponse enregistrée pendant la requête en cours. */
+  savedAssistantMessageId(): number | undefined {
+    return this.citations.getStore()?.messageId;
+  }
+
+  /**
+   * Complète les métadonnées d'un message de la conversation de l'utilisateur
+   * (brouillon modifié d'une carte, statut « envoyé », actions recommandées).
+   * Les clés `null` sont retirées.
+   */
+  async patchMessageMetadata(
+    conversationId: string,
+    messageId: number,
+    userId: string | number,
+    patch: Record<string, any>,
+  ): Promise<Record<string, any> | null> {
+    if (this.temporarySession.getStore()) return null;
+    const conversation = await this.conversationRepo.findOne({ where: { id: conversationId } });
+    if (!conversation || String(conversation.userId) !== String(userId)) return null;
+    const message = await this.messageRepo.findOne({ where: { id: messageId, conversationId } as any });
+    if (!message) return null;
+    const metadata: Record<string, any> = { ...(message.metadata ?? {}) };
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null) delete metadata[key];
+      else metadata[key] = value;
+    }
+    if (JSON.stringify(metadata).length > MAX_MESSAGE_METADATA_CHARS) {
+      throw new Error('Brouillon trop volumineux pour être enregistré.');
+    }
+    // updated_at a ON UPDATE : le réassigner garde la date de la réponse.
+    await this.messageRepo
+      .createQueryBuilder()
+      .update()
+      .set({ metadata, updated_at: () => 'updated_at' } as QueryDeepPartialEntity<ConversationMessage>)
+      .where('id = :id', { id: messageId })
+      .execute();
+    return metadata;
+  }
+
   /**
    * Documents lus pour la question en cours : enregistrés avec le message
    * utilisateur (addUserMessage), quelle que soit la branche qui l'ajoute.
@@ -155,6 +201,62 @@ export class ConversationManagerService {
     }
   }
 
+  /**
+   * Document rédigé par le chat (courrier, e-mail, WhatsApp, traduction,
+   * document du studio), gardé avec sa réponse comme une pièce lue : les
+   * questions suivantes peuvent le relire. Un seul par réponse (remplacé).
+   */
+  async saveGeneratedDocument(
+    conversationId: string,
+    messageId: number,
+    document: { name: string; content: string; html?: string; type?: string },
+  ): Promise<void> {
+    if (!this.documentRepo || this.temporarySession.getStore() || !document.content.trim()) return;
+    try {
+      const existing = await this.documentRepo.findOne({ where: { conversationId, messageId, origin: 'generated' } as any });
+      await this.documentRepo.save(this.documentRepo.create({
+        ...(existing && { id: existing.id }),
+        conversationId,
+        messageId,
+        origin: 'generated',
+        name: document.name.slice(0, 255),
+        type: document.type?.slice(0, 120) ?? 'text/html',
+        method: 'generated',
+        content: document.content.slice(0, MAX_STORED_DOCUMENT_CHARS),
+        contentHtml: document.html?.slice(0, MAX_STORED_DOCUMENT_CHARS) ?? null,
+      }));
+    } catch (error) {
+      this.logger.warn(`Document rédigé non gardé: ${(error as Error).message}`);
+    }
+  }
+
+  /** Brouillon modifié dans sa carte : le document gardé suit (relu tel que corrigé). */
+  async updateGeneratedDocument(
+    conversationId: string,
+    messageId: number,
+    content: string,
+    html?: string,
+  ): Promise<void> {
+    if (!this.documentRepo || this.temporarySession.getStore() || !content.trim()) return;
+    try {
+      await this.documentRepo
+        .createQueryBuilder()
+        .update()
+        .set({
+          content: content.slice(0, MAX_STORED_DOCUMENT_CHARS),
+          ...(html !== undefined && { contentHtml: html.slice(0, MAX_STORED_DOCUMENT_CHARS) }),
+        } as QueryDeepPartialEntity<AiConversationDocument>)
+        .where('conversation_id = :conversationId AND message_id = :messageId AND origin = :origin', {
+          conversationId,
+          messageId,
+          origin: 'generated',
+        })
+        .execute();
+    } catch (error) {
+      this.logger.warn(`Document rédigé non mis à jour: ${(error as Error).message}`);
+    }
+  }
+
   private async saveQueuedDocuments(conversationId: string, messageId?: number): Promise<void> {
     const store = this.userMessageExtras.getStore() as Record<string | symbol, any> | undefined;
     const documents: ConversationDocumentInput[] | undefined = store?.[PENDING_DOCUMENTS];
@@ -175,6 +277,7 @@ export class ConversationManagerService {
             illegible: document.illegible ?? null,
             content: document.content.slice(0, MAX_STORED_DOCUMENT_CHARS),
             displayContent: document.displayContent?.slice(0, MAX_STORED_DOCUMENT_CHARS) ?? null,
+            contentHtml: document.html?.slice(0, MAX_STORED_DOCUMENT_CHARS) ?? null,
           }),
         ),
       );
@@ -574,7 +677,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     // la conversation garde leurs identifiants pour les demandes suivantes.
     const cited = this.citedRecords();
     const responseMode = this.responseMode();
-    await this.addMessage(
+    const saved = await this.addMessage(
       conversationId,
       'assistant',
       content,
@@ -589,6 +692,8 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
           }
         : metadata,
     );
+    const store = this.citations.getStore();
+    if (store && saved?.id) store.messageId = saved.id;
   }
 
   /**

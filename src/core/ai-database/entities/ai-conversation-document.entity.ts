@@ -20,6 +20,10 @@ export class AiConversationDocument extends BaseEntity {
   @Column({ name: 'message_id', type: 'int', nullable: true })
   messageId: number | null;
 
+  /** `upload` : pièce jointe lue ; `generated` : rédigé par le chat (message = réponse). */
+  @Column({ type: 'varchar', length: 20, default: 'upload' })
+  origin: 'upload' | 'generated';
+
   @Column({ type: 'varchar', length: 255 })
   name: string;
 
@@ -50,4 +54,8 @@ export class AiConversationDocument extends BaseEntity {
   /** Texte complet affiché quand il diffère de `content`. */
   @Column({ name: 'display_content', type: 'longtext', nullable: true })
   displayContent: string | null;
+
+  /** Mise en forme d'origine (Word lu, document rédigé), pour la traduction et l'éditeur. */
+  @Column({ name: 'content_html', type: 'longtext', nullable: true })
+  contentHtml: string | null;
 }

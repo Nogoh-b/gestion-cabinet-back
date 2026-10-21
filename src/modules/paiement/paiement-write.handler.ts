@@ -23,6 +23,13 @@ import {
   ValidationResult,
 } from 'src/core/ai-database/interface/entity-write-handler.interface';
 
+/** Facture du paiement, sous l'un de ses noms (`factureId`, `facture_id`, relation `facture`). */
+function factureIdOf(fields: Record<string, any>): string | undefined {
+  const raw = fields.factureId ?? fields.facture_id ?? fields.facture;
+  const id = raw && typeof raw === 'object' ? raw.id : raw;
+  return id === undefined || id === null || id === '' ? undefined : String(id);
+}
+
 /**
  * Handler custom pour les paiements clients.
  * Logique métier :
@@ -50,13 +57,16 @@ export class PaiementWriteHandler extends BaseWriteHandler {
 
   async getWriteableFieldsSchema(): Promise<WriteableFieldSchema[]> {
     const fields = await super.getWriteableFieldsSchema();
+    // Le schéma expose la jointure sous `facture_id` (pas de colonne `factureId`).
+    const factureField: Partial<WriteableFieldSchema> = {
+      description:
+        'ID (UUID) de la facture associée : celui de la facture mentionnée (id=…). Peut aussi fournir "facture" avec son numéro.',
+      example: '6f1c…-uuid',
+      required: true,
+    };
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
-      factureId: {
-        description:
-          'ID (UUID) de la facture associée. Peut aussi fournir "facture" avec son numéro.',
-        example: 'FAC-2026-0001-AB12',
-        required: true,
-      },
+      facture_id: factureField,
+      factureId: factureField,
       montant: {
         description:
           'Montant payé (> 0). Doit être ≤ reste à payer de la facture.',
@@ -152,7 +162,7 @@ export class PaiementWriteHandler extends BaseWriteHandler {
     const errors: string[] = [];
 
     if (operation === 'INSERT') {
-      if (!fields.factureId && !fields.facture_id) {
+      if (!factureIdOf(fields)) {
         errors.push('La facture est requise (factureId ou facture)');
       }
       if (fields.montant === undefined || fields.montant === null) {
@@ -179,10 +189,13 @@ export class PaiementWriteHandler extends BaseWriteHandler {
       this.filterKnownColumns(fields),
     );
 
-    // Normaliser FK
-    const factureId = safeFields.factureId ?? safeFields.facture_id;
+    // Normaliser FK : filterKnownColumns renomme `facture_id` en `facture`
+    // (propriété de la relation).
+    const factureId = factureIdOf(safeFields);
     if (!factureId)
       throw new BadRequestException('factureId manquant après résolution');
+    delete safeFields.facture;
+    delete safeFields.facture_id;
 
     const facture = await this.factureRepo.findOne({
       where: { id: factureId as string },

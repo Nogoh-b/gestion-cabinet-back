@@ -37,7 +37,7 @@ function targetsMock(target = info()) {
     facts: jest.fn(async () => 'Dossier : DOS-2026-0001'),
     sender: jest.fn(async () => ({ name: 'Me Kaby', title: 'Avocat', cabinetName: 'Cabinet Kaby', cabinetAddress: '' })),
     attachableDocuments: jest.fn(async () => []),
-    documentsByIds: jest.fn(async (ids: number[]) => ids.map((id) => ({ id, name: `Pièce ${id}`, file_size: 1000 }))),
+    documentsByIds: jest.fn(async (ids: number[]) => ids.map((id) => ({ id, name: `Pièce ${id}`, file_size: 1000, file_path: `uploads/cab/piece-${id}.pdf`, file_mimetype: 'application/pdf' }))),
   };
 }
 
@@ -175,22 +175,21 @@ describe('Action « envoyer_email »', () => {
     const targets = targetsMock(target);
     const mails = { createAndSend: jest.fn(async () => ({ id: 'm-1' })) };
     const templates = { wrapForCabinet: jest.fn(async (html: string) => `<layout>${html}</layout>`) };
-    const documents = { getBase64: jest.fn(async (id: number) => ({ base64: 'JVBERi0=', mimeType: 'application/pdf', fileName: `piece-${id}.pdf` })) };
-    const action = new EnvoyerEmailAiAction(targets as any, mails as any, templates as any, documents as any);
-    return { action, mails, documents };
+    const action = new EnvoyerEmailAiAction(targets as any, mails as any, templates as any);
+    return { action, mails };
   }
 
   it('écrit au client par défaut, joint les pièces et range l’envoi dans l’historique', async () => {
-    const { action, mails, documents } = build();
+    const { action, mails } = build();
     const prepared = await action.prepare(91, { subject: 'Point', body: 'Bonjour <Jean>', attachments: [5] }, '31', 'dossiers');
-    expect(documents.getBase64).not.toHaveBeenCalled();
 
     await expect(prepared.run()).resolves.toBe('E-mail « Point » envoyé à jean@exemple.cm.');
     expect(mails.createAndSend).toHaveBeenCalledWith(expect.objectContaining({
       to: ['jean@exemple.cm'],
       subject: 'Point',
       html: '<layout><p>Bonjour &lt;Jean&gt;</p></layout>',
-      attachments: [{ filename: 'piece-5.pdf', content: 'JVBERi0=', contentType: 'application/pdf' }],
+      // Chemin seulement : le base64 de plusieurs pièces dépassait la colonne du mail.
+      attachments: [{ filename: 'Pièce 5.pdf', path: 'uploads/cab/piece-5.pdf', contentType: 'application/pdf' }],
       metadata: expect.objectContaining({ linkedEntity: { type: 'dossier', id: 91 }, source: 'ai_skill' }),
     }));
   });

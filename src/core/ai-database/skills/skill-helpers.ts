@@ -115,6 +115,32 @@ export function resolveSkillTarget(
   return findTarget(ctx.references, types);
 }
 
+/**
+ * « État des impayés du cabinet », « … de tout le cabinet », « global » : la
+ * demande vise tout le cabinet, la fiche ouverte ne doit pas la restreindre.
+ */
+export function wantsWholeCabinet(question: string): boolean {
+  const text = ` ${String(question ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')} `;
+  return /\b(?:du|de tout le|tout le|pour tout le|pour le|de l ensemble du|dans le|au niveau du) cabinet\b/.test(text)
+    || /\b(?:global|globale|globalement|general|generale|ensemble des dossiers|tous les dossiers|tous les clients|toutes les factures)\b/.test(text);
+}
+
+/**
+ * Cible facultative (rapports) : la fiche de la page est ignorée quand la
+ * demande vise tout le cabinet ; une mention @ explicite reste prise.
+ */
+export function resolveOptionalSkillTarget(
+  ctx: Pick<AiSkillContext, 'references' | 'params' | 'question'>,
+  types: AiSkillTargetType[],
+): SkillTarget | undefined {
+  if (!wantsWholeCabinet(ctx.question)) return resolveSkillTarget(ctx, types);
+  return resolveSkillTarget({ ...ctx, references: ctx.references.filter((ref) => ref.source !== 'page') }, types);
+}
+
 /** Libellé lisible d'une liste de types (« un dossier ou un client »). */
 export function describeTargetTypes(types: AiSkillTargetType[]): string {
   const labels: Record<AiSkillTargetType, string> = {
@@ -272,8 +298,14 @@ export function toWhatsAppMarkup(text: string): string {
 }
 
 /** Contexte commun des prompts de rédaction (demande, citation, pièces). */
-export function draftingContext(ctx: Pick<AiSkillContext, 'question' | 'quote' | 'documents' | 'history' | 'userContext'>): string {
+export function draftingContext(ctx: Pick<AiSkillContext, 'question' | 'quote' | 'documents' | 'history' | 'userContext'> & { params?: Record<string, any> }): string {
   const parts = [`Demande de l'utilisateur : ${ctx.question}`];
+  // « Demander » sur une réponse de compétence : la version précédente est à corriger.
+  const previous = ctx.params?.previousDraft;
+  if (previous) {
+    const text = typeof previous === 'string' ? previous : JSON.stringify(previous);
+    parts.push(`Version précédente, à corriger selon la nouvelle demande (garde ce qui n'est pas visé par la correction) :\n"""\n${htmlToText(text).slice(0, 12000)}\n"""`);
+  }
   if (ctx.quote) parts.push(`Passage cité :\n"""\n${ctx.quote.slice(0, 6000)}\n"""`);
   for (const doc of ctx.documents.slice(0, 3)) {
     parts.push(`Pièce jointe « ${doc.name} » :\n"""\n${doc.content.slice(0, 8000)}\n"""`);

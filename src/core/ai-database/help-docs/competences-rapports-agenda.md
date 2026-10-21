@@ -13,7 +13,8 @@ paths: /chat
 - Droit requis : consulter les rapports ; module **Rapports** du plan (sinon la compétence n'apparaît pas).
 
 ## État des impayés
-- Pour tout le cabinet, ou mentionnez un **@client** ou un **@dossier**.
+- Pour tout le cabinet, ou mentionnez un **@client** ou un **@dossier**. Ouvert depuis une fiche dossier, l'état porte sur ce dossier ; « l'état des impayés **du cabinet** » (ou « de tout le cabinet », « global ») porte sur tout le cabinet, même depuis une fiche.
+- Un **graphique** montre le reste dû des dossiers qui doivent le plus (barres, courbe ou camembert ; image PNG et copie des données).
 - Résultat : total restant dû, nombre de factures en retard, tableau (facture, client, dossier, échéance, reste dû, retard en jours) avec liens ; seuls les paiements validés sont déduits. Étapes suivantes : **Relancer** les trois dossiers qui doivent le plus.
 - Droit requis : consulter les factures.
 
@@ -37,3 +38,4 @@ paths: /chat
 
 ## Enregistrer un paiement
 - Mentionnez la **@facture** avec le montant, le mode et la date : « 500 000 FCFA reçus par virement aujourd'hui ». Carte de confirmation modifiable. Droit requis : enregistrer un paiement.
+- Sans « # » : une phrase d'encaissement avec un montant et sa devise ou un moyen de paiement (« 1000 FCFA reçus par virement sur @FAC-… », « acompte reçu par chèque sur la facture … ») lance cette compétence. Une question (« la facture a-t-elle été payée ? ») reste une lecture.

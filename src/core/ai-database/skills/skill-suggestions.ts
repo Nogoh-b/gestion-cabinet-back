@@ -37,6 +37,7 @@ const ACTION_VERBS = new Set([
   'plaide', 'plaider', 'audite', 'auditer', 'reponds', 'repondre', 'compose', 'composer',
   'monte', 'monter', 'construis', 'construire', 'elabore', 'elaborer', 'propose', 'proposer',
   'transmets', 'transmettre', 'publie', 'publier', 'previens', 'prevenir', 'informe', 'informer',
+  'demande', 'demander', 'demandez', 'rappelle', 'rappeler', 'rappelez', 'enregistre', 'enregistrer',
 ]);
 
 /**

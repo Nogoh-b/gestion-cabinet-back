@@ -62,6 +62,15 @@ export class CreerDiligenceSkill extends GuidedWriteSkill {
   protected readonly instruction = 'Créer UNE diligence (INSERT diligences) sur le dossier mentionné, avec son échéance.';
 }
 
+/** Verbes et noms d'encaissement (demande normalisée : sans accents ni ponctuation). */
+const PAYMENT_WORDS = '(?:recus?|recues?|encaisses?|encaissees?|payes?|payees?|regles?|reglees?|verses?|versees?|vires?|virees?|paiement|versement|reglement|acompte)';
+/** « 1000 FCFA reçus… », « encaisse 250 000 F sur… » : un montant avec sa devise. */
+const PAYMENT_AMOUNT_PATTERN =
+  `/(?:\\b\\d[\\d ]*\\s?(?:fcfa|xaf|cfa|francs?|f|eur|euros?)\\b.*\\b${PAYMENT_WORDS}\\b|\\b${PAYMENT_WORDS}\\b.*\\b\\d[\\d ]*\\s?(?:fcfa|xaf|cfa|francs?|f|eur|euros?)\\b)/`;
+/** « Reçu par virement sur la facture… » : un moyen de paiement. */
+const PAYMENT_MEANS_PATTERN =
+  `/\\b${PAYMENT_WORDS}\\b.*\\b(?:par|en) (?:virement|cheque|especes|cash|mobile money|orange money|momo|carte bancaire)\\b/`;
+
 @Injectable()
 export class EnregistrerPaiementSkill extends GuidedWriteSkill {
   readonly definition: AiSkillDefinition = {
@@ -74,9 +83,18 @@ export class EnregistrerPaiementSkill extends GuidedWriteSkill {
     targets: ['facture'],
     placeholder: 'Ex. 500 000 FCFA reçus par virement aujourd’hui sur @facture',
     keywords: ['paiement', 'encaissement', 'règlement', 'versement', 'reçu'],
+    // Seule écriture guidée devinée : un encaissement chiffré ou par un moyen
+    // de paiement (« 1000 FCFA reçus par virement sur FAC-… »), jamais une
+    // question (« la facture a-t-elle été payée ? »).
+    autoTriggers: [PAYMENT_AMOUNT_PATTERN, PAYMENT_MEANS_PATTERN],
+    autoExclude: [
+      'relance', 'relancer', 'impaye', 'impayes', 'devis',
+      // Questions : « la facture de 500 000 FCFA a-t-elle été payée ? »
+      '/\\b(?:a t elle|a t il|ont ils|ont elles|est elle|est il|est ce qu|combien|pourquoi)\\b/',
+    ],
   };
   protected readonly table = 'paiements';
-  protected readonly instruction = 'Enregistrer UN paiement (INSERT paiements) sur la facture mentionnée.';
+  protected readonly instruction = 'Enregistrer UN paiement (INSERT paiements) sur la facture mentionnée : facture_id = id de la facture mentionnée, montant = le montant reçu, mode de paiement et date si la demande les donne (sinon : aujourd’hui).';
 }
 
 /** « Reporte l'audience au 12 novembre à 9 h » : action de report de la fiche audience. */

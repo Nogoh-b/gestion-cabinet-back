@@ -1,15 +1,16 @@
 // src/modules/ai-skills/communication.skills.ts
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import type { AiSkillContext, AiSkillDefinition, AiSkillHandler, AiSkillOutcome } from 'src/core/ai-database/skills/ai-skill.types';
-import { entityLinks, findTarget, htmlToText, linksBlock, SKILL_TARGET_TABLES, todayFr, toWhatsAppMarkup } from 'src/core/ai-database/skills/skill-helpers';
+import { appFrontendUrl, entityLinks, findTarget, htmlToText, linksBlock, SKILL_TARGET_TABLES, todayFr, toWhatsAppMarkup } from 'src/core/ai-database/skills/skill-helpers';
 import { Permission } from 'src/core/enums/permission.enum';
+import { ClientPortalService } from '../client-portal/client-portal.service';
 import { Facture } from '../facture/entities/facture.entity';
 import { MailTemplate } from '../mail-template/entities/mail-template.entity';
-import { actionPlan, draftJson, DRAFTING_RULES, emailInText, isOutcome, requestBlock, senderLine, str, targetOrClarify, toPlanDateTime } from './skill-drafting';
-import { SkillTargetsService, TargetInfo } from './skill-targets.service';
+import { actionPlan, draftJson, DRAFTING_RULES, emailInText, isOutcome, legalBlockFor, requestBlock, senderLine, str, targetOrClarify, toPlanDateTime } from './skill-drafting';
+import { customerPhones, SkillTargetsService, TargetInfo } from './skill-targets.service';
 
 /** Catégorie des modèles du composer pour chaque type de cible. */
 const TEMPLATE_CATEGORY: Record<string, string[]> = {
@@ -123,6 +124,8 @@ ${linksBlock(contextLinks(info))}
 
 ${requestBlock(ctx)}
 
+${await legalBlockFor(ctx)}
+
 ${DRAFTING_RULES}
 - Commence par une formule d'appel (« Madame, Monsieur, » ou « Bonjour <nom>, »), termine par une formule de politesse puis la signature. Le corps ne répète pas l'objet.
 ${SIGNATURE_RULE}
@@ -170,11 +173,22 @@ export class MessagePortailSkill implements AiSkillHandler {
     placeholder: 'Que voulez-vous dire au client dans son espace ?',
     examples: ['Informe le client que son dossier avance', 'Demande au client de déposer sa pièce d’identité'],
     keywords: ['portail', 'espace', 'client', 'message', 'publier'],
-    autoTriggers: ['espace client', 'portail client', 'portail'],
-    autoExclude: ['comment'],
+    // « Demande au client de déposer sa pièce d'identité » : sans canal nommé,
+    // la demande passe par l'espace client (le client y dépose la pièce).
+    autoTriggers: [
+      'espace client',
+      'portail client',
+      'portail',
+      // Ordre donné en tête de demande (« qu'a demandé le client ? » reste une lecture).
+      '/^(?:(?:merci de|peux tu|pouvez vous|pourrais tu|pourriez vous|je veux|je voudrais|stp|svp) )?(?:demande[rz]?|dis|dites|rappelle[rz]?|previens|prevenez|informe[rz]?|invite[rz]?)\\b.*\\bclients?\\b.*\\b(?:de|d|que|qu)\\b/',
+    ],
+    autoExclude: ['comment', 'mail', 'email', 'courriel', 'whatsapp', 'whatsap', 'sms'],
   };
 
-  constructor(private readonly targets: SkillTargetsService) {}
+  constructor(
+    private readonly targets: SkillTargetsService,
+    @Optional() private readonly portal?: ClientPortalService,
+  ) {}
 
   async run(ctx: AiSkillContext): Promise<AiSkillOutcome> {
     const target = targetOrClarify(ctx, this.definition);
@@ -182,23 +196,47 @@ export class MessagePortailSkill implements AiSkillHandler {
     const info = await this.targets.load(target);
     if (!info.client) return { type: 'clarify', markdown: `⚠️ ${info.label} n'est rattaché à aucun client.` };
 
+    // Le message vise le client ; le dossier précise le fil de discussion.
+    const onDossier = info.dossier && ['dossier', 'facture', 'audience'].includes(info.type);
+    const dossierNumber = (info.dossier as { dossier_number?: string } | undefined)?.dossier_number;
+    const uploadLink = onDossier ? `${appFrontendUrl()}/espace-client/dossiers/${info.dossier!.id}` : `${appFrontendUrl()}/espace-client`;
+    // Sans compte sur l'espace client, le client ne lirait jamais le message : e-mail.
+    const access = await this.portal?.accessStatus(info.client.id).catch(() => null);
+    const viaEmail = access ? !access.has_account && !!info.email : false;
+
     let content = str(ctx.params.content, 4000);
+    let subject = str(ctx.params.subject, 250);
     if (!content) {
-      const draft = await draftJson<{ content?: string }>(ctx, `Tu rédiges un message publié dans l'espace client en ligne d'un cabinet d'avocats (lu par le client).
+      const where = viaEmail
+        ? "en réponse à cet e-mail (pièce jointe) ou à l'accueil du cabinet."
+        : `dans son espace client, ${onDossier ? `dossier ${dossierNumber ?? ''}` : 'rubrique de son dossier'}, bouton « Ajouter un document » (lien : ${uploadLink}).`;
+      const draft = await draftJson<{ content?: string; subject?: string }>(ctx, `Tu rédiges un message ${viaEmail ? 'envoyé par e-mail' : "publié dans l'espace client en ligne"} d'un cabinet d'avocats (lu par le client).
 
 ${await factsBlock(this.targets, info, ctx)}
 
 ${requestBlock(ctx)}
 
+${await legalBlockFor(ctx)}
+
 ${DRAFTING_RULES}
 - Message court (moins de 1 500 caractères), clair, sans jargon inutile, signé.
+- Si tu demandes au client de fournir une pièce ou un document : nomme précisément chaque pièce attendue (une ligne « - » par pièce s'il y en a plusieurs) et explique où la déposer : ${where}
 ${SIGNATURE_RULE}
 
-Réponds UNIQUEMENT en JSON (retours à la ligne écrits \\n) : {"content": "le message"}`);
+Réponds UNIQUEMENT en JSON (retours à la ligne écrits \\n) : {"subject": "objet court", "content": "le message"}`);
       content = str(draft.content, 4000);
+      subject = subject || str(draft.subject, 250);
     }
-    // Le message vise le client ; le dossier précise le fil de discussion.
-    const onDossier = info.dossier && ['dossier', 'facture', 'audience'].includes(info.type);
+    if (viaEmail) {
+      return {
+        type: 'plan',
+        markdown: `ℹ️ ${info.recipientName} n'a pas encore d'accès à l'espace client : la demande part **par e-mail**. Vous pouvez aussi lui envoyer l'accès depuis sa fiche client.`,
+        plan: actionPlan('envoyer_email', info.table, info.id, {
+          subject: subject || (dossierNumber ? `Dossier ${dossierNumber}` : 'Votre dossier'),
+          body: content,
+        }, `Envoyer un e-mail à ${info.recipientName || info.label}`),
+      };
+    }
     return {
       type: 'plan',
       plan: actionPlan(
@@ -298,6 +336,8 @@ ${linksBlock(contextLinks(info))}
 
 ${requestBlock(ctx)}
 
+${await legalBlockFor(ctx)}
+
 ${DRAFTING_RULES}
 - Message bref (moins de 600 caractères), poli, lisible sur téléphone, signé. Pas d'émoji.
 ${SIGNATURE_RULE}
@@ -317,7 +357,7 @@ Réponds UNIQUEMENT en JSON (retours à la ligne écrits \\n) : {"text": "le mes
       markdown: phone
         ? `Voici le message WhatsApp pour **${info.recipientName}**. Relisez-le, puis cliquez sur « Ouvrir WhatsApp » pour l'envoyer depuis votre téléphone ou WhatsApp Web.`
         : `Voici le message WhatsApp pour **${info.recipientName}**. Aucun numéro n'est enregistré sur sa fiche : saisissez-le dans la carte.`,
-      draft: { channel: 'whatsapp', customerId: info.client.id, recipientName: info.recipientName, phone, text },
+      draft: { channel: 'whatsapp', customerId: info.client.id, recipientName: info.recipientName, phone, phones: customerPhones(info.client), text },
     };
   }
 }

@@ -37,7 +37,7 @@ function stubTargets() {
       { id: 5, name: 'Assignation.pdf', file_size: 20480 },
       { id: 6, name: 'Jugement.pdf', file_size: 102400 },
     ],
-    documentsByIds: async (ids: number[]) => ids.map((id) => ({ id, name: `Doc-${id}.pdf`, file_size: 1000 })),
+    documentsByIds: async (ids: number[]) => ids.map((id) => ({ id, name: `Doc-${id}.pdf`, file_size: 1000, file_path: `uploads/cab/doc-${id}.pdf` })),
   } as any;
 }
 
@@ -102,7 +102,7 @@ describe("Compétence « Envoyer un e-mail » → carte de confirmation", () => 
     expect(op.fields.body).toContain('Voici le point.');
 
     const registry = new AiActionRegistry();
-    registry.register(new EnvoyerEmailAiAction(stubTargets(), {} as any, {} as any, {} as any));
+    registry.register(new EnvoyerEmailAiAction(stubTargets(), {} as any, {} as any));
     const described = await describeService(registry).describePlan({} as any, plan);
     const fields = described.operations[0].fields;
     const byName = Object.fromEntries(fields.map((field) => [field.name, field]));
@@ -130,7 +130,7 @@ describe("Compétence « Envoyer un e-mail » → carte de confirmation", () => 
       scheduledAt: tomorrowAt8(),
     }, 'Envoyer un e-mail');
     const registry = new AiActionRegistry();
-    registry.register(new EnvoyerEmailAiAction(stubTargets(), {} as any, {} as any, {} as any));
+    registry.register(new EnvoyerEmailAiAction(stubTargets(), {} as any, {} as any));
     const described = await describeService(registry).describePlan({} as any, plan);
     expect(described.operations[0].preview).toContain('1 pièce(s) jointe(s)');
     expect(described.operations[0].preview).toContain('programmé le');
@@ -140,7 +140,7 @@ describe("Compétence « Envoyer un e-mail » → carte de confirmation", () => 
     const sent: any[] = [];
     const mails = { createAndSend: async (payload: any) => { sent.push(payload); return { id: 1 }; } };
     const templates = { wrapForCabinet: async (html: string) => `<cab>${html}</cab>` };
-    const action = new EnvoyerEmailAiAction(stubTargets(), mails as any, templates as any, {} as any);
+    const action = new EnvoyerEmailAiAction(stubTargets(), mails as any, templates as any);
     const prepared = await action.prepare(91, {
       to: 'jean.dupont@exemple.cm',
       subject: '**Relance** [FAC-1](https://app.test/f/1)',

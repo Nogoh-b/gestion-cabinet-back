@@ -1,7 +1,7 @@
 ---
 id: competences
 title: Compétences du chat (menu « # »)
-keywords: competence, competences, les competences, menu diese, touche diese, bouton eclair, choisir une competence, liste des competences, quelles competences, que peut faire une competence, competence introuvable, competence absente, retirer la competence, utiliser une competence, carte a valider, actions guidees, outils juridiques, competence en attente, en attente de precision, competence sans diese, recapitulatif des actions menees, actions menees sur le dossier
+keywords: actions recommandees, boutons sous la reponse, que faire ensuite, reduire la carte, carte en plein ecran, agrandir la carte, brouillon perdu, brouillon garde, retrouver mon brouillon, inserer une reference, corriger la reponse d'une competence, demander sur une reponse, modifier un courrier redige, graphique dans le chat, courbe, camembert, relire un document redige, competence, competences, les competences, menu diese, touche diese, bouton eclair, choisir une competence, liste des competences, quelles competences, que peut faire une competence, competence introuvable, competence absente, retirer la competence, utiliser une competence, carte a valider, actions guidees, outils juridiques, competence en attente, en attente de precision, competence sans diese, recapitulatif des actions menees, actions menees sur le dossier
 paths: /chat
 ---
 
@@ -33,10 +33,30 @@ Une **compétence** est une action spécialisée et guidée du chat : envoyer un
 | **Documents** | Rédiger un document (Word / PDF) · Document depuis un modèle · Créer un modèle de document · Courrier · Mise en demeure · Traduire (français ↔ anglais) · Version bilingue FR \| EN · Anonymiser un document |
 | **Analyse juridique** | Lire un jugement · Répondre aux conclusions adverses · Chronologie et contradictions · Auditer un contrat · Contrôler les mentions d'un acte · Évaluer les chances du dossier · Dossiers comparables · Dossier de plaidoirie |
 | **Calculs & actes** | Calculer un délai de procédure · Décompte de créance · Requête en injonction de payer · Convention d'honoraires |
+| **Facturation** | Configurer la facturation · Devis d'honoraires |
 | **Rapports & exports** | Rapport d'activité · État des impayés · Exporter un dossier (ZIP) · Compte rendu d'audience |
 | **Agenda & tâches** | Programmer une audience · Reporter une audience · Créer une diligence · Enregistrer un paiement |
 
 Chaque famille a son guide détaillé : demandez par exemple « comment fonctionne la compétence Lire un jugement ? » ou « à quoi sert le décompte de créance ? ».
+
+## Actions recommandées
+Sous chaque réponse (lecture, écriture, aide, connaissance, compétence…), le bloc **Actions recommandées** propose 3 ou 4 suites utiles, la plus utile d'abord : une **compétence** (⚡, ex. « Demander la pièce d'identité à Jean DUPONT via l'espace client »), une **écriture** (✎) ou une **lecture** (🔍). Chaque bouton envoie une consigne complète qui nomme la fiche ; une écriture ou un envoi passe toujours par une carte à confirmer. Seules les compétences permises par votre rôle et le plan du cabinet sont proposées. Les actions restent avec la réponse quand vous rouvrez la conversation.
+
+## Cartes : réduire, plein écran, brouillon gardé
+- Chaque carte (e-mail, WhatsApp, courrier, document, confirmation) a un bouton **Réduire / Développer** (ou cliquez sur son titre) et un bouton **Plein écran**. Une carte envoyée, classée ou ancienne se réduit d'elle-même ; votre choix est mémorisé.
+- Les **modifications** faites dans une carte (texte, destinataire, pièces cochées, mise en page…) sont **enregistrées automatiquement** avec la réponse : vous les retrouvez en revenant sur la conversation, même après avoir changé de page.
+- Une carte confirmée ou annulée ne se propose plus à la réouverture : son bilan s'affiche à la place (pas de second envoi).
+- **Insérer une référence** (bouton 📑 de la barre d'outils) : n° de dossier, n° d'affaire, juridiction, partie adverse, prochaine audience, coordonnées du client, factures dues, avec leur lien.
+
+## Corriger la réponse d'une compétence
+Cliquez sur **Demander** sous la réponse (ou sélectionnez un passage de la réponse ou de sa carte) : la compétence est réarmée (puce « ⚡ … en attente de précision »), avec la version affichée — y compris vos modifications. Écrivez la correction (« ton plus ferme », « ajoute la date de l'audience ») : la compétence refait le document en gardant le reste. Retirez la puce pour poser une question libre sur la réponse.
+
+## Documents relus à tout moment
+- Les pièces jointes lues et les **documents rédigés** par le chat (courrier, e-mail, WhatsApp, document, traduction) sont gardés avec la conversation : « raccourcis le courrier », « traduis la lettre », « que dit la pièce envoyée tout à l'heure ? » les relisent, même après un rechargement. Le lecteur des pièces jointes retrouve aussi leur texte.
+- **Demander** sur un message relit toujours ses documents.
+
+## Graphiques
+Une réponse qui compare des chiffres (nombre de dossiers par statut, montants par mois, impayés par dossier…) affiche un **graphique** sous le texte : barres, courbe ou camembert au choix, **image PNG** à télécharger et **copie des données** pour un tableur.
 
 ## Récapitulatif des actions menées
 Les compétences de communication et de rédaction (WhatsApp, e-mail, message à l'espace client, courrier, compte rendu…) reçoivent l'**activité du dossier** visé : actions du dossier (statut, dates, résultat), audiences passées (décision, renvoi, compte rendu), diligences et pièces récentes. Demandez par exemple « prépare un WhatsApp au client avec le récapitulatif des actions menées » en mentionnant le dossier : le message ne cite que ce qui est enregistré, rien d'inventé. Pour un client, l'activité récente de son dernier dossier est utilisée. Chaque source n'est lue que si votre rôle permet de la consulter, et les pièces ou diligences confidentielles sont écartées.

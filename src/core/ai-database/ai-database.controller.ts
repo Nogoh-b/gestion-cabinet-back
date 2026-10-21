@@ -18,6 +18,7 @@ import {
   Patch,
   Delete,
   BadRequestException,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -42,7 +43,7 @@ import { memoryStorageOptions } from '../shared/interceptors/upload.interceptor'
 import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
 import { toChatPayload } from './chat-visibility';
 import { normalizeConversationTitle } from './conversation-resource';
-import { UpdateConversationDto } from './dto/update-conversation.dto';
+import { UpdateConversationDto, UpdateMessageStateDto } from './dto/update-conversation.dto';
 import { MAX_ANALYZED_FILES, utf8FileName } from './chat-attachments';
 import { PlanFieldsService } from './plan-fields.service';
 import { AiSkillService } from './skills/ai-skill.service';
@@ -426,6 +427,52 @@ export class AiDatabaseController {
     return this.conversationManager.getConversationAny(conversationId);
   }
 
+  @Patch('conversations/:id/messages/:messageId/state')
+  @ApiOperation({ summary: "Garde l'état d'une carte (brouillon modifié, statut envoyé/annulé/classé)" })
+  async updateMessageState(
+    @Param('id') conversationId: string,
+    @Param('messageId', ParseIntPipe) messageId: number,
+    @Body() dto: UpdateMessageStateDto,
+    @Req() req,
+  ) {
+    await this.assertOwnConversation(conversationId, req.user?.id);
+    const patch: Record<string, any> = {};
+    if (dto.draftState !== undefined) patch.draftState = dto.draftState ? { ...dto.draftState, savedAt: new Date().toISOString() } : null;
+    if (dto.cardStatus !== undefined) patch.cardStatus = dto.cardStatus ? { ...dto.cardStatus, at: new Date().toISOString() } : null;
+    if (!Object.keys(patch).length) return { id: messageId };
+    try {
+      const metadata = await this.conversationManager.patchMessageMetadata(conversationId, messageId, req.user?.id, patch);
+      if (!metadata) throw new NotFoundException(`Message ${messageId} introuvable`);
+      // Document rédigé corrigé dans sa carte : les questions suivantes relisent la version corrigée.
+      const draftText = dto.draftState ? draftStateText(dto.draftState) : null;
+      if (draftText) await this.conversationManager.updateGeneratedDocument(conversationId, messageId, draftText.text, draftText.html);
+      return { id: messageId, draftState: metadata.draftState ?? null, cardStatus: metadata.cardStatus ?? null };
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Get('conversations/:id/documents')
+  @ApiOperation({ summary: 'Documents de la conversation (pièces lues, documents rédigés), pour le lecteur du chat' })
+  async getConversationDocuments(@Param('id') conversationId: string, @Req() req) {
+    await this.assertOwnConversation(conversationId, req.user?.id);
+    const documents = await this.conversationManager.getConversationDocuments(conversationId, req.user?.id);
+    return documents.map((document) => ({
+      id: document.id,
+      messageId: document.messageId,
+      origin: document.origin ?? 'upload',
+      name: document.name,
+      type: document.type,
+      method: document.method,
+      confidence: document.confidence,
+      pages: document.pages,
+      illegible: document.illegible,
+      // Le lecteur du chat affiche au plus 60 000 caractères.
+      content: (document.displayContent || document.content || '').slice(0, 60_000),
+    }));
+  }
+
   /** La conversation existe et appartient à l'utilisateur connecté. */
   private async assertOwnConversation(
     conversationId: string,
@@ -515,4 +562,28 @@ export class AiDatabaseController {
       })),
     };
   }
+}
+
+/** Texte d'un brouillon modifié dans sa carte (document, courrier, e-mail, WhatsApp). */
+function draftStateText(state: Record<string, any>): { text: string; html?: string } | null {
+  const plain = (value: unknown) => String(value ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6]|tr|blockquote)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (typeof state.html === 'string' && state.html.trim()) return { text: plain(state.html), html: state.html };
+  if (state.values && typeof state.values === 'object') {
+    const text = Object.values(state.values).filter((value) => typeof value === 'string' && value.trim()).map(plain).join('\n\n');
+    return text ? { text } : null;
+  }
+  if (typeof state.body === 'string' && state.body.trim()) {
+    return { text: `${state.subject ? `Objet : ${state.subject}\n\n` : ''}${plain(state.body)}` };
+  }
+  if (typeof state.text === 'string' && state.text.trim()) return { text: state.text };
+  return null;
 }

@@ -34,6 +34,7 @@ Le PDF reprend l'en-tête et le pied de page du cabinet. Les courriers utilisent
 ## Courrier
 - Mentionnez si possible un dossier, un client, une audience ou une facture (facultatif). L'IA rédige destinataire, adresse, objet et corps ; le modèle **Général — Courrier type** ajoute en-tête, date, formule de politesse et signature (vous, avec votre fonction et le cabinet).
 - Champs : Destinataire, Adresse du destinataire, Objet, Corps du courrier, Signataire, Qualité du signataire.
+- **Corps mis en forme** : le corps s'édite dans un éditeur riche — titres, **gras**, *italique*, souligné, **couleur**, **surlignage**, listes à tirets ou numérotées, citation, alignement, trait de séparation, **Insérer une référence** (n° de dossier, juridiction, adresse du client…). La mise en forme est reprise dans le PDF et le Word. L'IA rédige déjà le corps avec du gras et des listes quand c'est utile.
 
 ## Mise en demeure
 - Même fonctionnement avec le modèle **Général — Mise en demeure** (mention « Lettre recommandée avec accusé de réception » et clause de régularisation sous huitaine déjà imprimées).
@@ -47,11 +48,14 @@ Le PDF reprend l'en-tête et le pied de page du cabinet. Les courriers utilisent
 
 ## Traduire (français ↔ anglais)
 - Source : le passage cité, la pièce jointe (ou **@** document), le texte collé après « : », sinon la dernière réponse du chat. Langue d'arrivée : celle demandée (« en anglais », « into French »), sinon l'autre langue.
-- Traduction juridique fidèle (terminologie OHADA, Cameroun bilingue), sans résumé. Étape suivante : **En faire un courrier PDF**.
+- Traduction juridique fidèle (terminologie OHADA, Cameroun bilingue), sans résumé.
+- **Document ou long texte** (pièce jointe, plus de 1 500 caractères) : la traduction **garde la mise en forme** d'origine (titres, listes, numérotation, tableaux, gras ; un Word joint est lu avec sa mise en forme) et s'ouvre dans la **carte studio** : relecture, éditeur plein écran, **Word**, **PDF**, classement, e-mail. Les termes à vérifier sont listés.
+- **Passage court** : la traduction s'affiche dans la réponse ; étapes suivantes : **Ouvrir dans l'éditeur (Word / PDF)** ou **En faire un courrier PDF**.
 
 ## Version bilingue FR | EN
 - Même source que la traduction. Le texte est découpé en paragraphes ; chaque paragraphe est placé à côté de sa traduction dans un **PDF en deux colonnes** (format paysage) : Français | English.
 - Utile pour les juridictions anglophones, les clients étrangers et les contrats bilingues. Un paragraphe non traduit est signalé « (traduction manquante) ».
+- Un Word joint garde sa mise en forme dans les deux colonnes (titres et gras, listes).
 
 ## Anonymiser un document
 - Source : pièce jointe, document mentionné, passage cité, texte collé ou dernière réponse.

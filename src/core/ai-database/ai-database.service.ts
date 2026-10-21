@@ -71,6 +71,17 @@ import {
 } from './response-mode';
 import { LOCAL_ROUTE_REASONS } from './intent-detection.service';
 import { composeResponseModes } from './response-mode';
+import { buildChartSpec } from './chart-spec';
+import {
+  actionRecords,
+  buildActionCandidates,
+  buildActionsPrompt,
+  defaultActions,
+  parseChosenActions,
+  type ActionContext,
+  type ActionOutcome,
+  type RecommendedAction,
+} from './recommended-actions';
 import type { ResponseMode } from './response-mode';
 import { detectSkillRequest, suggestSkills } from './skills/skill-suggestions';
 import type { AiSkillCatalogItem } from './skills/ai-skill.types';
@@ -96,7 +107,7 @@ import {
   renderUserProfileBlock,
 } from './user-profile';
 import type { AiSkillContext, AiSkillOutcome } from './skills/ai-skill.types';
-import { canonicalTargetType, findTarget } from './skills/skill-helpers';
+import { canonicalTargetType, findTarget, wantsWholeCabinet } from './skills/skill-helpers';
 import { GenericWriteService } from './generic-write.service';
 import { IntentDetectionService } from './intent-detection.service';
 import {
@@ -245,6 +256,8 @@ interface DocumentContextItem {
   illegible?: number;
   /** Lecture partielle : texte complet pour l'affichage (`content`, masqué, va au modèle). */
   displayContent?: string;
+  /** Mise en forme d'origine (Word joint) : la traduction et l'éditeur la gardent. */
+  html?: string;
 }
 
 type ExtractionMethod = 'text' | 'ocr' | 'vision';
@@ -283,6 +296,8 @@ interface CarriedDocument {
   confidence?: number;
   illegible?: number;
   pages?: number;
+  /** Mise en forme d'origine (Word joint). */
+  html?: string;
 }
 
 /**
@@ -294,6 +309,85 @@ const OUTSIDE_DOCUMENT_MARKER = '[HORS_DOCUMENT]';
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff'];
 
 /** Préremplissage d'une compétence (JSON envoyé par un bouton de suite). */
+/**
+ * Texte d'un document rédigé par une compétence (null : rien à garder). Le
+ * nom reprend la compétence et la fiche (« Courrier — DOS-2026-0037 »).
+ */
+function generatedDocumentOf(
+  outcome: AiSkillOutcome,
+  label: string,
+  references: ReferencedEntityContext[],
+): { name: string; content: string; html?: string } | null {
+  const scope = references.find((reference) => canonicalTargetType(reference.type))?.label;
+  const named = (title: string) => `${title}${scope ? ` — ${scope}` : ''} (rédigé)`.slice(0, 250);
+  const fromHtml = (html: string) => htmlToPlainText(html);
+  if (outcome.type === 'document_draft') {
+    const studio = outcome.draft.studio;
+    if (studio?.html) return { name: named(outcome.draft.fileName || label), content: fromHtml(studio.html), html: studio.html };
+    const values = outcome.draft.editable
+      .map((field) => outcome.draft.variables[field.name])
+      .filter((value) => typeof value === 'string' && value.trim());
+    const html = values.join('\n');
+    return values.length ? { name: named(outcome.draft.fileName || label), content: fromHtml(html), html } : null;
+  }
+  if (outcome.type === 'message_draft') {
+    return outcome.draft.text?.trim() ? { name: named(`WhatsApp à ${outcome.draft.recipientName}`), content: outcome.draft.text } : null;
+  }
+  if (outcome.type === 'plan') {
+    const op: any = outcome.plan.operations?.[0];
+    if (op?.operation !== 'ACTION') return null;
+    if (op.action === 'envoyer_email' && op.fields?.body) {
+      return { name: named(`E-mail « ${String(op.fields.subject ?? '').slice(0, 80)} »`), content: `Objet : ${op.fields.subject ?? ''}\n\n${fromHtml(String(op.fields.body))}` };
+    }
+    if (op.action === 'message_portail' && op.fields?.content) {
+      return { name: named("Message à l'espace client"), content: String(op.fields.content) };
+    }
+    return null;
+  }
+  // Traduction (réponse rédigée en direct) : gardée pour la reprendre ensuite.
+  if (outcome.type === 'answer' && /traduction|traduire/i.test(label) && outcome.markdown.trim()) {
+    return { name: named('Traduction'), content: outcome.markdown };
+  }
+  return null;
+}
+
+/** HTML ou balisage léger → texte lisible (document gardé pour les questions suivantes). */
+function htmlToPlainText(value: string): string {
+  return String(value ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6]|tr|blockquote)>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** Plan d'une seule ACTION « envoyer un e-mail » (carte e-mail du chat). */
+function isEmailPlan(plan: WritePlan): boolean {
+  return plan.operations?.length === 1 && plan.operations[0].operation === 'ACTION' && (plan.operations[0] as any).action === 'envoyer_email';
+}
+
+/**
+ * Paramètres d'une compétence gardés avec sa réponse : les longs contenus
+ * (document révisé, brouillon précédent) sont retirés, le brouillon lui-même
+ * est déjà dans la réponse.
+ */
+function compactSkillParams(params: Record<string, any>): Record<string, any> {
+  const compact: Record<string, any> = {};
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (['revise', 'previousDraft', 'fromHtml'].includes(key)) continue;
+    const size = typeof value === 'string' ? value.length : JSON.stringify(value ?? null).length;
+    if (size <= 4000) compact[key] = value;
+  }
+  return compact;
+}
+
 function parseSkillParams(raw?: string): Record<string, any> {
   if (!raw || typeof raw !== 'string') return {};
   try {
@@ -2047,6 +2141,20 @@ Contraintes obligatoires :
     throw new Error(
       `Type de fichier non supporte: ${mimetype || ext || 'inconnu'}`,
     );
+  }
+
+  /** HTML d'un Word joint (titres, listes, gras, tableaux), null pour un autre fichier. */
+  private async extractDocxHtml(file: Express.Multer.File): Promise<string | null> {
+    const name = String(file.originalname ?? '').toLowerCase();
+    const isDocx = file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || name.endsWith('.docx');
+    if (!isDocx || !file.buffer) return null;
+    try {
+      const mammoth = require('mammoth');
+      const result = await mammoth.convertToHtml({ buffer: file.buffer });
+      return String(result?.value ?? '').trim() || null;
+    } catch {
+      return null;
+    }
   }
 
   private async extractDocxText(buffer: Buffer): Promise<string> {
@@ -4932,9 +5040,11 @@ ${blocks.join('\n\n')}
         const reading = await this.extractFileReading(file);
         // Lecture partielle : le modèle ne reçoit que les passages lus avec assurance.
         const truncated = this.truncateContextText(reading.reliableText ?? reading.text, this.MAX_STORED_DOCUMENT_CHARS);
+        const html = await this.extractDocxHtml(file);
         return {
           ...base,
           content: truncated.content,
+          ...(html && { html }),
           ...(reading.reliableText !== undefined && {
             displayContent: this.truncateContextText(reading.text, this.MAX_STORED_DOCUMENT_CHARS).content,
           }),
@@ -4964,6 +5074,7 @@ ${blocks.join('\n\n')}
           illegible: item.illegible,
           content: item.content,
           displayContent: item.displayContent,
+          html: item.html,
         })),
     );
     const filesInfo = readings.map((item) => ({
@@ -5006,7 +5117,16 @@ ${blocks.join('\n\n')}
         })
       : null;
     const carriedDocuments = focus ? selectFocusedDocuments(dto.question, candidates) : [];
+    // « Demander » sur un message : ses documents (pièces lues, document rédigé) sont toujours relus.
+    const quotedMessageId = Number(dto.quoteMessageId);
+    const quotedDocuments = quotedMessageId > 0
+      ? stored
+          .filter((document) => document.messageId === quotedMessageId)
+          .filter((document) => !carriedDocuments.some((item) => item.name === document.name) && !explicit.some((item) => item.name === document.name))
+          .map((document) => this.storedDocumentCandidate(document))
+      : [];
     for (const item of [
+      ...quotedDocuments,
       // Choisis dans le chat : toujours lus, texte complet du serveur s'il l'a.
       ...explicit.map((item) => {
         const copy = storedByName.get(item.name);
@@ -5025,6 +5145,7 @@ ${blocks.join('\n\n')}
         ...(item.confidence != null && { confidence: item.confidence }),
         ...(item.illegible != null && { illegible: item.illegible }),
         ...(item.pages != null && { pages: item.pages }),
+        ...('html' in item && item.html && { html: item.html }),
       });
     }
     const quote = parseQuotedPassage(dto.quote, dto.quoteSource);
@@ -5067,6 +5188,7 @@ ${blocks.join('\n\n')}
       name: document.name,
       type: document.type ?? undefined,
       content: document.content,
+      ...(document.contentHtml && { html: document.contentHtml }),
       batch: document.messageId,
       method: document.method ?? undefined,
       confidence: document.confidence ?? undefined,
@@ -5090,7 +5212,8 @@ ${blocks.join('\n\n')}
     try {
       const metadata =
         await this.conversationManager.getLastAssistantMetadata(conversationId);
-      return metadata?.documentAnswer === true;
+      // Réponse sur un document, ou document rédigé (courrier, e-mail…) : la suite peut le viser.
+      return metadata?.documentAnswer === true || Boolean(metadata?.documentDraft || metadata?.messageDraft);
     } catch {
       return false;
     }
@@ -5233,6 +5356,8 @@ ${blocks.join('\n\n')}
     // La réponse finale porte les enregistrements cités (identifiant + lien).
     // Chaque intention annoncée porte son mode (Lire, Aide…) : affiché dans le
     // déroulé du chat et gardé avec la réponse.
+    // Dernier résultat envoyé : les actions recommandées en partent.
+    let finalResult: any = null;
     const send = (event: string, data: any) => {
       if (event === 'intent') {
         const mode = describeResponseMode(data, requestedMode, this.intentSkillLabels(data));
@@ -5244,17 +5369,118 @@ ${blocks.join('\n\n')}
         const mode = this.conversationManager.responseMode();
         data = this.withCitedRecords(data);
         if (mode && data && typeof data === 'object' && !data.responseMode) data = { ...data, responseMode: mode };
+        // Id de la réponse enregistrée : le chat y garde ses brouillons et le statut des cartes.
+        const messageId = this.conversationManager.savedAssistantMessageId?.();
+        if (messageId && data && typeof data === 'object' && data.messageId === undefined) data = { ...data, messageId };
+        // Chiffres comparables (nombre par statut, montants par mois…) : graphique sous la réponse.
+        if (data && typeof data === 'object' && !data.chart && Array.isArray(data.results)) {
+          const chart = buildChartSpec(data.results, String(dto.question ?? ''));
+          if (chart) data = { ...data, chart };
+        }
+        finalResult = data;
+      } else if (event === 'mode_choice') {
+        finalResult = null;
       }
       sendEvent(event, data);
     };
     const run = () => this.withAiMetrics('ask_stream', aiRequestLogId, () =>
-      this.conversationManager.withCitations(() =>
-        this.analyzeQuestionStreamInternal(dto.temporary === true || dto.temporary === 'true'
-          ? { ...dto, conversationId: undefined } : dto, user, files, send)),
+      this.conversationManager.withCitations(async () => {
+        await this.analyzeQuestionStreamInternal(dto.temporary === true || dto.temporary === 'true'
+          ? { ...dto, conversationId: undefined } : dto, user, files, send);
+        // Graphique gardé avec la réponse (retrouvé à la réouverture).
+        if (finalResult?.chart && finalResult.messageId && finalResult.conversationId && !finalResult.skill) {
+          await this.conversationManager
+            .patchMessageMetadata(finalResult.conversationId, Number(finalResult.messageId), this.getUserId(user), { chart: finalResult.chart })
+            .catch(() => undefined);
+        }
+        // Après la réponse (déjà affichée) : actions recommandées, sans la retarder.
+        await this.emitRecommendedActions(dto, user, finalResult, sendEvent);
+      }),
     this.displayedRecordsKey(user));
     const analyze = metadata ? () => this.conversationManager.withUserMessageMetadata(metadata, run) : run;
     return dto.temporary === true || dto.temporary === 'true'
       ? this.conversationManager.runTemporary(analyze) : analyze();
+  }
+
+  /**
+   * Actions recommandées sous la réponse (compétences, écritures, lectures),
+   * la plus utile d'abord : candidats calculés sans IA (droits et plan de
+   * l'utilisateur, fiches de la réponse), choisis et rédigés par un appel
+   * rapide au modèle. Gardées avec la réponse. `AI_RECOMMENDED_ACTIONS=false`
+   * les désactive.
+   */
+  private async emitRecommendedActions(
+    dto: AskQuestionDto,
+    user: AiUserContext | string,
+    result: any,
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<void> {
+    if (process.env.AI_RECOMMENDED_ACTIONS === 'false' || !result || typeof result !== 'object') return;
+    // Une question attend la réponse de l'utilisateur : pas d'autre proposition.
+    if (result.requiresClarification || result.skillPending || result.requiresAmbiguityResolution) {
+      sendEvent('actions', { actions: [] });
+      return;
+    }
+    try {
+      const catalog = this.skills ? await this.skills.catalog(user) : [];
+      const target = result.skillRun?.params?.target;
+      const records = actionRecords([
+        ...(target && typeof target === 'object' ? [target] : []),
+        ...parseReferencedContext(dto.context).filter((ref) => ref.source !== 'page'),
+        ...(Array.isArray(result.citedRecords) ? result.citedRecords : []),
+        ...parseReferencedContext(dto.context).filter((ref) => ref.source === 'page'),
+      ]);
+      const mode: string | undefined = result.responseMode?.code;
+      const answer = String(result.analysis ?? '');
+      const outcome: ActionOutcome = result.documentDraft ? 'document_draft'
+        : result.messageDraft ? 'message_draft'
+          : result.pendingWritePlan && result.requiresConfirmation ? 'plan'
+            : mode === 'write' && (result.success === false || /❌|échec|échoué/i.test(answer)) ? 'write_failed'
+              : mode === 'write' ? 'write_done'
+                : 'answer';
+      const ctx: ActionContext = {
+        question: String(dto.question ?? ''),
+        answer,
+        mode,
+        skill: result.skillRun?.code ?? result.skill?.code,
+        outcome,
+        records,
+        followUps: Array.isArray(result.skillFollowUps) ? result.skillFollowUps : [],
+        catalog,
+      };
+      const candidates = buildActionCandidates(ctx);
+      if (!candidates.length) {
+        sendEvent('actions', { actions: [] });
+        return;
+      }
+      let actions: RecommendedAction[] | null = null;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await this.invokeModel(
+          'fast',
+          [{ role: 'user', content: buildActionsPrompt(ctx, candidates) }],
+          900,
+          this.aiModelRouter.reasoningKwargs('fast'),
+          controller.signal,
+        );
+        actions = parseChosenActions(this.extractLlmText(response), candidates, ctx);
+      } catch (error) {
+        this.logger.warn(`Actions recommandées : choix du modèle indisponible (${(error as Error).message})`);
+      } finally {
+        clearTimeout(timer);
+      }
+      actions ??= defaultActions(candidates);
+      sendEvent('actions', { actions, ...(result.messageId && { messageId: result.messageId }) });
+      if (result.messageId && result.conversationId && actions.length) {
+        await this.conversationManager
+          .patchMessageMetadata(result.conversationId, Number(result.messageId), this.getUserId(user), { recommendedActions: actions })
+          .catch(() => undefined);
+      }
+    } catch (error) {
+      this.logger.warn(`Actions recommandées indisponibles : ${(error as Error).message}`);
+      sendEvent('actions', { actions: [] });
+    }
   }
 
   private async analyzeQuestionStreamInternal(
@@ -6959,7 +7185,7 @@ RÉPONSE :`;
     const question = previousQuestion && previousQuestion !== dto.question.trim()
       ? `${previousQuestion}\nPrécision apportée : ${dto.question}`
       : dto.question;
-    const references = this.skillReferences(code, requestContext.referenced, history);
+    const references = this.skillReferences(code, requestContext.referenced, history, question);
 
     let conversationId = dto.conversationId;
     if (!conversationId) {
@@ -6984,7 +7210,7 @@ RÉPONSE :`;
       quote: requestContext.quote?.text ?? null,
       documents: requestContext.documentContext
         .filter((item) => item.content && !item.error)
-        .map((item) => ({ name: item.name, content: item.content })),
+        .map((item) => ({ name: item.name, content: item.content, ...(item.html && { html: item.html }) })),
       params,
       user,
       userId,
@@ -7086,6 +7312,9 @@ RÉPONSE :`;
     const skillPending = outcome.type === 'clarify' && !refused
       ? { code, label, question: previousQuestion || dto.question, at: new Date().toISOString() }
       : undefined;
+    // Compétence lancée et ses paramètres : « Demander » sur la réponse la relance
+    // pour corriger, et les actions recommandées en partent.
+    const skillRun = { code, label, question: previousQuestion || dto.question, params: compactSkillParams(params) };
 
     if (outcome.type === 'plan') {
       const plan = outcome.plan;
@@ -7094,16 +7323,27 @@ RÉPONSE :`;
       const intro = outcome.markdown?.trim();
       sendEvent('confirmation', { plan, conversationId, ...(intro && { intro }) });
       const display = `${intro ? `${intro}\n\n` : ''}⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`;
+      // Carte e-mail : références de la fiche à insérer dans le message.
+      const draftReferences = isEmailPlan(plan) ? await this.skillDraftReferences(references, params, user) : [];
+      const planExtras = {
+        ...(outcome.followUps?.length && { skillFollowUps: outcome.followUps }),
+        ...(draftReferences.length && { draftReferences }),
+      };
       await this.conversationManager.addAssistantMessage(conversationId, display, undefined, {
         pendingWritePlan: plan,
         requiresConfirmation: true,
         skill: base.skill,
+        skillRun,
+        ...planExtras,
       });
+      await this.keepGeneratedDocument(conversationId, outcome, label, references);
       sendEvent('result', {
         ...base,
         analysis: display,
         pendingWritePlan: plan,
         requiresConfirmation: true,
+        skillRun,
+        ...planExtras,
       });
       return;
     }
@@ -7118,21 +7358,59 @@ RÉPONSE :`;
     if (outcome.type === 'answer') {
       if (outcome.followUps?.length) extras.skillFollowUps = outcome.followUps;
       if (outcome.download) extras.skillDownload = outcome.download;
+      if (outcome.chart) extras.chart = outcome.chart;
     } else if (outcome.type === 'document_draft') {
       extras.documentDraft = outcome.draft;
       if (outcome.followUps?.length) extras.skillFollowUps = outcome.followUps;
       sendEvent('document_draft', { draft: outcome.draft, conversationId });
     } else if (outcome.type === 'message_draft') {
       extras.messageDraft = outcome.draft;
+      if (outcome.followUps?.length) extras.skillFollowUps = outcome.followUps;
       sendEvent('message_draft', { draft: outcome.draft, conversationId });
     } else if (skillPending) {
       extras.skillPending = skillPending;
+    }
+    if (outcome.type !== 'clarify') extras.skillRun = skillRun;
+    // Brouillon modifiable (courrier, WhatsApp) : références de la fiche à insérer.
+    if ((outcome.type === 'document_draft' && !outcome.draft.studio) || outcome.type === 'message_draft') {
+      const draftReferences = await this.skillDraftReferences(references, params, user);
+      if (draftReferences.length) extras.draftReferences = draftReferences;
     }
     await this.conversationManager.addAssistantMessage(conversationId, markdown, undefined, {
       skill: base.skill,
       ...extras,
     });
+    await this.keepGeneratedDocument(conversationId, outcome, label, references);
     sendEvent('result', { ...base, analysis: markdown, ...extras });
+  }
+
+  /**
+   * Document rédigé par la compétence (courrier, document, e-mail, WhatsApp,
+   * traduction…), gardé avec sa réponse : les questions suivantes le relisent
+   * comme une pièce jointe (« raccourcis le courrier », « traduis-le »).
+   */
+  private async keepGeneratedDocument(
+    conversationId: string,
+    outcome: AiSkillOutcome,
+    label: string,
+    references: ReferencedEntityContext[],
+  ): Promise<void> {
+    const messageId = this.conversationManager.savedAssistantMessageId?.();
+    if (!messageId || typeof this.conversationManager.saveGeneratedDocument !== 'function') return;
+    const document = generatedDocumentOf(outcome, label, references);
+    if (document) await this.conversationManager.saveGeneratedDocument(conversationId, messageId, document);
+  }
+
+  /** Références de la fiche visée par un brouillon (cible du bouton de suite, sinon les mentions). */
+  private async skillDraftReferences(
+    references: ReferencedEntityContext[],
+    params: Record<string, any>,
+    user: AiUserContext | string,
+  ) {
+    const target = params?.target && typeof params.target === 'object' ? params.target : null;
+    const scope = target ? [{ type: String(target.type), id: target.id, label: String(target.label ?? '') }, ...references] : references;
+    if (typeof this.skills?.draftReferences !== 'function') return [];
+    return this.skills.draftReferences(scope, user).catch(() => []);
   }
 
   /** Nature d'une partie de demande composée (null : inconnue, pas de découpage). */
@@ -7243,7 +7521,7 @@ RÉPONSE :`;
             merged.rowCount = result.rowCount ?? result.results.length;
           }
           if (Array.isArray(result.resultSets)) merged.resultSets = [...(merged.resultSets ?? []), ...result.resultSets];
-          for (const key of ['skillFollowUps', 'skillDownload', 'documentDraft', 'messageDraft', 'skillPending', 'skill', 'fileInfo']) {
+          for (const key of ['skillFollowUps', 'skillDownload', 'documentDraft', 'messageDraft', 'skillPending', 'skill', 'skillRun', 'fileInfo', 'chart']) {
             if (result[key]) merged[key] = result[key];
           }
         }
@@ -7308,9 +7586,12 @@ RÉPONSE :`;
     code: string,
     referenced: ReferencedEntityContext[],
     history: VisibleHistoryMessage[],
+    question = '',
   ): ReferencedEntityContext[] {
     const targets = (this.skills?.targets(code) ?? []) as any[];
     if (!targets.length || findTarget(referenced, targets)) return referenced;
+    // « … du cabinet » : pas de fiche reprise de l'historique.
+    if (!this.skills?.targetRequired?.(code) && wantsWholeCabinet(question)) return referenced;
     const last = [...history].reverse().find((message) => message.refs?.length);
     if (!last?.refs || last.refs.length > 3) return referenced;
     const fromHistory = last.refs

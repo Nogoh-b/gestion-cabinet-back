@@ -22,6 +22,8 @@ import {
   TenantContext,
 } from 'src/core/tenant/tenant.context';
 import { signUploadUrl } from 'src/core/security/uploads-access';
+import { promises as fsPromises } from 'fs';
+import * as nodePath from 'path';
 
 @Injectable()
 export class MailService {
@@ -247,8 +249,16 @@ export class MailService {
           content,
           contentType: doc.contentType,
         });
+      } else if (doc.path) {
+        // Pièce de la GED : lue sur le disque à l'envoi (rien en base64 dans la ligne).
+        attachments.push({
+          filename: doc.filename,
+          content: await readUploadedFile(doc.path, doc.filename),
+          contentType: doc.contentType,
+        });
+      } else if (doc.unreadable) {
+        throw new Error("Pièces jointes illisibles : renvoyez l'e-mail avec ses pièces.");
       }
-      // sinon, lire depuis le disque local
     }
     return attachments;
   }
@@ -513,5 +523,19 @@ export class MailService {
    */
   async findOne(id: string): Promise<Mail | null> {
     return this.mailRepository.findOne({ where: { id } });
+  }
+}
+
+/** Lit un fichier de `uploads/` (jamais en dehors : le chemin peut venir d'une requête). */
+async function readUploadedFile(filePath: string, name: string): Promise<Buffer> {
+  const root = nodePath.resolve(process.cwd(), 'uploads');
+  const resolved = nodePath.resolve(process.cwd(), filePath);
+  if (resolved !== root && !resolved.startsWith(root + nodePath.sep)) {
+    throw new Error(`Pièce jointe « ${name} » refusée.`);
+  }
+  try {
+    return await fsPromises.readFile(resolved);
+  } catch {
+    throw new Error(`Pièce jointe « ${name} » introuvable.`);
   }
 }

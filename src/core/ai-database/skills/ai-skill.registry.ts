@@ -1,11 +1,14 @@
 // src/core/ai-database/skills/ai-skill.registry.ts
 import { Injectable, Logger } from '@nestjs/common';
 
-import { AiSkillHandler } from './ai-skill.types';
+import { AiSkillHandler, DraftReference } from './ai-skill.types';
 import type { ReferencedEntityContext } from '../dto/ask-question.dto';
 
 /** Faits d'un enregistrement mentionné (dossier, client…), lus avec les droits de `user`. */
 export type RecordFactsProvider = (references: ReferencedEntityContext[], user: any) => Promise<string>;
+
+/** Éléments insérables dans un brouillon (n° de dossier, adresse du client…). */
+export type DraftReferencesProvider = (references: ReferencedEntityContext[], user: any) => Promise<DraftReference[]>;
 
 /**
  * Compétences du chat, enregistrées par les modules métier dans leur
@@ -43,5 +46,17 @@ export class AiSkillRegistry {
   async recordFacts(references: ReferencedEntityContext[], user: any): Promise<string> {
     if (!this.factsProvider || !references.length) return '';
     return this.factsProvider(references, user).catch(() => '');
+  }
+
+  /** Références de la fiche visée par un brouillon, fournies par le module des compétences. */
+  private referencesProvider?: DraftReferencesProvider;
+
+  registerReferencesProvider(provider: DraftReferencesProvider): void {
+    this.referencesProvider = provider;
+  }
+
+  async draftReferences(references: ReferencedEntityContext[], user: any): Promise<DraftReference[]> {
+    if (!this.referencesProvider || !references.length) return [];
+    return this.referencesProvider(references, user).catch(() => []);
   }
 }

@@ -1,6 +1,7 @@
 // src/core/ai-database/skills/ai-skill.types.ts
 import type { ReferencedEntityContext } from '../dto/ask-question.dto';
 import type { WritePlan } from '../dto/analysis-response.dto';
+import type { ChartSpec } from '../chart-spec';
 
 /**
  * Compétence du chat (« # » dans la saisie) : une action spécialisée choisie
@@ -10,7 +11,7 @@ import type { WritePlan } from '../dto/analysis-response.dto';
  * part sans clic de l'utilisateur.
  */
 
-export type AiSkillCategory = 'communication' | 'documents' | 'analyse' | 'actes' | 'rapports' | 'agenda';
+export type AiSkillCategory = 'communication' | 'documents' | 'analyse' | 'actes' | 'facturation' | 'rapports' | 'agenda';
 
 /** Ordre des familles dans le menu « Compétences ». */
 export const AI_SKILL_CATEGORIES: Array<{ code: AiSkillCategory; label: string }> = [
@@ -18,6 +19,7 @@ export const AI_SKILL_CATEGORIES: Array<{ code: AiSkillCategory; label: string }
   { code: 'documents', label: 'Documents' },
   { code: 'analyse', label: 'Analyse juridique' },
   { code: 'actes', label: 'Calculs & actes' },
+  { code: 'facturation', label: 'Facturation' },
   { code: 'rapports', label: 'Rapports & exports' },
   { code: 'agenda', label: 'Agenda & tâches' },
 ];
@@ -171,7 +173,22 @@ export interface MessageDraft {
   customerId?: number;
   recipientName: string;
   phone: string;
+  /** Numéros connus du destinataire (le premier est pris par défaut). */
+  phones?: Array<{ label: string; value: string }>;
   text: string;
+  references?: DraftReference[];
+}
+
+/**
+ * Élément de la fiche visée, insérable dans un brouillon (menu « Insérer une
+ * référence » des éditeurs du chat) : n° de dossier, juridiction, adresse du
+ * client, prochaine audience, facture due… avec son lien dans l'application.
+ */
+export interface DraftReference {
+  group: string;
+  label: string;
+  value: string;
+  href?: string;
 }
 
 /** Bouton de téléchargement d'un export existant (appelé avec le jeton). */
@@ -187,7 +204,7 @@ export type AiSkillOutcome =
    * Plan à confirmer (carte « Confirmation requise » existante), précédé
    * éventuellement d'une analyse en markdown (jugement lu, délais calculés…).
    */
-  | { type: 'plan'; plan: WritePlan; markdown?: string }
+  | { type: 'plan'; plan: WritePlan; markdown?: string; followUps?: AiSkillFollowUp[] }
   /**
    * Écriture guidée : le planificateur prépare le plan sur ces seules tables
    * (création d'audience, de diligence…), puis la carte de confirmation.
@@ -195,11 +212,14 @@ export type AiSkillOutcome =
    */
   | { type: 'write'; tables: string[]; instruction?: string }
   /** Réponse en markdown, avec des suites éventuelles. */
-  | { type: 'answer'; markdown: string; followUps?: AiSkillFollowUp[]; download?: AiSkillDownload; streamed?: boolean }
+  | { type: 'answer'; markdown: string; followUps?: AiSkillFollowUp[]; download?: AiSkillDownload; streamed?: boolean; chart?: ChartSpec }
   | { type: 'document_draft'; markdown: string; draft: DocumentDraft; followUps?: AiSkillFollowUp[] }
-  | { type: 'message_draft'; markdown: string; draft: MessageDraft }
+  | { type: 'message_draft'; markdown: string; draft: MessageDraft; followUps?: AiSkillFollowUp[] }
   /** Il manque une information (cible…) : on la demande. */
   | { type: 'clarify'; markdown: string };
+
+/** Graphique affiché sous la réponse (voir chart-spec). */
+export type { ChartSpec };
 
 /** Appels au modèle de la requête (suivi de consommation compris). */
 export interface AiSkillLlm {
@@ -222,7 +242,7 @@ export interface AiSkillContext {
   /** Passage cité par l'utilisateur. */
   quote?: string | null;
   /** Texte lu des pièces jointes (et documents repris). */
-  documents: Array<{ name: string; content: string }>;
+  documents: Array<{ name: string; content: string; /** Mise en forme d'origine (Word joint). */ html?: string }>;
   /** Préremplissage transmis par un bouton de suite. */
   params: Record<string, any>;
   user: any;

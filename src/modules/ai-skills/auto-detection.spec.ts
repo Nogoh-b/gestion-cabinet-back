@@ -5,6 +5,7 @@ import type { AiSkillCatalogItem, AiSkillHandler } from 'src/core/ai-database/sk
 import { detectSkillRequest, suggestSkills } from 'src/core/ai-database/skills/skill-suggestions';
 import { planAnswer, splitRequests } from 'src/core/ai-database/answer-plan';
 import * as agenda from './agenda.skills';
+import * as billing from './billing.skills';
 import * as analysis from './analysis.skills';
 import * as communication from './communication.skills';
 import * as documents from './document.skills';
@@ -15,7 +16,7 @@ import * as reports from './report.skills';
 /** Catalogue complet, comme `AiSkillService.catalog` pour un administrateur. */
 function fullCatalog(): AiSkillCatalogItem[] {
   const handlers: AiSkillHandler[] = [];
-  for (const exported of [agenda, analysis, communication, documents, studio, legal, reports]) {
+  for (const exported of [agenda, analysis, billing, communication, documents, studio, legal, reports]) {
     for (const value of Object.values(exported)) {
       if (typeof value !== 'function' || !/Skill$/.test(value.name) || typeof value.prototype?.run !== 'function') continue;
       handlers.push(new (value as any)());
@@ -42,8 +43,8 @@ const catalog = fullCatalog();
 const detect = (question: string) => detectSkillRequest(question, catalog);
 
 describe('compétences reconnues en mode auto', () => {
-  it('charge les 34 compétences', () => {
-    expect(catalog).toHaveLength(34);
+  it('charge les 36 compétences', () => {
+    expect(catalog).toHaveLength(36);
   });
 
   it.each([
@@ -80,6 +81,17 @@ describe('compétences reconnues en mode auto', () => {
     ['transforme ce document en modèle', 'creer_modele'],
     ['rédige le contrat selon mon modèle pour ce dossier', 'document_modele'],
     ['génère le document à partir du modèle de bail', 'document_modele'],
+    // Retours du 21/10/2026 : demande de pièce au client, encaissement sur une facture.
+    ["demande au client de #DOS-2026-0037 — Jean DUPONT , de déposer sa pièce d'identité", 'message_portail'],
+    ["informe le client que l'audience est reportée au 12 novembre", 'message_portail'],
+    ['demande par mail au client de déposer ses pièces', 'envoyer_email'],
+    ["1000 FCFA reçus par virement aujourd'hui sur #FAC-2026-0040", 'enregistrer_paiement'],
+    ['le client a payé 250 000 F en espèces sur la facture FAC-2026-0012', 'enregistrer_paiement'],
+    ['acompte reçu par chèque sur la facture FAC-2026-0040', 'enregistrer_paiement'],
+    // Facturation du dossier (21/10/2026).
+    ['configure la facturation du dossier DOS-2026-0037 : forfait de 500 000 FCFA', 'configurer_facturation'],
+    ['propose les honoraires du dossier d’après ses pièces', 'configurer_facturation'],
+    ["fais le devis d'honoraires du dossier DOS-2026-0037", 'devis_honoraires'],
   ])('« %s » → %s', (question, code) => {
     const result = detect(question);
     expect(result.code).toBe(code);
@@ -98,9 +110,12 @@ describe('compétences reconnues en mode auto', () => {
     'mise en demeure pour M. Kamga',
     // Envoi de facture : parcours d'écriture existant.
     'envoie la facture FAC-2026-0012 par mail',
-    // Écritures guidées : jamais devinées.
+    // Écritures guidées : jamais devinées (sauf un encaissement chiffré, ci-dessus).
     'programme une audience pour le dossier DOS-2026-0038 le 12 novembre',
     'crée une diligence pour relancer le greffe',
+    'la facture FAC-2026-0040 de 500 000 FCFA a-t-elle été payée ?',
+    'combien a été payé sur la facture FAC-2026-0040 ?',
+    "qu'a demandé le client du dossier DOS-2026-0037 ?",
     // Questions d'usage sur les modèles.
     'comment créer un modèle ?',
     // Questions sur le compte.

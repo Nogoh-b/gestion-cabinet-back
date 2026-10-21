@@ -6,14 +6,14 @@ import {
   AiActionHandler,
   PreparedAiAction,
 } from 'src/core/ai-database/write/ai-action.registry';
-import { canonicalTargetType, recordId, richTextToHtml, richTextToPlain, SKILL_TARGET_TABLES, stripRichMarkup } from 'src/core/ai-database/skills/skill-helpers';
+import { canonicalTargetType, htmlToText, recordId, richTextToHtml, richTextToPlain, SKILL_TARGET_TABLES, stripRichMarkup } from 'src/core/ai-database/skills/skill-helpers';
+import { isRichHtml, sanitizeRichHtml } from 'src/core/shared/html/sanitize-rich-html';
 import type { AiSkillTargetType } from 'src/core/ai-database/skills/ai-skill.types';
 import { Permission } from 'src/core/enums/permission.enum';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { AudiencesService } from '../audiences/audiences.service';
 import { ChatService } from '../chat/services/chat/chat.service';
 import { ClientPortalService } from '../client-portal/client-portal.service';
-import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { MailTemplateService } from '../mail-template/mail-template.service';
 import { SkillTargetsService, TargetInfo } from './skill-targets.service';
 
@@ -58,6 +58,13 @@ function documentIds(value: unknown): number[] {
 const scheduleLabel = (date: Date) =>
   date.toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' });
 
+/** Nom de la pièce jointe : nom GED, complété de l'extension du fichier. */
+function attachmentName(doc: { id: number; name?: string | null; file_path?: string | null }): string {
+  const ext = /\.([a-z0-9]{1,8})$/i.exec(doc.file_path ?? '')?.[0] ?? '';
+  const name = String(doc.name ?? '').trim() || `document-${doc.id}`;
+  return ext && !name.toLowerCase().endsWith(ext.toLowerCase()) ? `${name}${ext}` : name;
+}
+
 /**
  * « Écris au client du dossier DOS-… pour lui confirmer l'audience » : même
  * envoi que le composer d'e-mail des fiches (aucune permission dédiée), habillé
@@ -88,7 +95,6 @@ export class EnvoyerEmailAiAction implements AiActionHandler {
     private readonly targets: SkillTargetsService,
     private readonly mails: MailService,
     private readonly mailTemplates: MailTemplateService,
-    private readonly documents: DocumentCustomerService,
   ) {}
 
   private async target(targetId: string | number, table?: string): Promise<TargetInfo> {
@@ -134,7 +140,10 @@ export class EnvoyerEmailAiAction implements AiActionHandler {
     const scheduled = parseSchedule(params.scheduledAt);
     const subject = stripRichMarkup(params.subject);
     const body = String(params.body ?? '').trim();
-    if (!subject || !body) throw new BadRequestException("L'objet et le message de l'e-mail sont requis.");
+    const rich = isRichHtml(body);
+    if (!subject || !body || (rich && !htmlToText(sanitizeRichHtml(body)).trim())) {
+      throw new BadRequestException("L'objet et le message de l'e-mail sont requis.");
+    }
 
     const ids = documentIds(params.attachments);
     const docs = await this.targets.documentsByIds(ids);
@@ -146,18 +155,23 @@ export class EnvoyerEmailAiAction implements AiActionHandler {
       data: info.resource,
       plannedMessage: `E-mail « ${subject} » à envoyer à ${to.join(', ')}.`,
       run: async () => {
-        // Lues à l'envoi seulement : rien n'est chargé si le plan est abandonné.
-        const attachments: Array<{ filename: string; content: string; contentType: string }> = [];
-        for (const doc of docs) {
-          const file = await this.documents.getBase64(doc.id);
-          attachments.push({ filename: file.fileName || doc.name || `document-${doc.id}`, content: file.base64, contentType: file.mimeType });
-        }
+        // Chemin du fichier seulement : le mail le lit à l'envoi. Le base64 de
+        // plusieurs pièces dépassait la colonne et cassait la relecture du mail.
+        const attachments = docs.map((doc) => {
+          if (!doc.file_path) throw new BadRequestException(`Le fichier de « ${doc.name || `Document #${doc.id}`} » est manquant.`);
+          return {
+            filename: attachmentName(doc),
+            path: doc.file_path,
+            ...(doc.file_mimetype && { contentType: doc.file_mimetype }),
+          };
+        });
         await this.mails.createAndSend({
           to,
           ...(cc.length && { cc }),
           subject,
-          html: await this.mailTemplates.wrapForCabinet(richTextToHtml(body)),
-          text: richTextToPlain(body),
+          // Texte mis en forme dans la carte (couleurs, titres…) : HTML assaini ; sinon balisage léger de l'IA.
+          html: await this.mailTemplates.wrapForCabinet(rich ? sanitizeRichHtml(body) : richTextToHtml(body)),
+          text: rich ? htmlToText(sanitizeRichHtml(body)) : richTextToPlain(body),
           ...(attachments.length && { attachments }),
           ...(scheduled && { scheduledAt: scheduled.toISOString() }),
           metadata: {

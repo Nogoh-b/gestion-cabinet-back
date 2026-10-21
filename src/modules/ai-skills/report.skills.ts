@@ -3,8 +3,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
-import type { AiSkillContext, AiSkillDefinition, AiSkillFollowUp, AiSkillHandler, AiSkillOutcome } from 'src/core/ai-database/skills/ai-skill.types';
-import { htmlToText, resolveSkillTarget } from 'src/core/ai-database/skills/skill-helpers';
+import type { AiSkillContext, AiSkillDefinition, AiSkillFollowUp, AiSkillHandler, AiSkillOutcome, ChartSpec } from 'src/core/ai-database/skills/ai-skill.types';
+import { htmlToText, resolveOptionalSkillTarget } from 'src/core/ai-database/skills/skill-helpers';
 import { normalizeActionName } from 'src/core/ai-database/write/ai-action.registry';
 import { Permission } from 'src/core/enums/permission.enum';
 import { Audience } from '../audiences/entities/audience.entity';
@@ -178,7 +178,8 @@ export class EtatImpayesSkill implements AiSkillHandler {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   async run(ctx: AiSkillContext): Promise<AiSkillOutcome> {
-    const target = resolveSkillTarget(ctx, this.definition.targets ?? []);
+    // « … du cabinet » sur une fiche dossier : tout le cabinet, pas la fiche ouverte.
+    const target = resolveOptionalSkillTarget(ctx, this.definition.targets ?? []);
     const unpaid = await unpaidInvoices(this.dataSource, {
       ...(target?.type === 'client' && { clientId: target.id }),
       ...(target?.type === 'dossier' && { dossierId: target.id }),
@@ -218,7 +219,20 @@ export class EtatImpayesSkill implements AiSkillHandler {
         params: { target: { type: 'dossier', id: dossier.id, label: dossier.label } },
         reference: { type: 'dossier', id: dossier.id, label: dossier.label, href: `/dossiers/${dossier.id}` },
       }));
-    return { type: 'answer', markdown: lines.join('\n'), followUps };
+    // Graphique : reste dû par dossier (les 10 plus endettés).
+    const chartRows = [...byDossier.values()].sort((x, y) => y.reste - x.reste).slice(0, 10);
+    const chart: ChartSpec | undefined = chartRows.length >= 2
+      ? {
+          type: 'bar',
+          title: 'Reste dû par dossier',
+          xKey: 'dossier',
+          xLabel: 'Dossier',
+          series: [{ key: 'reste', label: 'Reste dû' }],
+          data: chartRows.map((row) => ({ dossier: row.label, reste: Math.round(row.reste) })),
+          unit: 'FCFA',
+        }
+      : undefined;
+    return { type: 'answer', markdown: lines.join('\n'), followUps, ...(chart && { chart }) };
   }
 }
 

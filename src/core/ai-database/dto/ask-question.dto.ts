@@ -6,6 +6,7 @@ import {
   MinLength,
   MaxLength,
   IsIn,
+  Matches,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -178,6 +179,16 @@ export class AskQuestionDto {
   @ApiProperty({
     required: false,
     description:
+      "Id du message de la conversation d'où vient le passage (« Demander » sur une réponse) : " +
+      'ses documents (pièces lues, document rédigé) sont relus avec la question.',
+  })
+  @IsOptional()
+  @Matches(/^\d{1,10}$/)
+  quoteMessageId?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
       'Texte déjà lu de pièces jointes précédentes (JSON : [{ name, type, content, carried }]). ' +
       '`carried` : repris automatiquement, utilisé seulement si la question porte sur un document.',
   })
@@ -195,6 +206,8 @@ export interface ReferencedEntityContext {
   href?: string;
   meta?: Record<string, any>;
   data?: Record<string, any> & { id?: string | number };
+  /** `page` : fiche ouverte (contexte implicite), sinon mention @ explicite. */
+  source?: 'page' | 'mention';
 }
 
 export interface VisibleHistoryMessage {
@@ -286,6 +299,7 @@ export function parseReferencedContext(
             ? it.href
             : undefined,
         meta: it.meta && typeof it.meta === 'object' ? it.meta : undefined,
+        ...(it.source === 'page' && { source: 'page' as const }),
         data:
           it.data && typeof it.data === 'object'
             ? {

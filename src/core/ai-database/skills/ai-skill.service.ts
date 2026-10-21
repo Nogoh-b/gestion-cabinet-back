@@ -74,6 +74,11 @@ export class AiSkillService {
     return this.registry.get(code)?.definition.targets ?? [];
   }
 
+  /** La compétence exige-t-elle une fiche (sinon : tout le cabinet sans mention) ? */
+  targetRequired(code: string): boolean {
+    return this.registry.get(code)?.definition.targetRequired === true;
+  }
+
   has(code: string): boolean {
     return !!this.registry.get(code);
   }
@@ -81,6 +86,11 @@ export class AiSkillService {
   /** Faits de la fiche mentionnée (dossier, client…), pour la conversation et le conseil. */
   recordFacts(references: any[], user: any): Promise<string> {
     return this.registry.recordFacts(references, user);
+  }
+
+  /** Éléments de la fiche visée, insérables dans les éditeurs des brouillons. */
+  draftReferences(references: any[], user: any) {
+    return this.registry.draftReferences(references, user);
   }
 
   private async isAllowed(user: any, handler: AiSkillHandler, plan: any): Promise<boolean> {
