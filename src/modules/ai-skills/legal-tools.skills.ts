@@ -32,7 +32,7 @@ import {
   strList,
   targetOrClarify,
 } from './skill-drafting';
-import { customerName, SkillTargetsService, TargetInfo } from './skill-targets.service';
+import { customerName, SkillTargetsService, TargetInfo, type UnpaidInvoice, unpaidInvoices } from './skill-targets.service';
 import { htmlHeading, htmlTable, htmlText, inlineDraft, markdownTable } from './skill-templates';
 import { htmlToMarkup, inlineMarkup } from './document-markup';
 
@@ -245,6 +245,17 @@ export class DecompteCreanceSkill implements AiSkillHandler {
     const info = target ? await this.targets.load(target) : null;
     const sender = await this.targets.sender(ctx.userId);
 
+    // Dossier ou client sans montant indiqué : une ligne par facture non soldée,
+    // chacune avec son échéance et ses paiements validés (brouillons, payées et
+    // annulées exclues). Un montant donné dans la demande garde le calcul unique.
+    if (info && (info.type === 'dossier' || info.type === 'client') && !STATED_AMOUNT.test(ctx.question)) {
+      const unpaid = await unpaidInvoices(
+        this.dataSource,
+        info.dossier ? { dossierId: info.dossier.id } : { clientId: info.client!.id },
+      ).catch(() => [] as UnpaidInvoice[]);
+      if (unpaid.length) return this.invoicesClaim(ctx, info, sender, unpaid, target);
+    }
+
     // Facture mentionnée : principal, échéance et paiements validés par défaut.
     let defaults = '';
     let factureNumber = '';
@@ -327,7 +338,94 @@ Réponds UNIQUEMENT en JSON :
       followUps,
     };
   }
+
+  /** Décompte des factures non soldées d'un dossier ou d'un client, facture par facture. */
+  private async invoicesClaim(
+    ctx: AiSkillContext,
+    info: TargetInfo,
+    sender: Awaited<ReturnType<SkillTargetsService['sender']>>,
+    unpaid: UnpaidInvoice[],
+    target: ReturnType<typeof resolveSkillTarget>,
+  ): Promise<AiSkillOutcome> {
+    ctx.status(`🧮 Calcul du décompte de ${unpaid.length} facture(s)…`);
+    const draft = await draftJson<Pick<ClaimDraft, 'taux' | 'date_arret' | 'base' | 'frais'>>(ctx, `Extrais les paramètres d'un décompte de créance. N'invente rien : taux absent → 0.
+Date du jour : ${isoDate(new Date())}
+${requestBlock(ctx)}
+
+Réponds UNIQUEMENT en JSON :
+{"taux": nombre (taux annuel en %, 0 si non indiqué), "date_arret": "AAAA-MM-JJ (aujourd'hui si non précisé)", "base": 365, "frais": [{"libelle": "", "montant": nombre}]}`, 600);
+
+    const rate = Math.max(0, parseAmount(draft.taux) || 0);
+    const to = parseIsoDate(draft.date_arret) ?? new Date();
+    const basis = Number(draft.base) === 360 ? 360 : 365;
+    const fees = (draft.frais ?? [])
+      .map((fee) => ({ label: str(fee.libelle, 120) || 'Frais', amount: parseAmount(fee.montant) }))
+      .filter((fee) => fee.amount > 0);
+    const rows = unpaid.map(({ facture }) => {
+      const principal = Number(facture.montantTTC ?? 0);
+      const from = new Date(facture.dateEcheance ?? facture.dateFacture);
+      const payments = (facture.paiements ?? []).map((p) => ({ date: new Date(p.datePaiement), amount: Number(p.montant ?? 0) }));
+      // Pas de frais par facture : ils s'ajoutent une fois, au total.
+      const result = computeClaim({ principal, rate, from, to, basis, payments });
+      return { facture, principal, from, result };
+    });
+    const sum = (pick: (row: (typeof rows)[number]) => number) => rows.reduce((total, row) => total + pick(row), 0);
+    const principalTotal = sum((row) => row.principal);
+    const interestTotal = sum((row) => row.result.interestTotal);
+    const paymentsTotal = sum((row) => row.result.paymentsTotal);
+    const feesTotal = fees.reduce((total, fee) => total + fee.amount, 0);
+    const total = sum((row) => row.result.total) + feesTotal;
+
+    const headers = ['Facture', 'Principal TTC', 'Intérêts depuis', 'Intérêts', 'Acomptes', 'Dû'];
+    const lines = rows.map((row) => [
+      row.facture.numero,
+      fcfa(row.principal),
+      row.from > to ? `${frDate(row.from)} (non échue)` : frDate(row.from),
+      rate ? fcfa(row.result.interestTotal) : '—',
+      row.result.paymentsTotal ? `− ${fcfa(row.result.paymentsTotal)}` : '—',
+      fcfa(row.result.total),
+    ]);
+    const footer = [
+      ...fees.map((fee) => [fee.label, '', '', '', '', fcfa(fee.amount)]),
+      ['**Total dû**', `**${fcfa(principalTotal)}**`, '', rate ? `**${fcfa(interestTotal)}**` : '—', paymentsTotal ? `**− ${fcfa(paymentsTotal)}**` : '—', `**${fcfa(total)}**`],
+    ];
+    const basisNote = rate
+      ? `Intérêts simples au taux annuel de ${rate.toLocaleString('fr-FR')} %, base ${basis} jours, chaque facture à compter de son échéance ; les acomptes s'imputent d'abord sur les intérêts échus, puis sur le capital.`
+      : 'Sans taux indiqué, aucun intérêt n’est calculé : précisez le taux légal ou conventionnel applicable.';
+    const markdown = [
+      `**Décompte de créance — ${info.label}** (arrêté au ${frDate(to)}, ${rows.length} facture(s) non soldée(s) ; brouillons et factures annulées exclus)`,
+      '',
+      markdownTable(headers, [...lines, ...footer]),
+      '',
+      basisNote,
+    ].join('\n');
+    const plain = (value: string) => value.replace(/\*\*/g, '');
+    const bodyHtml = [
+      htmlTable(headers, [...lines, ...footer].map((line) => line.map(plain)), ['left', 'right', 'left', 'right', 'right', 'right']),
+      htmlText(basisNote),
+    ].join('');
+
+    const decompte = {
+      principal: principalTotal, rate, to: isoDate(to),
+      interets: interestTotal, frais: feesTotal, acomptes: paymentsTotal, total,
+      factures: rows.map((row) => ({ numero: row.facture.numero, principal: row.principal, depuis: isoDate(row.from), du: row.result.total })),
+    };
+    return {
+      type: 'document_draft',
+      markdown: `${markdown}\n\nLe décompte est prêt en PDF ci-dessous.`,
+      draft: inlineDraft({ layout: 'skill_note', name: 'Décompte de créance', title: 'Décompte de créance', info, sender, raw: { bodyContent: bodyHtml } }),
+      followUps: [{
+        label: 'Rédiger la requête en injonction de payer',
+        skill: 'injonction_payer',
+        question: `Rédige la requête en injonction de payer pour ${fcfa(total)} (décompte arrêté au ${frDate(to)}).`,
+        params: { decompte, ...(target && { target }) },
+      }],
+    };
+  }
 }
+
+/** Montant cité dans la demande (« 2 500 000 FCFA dus depuis… ») : calcul sur ce montant. */
+const STATED_AMOUNT = /\d[\d\s.,]*\s*(?:fcfa|f\s*cfa|xaf|francs?|€|eur(?:os?)?)\b/i;
 
 // ── Requête en injonction de payer (OHADA) ──────────────────────────────────
 

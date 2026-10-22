@@ -9,6 +9,7 @@ import { IamModule } from '../iam/iam.module';
 import { DocumentCustomerController } from './document-customer/document-customer.controller';
 import { DocumentCustomerService } from './document-customer/document-customer.service';
 import { DocumentCustomer } from './document-customer/entities/document-customer.entity';
+import { DocumentCustomerVersion } from './document-customer/entities/document-customer-version.entity';
 import { DocumentTypeController } from './document-type/document-type.controller';
 import { DocumentTypeService } from './document-type/document-type.service';
 import { DocumentType } from './document-type/entities/document-type.entity';
@@ -20,7 +21,7 @@ import { PlansModule } from '../plans/plans.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([DocumentType, DocumentCustomer]),
+    TypeOrmModule.forFeature([DocumentType, DocumentCustomer, DocumentCustomerVersion]),
     DocumentCategoryModule,
     forwardRef(() => CustomerModule),
     forwardRef(() => DossiersModule),

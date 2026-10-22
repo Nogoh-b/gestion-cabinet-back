@@ -1,27 +1,32 @@
 ---
 id: competences-documents
-title: Compétences « Documents » (rédiger un acte ou un contrat en Word / PDF, modèles, courrier, mise en demeure, traduction, bilingue, anonymisation)
-keywords: rediger un document, rediger un acte, rediger un contrat, generer un document word, document word, docx, studio de documents, editeur du document, modifier le document avec l ia, lire les pieces du dossier, creer un modele, transformer en modele, enregistrer comme modele, competence courrier, rediger un courrier depuis le chat, lettre depuis le chat, competence mise en demeure, rediger une mise en demeure, document depuis un modele, attestation depuis le chat, avis d'audience depuis le chat, generer un pdf depuis le chat, classer dans le dossier, apercu pdf chat, traduire un document, traduction juridique, traduire en anglais, version bilingue, document bilingue, deux colonnes francais anglais, anonymiser un document, anonymisation, pseudonymiser, table de correspondance
+title: Compétences « Documents » (créer ou modifier un document Word / PDF, versions, modèles, courrier, mise en demeure, traduction, bilingue, anonymisation)
+keywords: creer un document, modifier un document, rediger un document, rediger un acte, rediger un contrat, generer un document word, document word, docx, studio de documents, editeur du document, modifier le document avec l ia, modifier un word, modifier un pdf, nouvelle version, version du document, versionner, historique des versions, restaurer une version, lire les pieces du dossier, creer un modele, transformer en modele, enregistrer comme modele, rediger un courrier depuis le chat, lettre depuis le chat, rediger une mise en demeure, document depuis un modele, attestation depuis le chat, avis d'audience depuis le chat, generer un pdf depuis le chat, classer dans le dossier, apercu pdf chat, traduire un document, traduction juridique, traduire en anglais, version bilingue, document bilingue, deux colonnes francais anglais, anonymiser un document, anonymisation, pseudonymiser, table de correspondance
 paths: /chat
 ---
 
 # Compétences « Documents »
 
-## Rédiger un document (Word / PDF)
-- Décrivez le document voulu : acte, contrat, requête, assignation, protocole, procès-verbal, note… (« Rédige un contrat de bail commercial pour @dossier »). Mentionnez le dossier ou le client avec **@** (ou ouvrez sa fiche) et joignez au besoin d'autres pièces.
-- L'IA **lit les pièces du dossier** (jusqu'à 12, les plus proches de la demande ; jamais les pièces confidentielles, et seulement avec le droit « voir les documents ») et **les fichiers joints au chat**, puis rédige le document complet. Le texte s'écrit en direct dans la bulle, puis la carte du document s'affiche.
-- Une information absente des pièces est laissée en blanc « ……… » et listée dans **Points à vérifier**. Les pièces lues sont rappelées sous l'aperçu.
-- Si la demande nomme un de vos modèles (« selon notre modèle de bail »), l'IA suit sa structure et ses clauses.
+## Créer / modifier un document (Word / PDF)
+Une seule compétence (**#** › Documents) pour tous les documents : elle a remplacé « Rédiger un document », « Document depuis un modèle », « Créer un modèle », « Courrier » et « Mise en demeure ».
+- **Dites quel document** (« contrat de bail commercial pour @dossier », « courrier au client pour le renvoi », « mise en demeure de payer », « attestation de suivi pour @client »). Sans précision, la compétence demande « Quel document ? » et propose vos modèles adaptés à la fiche, ainsi que les derniers Word / PDF du dossier à modifier.
+- **Recherche dans vos modèles** (Modèles de documents) : le modèle qui porte ce nom est rempli — les champs de la fiche et du cabinet se remplissent seuls, les autres (montants, dates, clauses, corps du texte) par l'IA d'après les pièces du dossier, les fichiers joints et la demande. Si **plusieurs modèles** conviennent autant, ils sont proposés en boutons avec **Rédiger sans modèle**. Un modèle sans aucun champ sert de trame : l'IA rédige en suivant sa structure.
+- **Aucun modèle ne correspond** : l'IA rédige le document complet. Elle **lit les pièces du dossier** (jusqu'à 12, les plus proches de la demande ; jamais les pièces confidentielles, et seulement avec le droit « voir les documents ») et **les fichiers joints au chat**. Une information absente est laissée en blanc « ……… » et listée dans **Points à vérifier**. La carte propose ensuite de l'**enregistrer comme modèle**.
+- **Courrier et mise en demeure** : ce sont les modèles **Général — Courrier type** et **Général — Mise en demeure**. En-tête, date, « Objet : », formule de politesse (ou clause de régularisation sous huitaine et mention « Lettre recommandée avec accusé de réception ») et signature sont déjà imprimés ; l'IA rédige destinataire, objet et corps. Destinataire par défaut : le client pour un courrier, la **partie adverse** pour une mise en demeure.
+- **Créer un modèle** : « crée un modèle de contrat de prestation », « transforme ce document en modèle » (droit « Créer un modèle PDF »). L'IA choisit le type de fiche (dossier, client, audience, facture, diligence ou général) ; les autres informations deviennent des champs nommés (`{{montant_loyer}}`). **Enregistrer dans mes modèles** l'ajoute aux Modèles de documents.
+
+## Modifier un document déjà classé (nouvelle version)
+- Mentionnez le document avec **@** (« modifie @document : ajoute une clause de confidentialité »), nommez-le (« modifie le contrat de prestation du dossier : durée de 24 mois »), ou ouvrez-le depuis sa fiche avec **Modifier avec l'IA**. Seuls les **Word (.docx)** et les **PDF** se modifient pour l'instant.
+- L'IA applique la modification demandée et garde le reste mot pour mot. Un Word garde sa mise en forme ; un PDF n'est lu que par son texte : sa mise en page est reconstruite (à vérifier).
+- **Classer** enregistre la modification comme **version suivante du même document** (même fiche, même catégorie) : l'ancien fichier est conservé dans l'historique, rien n'est écrasé ni dupliqué. Le Word reste Word et le PDF reste PDF, sauf autre choix.
+- Il faut les droits « voir les documents » et « modifier un document ». Un document **confidentiel** n'est jamais transmis à l'IA.
+- Remplacer le fichier depuis la fiche du document crée aussi une nouvelle version. L'onglet **Versions** de la fiche liste chaque version (auteur, date, origine : fichier déposé, modifié avec l'IA, restauration) ; **Ouvrir** l'affiche dans le lecteur sécurisé, **Restaurer** en refait la version courante (en version suivante).
 
 ## La carte « studio » (documents rédigés, modèles)
 - **Aperçu** de la page A4 avec l'en-tête et le pied de page du cabinet ; cliquez dessus (ou ⤢) pour ouvrir l'**éditeur plein écran** : texte modifiable (gras, titres, listes, tableaux, alignement), aperçu en direct, titre encadré, en-tête, pied de page, police et orientation.
 - **Demander une modification à l'IA** : « ajoute une clause de confidentialité », « raccourcis l'exposé des faits »… L'IA renvoie le document complet modifié, le reste à l'identique.
-- **Word** (.docx, modifiable dans Word) et **PDF** : téléchargement. **Classer** : ajoute le document au dossier, au format choisi (Word ou PDF) ; ensuite **Envoyer par e-mail**.
-- **Enregistrer ce document comme modèle réutilisable** : lance « Créer un modèle de document » à partir du texte.
-
-## Créer un modèle de document
-- Décrivez le modèle (« crée un modèle de contrat de prestation ») ou joignez un document existant (« transforme ce document en modèle »). L'IA choisit le type de fiche (dossier, client, audience, facture, diligence ou général) : les champs de la fiche se rempliront seuls ; les autres informations deviennent des champs nommés (`{{montant_loyer}}`).
-- La carte surligne les champs. **Enregistrer dans mes modèles** (droit « Créer un modèle PDF ») l'ajoute aux Modèles PDF ; **Utiliser ce modèle** génère aussitôt un document.
+- **Word** (.docx, modifiable dans Word) et **PDF** : téléchargement. **Classer** : choisissez le format et la catégorie ; un document repris (ou déjà classé depuis la carte) devient sa version suivante ; si un document du même nom existe dans le dossier, la carte demande « Nouvelle version » ou « Nouveau document ». Ensuite **Envoyer par e-mail**.
+- **Enregistrer ce document comme modèle réutilisable**, proposé surtout après une rédaction sans modèle.
 
 ## La carte Document (commune)
 Les compétences qui produisent un document affichent une carte : **Nom du document** et les champs à relire (destinataire, objet, corps…), puis :
@@ -29,22 +34,7 @@ Les compétences qui produisent un document affichent une carte : **Nom du docum
 - **Télécharger** : le PDF est enregistré sur votre poste ;
 - **Classer dans le dossier** (si un dossier est visé) : le PDF est ajouté à la GED du dossier ;
 - après classement, **Envoyer par e-mail** lance la compétence Envoyer un e-mail avec ce PDF en pièce jointe.
-Le PDF reprend l'en-tête et le pied de page du cabinet. Les courriers utilisent les **modèles PDF** du cabinet (Plus › Configuration › Modèles) ; les autres documents (conclusions, notes, décomptes…) ont une mise en page intégrée, remplacée par un modèle du cabinet de même code s'il en crée un.
-
-## Courrier
-- Mentionnez si possible un dossier, un client, une audience ou une facture (facultatif). L'IA rédige destinataire, adresse, objet et corps ; le modèle **Général — Courrier type** ajoute en-tête, date, formule de politesse et signature (vous, avec votre fonction et le cabinet).
-- Champs : Destinataire, Adresse du destinataire, Objet, Corps du courrier, Signataire, Qualité du signataire.
-- **Corps mis en forme** : le corps s'édite dans un éditeur riche — titres, **gras**, *italique*, souligné, **couleur**, **surlignage**, listes à tirets ou numérotées, citation, alignement, trait de séparation, **Insérer une référence** (n° de dossier, juridiction, adresse du client…). La mise en forme est reprise dans le PDF et le Word. L'IA rédige déjà le corps avec du gras et des listes quand c'est utile.
-
-## Mise en demeure
-- Même fonctionnement avec le modèle **Général — Mise en demeure** (mention « Lettre recommandée avec accusé de réception » et clause de régularisation sous huitaine déjà imprimées).
-- Destinataire par défaut : la **partie adverse** du dossier (le débiteur). L'IA rappelle les faits, l'obligation, les montants fournis et le délai.
-
-## Document depuis un modèle
-- Nommez le modèle (« attestation de suivi », « contrat de bail selon mon modèle ») et mentionnez la fiche avec **@**. Sans modèle reconnu, la compétence propose vos modèles en boutons. Depuis la page Modèles PDF, **Générer un document avec l'IA** ouvre le chat sur le modèle choisi.
-- Les champs de la fiche (client, numéro de dossier…) et du cabinet se remplissent seuls ; les autres champs (montants, dates, clauses, corps du texte) sont remplis par l'IA d'après les pièces du dossier, les fichiers joints et la demande. Un champ introuvable reste vide et apparaît dans les points à vérifier.
-- Le texte du modèle n'est pas réécrit. Un modèle sans aucun champ (texte type à blancs) est complété par l'IA en suivant sa structure.
-- Le document s'ouvre dans la carte « studio » : aperçu, éditeur, Word, PDF, classement.
+Le PDF reprend l’en-tête et le pied de page du cabinet. Les courriers utilisent les **Modèles de documents** du cabinet (Plus › Configuration › Modèles) ; les autres documents (conclusions, notes, décomptes…) ont une mise en page intégrée, remplacée par un modèle du cabinet de même code s’il en crée un.
 
 ## Traduire (français ↔ anglais)
 - Source : le passage cité, la pièce jointe (ou **@** document), le texte collé après « : », sinon la dernière réponse du chat. Langue d'arrivée : celle demandée (« en anglais », « into French »), sinon l'autre langue.

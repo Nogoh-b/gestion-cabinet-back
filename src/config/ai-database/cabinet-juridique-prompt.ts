@@ -52,6 +52,11 @@ export const CABINET_JURIDIQUE_READ_RULES = `
   HAVING reste_a_payer > 0
   ORDER BY f.date_echeance LIMIT 50
 
+### Liste ou total des factures (d'un dossier, d'un client)
+- "liste les factures", "factures du dossier", "combien a-t-on facture" : garder TOUTES les factures (annulees comprises, pour les signaler), avec numero, date_facture, date_echeance, montant_ttc, montant paye (paiements p.status = '1'), reste a payer et le statut lisible (CASE ci-dessus) AS statut.
+- Dans la reponse : une facture annulee (status '5') est citee avec la mention « annulee » et sort de TOUS les totaux ; les brouillons (status '0') comptent dans le total facture mais sont signales (« dont X en brouillon ») ; l'encaisse = somme des paiements valides (acomptes compris), jamais le TTC des seules factures payees.
+- Avoir (f.type = '4') : montant TTC negatif, vient en deduction du total.
+
 ### Chiffre d'affaires par client
 - Si l'utilisateur demande le chiffre d'affaires d'un client, joindre customer c ON f.client_id = c.id et filtrer le client par ses champs reels.
 - Sans client explicitement demande, ne reprends pas automatiquement le client du fil pour une question "mon chiffre d'affaires".

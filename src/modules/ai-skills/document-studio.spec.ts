@@ -9,8 +9,6 @@ import {
   templateVariableNames,
 } from './document-markup';
 import {
-  CreerModeleSkill,
-  DocumentModeleSkill,
   excerpt,
   isRecordVariable,
   namedTemplate,
@@ -218,16 +216,36 @@ PIECES: 1`;
     expect(draft.studio!.checks!.some((item) => item.includes('voir les documents'))).toBe(true);
   });
 
-  it('suit le modèle du cabinet nommé dans la demande', async () => {
+  it('trouve le modèle du cabinet par son nom et le remplit avec la fiche', async () => {
     const templates = templatesMock([
       { id: 40, code: 'ia_bail', name: 'Contrat de bail commercial', title: 'BAIL', entity_type: 'dossier', body_html: '<p>Bail de {{client.full_name}}</p>', orientation: 'portrait', paper_size: 'a4', font_family: null, header_block_id: 3, footer_block_id: null, is_active: true },
       { id: 41, code: 'ia_vente', name: 'Contrat de vente', title: 'VENTE', entity_type: 'general', body_html: '<p>Vente</p>', is_active: true },
     ]);
     const context = ctx({ question: 'Rédige le bail commercial selon notre modèle' });
+    const draft = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templates as any).run(context));
+    // Seul un champ de la fiche : rempli sans l'IA.
+    expect(context.llm.draft).not.toHaveBeenCalled();
+    expect(draft.studio).toMatchObject({ basedOn: { id: 40, name: 'Contrat de bail commercial' }, layout: { templateId: 40, header_block_id: 3 } });
+    expect(draft.studio!.suggestTemplate).toBeUndefined();
+  });
+
+  it('suit un modèle sans champ comme trame de rédaction', async () => {
+    const templates = templatesMock([
+      { id: 42, code: 'ia_protocole', name: 'Protocole transactionnel', title: 'PROTOCOLE', entity_type: 'general', body_html: '<p>Entre les soussignés ……… </p>', orientation: 'portrait', paper_size: 'a4', is_active: true },
+    ]);
+    const context = ctx({ question: 'Rédige le protocole transactionnel du dossier' });
     (context.llm.draft as jest.Mock).mockResolvedValue(answer);
     const draft = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templates as any).run(context));
-    expect((context.llm.draft as jest.Mock).mock.calls[0][0]).toContain('Bail de {{client.full_name}}');
-    expect(draft.studio).toMatchObject({ basedOn: { id: 40, name: 'Contrat de bail commercial' }, layout: { templateId: 40, header_block_id: 3 } });
+    expect((context.llm.draft as jest.Mock).mock.calls[0][0]).toContain('Entre les soussignés');
+    expect(draft.studio).toMatchObject({ basedOn: { id: 42 } });
+  });
+
+  it('sans modèle correspondant, rédige et propose de l’enregistrer comme modèle', async () => {
+    const context = ctx({ question: 'Rédige la reconnaissance de dette du dossier' });
+    (context.llm.draft as jest.Mock).mockResolvedValue(answer);
+    const outcome: any = await new RedigerDocumentSkill(targetsMock() as any, templatesMock([{ id: 41, code: 'ia_vente', name: 'Contrat de vente', title: 'VENTE', entity_type: 'general', body_html: '<p>{{prix}}</p>', is_active: true }]) as any).run(context);
+    expect(outcome.draft.studio).toMatchObject({ mode: 'document', suggestTemplate: true });
+    expect(outcome.markdown).toContain('enregistrer comme modèle');
   });
 
   it('applique une modification au document de la carte', async () => {
@@ -273,7 +291,7 @@ DESCRIPTION: Bail type pour les locaux commerciaux.
 VARIABLES:
 - preneur_nom : nom du preneur
 - montant_loyer : loyer mensuel`);
-    const draft = draftOf(await new CreerModeleSkill(targetsMock() as any).run(context));
+    const draft = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templatesMock() as any).run(context));
     expect((context.llm.draft as jest.Mock).mock.calls[0][0]).toContain('loyer 250 000 FCFA');
     expect(draft.studio).toMatchObject({
       mode: 'template',
@@ -314,7 +332,7 @@ describe('Document depuis un modèle', () => {
   it("ne demande à l'IA que les champs propres au modèle", async () => {
     const context = ctx({ question: 'Prépare le contrat de bail commercial', params: { templateId: 40 } });
     (context.llm.draft as jest.Mock).mockResolvedValue('{"preneur_nom": "Société X", "clauses_particulieres": "Clause 1\\n\\nClause 2"}');
-    const draft = draftOf(await new DocumentModeleSkill(targetsMock() as any, templatesMock([bail, attestation]) as any).run(context));
+    const draft = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templatesMock([bail, attestation]) as any).run(context));
     const prompt = (context.llm.draft as jest.Mock).mock.calls[0][0];
     expect(prompt).toContain('- preneur_nom (valeur courte)');
     expect(prompt).toContain('- clauses_particulieres (texte rédigé');
@@ -325,22 +343,39 @@ describe('Document depuis un modèle', () => {
     expect(draft.studio).toMatchObject({ title: 'CONTRAT DE BAIL', layout: { templateId: 40, font_family: 'inter', footer_block_id: 7 }, basedOn: { id: 40 } });
   });
 
-  it('propose les modèles en boutons quand la demande n’en nomme aucun', async () => {
+  it('demande quel document, avec les modèles de la fiche et les Word / PDF du dossier à modifier', async () => {
     const context = ctx({ question: 'Génère un document depuis un modèle' });
-    const outcome: any = await new DocumentModeleSkill(targetsMock() as any, templatesMock([bail, attestation]) as any).run(context);
+    const targets = targetsMock(info(), [
+      { id: 41, name: 'Contrat de prestation.docx', file_mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', is_confidential: false },
+      { id: 42, name: 'Photo.jpg', file_mimetype: 'image/jpeg', is_confidential: false },
+      { id: 43, name: 'Note.pdf', file_mimetype: 'application/pdf', is_confidential: true },
+    ]);
+    const outcome: any = await new RedigerDocumentSkill(targets as any, templatesMock([bail, attestation]) as any).run(context);
+    expect(outcome.type).toBe('clarify');
+    expect(outcome.markdown).toContain('Quel document');
+    // Modèles du dossier (et généraux) seulement ; puis le Word du dossier, à ouvrir.
+    expect(outcome.followUps[0].params).toMatchObject({ templateId: 40, target: { type: 'dossier', id: 91 } });
+    expect(outcome.followUps.map((item: any) => item.params.templateId)).not.toContain(2);
+    expect(outcome.followUps.at(-1)).toMatchObject({ label: '✏️ Modifier « Contrat de prestation »', params: { sourceDocumentId: 41, openOnly: true } });
+    expect(outcome.followUps).toHaveLength(2);
+  });
+
+  it('plusieurs modèles aussi proches : boutons, plus « Rédiger sans modèle »', async () => {
+    const autre = { ...bail, id: 44, code: 'ia_bail_habitation', name: 'Contrat de bail habitation' };
+    const context = ctx({ question: 'Prépare le contrat de bail' });
+    const outcome: any = await new RedigerDocumentSkill(targetsMock() as any, templatesMock([bail, autre]) as any).run(context);
     expect(outcome.type).toBe('answer');
-    expect(outcome.followUps.map((item: any) => item.params.templateId)).toEqual([40, 2]);
-    expect(outcome.followUps[0].params.target).toMatchObject({ type: 'dossier', id: 91 });
+    expect(outcome.followUps.map((item: any) => item.params.templateId ?? item.params.freeDraft)).toEqual([40, 44, true]);
   });
 
   it('remplit un modèle client avec le client du dossier, et demande la fiche sinon', async () => {
     const withDossier = ctx({ question: 'Attestation de suivi' });
-    const draft = draftOf(await new DocumentModeleSkill(targetsMock() as any, templatesMock([bail, attestation]) as any).run(withDossier));
+    const draft = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templatesMock([bail, attestation]) as any).run(withDossier));
     expect(draft).toMatchObject({ templateId: 2, entityType: 'client', entityId: 83 });
     expect(withDossier.llm.draft).not.toHaveBeenCalled();
 
     const alone = ctx({ question: 'Attestation de suivi', references: [] });
-    const outcome: any = await new DocumentModeleSkill(targetsMock() as any, templatesMock([bail, attestation]) as any).run(alone);
+    const outcome: any = await new RedigerDocumentSkill(targetsMock() as any, templatesMock([bail, attestation]) as any).run(alone);
     expect(outcome.type).toBe('clarify');
   });
 
@@ -362,5 +397,120 @@ describe('Document depuis un modèle', () => {
     expect(normalizeRecordVariables('{{client.full_name}}', 'general')).toBe('{{client.full_name}}');
     expect(withoutLeadingTitle('<h1 style="text-align:center;">Contrat de bail commercial</h1>\n<p>Texte</p>', 'CONTRAT DE BAIL COMMERCIAL')).toBe('<p>Texte</p>');
     expect(withoutLeadingTitle('<h1>Autre titre</h1><p>Texte</p>', 'CONTRAT')).toBe('<h1>Autre titre</h1><p>Texte</p>');
+  });
+});
+
+// 21/10/2026 : modifier un Word / PDF déjà classé ; « Classer » en fait la
+// version suivante du même document.
+describe('Modifier un document classé', () => {
+  const contract = {
+    id: 41,
+    name: 'Contrat de prestation.docx',
+    html: '<h1>CONTRAT DE PRESTATION</h1><p>Article 1 — Objet</p>',
+    text: 'CONTRAT DE PRESTATION\nArticle 1 — Objet',
+    format: 'docx' as const,
+    mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    version: 2,
+    dossierId: 91,
+    categoryId: 5,
+    confidential: false,
+  };
+  const mention = [{ type: 'document', label: 'Contrat de prestation', data: { id: 41 } }];
+
+  it('applique la consigne au document mentionné et garde sa source pour la nouvelle version', async () => {
+    const readDocumentForEdit = jest.fn(async () => contract);
+    const context = ctx({ question: 'Ajoute une clause de confidentialité', references: mention, readDocumentForEdit });
+    (context.llm.draft as jest.Mock).mockResolvedValue('# CONTRAT DE PRESTATION\n\nArticle 1 — Objet\n\n## Article 2 — Confidentialité\nLes parties…\n\n===NOTES===\nTITRE: Contrat');
+    const outcome: any = await new RedigerDocumentSkill(targetsMock() as any, templatesMock() as any).run(context);
+
+    expect(readDocumentForEdit).toHaveBeenCalledWith(41);
+    const prompt = (context.llm.draft as jest.Mock).mock.calls[0][0];
+    expect(prompt).toContain('# CONTRAT DE PRESTATION');
+    expect(prompt).toContain('Ajoute une clause de confidentialité');
+    const draft = draftOf(outcome);
+    expect(draft.studio).toMatchObject({ sourceDocument: { id: 41, version: 2, format: 'docx', categoryId: 5 } });
+    expect(draft.studio!.html).toContain('Confidentialité');
+    expect(draft.templateName).toBe('Contrat de prestation');
+    expect(outcome.markdown).toContain('version 3');
+  });
+
+  it('la modification suivante (carte) garde le document source', async () => {
+    const context = ctx({
+      question: 'Raccourcis l’article 2',
+      references: [],
+      params: { revise: { html: '<p>Texte</p>', mode: 'document', name: 'Contrat de prestation', sourceDocument: { id: 41, name: 'Contrat de prestation.docx', version: 2, format: 'docx', categoryId: 5 } } },
+    });
+    (context.llm.draft as jest.Mock).mockResolvedValue('Texte court\n\n===NOTES===\nTITRE: Contrat');
+    const draft = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templatesMock() as any).run(context));
+    expect(draft.studio!.sourceDocument).toMatchObject({ id: 41, version: 2 });
+  });
+
+  it('« Modifier « X » » sans consigne : ouvert tel quel, sans appel au modèle', async () => {
+    const context = ctx({ question: 'Modifier le document « Contrat de prestation »', params: { sourceDocumentId: 41, openOnly: true }, readDocumentForEdit: jest.fn(async () => contract) });
+    const outcome: any = await new RedigerDocumentSkill(targetsMock() as any, templatesMock() as any).run(context);
+    expect(context.llm.draft).not.toHaveBeenCalled();
+    expect(outcome.draft.studio).toMatchObject({ html: contract.html, sourceDocument: { id: 41 } });
+    expect(outcome.markdown).toContain('version 3');
+  });
+
+  it('retrouve dans le dossier la pièce nommée par la demande', async () => {
+    const readDocumentForEdit = jest.fn(async () => contract);
+    const targets = targetsMock(info(), [
+      { id: 41, name: 'Contrat de prestation.docx', file_mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+      { id: 50, name: 'Bail commercial.pdf', file_mimetype: 'application/pdf' },
+    ]);
+    const context = ctx({ question: 'Modifie le contrat de prestation : la durée passe à 24 mois', readDocumentForEdit });
+    (context.llm.draft as jest.Mock).mockResolvedValue('Texte\n\n===NOTES===\nTITRE: Contrat');
+    await new RedigerDocumentSkill(targets as any, templatesMock() as any).run(context);
+    expect(readDocumentForEdit).toHaveBeenCalledWith(41);
+  });
+
+  it('refuse un document confidentiel ou sans le droit de modifier', async () => {
+    const confidential = ctx({ question: 'Corrige ce document', references: mention, readDocumentForEdit: jest.fn(async () => ({ ...contract, confidential: true })) });
+    const outcome: any = await new RedigerDocumentSkill(targetsMock() as any, templatesMock() as any).run(confidential);
+    expect(outcome).toMatchObject({ type: 'clarify' });
+    expect(outcome.markdown).toContain('confidentiel');
+
+    const permissions = { missingPermissions: jest.fn(async () => ['edit_document']) };
+    const denied = ctx({ question: 'Corrige ce document', references: mention, readDocumentForEdit: jest.fn(async () => contract) });
+    const refusal: any = await new RedigerDocumentSkill(targetsMock() as any, templatesMock() as any, permissions as any).run(denied);
+    expect(refusal.markdown).toContain('modifier un document');
+  });
+
+  it('un PDF est repris par son texte, mise en page à vérifier', async () => {
+    const pdf = { ...contract, name: 'Bail.pdf', html: '', text: 'BAIL COMMERCIAL\n\nArticle 1', format: 'pdf' as const };
+    const context = ctx({ question: 'Modifie le bail : loyer de 300 000 FCFA', references: mention, readDocumentForEdit: jest.fn(async () => pdf) });
+    (context.llm.draft as jest.Mock).mockResolvedValue('# BAIL COMMERCIAL\n\nArticle 1\n\n===NOTES===\nTITRE: Bail');
+    const draft = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templatesMock() as any).run(context));
+    expect((context.llm.draft as jest.Mock).mock.calls[0][0]).toContain("vient d'un PDF");
+    expect(draft.studio!.checks).toContain('Document repris d’un PDF : vérifiez la mise en page reconstruite.');
+    expect(draft.studio!.sourceDocument).toMatchObject({ format: 'pdf' });
+  });
+});
+
+describe('Courrier et mise en demeure (modèles du cabinet)', () => {
+  const courrier = {
+    id: 292, code: 'general_courrier', name: 'Général — Courrier type', title: 'COURRIER', entity_type: 'general', variant: 'standard',
+    body_html: '<p>{{recipientName}}</p><p>{{recipientAddress}}</p><p>Objet : {{subject}}</p>{{bodyContent}}<p>{{signatoryName}}</p>',
+    orientation: 'portrait', paper_size: 'a4', is_active: true, is_system: true, tenant_id: 1,
+  };
+
+  it('ancien bouton « En faire un courrier » : le corps donné est repris, le destinataire par défaut est le client', async () => {
+    const context = ctx({ question: 'Mets cette traduction en forme de courrier.', params: { templateCode: 'general_courrier', bodyContent: 'Bonjour,\n\nVoici la traduction.', subject: 'Traduction' } });
+    (context.llm.draft as jest.Mock).mockResolvedValue('{"recipientAddress": ""}');
+    const draft = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templatesMock([courrier]) as any).run(context));
+    expect(draft.studio!.html).toContain('<p>Jean Dupont</p>');
+    expect(draft.studio!.html).toContain('Objet : Traduction');
+    expect(draft.studio!.html).toContain('Voici la traduction.');
+    expect(draft.studio).toMatchObject({ basedOn: { id: 292 } });
+  });
+
+  it('« rédige un courrier » : le modèle courrier est trouvé et ses règles de lettre sont données', async () => {
+    const context = ctx({ question: 'Rédige un courrier au client pour le renvoi' });
+    (context.llm.draft as jest.Mock).mockResolvedValue(JSON.stringify({ recipientName: '', recipientAddress: '', subject: 'Objet : renvoi', bodyContent: "Madame, Monsieur,\n\nL'audience est renvoyée." }));
+    const draft = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templatesMock([courrier]) as any).run(context));
+    const prompt = (context.llm.draft as jest.Mock).mock.calls[0][0];
+    expect(prompt).toContain("Le modèle imprime déjà l'en-tête");
+    expect(draft.studio!.html).toContain('Objet : Renvoi');
   });
 });

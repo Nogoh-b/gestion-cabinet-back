@@ -19,6 +19,14 @@ import { DocumentCustomer } from '../documents/document-customer/entities/docume
 import { Facture } from '../facture/entities/facture.entity';
 import { Paiement } from '../paiement/entities/paiement.entity';
 import {
+  ModePaiement,
+  StatutPaiement,
+} from '../paiement/dto/create-paiement.dto';
+import {
+  invoiceStatusLabel,
+  summarizeInvoices,
+} from '../facture/invoice-totals';
+import {
   Audience,
   AudienceStatus,
   AudienceType1,
@@ -102,6 +110,23 @@ const STEP_TYPE_LABELS: Record<string, string> = {
   [StepType.DECISION]: 'Décision',
   [StepType.APPEAL]: 'Appel',
   [StepType.CLOSURE]: 'Clôture',
+};
+
+const PAYMENT_MODE_LABELS: Record<number, string> = {
+  [ModePaiement.VIREMENT]: 'Virement',
+  [ModePaiement.CHEQUE]: 'Chèque',
+  [ModePaiement.ESPECES]: 'Espèces',
+  [ModePaiement.CARTE]: 'Carte',
+  [ModePaiement.PRELEVEMENT]: 'Prélèvement',
+  [ModePaiement.Mobile]: 'Mobile money',
+  [ModePaiement.AUTRE]: 'Autre',
+};
+
+const PAYMENT_STATUS_LABELS: Record<number, string> = {
+  [StatutPaiement.EN_ATTENTE]: 'En attente',
+  [StatutPaiement.VALIDE]: 'Validé',
+  [StatutPaiement.REJETE]: 'Rejeté',
+  [StatutPaiement.ANNULE]: 'Annulé',
 };
 
 const AUDIENCE_STATUS_LABELS: Record<number, string> = {
@@ -240,11 +265,22 @@ export class DossierExportService {
       ? await this.factureRepo.find({ where: { dossier_id: id } as any })
       : [];
     const factureIds = factures.map((f) => f.id);
+    // `factureId` n'est qu'un accesseur : la colonne passe par la relation.
     const paiements = factureIds.length
       ? await this.paiementRepo.find({
-          where: { factureId: In(factureIds) } as any,
+          where: { facture: { id: In(factureIds) } },
+          relations: ['facture'],
+          order: { datePaiement: 'ASC' },
         })
       : [];
+    const byFacture = new Map<string, Paiement[]>();
+    for (const p of paiements) {
+      const key = p.facture?.id;
+      if (key) byFacture.set(key, [...(byFacture.get(key) ?? []), p]);
+    }
+    const totals = summarizeInvoices(
+      factures.map((f) => ({ ...f, paiements: byFacture.get(f.id) ?? [] })),
+    );
     const audiences = await this.audienceRepo.find({
       where: { dossier_id: id } as any,
       relations: ['jurisdiction'],
@@ -295,15 +331,6 @@ export class DossierExportService {
     });
 
     // ── 2. Résumé enrichi ──
-    const totalFacture = factures.reduce(
-      (s, f) => s + Number((f as any).total_amount ?? (f as any).amount ?? 0),
-      0,
-    );
-    const totalPaye = paiements.reduce(
-      (s, p) => s + Number((p as any).amount ?? 0),
-      0,
-    );
-
     const lines: string[] = [
       '═══════════════════════════════════════════════════════',
       `  DOSSIER ${dossier.dossier_number}`,
@@ -324,9 +351,19 @@ export class DossierExportService {
       `  Documents      : ${docs.length}`,
       ...(showInvoices
         ? [
-            `  Factures       : ${factures.length}  (total : ${fmtMoney(totalFacture)} FCFA)`,
-            `  Paiements      : ${paiements.length}  (total : ${fmtMoney(totalPaye)} FCFA)`,
-            `  Solde restant  : ${fmtMoney(totalFacture - totalPaye)} FCFA`,
+            `  Factures       : ${factures.length}  (total hors annulées : ${fmtMoney(totals.total)} FCFA)`,
+            ...(totals.cancelled.count
+              ? [
+                  `                   dont ${totals.cancelled.count} annulée(s) : ${fmtMoney(totals.cancelled.amount)} FCFA, exclue(s) des totaux`,
+                ]
+              : []),
+            ...(totals.drafts.count
+              ? [
+                  `                   dont ${totals.drafts.count} brouillon(s) : ${fmtMoney(totals.drafts.amount)} FCFA`,
+                ]
+              : []),
+            `  Paiements      : ${paiements.length}  (encaissé validé : ${fmtMoney(totals.paid)} FCFA)`,
+            `  Solde restant  : ${fmtMoney(totals.remaining)} FCFA`,
           ]
         : []),
       `  Audiences      : ${audiences.length}`,
@@ -349,12 +386,13 @@ export class DossierExportService {
     // Détails factures
     if (factures.length) {
       lines.push('', '── FACTURES ──');
-      factures.forEach((f: any, i) => {
-        const num = f.invoice_number ?? f.numero ?? `#${f.id}`;
-        const montant = fmtMoney(f.total_amount ?? f.amount ?? 0);
-        const statut = f.status ?? '—';
+      totals.lines.forEach((f, i) => {
+        const num = f.numero || `#${f.id}`;
+        const suffix = f.cancelled
+          ? '  (annulée, hors totaux)'
+          : `  |  Payé : ${fmtMoney(f.paid)}  |  Reste : ${fmtMoney(f.remaining)}`;
         lines.push(
-          `  ${i + 1}. ${num}  |  ${montant} FCFA  |  Statut : ${statut}  |  ${fmtDate(f.created_at)}`,
+          `  ${i + 1}. ${num}  |  ${fmtMoney(f.ttc)} FCFA  |  Statut : ${f.statusLabel}  |  ${fmtDate(f.date)}${suffix}`,
         );
       });
     }
@@ -362,11 +400,11 @@ export class DossierExportService {
     // Détails paiements
     if (paiements.length) {
       lines.push('', '── PAIEMENTS ──');
-      paiements.forEach((p: any, i) => {
-        const montant = fmtMoney(p.amount ?? 0);
-        const mode = p.payment_method ?? p.modePaiement ?? '—';
+      paiements.forEach((p, i) => {
+        const mode = PAYMENT_MODE_LABELS[Number(p.modePaiement)] ?? '—';
+        const statut = PAYMENT_STATUS_LABELS[Number(p.status)] ?? '—';
         lines.push(
-          `  ${i + 1}. ${montant} FCFA  |  Mode : ${mode}  |  ${fmtDate(p.payment_date ?? p.created_at)}`,
+          `  ${i + 1}. ${fmtMoney(p.montant)} FCFA  |  Facture : ${p.facture?.numero ?? '—'}  |  Mode : ${mode}  |  ${statut}  |  ${fmtDate(p.datePaiement)}`,
         );
       });
     }
@@ -461,9 +499,9 @@ export class DossierExportService {
         if (stepFac.length) {
           lines.push(`  │  💰 Factures (${stepFac.length}) :`);
           stepFac.forEach((f: any) => {
-            const num = f.invoice_number ?? `#${f.id}`;
+            const num = f.numero ?? `#${f.id}`;
             lines.push(
-              `  │     - ${num}  ${fmtMoney(f.total_amount ?? f.amount ?? 0)} FCFA  [${f.status ?? ''}]`,
+              `  │     - ${num}  ${fmtMoney(f.montantTTC)} FCFA  [${invoiceStatusLabel(f.status)}]`,
             );
           });
         }
@@ -513,10 +551,33 @@ export class DossierExportService {
 
     // ── 4-5. Factures et paiements (CSV + JSON) ──
     if (showInvoices) {
-      archive.append(toCsv(factures), { name: `${folder}/factures.csv` });
+      archive.append(
+        toCsv(
+          totals.lines.map((f) => ({
+            numero: f.numero,
+            date: fmtDate(f.date),
+            echeance: fmtDate(f.echeance),
+            montant_ttc: f.ttc,
+            paye: f.paid,
+            reste: f.remaining,
+            statut: f.statusLabel,
+            annulee: f.cancelled ? 'Oui' : 'Non',
+            avoir: f.credit ? 'Oui' : 'Non',
+          })),
+        ),
+        { name: `${folder}/factures.csv` },
+      );
       archive.append(toJson(factures), { name: `${folder}/factures.json` });
-      archive.append(toCsv(paiements), { name: `${folder}/paiements.csv` });
-      archive.append(toJson(paiements), { name: `${folder}/paiements.json` });
+      const paymentRows = paiements.map((p) => ({
+        facture: p.facture?.numero,
+        montant: p.montant,
+        date: fmtDate(p.datePaiement),
+        mode: PAYMENT_MODE_LABELS[Number(p.modePaiement)] ?? p.modePaiement,
+        statut: PAYMENT_STATUS_LABELS[Number(p.status)] ?? p.status,
+        reference: p.reference,
+      }));
+      archive.append(toCsv(paymentRows), { name: `${folder}/paiements.csv` });
+      archive.append(toJson(paymentRows), { name: `${folder}/paiements.json` });
     }
 
     // ── 6. Audiences (CSV + JSON) ──

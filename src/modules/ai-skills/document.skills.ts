@@ -66,22 +66,16 @@ function fileName(base: string, info?: TargetInfo | null): string {
 }
 
 // ── Courrier et mise en demeure (modèles « général ») ──────────────────────
+// Fusionnés dans « Créer / modifier un document » : leurs règles de rédaction
+// s'appliquent quand ce modèle est choisi (`LETTER_TEMPLATES`).
 
 /** Mise en forme du corps d'une lettre (balisage converti par document-markup). */
-const LETTER_FORMAT_RULE = "- Mise en forme du corps (seule syntaxe permise, rendue dans le PDF et le Word) : **gras** pour 2 à 4 éléments clés au plus (montants, dates, demandes) ; une liste quand tu énumères au moins deux éléments (pièces, sommes, étapes) : une ligne par élément commençant par « - » ou « 1. » ; « ### Sous-titre » seulement si le courrier dépasse cinq paragraphes. Ni tableau, ni HTML, ni autre symbole.";
+export const LETTER_FORMAT_RULE = "- Mise en forme du corps (seule syntaxe permise, rendue dans le PDF et le Word) : **gras** pour 2 à 4 éléments clés au plus (montants, dates, demandes) ; une liste quand tu énumères au moins deux éléments (pièces, sommes, étapes) : une ligne par élément commençant par « - » ou « 1. » ; « ### Sous-titre » seulement si le courrier dépasse cinq paragraphes. Ni tableau, ni HTML, ni autre symbole.";
 
-interface LetterConfig {
-  code: string;
+export interface LetterConfig {
   label: string;
   /** Nom avec article, pour le prompt (« un courrier »). */
   article: string;
-  description: string;
-  icon: string;
-  templateCode: string;
-  placeholder: string;
-  keywords: string[];
-  autoTriggers?: string[];
-  autoExclude?: string[];
   /** Ce que le modèle PDF imprime autour du corps (la rédaction ne le répète pas). */
   templateNote: string;
   /** Consignes propres au type de lettre. */
@@ -103,159 +97,58 @@ export function letterSubject(subject: string, prefix?: RegExp): string {
   return clean ? clean.charAt(0).toUpperCase() + clean.slice(1) : '';
 }
 
-abstract class LetterSkill implements AiSkillHandler {
-  readonly definition: AiSkillDefinition;
-
-  constructor(
-    protected readonly config: LetterConfig,
-    protected readonly targets: SkillTargetsService,
-    protected readonly templates: PdfTemplatesService,
-  ) {
-    this.definition = {
-      code: config.code,
-      label: config.label,
-      description: config.description,
-      icon: config.icon,
-      category: 'documents',
-      targets: ['dossier', 'client', 'audience', 'facture'],
-      targetRequired: false,
-      placeholder: config.placeholder,
-      keywords: config.keywords,
-      autoTriggers: config.autoTriggers,
-      autoExclude: config.autoExclude,
-    };
-  }
-
-  async run(ctx: AiSkillContext): Promise<AiSkillOutcome> {
-    const template = preferOwn(await this.templates.findByEntity('general')).find((item) => item.code === this.config.templateCode);
-    if (!template) {
-      return { type: 'clarify', markdown: `⚠️ Le modèle « ${this.config.label} » n'est pas disponible dans vos modèles PDF (Paramètres › Modèles PDF).` };
-    }
-    const target = resolveSkillTarget(ctx, this.definition.targets ?? []);
-    const info = target ? await this.targets.load(target) : null;
-    const sender = await this.targets.sender(ctx.userId);
-    const dossier = info?.dossier;
-    const opposing = this.config.defaultRecipient === 'opposing' && dossier?.opposing_party_name
-      ? `${dossier.opposing_party_name}${dossier.opposing_party_contact ? ` (${dossier.opposing_party_contact})` : ''}`
-      : '';
-
-    let bodyContent = str(ctx.params.bodyContent, 15000);
-    let subject = str(ctx.params.subject, 200);
-    let recipientName = str(ctx.params.recipientName, 200);
-    let recipientAddress = str(ctx.params.recipientAddress, 300);
-    if (!bodyContent) {
-      const draft = await draftJson<Record<string, string>>(ctx, `Tu rédiges ${this.config.article} sur le papier à en-tête d'un cabinet d'avocats. ${this.config.templateNote} Écris seulement le destinataire, l'objet et le corps.
-
-${info ? await this.targets.facts(info, ctx.user, ctx.question) : 'Aucune fiche mentionnée : appuie-toi sur la demande.'}
-${opposing ? `Destinataire par défaut (partie adverse) : ${opposing}` : ''}
-${senderLine(sender, 'Signataire')}
-Date du jour : ${todayFr()}
-
-${requestBlock(ctx)}
-
-${this.config.instructions}
-- Commence le corps par une formule d'appel (« Madame, Monsieur, » ou « Monsieur <Nom>, »).
-- recipientAddress : l'adresse postale de CE destinataire, seulement si elle figure dans les informations ci-dessus (l'adresse du client n'est pas celle de la partie adverse ; un numéro de téléphone n'est pas une adresse). Sinon vide.
-${LETTER_FORMAT_RULE}
-${DRAFTING_RULES}
-${await legalBlockFor(ctx)}
-
-Réponds UNIQUEMENT en JSON (retours à la ligne écrits \\n dans les chaînes) :
-{"recipientName": "nom du destinataire", "recipientAddress": "adresse ou vide", "subject": "objet court (sans le mot Objet)", "bodyContent": "corps du courrier, paragraphes séparés par une ligne vide"}`, 3000);
-      bodyContent = str(draft.bodyContent, 15000);
-      subject = subject || str(draft.subject, 200);
-      recipientName = recipientName || str(draft.recipientName, 200);
-      recipientAddress = recipientAddress || str(draft.recipientAddress, 300);
-    }
-    // Corps mis en forme (gras, listes, sous-titres) : HTML sûr, modifiable dans la carte.
-    if (bodyContent && !isRichHtml(bodyContent)) bodyContent = documentHtml(bodyContent);
-    if (!recipientName) {
-      recipientName = this.config.defaultRecipient === 'opposing' && dossier?.opposing_party_name
-        ? dossier.opposing_party_name
-        : customerName(info?.client) || '';
-    }
-    if (!recipientAddress && this.config.defaultRecipient === 'client') recipientAddress = (info?.client as any)?.address ?? '';
-    subject = letterSubject(subject, this.config.subjectPrefix)
-      || letterSubject(htmlToText(dossier?.object ?? ''), this.config.subjectPrefix)
-      || (this.config.defaultRecipient === 'opposing' ? 'Exécution de vos obligations' : this.config.label);
-
-    const draft: DocumentDraft = {
-      templateId: template.id,
-      templateCode: template.code,
-      templateName: this.config.label,
-      entityType: 'general',
-      ...(dossier && { dossierId: dossier.id, dossierLabel: dossier.dossier_number }),
-      fileName: fileName(this.config.label, info),
-      variables: {
-        recipientName,
-        recipientAddress,
-        subject,
-        bodyContent,
-        signatoryName: sender.name,
-        signatoryTitle: [sender.title, sender.cabinetName].filter(Boolean).join(' — '),
-        date_fmt: todayFr(),
-      },
-      editable: [
-        { name: 'recipientName', label: 'Destinataire', kind: 'text' },
-        { name: 'recipientAddress', label: 'Adresse du destinataire', kind: 'text' },
-        { name: 'subject', label: 'Objet', kind: 'text' },
-        { name: 'bodyContent', label: 'Corps du courrier', kind: 'longtext' },
-        { name: 'signatoryName', label: 'Signataire', kind: 'text' },
-        { name: 'signatoryTitle', label: 'Qualité du signataire', kind: 'text' },
-      ],
-      ...(info?.client && { recipient: { type: 'client', id: info.client.id, label: customerName(info.client) } }),
-    };
-    return {
-      type: 'document_draft',
-      markdown: `Voici ${this.config.label === 'Courrier' ? 'le courrier' : 'la mise en demeure'}${dossier ? ` pour le dossier **${dossier.dossier_number}**` : ''}. Relisez le texte dans la carte, puis générez le PDF${dossier ? ' ou classez-le dans le dossier' : ''}.`,
-      draft,
-    };
-  }
-}
-
-@Injectable()
-export class CourrierSkill extends LetterSkill {
-  constructor(targets: SkillTargetsService, templates: PdfTemplatesService) {
-    super({
-      code: 'courrier',
-      label: 'Courrier',
-      article: 'un courrier',
-      description: 'Rédige un courrier sur votre modèle à en-tête, prêt en PDF',
-      icon: 'file-text',
-      templateCode: 'general_courrier',
-      placeholder: 'Quel courrier rédiger ? (ex. informer le client du renvoi de l’audience)',
-      keywords: ['courrier', 'lettre', 'document', 'rédiger', 'pdf'],
-      autoTriggers: ['courrier', 'lettre'],
-      autoExclude: ['mail', 'email', 'courriel', 'whatsapp', 'mise en demeure', 'lettre de mission'],
-      templateNote: "Le modèle imprime déjà l'en-tête, la date, « Objet : », puis après le corps la formule « Veuillez agréer, Madame, Monsieur, l'expression de nos salutations distinguées. » et la signature : ne les écris pas.",
-      instructions: '- Courrier clair et structuré : contexte, objet de la lettre, suite attendue.',
-      defaultRecipient: 'client',
-    }, targets, templates);
-  }
-}
-
-@Injectable()
-export class MiseEnDemeureSkill extends LetterSkill {
-  constructor(targets: SkillTargetsService, templates: PdfTemplatesService) {
-    super({
-      code: 'mise_en_demeure',
-      label: 'Mise en demeure',
-      article: 'une mise en demeure',
-      description: 'Rédige une mise en demeure (LRAR) sur votre modèle, prête en PDF',
-      icon: 'file-warning',
-      templateCode: 'general_mise_en_demeure',
-      placeholder: 'Qui mettre en demeure, et de quoi ? (ex. payer les loyers impayés)',
-      keywords: ['mise', 'demeure', 'sommation', 'recouvrement', 'lettre', 'créance'],
-      autoTriggers: ['mise en demeure', 'sommation de payer', 'sommation'],
-      templateNote: "Le modèle imprime déjà l'en-tête, la date, « LETTRE RECOMMANDÉE AVEC ACCUSÉ DE RÉCEPTION », « Objet : Mise en demeure — », puis après le corps la phrase « À défaut de régularisation sous huitaine à compter de la réception de la présente, nous nous réservons le droit d'engager toute action utile… » et la signature : ne les écris pas.",
-      instructions: `- Mise en demeure ferme et précise : rappel des faits et de l'obligation, montant ou prestation dus (seulement s'ils sont fournis), demande de régularisation.
+/** Règles des modèles de lettre du cabinet, par code de modèle. */
+export const LETTER_TEMPLATES: Record<string, LetterConfig> = {
+  general_courrier: {
+    label: 'Courrier',
+    article: 'un courrier',
+    templateNote: "Le modèle imprime déjà l'en-tête, la date, « Objet : », puis après le corps la formule « Veuillez agréer, Madame, Monsieur, l'expression de nos salutations distinguées. » et la signature : ne les écris pas.",
+    instructions: '- Courrier clair et structuré : contexte, objet de la lettre, suite attendue.',
+    defaultRecipient: 'client',
+  },
+  general_mise_en_demeure: {
+    label: 'Mise en demeure',
+    article: 'une mise en demeure',
+    templateNote: "Le modèle imprime déjà l'en-tête, la date, « LETTRE RECOMMANDÉE AVEC ACCUSÉ DE RÉCEPTION », « Objet : Mise en demeure — », puis après le corps la phrase « À défaut de régularisation sous huitaine à compter de la réception de la présente, nous nous réservons le droit d'engager toute action utile… » et la signature : ne les écris pas.",
+    instructions: `- Mise en demeure ferme et précise : rappel des faits et de l'obligation, montant ou prestation dus (seulement s'ils sont fournis), demande de régularisation.
 - Ne fixe pas d'autre délai que celui du modèle (huitaine) et ne termine pas par une formule de politesse : la phrase du modèle suit le corps.
 - L'objet ne commence pas par « Mise en demeure » (déjà imprimé) : par exemple « Paiement de la créance due à <client> ».
 - Le destinataire est en principe la partie adverse (le débiteur), pas le client du cabinet ; le client est « notre mandant ».`,
-      defaultRecipient: 'opposing',
-      subjectPrefix: MISE_EN_DEMEURE_PREFIX,
-    }, targets, templates);
-  }
+    defaultRecipient: 'opposing',
+    subjectPrefix: MISE_EN_DEMEURE_PREFIX,
+  },
+};
+
+/** Consignes de rédaction d'une lettre pour le remplissage de son modèle. */
+export function letterPrompt(letter: LetterConfig, info: TargetInfo | null): string {
+  const dossier = info?.dossier;
+  const opposing = letter.defaultRecipient === 'opposing' && dossier?.opposing_party_name
+    ? `${dossier.opposing_party_name}${dossier.opposing_party_contact ? ` (${dossier.opposing_party_contact})` : ''}`
+    : '';
+  return `Tu rédiges ${letter.article} sur le papier à en-tête d'un cabinet d'avocats. ${letter.templateNote} Écris seulement le destinataire, l'objet et le corps.
+${opposing ? `Destinataire par défaut (partie adverse) : ${opposing}` : ''}
+${letter.instructions}
+- Commence le corps par une formule d'appel (« Madame, Monsieur, » ou « Monsieur <Nom>, »).
+- recipientAddress : l'adresse postale de CE destinataire, seulement si elle figure dans les informations fournies (l'adresse du client n'est pas celle de la partie adverse ; un numéro de téléphone n'est pas une adresse). Sinon vide.
+${LETTER_FORMAT_RULE}
+${DRAFTING_RULES}`;
+}
+
+/** Destinataire et objet d'une lettre quand la rédaction ne les donne pas. */
+export function letterDefaults(
+  letter: LetterConfig,
+  info: TargetInfo | null,
+  values: { recipientName?: string; recipientAddress?: string; subject?: string },
+): { recipientName: string; recipientAddress: string; subject: string } {
+  const dossier = info?.dossier;
+  const recipientName = values.recipientName?.trim()
+    || (letter.defaultRecipient === 'opposing' && dossier?.opposing_party_name ? dossier.opposing_party_name : customerName(info?.client) || '');
+  const recipientAddress = values.recipientAddress?.trim()
+    || (letter.defaultRecipient === 'client' ? String((info?.client as any)?.address ?? '') : '');
+  const subject = letterSubject(values.subject ?? '', letter.subjectPrefix)
+    || letterSubject(htmlToText(dossier?.object ?? ''), letter.subjectPrefix)
+    || (letter.defaultRecipient === 'opposing' ? 'Exécution de vos obligations' : letter.label);
+  return { recipientName, recipientAddress, subject };
 }
 
 // ── Traduction FR ↔ EN ──────────────────────────────────────────────────────
@@ -381,9 +274,9 @@ ${source.slice(0, 24000)}
         },
         {
           label: 'En faire un courrier PDF',
-          skill: 'courrier',
+          skill: 'rediger_document',
           question: 'Mets cette traduction en forme de courrier.',
-          params: { bodyContent: translation.slice(0, 15000), subject: 'Traduction' },
+          params: { templateCode: 'general_courrier', bodyContent: translation.slice(0, 15000), subject: 'Traduction' },
         },
       ],
     };

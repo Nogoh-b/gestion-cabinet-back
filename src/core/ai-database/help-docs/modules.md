@@ -70,7 +70,7 @@ KabySoft est organisé en **modules**, chacun accessible par un **menu** de la b
 - **Recherche globale** (barre du haut, page `/recherche`, palette **Ctrl + K**) : dossiers, clients, documents, audiences, factures. Voir « Recherche globale ».
 
 ### Modèles (mails, PDF)
-- **Modèles** (Plus > Configuration, administrateur, `/mail-templates`) : textes des e-mails ; raccourcis **Modèles PDF** (`/pdf-templates`) et **En-têtes et pieds de page** (`/template-blocks`). Voir « Modèles de mails, de PDF et en-têtes / pieds de page ».
+- **Modèles** (Plus > Configuration, administrateur, `/mail-templates`) : textes des e-mails ; raccourcis **Modèles de documents** (`/pdf-templates`) et **En-têtes et pieds de page** (`/template-blocks`). Voir « Modèles de mails, de PDF et en-têtes / pieds de page ».
 
 ### Paramètres du compte et du cabinet
 - **Mon profil** (`/settings/profile`, ou `/profil` en self-service pour les non-admins) : identité, **Mes demandes** (avances, permissions), Sécurité (double authentification). Voir « Profil et préférences ».

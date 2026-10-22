@@ -1513,6 +1513,58 @@ export class AiModelRouterService {
     this.usageListener = listener;
   }
 
+  /** Consommation d'un appel fait sans ChatOpenAI (transcription audio). */
+  reportUsage(
+    info: { provider: string; model: string; profile: string },
+    usage: { input?: number; output?: number },
+    fallback: { inputChars: number; outputChars: number },
+  ): void {
+    if (!this.usageListener) return;
+    try {
+      this.usageListener({
+        ...info,
+        inputTokens: usage.input ?? estimateTokensFromChars(fallback.inputChars),
+        outputTokens: usage.output ?? estimateTokensFromChars(fallback.outputChars),
+        cachedInputTokens: 0,
+        reasoningTokens: 0,
+        estimated: usage.input === undefined || usage.output === undefined,
+      });
+    } catch (error) {
+      this.logger.warn(`Suivi de consommation IA : ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Modèle de transcription audio (chat/completions avec `input_audio`).
+   * `AI_ASR_MODEL` (+ `AI_ASR_PROVIDER`, ou `AI_ASR_BASE_URL` / `AI_ASR_API_KEY`)
+   * l'impose ; sinon Gemini dès que sa clé est configurée (il comprend le
+   * français, contrairement à MiMo ASR : chinois et anglais seulement).
+   * null : la transcription n'est pas disponible.
+   */
+  getTranscriptionRuntime(): (AiProviderRuntimeConfig & { provider: string; label: string }) | null {
+    const envModel = process.env.AI_ASR_MODEL?.trim();
+    let provider = '';
+    let runtime: AiProviderRuntimeConfig | null = null;
+    if (envModel && process.env.AI_ASR_BASE_URL?.trim()) {
+      provider = process.env.AI_ASR_PROVIDER?.trim() || 'custom';
+      runtime = {
+        base_url: process.env.AI_ASR_BASE_URL.trim(),
+        api_key: process.env.AI_ASR_API_KEY?.trim() || undefined,
+        model: envModel,
+      };
+    } else {
+      provider = process.env.AI_ASR_PROVIDER?.trim() || 'google';
+      runtime = this.getProviderRuntimeConfig(provider, { model: envModel || (provider === 'google' ? 'gemini-2.5-flash' : undefined) });
+    }
+    if (!runtime?.api_key || !runtime.base_url || !runtime.model) return null;
+    const unsafeReason = this.unsafeProviderUrlReason(runtime.base_url);
+    if (unsafeReason) {
+      this.logger.warn(`Modèle de transcription ignoré : ${unsafeReason}`);
+      return null;
+    }
+    return { ...runtime, provider, label: `${provider}/${runtime.model}` };
+  }
+
   /**
    * Enveloppe `invoke` et `stream` de l'instance : l'usage est lu dans la
    * réponse (ou le dernier fragment du flux, `streamUsage` étant actif) et

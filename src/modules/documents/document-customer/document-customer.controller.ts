@@ -137,6 +137,63 @@ export class DocumentCustomerController {
       paginationParams,
     );
   }
+  // ── Versions : le document garde son id, chaque fichier remplacé est archivé ──
+
+  @Get(':id/versions')
+  @RequirePermissions('view_documents')
+  @ApiOperation({ summary: "Historique des versions d'un document (courante en premier)" })
+  listVersions(@Param('id', ParseIntPipe) id: number) {
+    return this.service.listVersions(id);
+  }
+
+  @Get(':id/versions/:versionId/file')
+  @RequirePermissions('view_documents')
+  @ApiOperation({ summary: 'Fichier d’une version archivée (aperçu)' })
+  async versionFile(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('versionId', ParseIntPipe) versionId: number,
+  ): Promise<StreamableFile> {
+    const { buffer, mimeType, name } = await this.service.readVersionFile(
+      id,
+      versionId,
+    );
+    return new StreamableFile(buffer, {
+      type: mimeType,
+      disposition: inlineContentDisposition(name),
+    });
+  }
+
+  @Post(':id/versions')
+  @RequirePermissions('edit_document', 'upload_document')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Nouvelle version d’un document (même id)' })
+  addVersion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { comment?: string; source?: string; name?: string },
+    @CurrentUser() user: User,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.service.addVersion(id, file, user?.id, {
+      source: body?.source === 'ai_studio' ? 'ai_studio' : 'upload',
+      comment: body?.comment?.slice(0, 2000) || undefined,
+      name: body?.name?.slice(0, 250) || undefined,
+    });
+  }
+
+  @Post(':id/versions/:versionId/restore')
+  @RequirePermissions('edit_document', 'upload_document')
+  @ApiOperation({ summary: 'Restaurer une version (elle devient la version suivante)' })
+  restoreVersion(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('versionId', ParseIntPipe) versionId: number,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.restoreVersion(id, versionId, user?.id);
+  }
+
   @Patch(':id')
   @RequirePermissions('edit_document')
   @UseInterceptors(

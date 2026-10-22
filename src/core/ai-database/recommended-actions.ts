@@ -69,14 +69,14 @@ export interface ActionCandidate extends Omit<RecommendedAction, 'priority'> {
 const RECORD_SKILLS: Partial<Record<AiSkillTargetType, string[]>> = {
   dossier: [
     'message_portail', 'envoyer_email', 'creer_diligence', 'programmer_audience', 'configurer_facturation',
-    'rediger_document', 'etat_impayes', 'whatsapp', 'courrier', 'chronologie', 'evaluer_chances', 'export_dossier',
+    'rediger_document', 'etat_impayes', 'whatsapp', 'chronologie', 'evaluer_chances', 'export_dossier',
   ],
-  client: ['envoyer_email', 'message_portail', 'whatsapp', 'etat_impayes', 'courrier'],
+  client: ['envoyer_email', 'message_portail', 'whatsapp', 'etat_impayes', 'rediger_document'],
   facture: ['enregistrer_paiement', 'envoyer_facture', 'relancer_impayes', 'envoyer_email'],
   audience: ['compte_rendu_audience', 'reporter_audience', 'envoyer_email', 'message_portail'],
   diligence: ['envoyer_email', 'message_collaborateur'],
   employee: ['message_collaborateur'],
-  document: ['traduire', 'audit_contrat', 'envoyer_email'],
+  document: ['rediger_document', 'traduire', 'audit_contrat', 'envoyer_email'],
 };
 
 /** Compétences du cabinet proposées sans fiche, selon le mode. */
@@ -136,16 +136,19 @@ function skillText(code: string, record: ActionRecord | undefined, label: string
       label: `Configurer la facturation ${of}`,
       prompt: `Propose la configuration de facturation ${of} (forfait, honoraires, frais d'ouverture) d'après ses paramètres et ses pièces, puis le devis.`,
     },
-    rediger_document: {
-      label: record ? `Rédiger un document ${of}` : 'Rédiger un document',
-      prompt: record ? `Rédige le prochain acte utile ${of} à partir de ses pièces.` : 'Rédige un document à partir des pièces jointes.',
-    },
+    rediger_document: record?.type === 'document'
+      ? { label: `Modifier le document « ${name} »`, prompt: `Modifie le document « ${name} » : ` }
+      : record?.type === 'client'
+        ? { label: `Rédiger un courrier ${of}`, prompt: `Rédige un courrier au client ${of}.` }
+        : {
+            label: record ? `Rédiger un document ${of}` : 'Rédiger un document',
+            prompt: record ? `Rédige le prochain acte utile ${of} à partir de ses pièces.` : 'Rédige un document à partir des pièces jointes.',
+          },
     etat_impayes: {
       label: record ? `État des impayés ${of}` : 'État des impayés du cabinet',
       prompt: record ? `Fais l'état des impayés ${of}.` : "Fais l'état des impayés du cabinet.",
     },
     rapport_activite: { label: "Rapport d'activité du mois", prompt: "Génère le rapport d'activité du mois en cours." },
-    courrier: { label: `Rédiger un courrier ${of}`, prompt: `Rédige un courrier au client ${of}.` },
     chronologie: { label: `Chronologie ${of}`, prompt: `Établis la chronologie ${of} à partir de ses pièces.` },
     evaluer_chances: { label: `Évaluer les chances ${of}`, prompt: `Évalue les chances de succès ${of}.` },
     export_dossier: { label: `Exporter le dossier ${name}`, prompt: `Exporte le dossier ${name} en ZIP.` },

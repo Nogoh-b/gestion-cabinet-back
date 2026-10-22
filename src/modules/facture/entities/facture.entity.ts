@@ -91,8 +91,8 @@ export class Facture extends BaseEntity {
   @BusinessColumn({
     label: 'Type de facture',
     description:
-      'BD: 0=HONORAIRES, 1=FRAIS_PROCEDURE, 2=DILIGENCES, 3=AUTRES. En SQL utiliser le nombre, pas le libellé.',
-    example: '0 = Honoraires, 1 = Frais de procédure, 2 = Diligences',
+      'BD: 0=HONORAIRES, 1=FRAIS_PROCEDURE, 2=DILIGENCES, 3=AUTRES, 4=AVOIR (montant TTC négatif, vient en déduction de la facture d’origine). En SQL utiliser le nombre, pas le libellé.',
+    example: '0 = Honoraires, 1 = Frais de procédure, 2 = Diligences, 4 = Avoir',
     importance: 'critical',
     group: 'classification',
   })
@@ -199,7 +199,7 @@ export class Facture extends BaseEntity {
   @BusinessColumn({
     label: 'Statut',
     description:
-      'BD: 0=BROUILLON, 1=ENVOYEE, 2=PARTIELLEMENT_PAYEE, 3=PAYEE, 4=IMPAYEE, 5=ANNULEE. En SQL utiliser le nombre.',
+      'BD: 0=BROUILLON, 1=ENVOYEE, 2=PARTIELLEMENT_PAYEE, 3=PAYEE, 4=IMPAYEE, 5=ANNULEE. En SQL utiliser le nombre. Une facture annulée (5) sort de tous les totaux.',
     example: 'status = 3 pour une facture payée',
     importance: 'critical',
     group: 'état',
@@ -267,6 +267,13 @@ export class Facture extends BaseEntity {
   lines: InvoiceLine[];
 
   @Column({ name: 'original_facture_id', type: 'varchar', nullable: true })
+  @BusinessColumn({
+    label: 'Facture d’origine',
+    description:
+      'Pour un avoir (type 4) : facture qu’il corrige (jointure factures.id).',
+    importance: 'medium',
+    group: 'relation',
+  })
   original_facture_id: string | null;
 
   @ManyToOne(() => Facture, { nullable: true, onDelete: 'RESTRICT' })

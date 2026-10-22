@@ -19,6 +19,7 @@ import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
+import { summarizeInvoices } from 'src/modules/facture/invoice-totals';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
@@ -862,23 +863,11 @@ export class Dossier extends BaseEntity {
   }
 
   get total_factures_amount(): number {
-    if (!this.factures) return 0;
-    return this.factures
-      .filter((facture) => Number(facture.status) !== StatutFacture.ANNULEE)
-      .reduce(
-        (total, facture) => total + parseFloat(facture.montantTTC.toString()),
-        0,
-      );
+    return summarizeInvoices(this.factures).total;
   }
 
   get paid_factures_amount(): number {
-    if (!this.factures) return 0;
-    return this.factures
-      .filter((facture) => Number(facture.status) !== StatutFacture.ANNULEE)
-      .reduce(
-        (total, facture) => total + parseFloat(facture.montantTTC.toString()),
-        0,
-      );
+    return summarizeInvoices(this.factures).paid;
   }
 
   get document_count(): number {

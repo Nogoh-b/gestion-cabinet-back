@@ -4,8 +4,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AiSkillHandler, DraftReference } from './ai-skill.types';
 import type { ReferencedEntityContext } from '../dto/ask-question.dto';
 
-/** Faits d'un enregistrement mentionné (dossier, client…), lus avec les droits de `user`. */
-export type RecordFactsProvider = (references: ReferencedEntityContext[], user: any) => Promise<string>;
+/**
+ * Faits d'un enregistrement mentionné (dossier, client…), lus avec les droits
+ * de `user` ; la question choisit les sections détaillées (factures, pièces…).
+ */
+export type RecordFactsProvider = (references: ReferencedEntityContext[], user: any, question?: string) => Promise<string>;
 
 /** Éléments insérables dans un brouillon (n° de dossier, adresse du client…). */
 export type DraftReferencesProvider = (references: ReferencedEntityContext[], user: any) => Promise<DraftReference[]>;
@@ -18,14 +21,27 @@ export type DraftReferencesProvider = (references: ReferencedEntityContext[], us
 export class AiSkillRegistry {
   private readonly logger = new Logger(AiSkillRegistry.name);
   private readonly handlers = new Map<string, AiSkillHandler>();
+  /** Anciens codes fusionnés dans une compétence → sa compétence et son préremplissage. */
+  private readonly aliases = new Map<string, { handler: AiSkillHandler; params: Record<string, unknown> }>();
 
   register(handler: AiSkillHandler): void {
     this.handlers.set(handler.definition.code, handler);
+    for (const alias of handler.definition.aliases ?? []) {
+      this.aliases.set(alias.code, { handler, params: alias.params ?? {} });
+    }
     this.logger.log(`✅ Compétence IA enregistrée: ${handler.definition.code}`);
   }
 
   get(code: string | undefined | null): AiSkillHandler | undefined {
-    return code ? this.handlers.get(String(code).trim().toLowerCase()) : undefined;
+    if (!code) return undefined;
+    const key = String(code).trim().toLowerCase();
+    return this.handlers.get(key) ?? this.aliases.get(key)?.handler;
+  }
+
+  /** Préremplissage d'un ancien code (null pour un code courant). */
+  aliasParams(code: string | undefined | null): Record<string, unknown> | null {
+    if (!code) return null;
+    return this.aliases.get(String(code).trim().toLowerCase())?.params ?? null;
   }
 
   all(): AiSkillHandler[] {
@@ -43,9 +59,9 @@ export class AiSkillRegistry {
     this.factsProvider = provider;
   }
 
-  async recordFacts(references: ReferencedEntityContext[], user: any): Promise<string> {
+  async recordFacts(references: ReferencedEntityContext[], user: any, question?: string): Promise<string> {
     if (!this.factsProvider || !references.length) return '';
-    return this.factsProvider(references, user).catch(() => '');
+    return this.factsProvider(references, user, question).catch(() => '');
   }
 
   /** Références de la fiche visée par un brouillon, fournies par le module des compétences. */

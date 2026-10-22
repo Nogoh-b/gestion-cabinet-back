@@ -4,7 +4,7 @@ import { ModuleRef } from '@nestjs/core';
 
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { AiSkillRegistry } from 'src/core/ai-database/skills/ai-skill.registry';
-import type { AiSkillHandler } from 'src/core/ai-database/skills/ai-skill.types';
+import type { AiSkillHandler, AiSkillTargetType } from 'src/core/ai-database/skills/ai-skill.types';
 import { AiActionRegistry, type AiActionHandler } from 'src/core/ai-database/write/ai-action.registry';
 import { AudiencesModule } from '../audiences/audiences.module';
 import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
@@ -28,8 +28,8 @@ import {
   RelancerImpayesSkill,
   WhatsappSkill,
 } from './communication.skills';
-import { CourrierSkill, MiseEnDemeureSkill, TraduireSkill } from './document.skills';
-import { CreerModeleSkill, DocumentModeleSkill, RedigerDocumentSkill } from './document-studio.skills';
+import { TraduireSkill } from './document.skills';
+import { RedigerDocumentSkill } from './document-studio.skills';
 import {
   CompteRenduAudienceSkill,
   EtatImpayesSkill,
@@ -55,6 +55,7 @@ import {
   LectureJugementSkill,
   ReponseConclusionsSkill,
 } from './analysis.skills';
+import { TranscrireAudioSkill } from './transcription.skills';
 import {
   AnonymiserSkill,
   ConventionHonorairesSkill,
@@ -77,14 +78,11 @@ const SKILLS = [
   RelancerImpayesSkill,
   // Documents
   RedigerDocumentSkill,
-  DocumentModeleSkill,
-  CreerModeleSkill,
-  CourrierSkill,
-  MiseEnDemeureSkill,
   TraduireSkill,
   VersionBilingueSkill,
   AnonymiserSkill,
   // Analyse juridique
+  TranscrireAudioSkill,
   LectureJugementSkill,
   ReponseConclusionsSkill,
   ChronologieSkill,
@@ -145,11 +143,14 @@ export class AiSkillsModule implements OnModuleInit {
     for (const type of SKILLS) this.skills.register(this.moduleRef.get<AiSkillHandler>(type));
     // Conversation et conseil : faits de la fiche mentionnée (@ ou page ouverte).
     const targets = this.moduleRef.get(SkillTargetsService);
-    this.skills.registerFactsProvider(async (references, user) => {
-      const target = findTarget(references, ['dossier', 'client', 'audience', 'facture', 'diligence', 'employee']);
+    this.skills.registerFactsProvider(async (references, user, question) => {
+      const types: AiSkillTargetType[] = ['dossier', 'client', 'audience', 'facture', 'diligence', 'employee'];
+      // Une mention @ passe avant la fiche ouverte (« @facture » depuis la page d'un dossier).
+      const explicit = references.filter((reference) => reference.source !== 'page');
+      const target = findTarget(explicit, types) ?? findTarget(references, types);
       if (!target) return '';
       const info = await targets.load(target);
-      return `${info.label}\n${await targets.facts(info, user)}`;
+      return `${info.label}\n${await targets.facts(info, user, question)}`;
     });
     // Brouillons (e-mail, WhatsApp, courrier) : références de la fiche à insérer.
     this.skills.registerReferencesProvider(async (references, user) => {

@@ -14,6 +14,7 @@ import {
   Logger,
   UseInterceptors,
   UploadedFiles,
+  UploadedFile,
   Res,
   Patch,
   Delete,
@@ -37,7 +38,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
-import { FileFieldsInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { AudioTranscriptionService } from './audio-transcription.service';
 import { PrepareFormDto } from './dto/prepare-form.dto';
 import { memoryStorageOptions } from '../shared/interceptors/upload.interceptor';
 import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
@@ -75,7 +77,39 @@ export class AiDatabaseController {
     private readonly tenantContext: TenantContext,
     private readonly planFields: PlanFieldsService,
     private readonly skills: AiSkillService,
+    private readonly transcription: AudioTranscriptionService,
   ) {}
+
+  /** Transcription audio disponible ? (sans appel au modèle : pas de quota). */
+  @Get('transcribe/engine')
+  @ApiOperation({ summary: 'Moteur de transcription audio configuré' })
+  transcriptionEngine() {
+    return this.transcription.engine();
+  }
+
+  /**
+   * Transcrit un morceau d'enregistrement (WAV ou MP3, 10 Mo au plus) : le
+   * chat découpe les longs enregistrements et envoie les morceaux un à un.
+   */
+  @Post('transcribe')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AiQuotaGuard)
+  @UseInterceptors(FileInterceptor('file', memoryStorageOptions))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Transcrire un enregistrement audio (un morceau)' })
+  async transcribe(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { part?: string; parts?: string; previous?: string },
+  ) {
+    if (!file) throw new BadRequestException('Aucun enregistrement reçu.');
+    const part = Number(body?.part) || 1;
+    const parts = Number(body?.parts) || 1;
+    return this.transcription.transcribe(
+      { buffer: file.buffer, mimetype: file.mimetype, originalname: utf8FileName(file.originalname) },
+      { part, parts, previous: typeof body?.previous === 'string' ? body.previous.slice(-1000) : undefined },
+    );
+  }
+
   @Post('form/prepare')
   @HttpCode(HttpStatus.OK)
   @UseGuards(AiQuotaGuard)

@@ -16,7 +16,7 @@ Ce module personnalise l'**apparence et le texte** de tout ce que le cabinet env
 ## Où le trouver
 Réservé à l'**administrateur**. Menu **Plus > Configuration > Modèles** :
 - **Modèles** (`/mail-templates`) : page « Templates d'e-mail ».
-- Raccourci **Modèles PDF** (`/pdf-templates`) : page « Modèles de documents PDF ».
+- Raccourci **Modèles de documents** (`/pdf-templates`) : page « Modèles de documents ».
 - Raccourci **En-têtes et pieds de page** (`/template-blocks`) : page « En-têtes & pieds de page ».
 
 ## Prérequis
@@ -29,7 +29,7 @@ Réservé à l'**administrateur**. Menu **Plus > Configuration > Modèles** :
 4. **Prévisualiser** (aperçu avec données d'exemple et l'en-tête/pied de page de votre cabinet), puis **Enregistrer** (« Template enregistré »).
 
 ## Modifier un modèle PDF
-1. **Modèles PDF** : liste « Modèles disponibles » par type de document (Factures, Dossiers, Clients, Audiences, Diligences, Général) et par **variante** (Standard, Comptable, Client, Interne). Exemples : Facture – Standard, Facture – Version client, Facture – Relance de paiement, Dossier – Fiche complète, Client – Attestation de suivi, Audience – Compte-rendu, Diligence – Rapport.
+1. **Modèles de documents** : liste « Modèles disponibles » par type de document (Factures, Dossiers, Clients, Audiences, Diligences, Général) et par **variante** (Standard, Comptable, Client, Interne). Exemples : Facture – Standard, Facture – Version client, Facture – Relance de paiement, Dossier – Fiche complète, Client – Attestation de suivi, Audience – Compte-rendu, Diligence – Rapport.
 2. Réglez le **Nom**, le **Titre du document** (ex. FACTURE), la **Variante**, l'**Orientation** (Portrait, Paysage), le **Format** (A4, A5…), la **Police**, l'**En‑tête**, le **Pied de page**, et le **Contenu du modèle** avec ses variables `{{…}}`.
 3. **Prévisualiser**, puis **Enregistrer** (« Modèle enregistré »).
 4. Les modèles servent ensuite quand vous cliquez **Exporter** ou **Télécharger** sur une fiche (facture, dossier, client, audience, diligence) : un choix de modèle, filtré selon vos droits, vous est proposé.
@@ -52,7 +52,7 @@ Réservé à l'**administrateur**. Menu **Plus > Configuration > Modèles** :
 - Logo ou couleurs absents des documents → complétez d'abord les paramètres du cabinet.
 
 ## Créer ou utiliser un modèle PDF avec l'IA
-- **Créer avec l'IA** (en haut de la page Modèles PDF), ou la compétence **Créer un modèle de document** du chat (**#**) : décrivez le modèle (« contrat de bail commercial ») ou joignez un document existant à transformer. L'IA écrit le texte type et remplace les informations propres à chaque affaire par des champs `{{…}}` (ceux de la fiche choisie se remplissent seuls). Vérifiez-le dans la carte (champs surlignés, éditeur plein écran), puis **Enregistrer dans mes modèles** (droit « Créer un modèle PDF »).
-- **Générer un document avec l'IA** (sous un modèle ouvert), ou la compétence **Document depuis un modèle** : mentionnez le dossier ou le client avec **@** ; la fiche remplit ses champs, l'IA remplit les autres d'après les pièces du dossier et vos fichiers joints. Vous obtenez l'aperçu, le **Word** et le **PDF**.
+- **Créer avec l'IA** (en haut de la page Modèles de documents), ou la compétence **Créer / modifier un document** du chat (**#**, « crée un modèle de… ») : décrivez le modèle (« contrat de bail commercial ») ou joignez un document existant à transformer. L'IA écrit le texte type et remplace les informations propres à chaque affaire par des champs `{{…}}` (ceux de la fiche choisie se remplissent seuls). Vérifiez-le dans la carte (champs surlignés, éditeur plein écran), puis **Enregistrer dans mes modèles** (droit « Créer un modèle PDF »).
+- **Générer un document avec l'IA** (sous un modèle ouvert), ou la compétence **Créer / modifier un document** (« attestation de suivi pour @client ») : mentionnez le dossier ou le client avec **@** ; la fiche remplit ses champs, l'IA remplit les autres d'après les pièces du dossier et vos fichiers joints. Vous obtenez l'aperçu, le **Word** et le **PDF**.
 - Les modèles créés par vous ou par l'IA peuvent être **supprimés** (bouton Supprimer) ; les modèles système se désactivent seulement.
 - Les modèles de mails, eux, se rédigent dans leur page. Pour envoyer un message à un client, utilisez le menu **Messages** (le compositeur propose les modèles actifs).

@@ -56,7 +56,7 @@ Quand l'utilisateur demande au chat « comment ça fonctionne », « comment cr�
 | `apporteurs.md` | Apporteurs d'affaires, apports de dossiers, commissions |
 | `agences.md` | Agences (bureaux) du cabinet |
 | `roles-permissions.md` | Rôles et permissions |
-| `modeles-documents.md` | Modèles de mails, modèles PDF, en-têtes et pieds de page |
+| `modeles-documents.md` | Modèles de mails, modèles de documents, en-têtes et pieds de page |
 | `abonnement.md` | Abonnement, plan, quotas, paiement |
 | `recherche.md` | Recherche globale et palette de commandes |
 | `statistiques.md` | Statistiques et rapports avancés |
@@ -72,7 +72,7 @@ Quand l'utilisateur demande au chat « comment ça fonctionne », « comment cr�
 | `modes-chat.md` | Modes du chat (« / »), niveaux de réflexion, mode / compétence / mention |
 | `competences.md` | Compétences du chat (« # ») : principe, familles, cartes, droits |
 | `competences-communication.md` | Compétences Communication : e-mail, WhatsApp, espace client, messagerie, factures |
-| `competences-documents.md` | Compétences Documents : courrier, mise en demeure, modèles, traduction, bilingue, anonymisation |
+| `competences-documents.md` | Compétences Documents : créer / modifier un document (modèles, courrier, mise en demeure, versions), traduction, bilingue, anonymisation |
 | `competences-analyse.md` | Compétences Analyse juridique : jugement, conclusions, chronologie, contrat, mentions, chances, comparables, plaidoirie |
 | `competences-actes.md` | Compétences Calculs & actes : délais, décompte de créance, injonction de payer, convention d'honoraires |
 | `competences-rapports-agenda.md` | Compétences Rapports & exports et Agenda & tâches |

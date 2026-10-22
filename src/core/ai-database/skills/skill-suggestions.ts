@@ -143,6 +143,23 @@ export interface SkillDetection {
   candidates: AiSkillCatalogItem[];
   /** Expression reconnue (« mise en demeure »). */
   trigger?: string;
+  /** Question de consultation (« quel est… », « liste… ») : jamais lancée d'office. */
+  consultation?: boolean;
+}
+
+/**
+ * Compétence évoquée qui vise un enregistrement mentionné (« Décompte de
+ * @facture… ») : elle passe avant la lecture des documents de la conversation,
+ * qui ne contiennent ni factures ni paiements. Seulement la mieux désignée,
+ * et jamais pour une question de consultation.
+ */
+export function skillForReferencedRecord(
+  detection: SkillDetection,
+  referencedTypes: string[],
+): AiSkillCatalogItem | undefined {
+  const [best] = detection.candidates;
+  if (!best || detection.consultation || best.code !== detection.code) return undefined;
+  return best.targets?.some((type) => referencedTypes.includes(type)) ? best : undefined;
 }
 
 /**
@@ -188,6 +205,7 @@ export function detectSkillRequest(question: string, catalog: AiSkillCatalogItem
     code: best.skill.code,
     decisive,
     trigger: best.trigger,
+    consultation,
     candidates: usage ? [] : scored.slice(0, 3).map((entry) => entry.skill),
   };
 }

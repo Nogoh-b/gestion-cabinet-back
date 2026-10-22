@@ -1,5 +1,5 @@
 // src/modules/documents/document-customer/services/document-stats.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service';
@@ -8,6 +8,7 @@ import {
   DocumentCustomer,
   DocumentCustomerStatus,
 } from './entities/document-customer.entity';
+import { DocumentCustomerVersion } from './entities/document-customer-version.entity';
 import { DocumentStatsDto } from './dto/document-stats.dto';
 import { SingleDocumentStatsDto } from './dto/single-document-stats.dto';
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
@@ -20,6 +21,9 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     private documentRepository: Repository<DocumentCustomer>,
     private procedureInstanceService: ProcedureInstanceService,
     private dossierservice: DossiersService,
+    @Optional()
+    @InjectRepository(DocumentCustomerVersion)
+    private readonly versionRepository?: Repository<DocumentCustomerVersion>,
   ) {
     super(documentRepository);
   }
@@ -64,12 +68,23 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
       throw new Error(`Document avec ID ${documentId} non trouvé`);
     }
 
-    // Récupérer les versions précédentes
-    const versionsPrecedentes = await this.documentRepository.find({
-      where: { previous_version: { id: documentId } },
-      relations: ['uploaded_by'],
-      order: { version: 'DESC' },
-    });
+    // Versions précédentes : fichiers archivés du même document
+    // (l'ancienne requête sur previous_version lisait les versions suivantes).
+    const versionsPrecedentes = this.versionRepository
+      ? (
+          await this.versionRepository.find({
+            where: { document_id: documentId },
+            relations: ['created_by'],
+            order: { version: 'DESC' },
+          })
+        ).map((v) => ({
+          id: v.id,
+          version: v.version,
+          uploaded_at: v.created_at,
+          uploaded_by: v.created_by as any,
+          file_size: v.file_size ?? 0,
+        }))
+      : [];
 
     const statusLabels = {
       [DocumentCustomerStatus.PENDING]: 'En attente',

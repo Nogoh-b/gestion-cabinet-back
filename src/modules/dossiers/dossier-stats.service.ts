@@ -1,7 +1,7 @@
 // src/modules/dossiers/services/dossier-stats.service.ts
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { DangerLevel, Dossier } from './entities/dossier.entity';
 import {
   addDossierVisibilityCondition,
@@ -23,6 +23,8 @@ import {
   DiligenceStatus,
 } from '../diligence/entities/diligence.entity';
 import { StatutFacture } from '../facture/dto/create-facture.dto';
+import { summarizeInvoices } from '../facture/invoice-totals';
+import { Paiement } from '../paiement/entities/paiement.entity';
 import {
   DossierLifecyclePhase,
   WorkflowEngine,
@@ -623,6 +625,22 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       throw new Error(`Dossier avec ID ${dossierId} non trouvé`);
     }
 
+    // Paiements à part (une jointure de plus multiplierait les lignes) :
+    // l'encaissé compte les acomptes validés.
+    if (dossier.factures?.length) {
+      const paiements = await this.dossierRepository.manager
+        .getRepository(Paiement)
+        .find({
+          where: { facture: { id: In(dossier.factures.map((f) => f.id)) } },
+          relations: ['facture'],
+        });
+      for (const facture of dossier.factures) {
+        facture.paiements = paiements.filter(
+          (p) => p.facture?.id === facture.id,
+        );
+      }
+    }
+
     return {
       dossier: {
         id: dossier.id,
@@ -852,21 +870,19 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
 
   private getFacturesStats(factures: any[]): SingleDossierStatsDto['factures'] {
     const total = factures.length;
-    const montantTotal = factures.reduce(
-      (sum, f) => sum + (parseFloat(f.montantTTC) || 0),
-      0,
-    );
-    const montantPaye = factures
-      .filter((f) => f.status === StatutFacture.PAYEE)
-      .reduce((sum, f) => sum + (parseFloat(f.montantTTC) || 0), 0);
-    const montantImpaye = montantTotal - montantPaye;
+    // Règle commune : annulées hors totaux, encaissé = paiements validés.
+    // (Le statut arrive en texte : `f.status === PAYEE` ne valait jamais vrai.)
+    const totals = summarizeInvoices(factures);
+    const montantTotal = totals.total;
+    const montantPaye = totals.paid;
+    const montantImpaye = totals.remaining;
     const tauxRecouvrement =
       montantTotal > 0 ? Math.round((montantPaye / montantTotal) * 100) : 0;
 
     // Stats par statut
     const byStatusMap = new Map<number, { count: number; montant: number }>();
     factures.forEach((f) => {
-      const status = f.status || 0;
+      const status = Number(f.status) || 0;
       const current = byStatusMap.get(status) || { count: 0, montant: 0 };
       byStatusMap.set(status, {
         count: current.count + 1,

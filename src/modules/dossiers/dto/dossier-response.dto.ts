@@ -10,6 +10,7 @@ import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { DocumentCustomerStatus } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
 import { FactureResponseDto } from 'src/modules/facture/dto/facture-response.dto';
+import { summarizeInvoices } from 'src/modules/facture/invoice-totals';
 import {
   DossierLifecyclePhase,
   WorkflowEngine,
@@ -556,48 +557,21 @@ export class DossierResponseDto {
   } | null;
 
   // ---------------- MONTANTS TOTAUX ----------------
+  // Règle commune (invoice-totals) : annulées exclues, brouillons comptés,
+  // encaissé = paiements validés (acomptes compris), pas le statut « payée ».
   @ApiProperty({ example: 300000 })
   @Expose()
-  @Transform(({ obj }) => {
-    if (!obj.factures) return 0;
-    return obj.factures
-      .filter(
-        (facture: any) => Number(facture.status) !== StatutFacture.ANNULEE,
-      )
-      .reduce(
-        (total: number, facture: any) =>
-          total + parseFloat(facture.montantTTC?.toString() || '0'),
-        0,
-      );
-  })
+  @Transform(({ obj }) => summarizeInvoices(obj.factures).total)
   total_factures_amount: number;
 
   @ApiProperty({ example: 250000 })
   @Expose()
-  @Transform(({ obj }) => {
-    if (!obj.factures) return 0;
-    return obj.factures
-      .filter((facture: any) => Number(facture.status) === StatutFacture.PAYEE)
-      .reduce(
-        (total: number, facture: any) =>
-          total + parseFloat(facture.montantTTC?.toString() || '0'),
-        0,
-      );
-  })
+  @Transform(({ obj }) => summarizeInvoices(obj.factures).paid)
   paid_factures_amount: number;
 
   @ApiProperty({ example: 250000 })
   @Expose()
-  @Transform(({ obj }) => {
-    if (!obj.factures) return 0;
-    return obj.factures
-      .filter((facture: any) => facture.montantPaye > 0)
-      .reduce(
-        (total: number, facture: any) =>
-          total + parseFloat(facture.montantPaye?.toString() || '0'),
-        0,
-      );
-  })
+  @Transform(({ obj }) => summarizeInvoices(obj.factures).paid)
   paid_amount: number;
 
   // ---------------- ÉTATS LOGIQUES ----------------

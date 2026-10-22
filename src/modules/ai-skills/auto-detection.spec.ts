@@ -2,7 +2,7 @@
 // Détection des compétences en mode auto, sur les vraies définitions des
 // compétences (déclencheurs `autoTriggers` et exclusions `autoExclude`).
 import type { AiSkillCatalogItem, AiSkillHandler } from 'src/core/ai-database/skills/ai-skill.types';
-import { detectSkillRequest, suggestSkills } from 'src/core/ai-database/skills/skill-suggestions';
+import { detectSkillRequest, skillForReferencedRecord, suggestSkills } from 'src/core/ai-database/skills/skill-suggestions';
 import { planAnswer, splitRequests } from 'src/core/ai-database/answer-plan';
 import * as agenda from './agenda.skills';
 import * as billing from './billing.skills';
@@ -12,11 +12,12 @@ import * as documents from './document.skills';
 import * as studio from './document-studio.skills';
 import * as legal from './legal-tools.skills';
 import * as reports from './report.skills';
+import * as transcription from './transcription.skills';
 
 /** Catalogue complet, comme `AiSkillService.catalog` pour un administrateur. */
 function fullCatalog(): AiSkillCatalogItem[] {
   const handlers: AiSkillHandler[] = [];
-  for (const exported of [agenda, analysis, billing, communication, documents, studio, legal, reports]) {
+  for (const exported of [agenda, analysis, billing, communication, documents, studio, legal, reports, transcription]) {
     for (const value of Object.values(exported)) {
       if (typeof value !== 'function' || !/Skill$/.test(value.name) || typeof value.prototype?.run !== 'function') continue;
       handlers.push(new (value as any)());
@@ -43,8 +44,8 @@ const catalog = fullCatalog();
 const detect = (question: string) => detectSkillRequest(question, catalog);
 
 describe('compétences reconnues en mode auto', () => {
-  it('charge les 36 compétences', () => {
-    expect(catalog).toHaveLength(36);
+  it('charge les 33 compétences', () => {
+    expect(catalog).toHaveLength(33);
   });
 
   it.each([
@@ -56,8 +57,8 @@ describe('compétences reconnues en mode auto', () => {
     ['Préparer un WhatsApp pour Émilie Lefèvre', 'whatsapp'],
     ['envoie un SMS au client pour lui rappeler l’audience', 'whatsapp'],
     ['rédige un mail au client pour l’informer du renvoi', 'envoyer_email'],
-    ['prépare une lettre de mise en demeure pour M. Kamga', 'mise_en_demeure'],
-    ['rédige un courrier au greffe', 'courrier'],
+    ['prépare une lettre de mise en demeure pour M. Kamga', 'rediger_document'],
+    ['rédige un courrier au greffe', 'rediger_document'],
     ['traduis ce paragraphe en anglais', 'traduire'],
     ['fais la version bilingue du bail', 'version_bilingue'],
     ['analyse ce jugement et sors les délais', 'lecture_jugement'],
@@ -76,11 +77,15 @@ describe('compétences reconnues en mode auto', () => {
     ['rédige un contrat de bail commercial', 'rediger_document'],
     ['prépare une assignation en paiement à partir des pièces du dossier', 'rediger_document'],
     ['génère le procès-verbal de conciliation en word', 'rediger_document'],
-    ['crée un modèle de contrat de bail', 'creer_modele'],
-    ['crée-moi un nouveau modèle de lettre de relance', 'creer_modele'],
-    ['transforme ce document en modèle', 'creer_modele'],
-    ['rédige le contrat selon mon modèle pour ce dossier', 'document_modele'],
-    ['génère le document à partir du modèle de bail', 'document_modele'],
+    ['crée un modèle de contrat de bail', 'rediger_document'],
+    ['crée-moi un nouveau modèle de lettre de relance', 'rediger_document'],
+    ['transforme ce document en modèle', 'rediger_document'],
+    ['rédige le contrat selon mon modèle pour ce dossier', 'rediger_document'],
+    ['génère le document à partir du modèle de bail', 'rediger_document'],
+    // 21/10/2026 : modifier un document classé (nouvelle version).
+    ['modifie le contrat de prestation du dossier', 'rediger_document'],
+    ["mets à jour l'attestation de suivi", 'rediger_document'],
+    ['transcris l’enregistrement de l’entretien avec le client', 'transcrire_audio'],
     // Retours du 21/10/2026 : demande de pièce au client, encaissement sur une facture.
     ["demande au client de #DOS-2026-0037 — Jean DUPONT , de déposer sa pièce d'identité", 'message_portail'],
     ["informe le client que l'audience est reportée au 12 novembre", 'message_portail'],
@@ -128,12 +133,12 @@ describe('compétences reconnues en mode auto', () => {
   it('égalité entre deux compétences : rien de décisif, les deux sont candidates', () => {
     const result = detect('envoie la convocation au client par mail');
     expect(result.decisive).toBe(false);
-    expect(result.candidates.map((item) => item.code)).toEqual(expect.arrayContaining(['envoyer_email', 'document_modele']));
+    expect(result.candidates.map((item) => item.code)).toEqual(expect.arrayContaining(['envoyer_email', 'rediger_document']));
   });
 
   it('sans verbe, la compétence reste candidate pour le classifieur', () => {
     const result = detect('mise en demeure pour M. Kamga');
-    expect(result.candidates[0]?.code).toBe('mise_en_demeure');
+    expect(result.candidates[0]?.code).toBe('rediger_document');
   });
 
   it('une compétence absente du catalogue (droits, plan) ne peut pas être reconnue', () => {
@@ -145,6 +150,22 @@ describe('compétences reconnues en mode auto', () => {
     const codes = suggestSkills('je veux preparer un whatsapp', catalog).map((item) => item.code);
     expect(codes).toContain('whatsapp');
     expect(codes).not.toContain('dossier_plaidoirie');
+  });
+});
+
+// 21/10/2026 : « Décompte de @facture… » répondu depuis deux contrats de la
+// conversation (« aucune facture dans les documents fournis »).
+describe('compétence visant la fiche mentionnée, avant les documents', () => {
+  it('« Décompte de @facture » lance le décompte de créance', () => {
+    const detection = detect('Décompte de @facture au 31/10/2026, taux légal 4,5 %');
+    expect(skillForReferencedRecord(detection, ['facture'])?.code).toBe('decompte_creance');
+    expect(skillForReferencedRecord(detection, ['dossier'])?.code).toBe('decompte_creance');
+  });
+
+  it('rien sans fiche du type visé, ni pour une consultation', () => {
+    expect(skillForReferencedRecord(detect('Décompte au 31/10/2026, taux 4,5 %'), ['employee'])).toBeUndefined();
+    expect(skillForReferencedRecord(detect('liste les factures du dossier'), ['dossier'])).toBeUndefined();
+    expect(skillForReferencedRecord(detect('quel est le décompte de la facture ?'), ['facture'])).toBeUndefined();
   });
 });
 

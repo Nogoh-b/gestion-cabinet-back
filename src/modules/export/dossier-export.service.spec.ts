@@ -26,8 +26,14 @@ const dossier = () => ({
 describe('DossierExportService archive', () => {
   function exportFor(user: typeof lawyer) {
     const repo = (rows: any[]) => ({ find: jest.fn().mockResolvedValue(rows) });
-    const factureRepo = repo([{ id: 1, invoice_number: 'F-1', total_amount: 60000 }]);
-    const paiementRepo = repo([{ id: 1, amount: 60000 }]);
+    const factureRepo = repo([
+      { id: 'f1', numero: 'F-1', status: '2', montantTTC: '60000.00' },
+      { id: 'f2', numero: 'F-2', status: '5', montantTTC: '20000.00' },
+    ]);
+    const paiementRepo = repo([
+      { id: 'p1', montant: '25000.00', status: '1', modePaiement: '2', facture: { id: 'f1', numero: 'F-1' } },
+      { id: 'p2', montant: '5000.00', status: '0', modePaiement: '0', facture: { id: 'f1', numero: 'F-1' } },
+    ]);
     const service = new DossierExportService(
       { findOne: jest.fn().mockResolvedValue(dossier()) } as any,
       repo([]) as any,
@@ -44,7 +50,7 @@ describe('DossierExportService archive', () => {
     };
     return (service as any)
       .addDossier(archive, 7, hiddenResponseFields(user), {})
-      .then(() => ({ files, factureRepo }));
+      .then(() => ({ files, factureRepo, paiementRepo }));
   }
 
   it('leaves invoices, payments and salaries out of a lawyer export', async () => {
@@ -63,6 +69,23 @@ describe('DossierExportService archive', () => {
     const { files } = await exportFor(accountant);
     expect(files.has('Dossier_DOS-2026-0007/factures.csv')).toBe(true);
     expect(files.get('Dossier_DOS-2026-0007/resume.txt')).toContain('Solde restant');
+  });
+
+  // GET /exports/dossiers/90 : « Property "factureId" was not found in "Paiement" ».
+  it('loads payments through the facture relation and totals validated ones only', async () => {
+    const { files, paiementRepo } = await exportFor(accountant);
+    const [options] = paiementRepo.find.mock.calls[0] as any[];
+    expect(options.where.facture.id).toBeDefined();
+    expect(options.where).not.toHaveProperty('factureId');
+
+    const summary = files.get('Dossier_DOS-2026-0007/resume.txt')!;
+    const amounts = summary.replace(/\s/g, ' ');
+    expect(amounts).toMatch(/total hors annulées : 60 000,00/);
+    expect(amounts).toMatch(/dont 1 annulée\(s\) : 20 000,00/);
+    expect(amounts).toMatch(/encaissé validé : 25 000,00/);
+    expect(amounts).toMatch(/Solde restant  : 35 000,00/);
+    expect(summary).toMatch(/F-2 .*Annulée.*annulée, hors totaux/);
+    expect(files.get('Dossier_DOS-2026-0007/paiements.csv')).toContain('Espèces');
   });
 });
 

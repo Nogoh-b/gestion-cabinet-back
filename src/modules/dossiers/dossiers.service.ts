@@ -55,6 +55,7 @@ import { User } from '../iam/user/entities/user.entity';
 import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
 import { PlanQuotaService } from '../plans/plan-quota.service';
 import { StatutFacture } from '../facture/dto/create-facture.dto';
+import { Paiement } from '../paiement/entities/paiement.entity';
 import { ApplyTransitionDto } from '../procedure/dto/create-procedure-instance.dto copy';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
 import { StageVisit } from '../procedure/entities/stage-visit.entity';
@@ -619,6 +620,8 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       this.checkDossierAccess(dossier, user);
     }
 
+    await this.attachInvoicePayments(dossier);
+
     // ✅ Charger procedureInstance séparément si nécessaire
     if (dossier.procedureInstanceId) {
       const procedureInstance =
@@ -645,6 +648,29 @@ export class DossiersService extends BaseServiceV1<Dossier> {
 
     return plainToInstance(DossierResponseDto, dossier);
   }
+
+  /**
+   * Paiements des factures, chargés à part : une jointure de plus sur la
+   * fiche multiplierait les lignes (documents × audiences × factures…).
+   * Sans eux, « Encaissé » ne voyait que les factures soldées, pas les acomptes.
+   */
+  private async attachInvoicePayments(dossier: Dossier): Promise<void> {
+    const factures = dossier.factures ?? [];
+    if (!factures.length) return;
+    const paiements = await this.dossierRepository.manager
+      .getRepository(Paiement)
+      .find({
+        where: { facture: { id: In(factures.map((f) => f.id)) } },
+        relations: ['facture'],
+      });
+    for (const facture of factures) {
+      facture.paiements = paiements
+        .filter((p) => p.facture?.id === facture.id)
+        // La facture complète est déjà dans la fiche : seul son id reste.
+        .map((p) => Object.assign(p, { facture: { id: facture.id } }));
+    }
+  }
+
   async findOneByInstance(
     procedureInstanceId: string,
   ): Promise<DossierResponseDto | any> {

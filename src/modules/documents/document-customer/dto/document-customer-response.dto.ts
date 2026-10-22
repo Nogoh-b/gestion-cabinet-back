@@ -311,7 +311,9 @@ export class DocumentCustomerResponseDto {
 
   @ApiProperty()
   @Expose()
-  @Transform(({ obj }) => !!obj.previous_version_id)
+  // Les versions précédentes vivent dans document_customer_versions : à partir
+  // de la 2ᵉ version, le document en a au moins une.
+  @Transform(({ obj }) => Number(obj.version ?? 1) > 1 || !!obj.previous_version_id)
   has_previous_versions: boolean;
 
   // Champs additionnels de l'entité

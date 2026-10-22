@@ -33,6 +33,7 @@ import { SettingsModule } from 'src/modules/settings/settings.module';
 import { AiContextConfig, AiContextSuggestion } from './entities/ai-context-config.entity';
 import { AiContextConfigService } from './ai-context-config.service';
 import { AiContextConfigController } from './ai-context-config.controller';
+import { AudioTranscriptionService } from './audio-transcription.service';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { AiContextConfigController } from './ai-context-config.controller';
   controllers: [AiDatabaseController, AiAdminController, AiContextConfigController],
   providers: [
     AiDatabaseService,
+    AudioTranscriptionService,
     SchemaMetadataService,
     SqlValidatorService,
     ConversationManagerService,

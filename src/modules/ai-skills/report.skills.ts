@@ -146,9 +146,10 @@ ${DRAFTING_RULES}`, 800).catch(() => '')).trim();
       markdown,
       followUps: [{
         label: 'En faire un document PDF',
-        skill: 'courrier',
+        skill: 'rediger_document',
         question: "Mets ce rapport d'activité en forme de document.",
         params: {
+          templateCode: 'general_courrier',
           subject: `Rapport d'activité — ${period.label}`,
           recipientName: 'Direction du cabinet',
           bodyContent: [...rows.map(([label, value]) => `${label} : ${value}`), '', comment].join('\n').trim().slice(0, 15000),

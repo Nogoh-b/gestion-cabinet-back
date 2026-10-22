@@ -30,7 +30,7 @@ Une **compétence** est une action spécialisée et guidée du chat : envoyer un
 | Famille | Compétences |
 |---|---|
 | **Communication** | Envoyer un e-mail · Préparer un WhatsApp · Message à l'espace client · Message à un collaborateur · Envoyer une facture · Relancer les impayés |
-| **Documents** | Rédiger un document (Word / PDF) · Document depuis un modèle · Créer un modèle de document · Courrier · Mise en demeure · Traduire (français ↔ anglais) · Version bilingue FR \| EN · Anonymiser un document |
+| **Documents** | Créer / modifier un document (Word / PDF ; modèles, courrier, mise en demeure, création de modèle, modification versionnée) · Traduire (français ↔ anglais) · Version bilingue FR \| EN · Anonymiser un document |
 | **Analyse juridique** | Lire un jugement · Répondre aux conclusions adverses · Chronologie et contradictions · Auditer un contrat · Contrôler les mentions d'un acte · Évaluer les chances du dossier · Dossiers comparables · Dossier de plaidoirie |
 | **Calculs & actes** | Calculer un délai de procédure · Décompte de créance · Requête en injonction de payer · Convention d'honoraires |
 | **Facturation** | Configurer la facturation · Devis d'honoraires |

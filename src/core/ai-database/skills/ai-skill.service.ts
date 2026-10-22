@@ -62,7 +62,14 @@ export class AiSkillService {
     if (missing.length) throw new ForbiddenException(buildPermissionRefusal(missing));
     const module = handler.definition.planModule;
     if (module) this.planQuota.assertModuleEnabled(await this.currentPlan(ctx.user), module);
-    return handler.run(ctx);
+    // Ancien code (« courrier », « document_modele »…) : son préremplissage, puis les paramètres reçus.
+    const aliasParams = this.registry.aliasParams(code);
+    return handler.run(aliasParams ? { ...ctx, params: { ...aliasParams, ...ctx.params } } : ctx);
+  }
+
+  /** Code courant d'une compétence (un ancien code fusionné donne sa compétence). */
+  canonicalCode(code: string): string {
+    return this.registry.get(code)?.definition.code ?? code;
   }
 
   label(code: string): string {
@@ -83,9 +90,9 @@ export class AiSkillService {
     return !!this.registry.get(code);
   }
 
-  /** Faits de la fiche mentionnée (dossier, client…), pour la conversation et le conseil. */
-  recordFacts(references: any[], user: any): Promise<string> {
-    return this.registry.recordFacts(references, user);
+  /** Faits de la fiche mentionnée (dossier, client…), pour la conversation, le conseil et les documents. */
+  recordFacts(references: any[], user: any, question?: string): Promise<string> {
+    return this.registry.recordFacts(references, user, question);
   }
 
   /** Éléments de la fiche visée, insérables dans les éditeurs des brouillons. */

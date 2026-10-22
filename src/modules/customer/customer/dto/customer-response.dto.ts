@@ -6,6 +6,15 @@ import {
   CustomerStatus,
   CustomerCreatedFrom,
 } from '../entities/customer.entity';
+import { summarizeInvoices } from 'src/modules/facture/invoice-totals';
+
+/** Factures de tous les dossiers du client, règle commune (annulées exclues). */
+function clientInvoiceTotals(obj: any) {
+  const factures = (obj?.dossiers ?? []).flatMap(
+    (dossier: any) => dossier?.factures ?? [],
+  );
+  return summarizeInvoices(factures);
+}
 
 export class CustomerResponseDto {
   @ApiProperty({ example: 1 })
@@ -318,21 +327,9 @@ export class CustomerResponseDto {
     example: 750000,
     description: 'Montant total des factures des dossiers du client',
   })
+  // `amount_ttc` / `is_paid` n'existaient pas : ces totaux valaient toujours 0.
   @Expose()
-  @Transform(({ obj }) => {
-    if (!obj.dossiers) return 0;
-    return obj.dossiers.reduce((total: number, dossier: any) => {
-      if (!dossier.factures) return total;
-      return (
-        total +
-        dossier.factures.reduce(
-          (factureTotal: number, facture: any) =>
-            factureTotal + parseFloat(facture.amount_ttc?.toString() || '0'),
-          0,
-        )
-      );
-    }, 0);
-  })
+  @Transform(({ obj }) => clientInvoiceTotals(obj).total)
   total_factures_amount: number;
 
   @ApiProperty({
@@ -340,22 +337,7 @@ export class CustomerResponseDto {
     description: 'Montant payé sur les factures des dossiers du client',
   })
   @Expose()
-  @Transform(({ obj }) => {
-    if (!obj.dossiers) return 0;
-    return obj.dossiers.reduce((total: number, dossier: any) => {
-      if (!dossier.factures) return total;
-      return (
-        total +
-        dossier.factures
-          .filter((facture: any) => facture.is_paid)
-          .reduce(
-            (factureTotal: number, facture: any) =>
-              factureTotal + parseFloat(facture.amount_ttc?.toString() || '0'),
-            0,
-          )
-      );
-    }, 0);
-  })
+  @Transform(({ obj }) => clientInvoiceTotals(obj).paid)
   paid_factures_amount: number;
 
   @ApiProperty({
@@ -363,6 +345,6 @@ export class CustomerResponseDto {
     description: 'Solde restant à payer sur les factures du client',
   })
   @Expose()
-  @Transform(({ obj }) => obj.total_factures_amount - obj.paid_factures_amount)
+  @Transform(({ obj }) => clientInvoiceTotals(obj).remaining)
   outstanding_balance: number;
 }

@@ -66,6 +66,12 @@ export interface AiSkillDefinition {
   autoTriggers?: string[];
   /** Mots qui écartent la détection automatique (« facture » pour l'e-mail libre). */
   autoExclude?: string[];
+  /**
+   * Anciens codes fusionnés dans cette compétence (absents du menu) : boutons,
+   * messages et actions enregistrés avec eux restent valides ; `params`
+   * préremplit la demande (« courrier » → modèle general_courrier).
+   */
+  aliases?: Array<{ code: string; params?: Record<string, unknown> }>;
 }
 
 /** Bouton proposé sous une réponse : relance une autre compétence. */
@@ -121,8 +127,21 @@ export interface DocumentDraft {
  * fiche `entityType` / `entityId` et les informations du cabinet.
  */
 export interface StudioDocument {
-  /** document : à générer ; template : modèle à enregistrer dans « Modèles PDF ». */
+  /** document : à générer ; template : modèle à enregistrer dans « Modèles de documents ». */
   mode: 'document' | 'template';
+  /**
+   * Document classé dont ce brouillon est la modification : « Classer » en
+   * fait la version suivante (même document) au lieu d'un doublon.
+   */
+  sourceDocument?: {
+    id: number;
+    name: string;
+    version: number;
+    format: 'docx' | 'pdf' | 'other';
+    categoryId?: number | null;
+  };
+  /** Rédigé sans modèle : la carte propose de l'enregistrer comme modèle. */
+  suggestTemplate?: boolean;
   html: string;
   /** Titre encadré en tête du document (vide : aucun, le corps porte son titre). */
   title: string;
@@ -216,7 +235,7 @@ export type AiSkillOutcome =
   | { type: 'document_draft'; markdown: string; draft: DocumentDraft; followUps?: AiSkillFollowUp[] }
   | { type: 'message_draft'; markdown: string; draft: MessageDraft; followUps?: AiSkillFollowUp[] }
   /** Il manque une information (cible…) : on la demande. */
-  | { type: 'clarify'; markdown: string };
+  | { type: 'clarify'; markdown: string; /** Réponses toutes prêtes (« Quel document ? »). */ followUps?: AiSkillFollowUp[] };
 
 /** Graphique affiché sous la réponse (voir chart-spec). */
 export type { ChartSpec };
@@ -254,6 +273,11 @@ export interface AiSkillContext {
   status(message: string): void;
   /** Texte des pièces de la GED (lecture et OCR du chat), dans le cabinet courant. */
   readDocuments(ids: number[]): Promise<Array<{ id: number; name: string; content: string }>>;
+  /**
+   * Document classé à modifier : Word rendu en HTML (mise en forme gardée),
+   * PDF en texte lu (pdf-parse, OCR). null s'il est introuvable ou illisible.
+   */
+  readDocumentForEdit?(id: number): Promise<EditableDocument | null>;
   /** Extraits de la base juridique de la plateforme sur `query` ('' si rien de pertinent). */
   legalSources(query: string): Promise<string>;
   /** Profil de l'utilisateur connecté (rôle, droits, cabinet, plan), pour la rédaction. */
@@ -263,6 +287,21 @@ export interface AiSkillContext {
 export interface AiSkillHandler {
   readonly definition: AiSkillDefinition;
   run(ctx: AiSkillContext): Promise<AiSkillOutcome>;
+}
+
+/** Document de la GED repris par « modifier un document ». */
+export interface EditableDocument {
+  id: number;
+  name: string;
+  /** Word : HTML de mammoth ; PDF : vide (le texte seul est lisible). */
+  html: string;
+  text: string;
+  format: 'docx' | 'pdf' | 'other';
+  mimetype: string | null;
+  version: number;
+  dossierId: number | null;
+  categoryId: number | null;
+  confidential: boolean;
 }
 
 /** Ce que le chat reçoit du catalogue (sans les permissions). */

@@ -12,7 +12,7 @@ Le module Documents conserve les **pièces et fichiers** du cabinet (contrats, c
 
 ## Où le trouver
 - Menu **Documents** (`/documents`, section « Relation client », permission « voir les documents », module Documents inclus dans le plan d'abonnement) : liste avec statistiques, recherche et filtres. Bouton **Nouveau document**.
-- Fiche d'un document (`/documents/<id>`) : onglets **Aperçu** (nom, statut, version, taille, type MIME, catégorie, confidentialité, dossier, client, dates, validité) et **Historique**.
+- Fiche d'un document (`/documents/<id>`) : onglets **Aperçu** (nom, statut, version, taille, type MIME, catégorie, confidentialité, dossier, client, dates, validité) et **Versions** (historique des fichiers).
 - **Plus > Configuration > Référentiels documents** (`/documents/type`) : les **types de documents** (« Nouveau type de document »). Son raccourci **Catégories** (`/categories`) : les **catégories**.
 - Les documents d'un dossier sont aussi visibles dans l'onglet documents de la fiche du dossier ; ceux d'un client sur sa fiche (onglet **Documents**).
 
@@ -32,7 +32,7 @@ Champs obligatoires : **Dossier** et **Fichier** (plus **Nom** et **Note** dans 
 ## Statuts et règles
 - Statuts : **En attente**, **Validé**, **Rejeté**, **Expiré**, **Archivé**.
 - Actions de la fiche : **Télécharger** (permission « télécharger un document »), **Modifier**, **Voir le fichier**, **Voir le dossier**, **Remettre en attente** (permission de rejeter), **Archiver** (permission d'archiver), **Supprimer** (permission de supprimer).
-- Remplacer le fichier d'un document **incrémente sa version** (champ Version de l'aperçu).
+- Remplacer le fichier d'un document crée sa **version suivante** : le document garde sa fiche, l'ancien fichier est conservé dans l'onglet **Versions** (auteur, date, origine), où **Ouvrir** l'affiche et **Restaurer** en refait la version courante. Une modification faite avec l'IA (« Créer / modifier un document ») et classée depuis la carte crée aussi une version. Changer le statut ou la description ne change pas la version.
 - Un type de document peut définir un **type de fichier accepté**, une **taille maximale**, une **durée de validité** et s'il est **obligatoire**.
 
 ## Les types de documents (Nature)

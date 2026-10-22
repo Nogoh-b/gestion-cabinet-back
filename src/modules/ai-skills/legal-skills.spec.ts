@@ -149,6 +149,34 @@ describe('Décompte de créance', () => {
     (context.llm.complete as jest.Mock).mockResolvedValue('{"principal": null, "taux": 0}');
     await expect(skill.run(context)).resolves.toMatchObject({ type: 'clarify' });
   });
+
+  // « Décompte du dossier au 31/10/2026, taux légal 4,5 % » : les factures
+  // enregistrées, chacune depuis son échéance, acomptes validés imputés.
+  it('dossier sans montant : une ligne par facture non soldée', async () => {
+    const unpaid = [
+      { numero: 'FAC-2026-0037', montantTTC: '54500.00', dateFacture: '2026-10-10', dateEcheance: '2026-09-10', paiements: [{ datePaiement: '2026-10-01', montant: '25000.00' }] },
+      { numero: 'FAC-2026-0040', montantTTC: '3228.00', dateFacture: '2026-10-10', dateEcheance: '2026-12-10', paiements: [] },
+    ];
+    const qb: any = { leftJoinAndSelect: () => qb, where: () => qb, andWhere: () => qb, orderBy: () => qb, getMany: async () => unpaid };
+    const dataSource = { getRepository: () => ({ createQueryBuilder: () => qb }) };
+    const skill = new DecompteCreanceSkill(targetsMock() as any, dataSource as any);
+    const context = ctx({ question: 'Décompte du dossier au 31/10/2026, taux légal 4,5 %' });
+    (context.llm.complete as jest.Mock).mockResolvedValue('{"taux": 4.5, "date_arret": "2026-10-31", "base": 365, "frais": []}');
+
+    const outcome: any = await skill.run(context);
+
+    expect(outcome.type).toBe('document_draft');
+    expect(outcome.markdown).toContain('2 facture(s) non soldée(s)');
+    expect(outcome.markdown).toContain('FAC-2026-0037');
+    expect(outcome.markdown).toMatch(/10\/12\/2026 \(non échue\)/);
+    const { decompte } = outcome.followUps[0].params;
+    expect(decompte.principal).toBe(57728);
+    expect(decompte.acomptes).toBe(25000);
+    expect(decompte.factures).toHaveLength(2);
+    // FAC-0040 non échue au 31/10 : son dû reste le principal.
+    expect(decompte.factures[1].du).toBe(3228);
+    expect(decompte.interets).toBeGreaterThan(0);
+  });
 });
 
 describe('Lecture d’un jugement', () => {

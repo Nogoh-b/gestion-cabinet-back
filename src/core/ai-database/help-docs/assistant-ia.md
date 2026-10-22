@@ -35,7 +35,7 @@ Tapez **#** (ou le bouton **⚡** de la saisie) pour choisir une **action guidé
 | Famille | Compétences |
 |---|---|
 | **Communication** | Envoyer un e-mail (modèles du cabinet, pièces de la GED, envoi programmé), Préparer un WhatsApp (envoyé depuis votre WhatsApp), Message à l'espace client, Message à un collaborateur, Envoyer une facture, Relancer les impayés |
-| **Documents** | Courrier, Mise en demeure, Document depuis un modèle (attestation, avis d'audience…), Traduire (français ↔ anglais), Version bilingue FR \| EN, Anonymiser un document |
+| **Documents** | Créer / modifier un document (Word / PDF : vos modèles — courrier, mise en demeure, attestation, avis d'audience… — ou rédaction par l'IA, modification versionnée d'un document classé), Traduire (français ↔ anglais), Version bilingue FR \| EN, Anonymiser un document |
 | **Analyse juridique** | Lire un jugement, Répondre aux conclusions adverses, Chronologie et contradictions, Auditer un contrat, Contrôler les mentions d'un acte, Évaluer les chances du dossier, Dossiers comparables, Dossier de plaidoirie |
 | **Calculs & actes** | Calculer un délai de procédure, Décompte de créance, Requête en injonction de payer, Convention d'honoraires |
 | **Rapports & exports** | Rapport d'activité (période au choix), État des impayés, Exporter un dossier (ZIP), Compte rendu d'audience |

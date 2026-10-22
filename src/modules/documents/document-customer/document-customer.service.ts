@@ -53,6 +53,26 @@ import {
   DocumentCustomer,
   DocumentCustomerStatus,
 } from './entities/document-customer.entity';
+import {
+  DocumentCustomerVersion,
+  type DocumentVersionSource,
+} from './entities/document-customer-version.entity';
+import { signUploadUrl } from 'src/core/security/uploads-access';
+
+/** Ligne de l'historique des versions (la version courante comprise). */
+export interface DocumentVersionView {
+  /** null pour la version courante (le document lui-même). */
+  id: number | null;
+  version: number;
+  current: boolean;
+  name: string;
+  file_size: number | null;
+  file_mimetype: string | null;
+  source: DocumentVersionSource;
+  comment: string | null;
+  created_by: { id: number; name: string } | null;
+  created_at: Date | null;
+}
 
 /** Émis quand le cabinet valide ou refuse un document en attente. */
 export const DOCUMENT_REVIEWED_EVENT = 'document-customer.reviewed';
@@ -80,18 +100,32 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     private cabinetService: CabinetService,
     private planQuotaService: PlanQuotaService,
     @Optional() private readonly eventEmitter?: EventEmitter2,
+    @Optional()
+    @InjectRepository(DocumentCustomerVersion)
+    private readonly versionRepository?: Repository<DocumentCustomerVersion>,
   ) {
     super(docRepository, paginationService);
   }
 
-  /** Volume total déjà stocké (octets) par le cabinet courant. */
+  /** Volume total déjà stocké (octets) par le cabinet courant, versions archivées comprises. */
   private async currentStorageBytes(): Promise<number> {
     let qb = this.docRepository
       .createQueryBuilder('d')
       .select('COALESCE(SUM(d.file_size), 0)', 'total');
     qb = addTenantCondition(qb, 'd');
     const row = await qb.getRawOne<{ total: string }>();
-    return Number(row?.total ?? 0) || 0;
+    let archived = 0;
+    if (this.versionRepository) {
+      let versions = this.versionRepository
+        .createQueryBuilder('v')
+        .select('COALESCE(SUM(v.file_size), 0)', 'total');
+      versions = addTenantCondition(versions, 'v');
+      const archivedRow = await versions
+        .getRawOne<{ total: string }>()
+        .catch(() => null);
+      archived = Number(archivedRow?.total ?? 0) || 0;
+    }
+    return (Number(row?.total ?? 0) || 0) + archived;
   }
 
   protected getDefaultSearchOptions(): SearchOptions {
@@ -392,35 +426,13 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
 
     const { file, ...restDto } = updateDto;
 
-    // 1. Si un nouveau fichier est fourni, l'uploader
+    // 1. Nouveau fichier : nouvelle version du même document (l'ancien
+    //    fichier est archivé, jamais écrasé ni dupliqué).
     if (file) {
-      const tenantId = getCurrentTenantId();
-      let cabinetName = 'cabinet';
-      try {
-        const cabinet = await this.cabinetService.findById(tenantId);
-        if (cabinet?.name) {
-          cabinetName = FilesUtil.sanitizeName(cabinet.name).toLowerCase();
-        }
-      } catch {
-        cabinetName = 'cabinet';
-      }
-
-      const dossier = existing.dossier
-        ? await this.dossierService.findOne(existing.dossier.id)
-        : null;
-      const category = existing.category;
-      const docType = existing.document_type;
-      const dir =
-        dossier && category && docType
-          ? `${cabinetName}/${dossier.dossier_number}/${category.name}/${docType.name}`
-          : `${cabinetName}/documents`;
-
-      const docName = restDto.name || existing.name;
-      const uploadedFile = await this.uploadFile(file, dir, docName);
-      existing.file_path = uploadedFile.filePath;
-      existing.file_url = uploadedFile.fileUrl;
-      existing.file_size = uploadedFile.fileSize;
-      existing.file_mimetype = uploadedFile.mimeType;
+      await this.replaceFile(existing, file, userId, {
+        source: 'upload',
+        name: restDto.name || existing.name,
+      });
     }
 
     // 2. Si document_type_id change, valider le nouveau type
@@ -497,11 +509,264 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       }
     }
 
-    // 7. Versioning
-    existing.version = (existing.version ?? 1) + 1;
-
+    // 7. Versioning : seul un nouveau fichier change la version (cf. replaceFile).
     const saved = await this.docRepository.save(existing);
     return plainToInstance(DocumentCustomerResponseDto, saved);
+  }
+
+  // ==================== VERSIONS ====================
+
+  /**
+   * Nouvelle version d'un document classé (fichier remplacé à la main, ou
+   * document modifié depuis le studio du chat) : même id, version suivante,
+   * l'ancien fichier rejoint l'historique.
+   */
+  async addVersion(
+    id: number,
+    file: Express.Multer.File,
+    userId?: number,
+    options: { source?: DocumentVersionSource; comment?: string; name?: string } = {},
+  ): Promise<DocumentCustomerResponseDto> {
+    if (!file) {
+      throw new BadRequestException('Aucun fichier fourni pour la nouvelle version');
+    }
+    const existing = await this.docRepository.findOne({
+      where: { id },
+      relations: ['customer', 'document_type', 'dossier', 'category'],
+    });
+    if (!existing) {
+      throw new NotFoundException(`Document avec l'ID ${id} introuvable`);
+    }
+    await this.replaceFile(existing, file, userId, options);
+    const saved = await this.docRepository.save(existing);
+    return plainToInstance(DocumentCustomerResponseDto, saved);
+  }
+
+  /** Versions du document, la courante en premier. */
+  async listVersions(id: number): Promise<DocumentVersionView[]> {
+    const document = await this.docRepository.findOne({
+      where: { id },
+      relations: ['uploaded_by'],
+    });
+    if (!document) {
+      throw new NotFoundException(`Document avec l'ID ${id} introuvable`);
+    }
+    const archived = this.versionRepository
+      ? await this.versionRepository.find({
+          where: { document_id: id },
+          relations: ['created_by'],
+          order: { version: 'DESC' },
+        })
+      : [];
+    const meta: any = document.metadata ?? {};
+    const userName = (user: any) =>
+      user
+        ? String(
+            user.full_name ||
+              [user.first_name, user.last_name].filter(Boolean).join(' ') ||
+              user.username ||
+              `#${user.id}`,
+          ).trim()
+        : '';
+    const currentAuthorId = Number(meta.version_by ?? document.uploaded_by_id) || null;
+    const currentAuthor =
+      currentAuthorId && currentAuthorId === document.uploaded_by_id
+        ? document.uploaded_by
+        : null;
+    return [
+      {
+        id: null,
+        version: document.version ?? 1,
+        current: true,
+        name: document.name,
+        file_size: document.file_size ?? null,
+        file_mimetype: document.file_mimetype ?? null,
+        source: (meta.version_source as DocumentVersionSource) ?? 'upload',
+        comment: meta.version_comment ?? null,
+        created_by: currentAuthorId
+          ? { id: currentAuthorId, name: userName(currentAuthor) || meta.version_by_name || '' }
+          : null,
+        created_at: meta.version_at ? new Date(meta.version_at) : document.uploaded_at ?? null,
+      },
+      ...archived.map((row) => ({
+        id: row.id,
+        version: row.version,
+        current: false,
+        name: row.name,
+        file_size: row.file_size,
+        file_mimetype: row.file_mimetype,
+        source: row.source,
+        comment: row.comment,
+        created_by: row.created_by_id
+          ? { id: row.created_by_id, name: userName(row.created_by) }
+          : null,
+        created_at: row.created_at ?? null,
+      })),
+    ];
+  }
+
+  /** Octets d'une version archivée (fichier local, sinon son URL). */
+  async readVersionFile(
+    id: number,
+    versionId: number,
+  ): Promise<{ buffer: Buffer; mimeType: string; name: string }> {
+    const version = this.versionRepository
+      ? await this.versionRepository.findOne({
+          where: { id: versionId, document_id: id },
+        })
+      : null;
+    if (!version) throw new NotFoundException('Version introuvable');
+    const buffer = await this.readStoredFile(version.file_path, version.file_url);
+    const ext = path.extname(version.file_path || version.file_url || '');
+    const name = version.name.toLowerCase().endsWith(ext.toLowerCase())
+      ? version.name
+      : `${version.name}${ext}`;
+    return {
+      buffer,
+      mimeType: version.file_mimetype || this.getMimeType(ext.replace('.', '')),
+      name,
+    };
+  }
+
+  /** Restaure une version archivée : elle redevient courante, en version suivante. */
+  async restoreVersion(
+    id: number,
+    versionId: number,
+    userId?: number,
+  ): Promise<DocumentCustomerResponseDto> {
+    const version = this.versionRepository
+      ? await this.versionRepository.findOne({
+          where: { id: versionId, document_id: id },
+        })
+      : null;
+    if (!version) throw new NotFoundException('Version introuvable');
+    const { buffer, mimeType, name } = await this.readVersionFile(id, versionId);
+    const file = {
+      buffer,
+      size: buffer.length,
+      mimetype: mimeType,
+      originalname: name,
+      fieldname: 'file',
+      encoding: '7bit',
+    } as Express.Multer.File;
+    return this.addVersion(id, file, userId, {
+      source: 'restore',
+      comment: `Restauration de la version ${version.version}`,
+      name: version.name,
+    });
+  }
+
+  /**
+   * Archive le fichier courant puis enregistre `file` à sa place (même
+   * dossier sur le disque, nom libre trouvé par l'upload) ; à sauvegarder.
+   */
+  private async replaceFile(
+    existing: DocumentCustomer,
+    file: Express.Multer.File,
+    userId?: number,
+    options: { source?: DocumentVersionSource; comment?: string; name?: string } = {},
+  ): Promise<void> {
+    const tenantId = getCurrentTenantId();
+    if (tenantId && file?.size) {
+      await this.planQuotaService.checkStorageLimit(
+        tenantId,
+        await this.currentStorageBytes(),
+        Number(file.size) || 0,
+      );
+    }
+    const name = options.name || existing.name;
+    const uploadedFile = await this.uploadFile(
+      file,
+      await this.storageDir(existing),
+      name,
+    );
+
+    const meta: any = existing.metadata ?? {};
+    if (existing.file_path || existing.file_url) {
+      if (!this.versionRepository) {
+        throw new InternalServerErrorException('Historique des versions indisponible');
+      }
+      // La ligne décrit la version archivée : son auteur et son origine.
+      await this.versionRepository.save(
+        this.versionRepository.create({
+          document_id: existing.id,
+          version: existing.version ?? 1,
+          name: existing.name,
+          file_path: existing.file_path ?? null,
+          file_url: existing.file_url ?? null,
+          file_size: existing.file_size ?? null,
+          file_mimetype: existing.file_mimetype ?? null,
+          source: (meta.version_source as DocumentVersionSource) ?? 'upload',
+          comment: meta.version_comment ?? null,
+          created_by_id: Number(meta.version_by ?? existing.uploaded_by_id) || null,
+        }),
+      );
+    }
+
+    const version = (existing.version ?? 1) + 1;
+    existing.name = name;
+    existing.file_path = uploadedFile.filePath;
+    existing.file_url = uploadedFile.fileUrl;
+    existing.file_size = uploadedFile.fileSize;
+    existing.file_mimetype = uploadedFile.mimeType;
+    existing.version = version;
+    existing.is_current_version = true;
+    existing.metadata = {
+      ...meta,
+      original_filename: file.originalname,
+      version_source: options.source ?? 'upload',
+      version_comment: options.comment ?? null,
+      version_by: userId ?? null,
+      version_at: new Date().toISOString(),
+      audit_trail: [
+        ...(Array.isArray(meta.audit_trail) ? meta.audit_trail : []),
+        {
+          action: 'new_version',
+          user_id: userId ?? 0,
+          timestamp: new Date(),
+          details: `Version ${version}${options.comment ? ` — ${options.comment}` : ''}`,
+        },
+      ],
+    };
+  }
+
+  /** Dossier de stockage d'un document, comme à sa création. */
+  private async storageDir(document: DocumentCustomer): Promise<string> {
+    let cabinetName = 'cabinet';
+    try {
+      const cabinet = await this.cabinetService.findById(getCurrentTenantId());
+      if (cabinet?.name) {
+        cabinetName = FilesUtil.sanitizeName(cabinet.name).toLowerCase();
+      }
+    } catch {
+      cabinetName = 'cabinet';
+    }
+    const dossierNumber =
+      document.dossier?.dossier_number ??
+      (document.dossier_id
+        ? (await this.dossierService.findOne(document.dossier_id).catch(() => null))
+            ?.dossier_number
+        : null);
+    if (!dossierNumber) return `${cabinetName}/documents`;
+    const categoryName = document.category?.name ?? 'Documents non classés';
+    const typeName = document.document_type?.name ?? 'Pièces diverses';
+    return `${cabinetName}/${dossierNumber}/${categoryName}/${typeName}`;
+  }
+
+  /** Fichier stocké : chemin local d'abord, sinon son URL signée. */
+  private async readStoredFile(
+    filePath?: string | null,
+    fileUrl?: string | null,
+  ): Promise<Buffer> {
+    if (filePath) {
+      const local = filePath.replace(/\//g, path.sep).replace(/\\/g, path.sep);
+      if (fs.existsSync(local)) return fs.readFileSync(local);
+    }
+    if (fileUrl && fileUrl.startsWith('http')) {
+      const upstream = await fetch(signUploadUrl(fileUrl));
+      if (upstream.ok) return Buffer.from(await upstream.arrayBuffer());
+    }
+    throw new NotFoundException('Fichier de la version introuvable');
   }
 
   /**
