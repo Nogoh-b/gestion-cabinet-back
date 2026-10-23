@@ -32,7 +32,7 @@ import {
   templateVariableNames,
 } from './document-markup';
 import { pastedText, senderLine, str } from './skill-drafting';
-import { customerName, SkillTargetsService, TargetInfo } from './skill-targets.service';
+import { customerName, draftAudience, SkillTargetsService, TargetInfo } from './skill-targets.service';
 import { pdfText } from './skill-templates';
 import { editsTemplate, TEMPLATE_EDIT_PATTERN } from './template-search';
 
@@ -303,6 +303,7 @@ function studioDraft(input: {
 }): DocumentDraft {
   const { info, template } = input;
   const dossier = info?.dossier;
+  const audience = draftAudience(info);
   return {
     templateId: template?.id ?? 0,
     templateCode: template?.code ?? (input.studio.mode === 'template' ? 'studio_template' : 'studio_document'),
@@ -310,6 +311,7 @@ function studioDraft(input: {
     entityType: input.entityType ?? 'general',
     ...(input.entityId !== undefined && { entityId: input.entityId }),
     ...(dossier && { dossierId: dossier.id, dossierLabel: dossier.dossier_number }),
+    ...(dossier && audience && { audience }),
     fileName: input.fileName,
     variables: {},
     editable: [],

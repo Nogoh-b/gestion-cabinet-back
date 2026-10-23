@@ -187,8 +187,9 @@ export class DocumentCustomerResponseDto {
 
   @ApiPropertyOptional()
   @Expose()
-  @Transform(({ obj }) => obj.uploaded_at)
-  document_date?: Date;
+  // Date propre du document si elle a été saisie, sinon celle de l'upload.
+  @Transform(({ obj }) => obj.metadata?.document_date ?? obj.uploaded_at)
+  document_date?: Date | string;
 
   @ApiPropertyOptional()
   @Expose()

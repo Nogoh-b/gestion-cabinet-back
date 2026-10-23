@@ -12,7 +12,7 @@ import type {
 } from 'src/core/ai-database/skills/ai-skill.types';
 import { resolveSkillTarget } from 'src/core/ai-database/skills/skill-helpers';
 import { documentHtml } from './document-markup';
-import { customerName, SkillTargetsService, TargetInfo } from './skill-targets.service';
+import { customerName, draftAudience, SkillTargetsService, TargetInfo } from './skill-targets.service';
 
 const TARGETS: AiSkillTargetType[] = ['dossier', 'client', 'audience'];
 
@@ -78,6 +78,7 @@ export class TranscrireAudioSkill implements AiSkillHandler {
       templateName: name,
       entityType: 'general',
       ...(dossier && { dossierId: dossier.id, dossierLabel: dossier.dossier_number }),
+      ...(dossier && draftAudience(info) && { audience: draftAudience(info) }),
       fileName: `${name}${dossier ? ` - ${dossier.dossier_number}` : ''}`.replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 120),
       variables: {},
       editable: [],

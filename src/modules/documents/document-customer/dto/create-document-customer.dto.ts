@@ -97,6 +97,21 @@ export class CreateDocumentCustomerDto {
   @Transform(({ value }) => value === 'true' || value === true)
   is_confidential?: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      'Mots-clés séparés par des virgules (ou tableau JSON), rangés dans metadata.keywords',
+  })
+  @IsOptional()
+  @IsString()
+  keywords?: string;
+
+  @ApiPropertyOptional({
+    description: 'Date propre du document (YYYY-MM-DD), rangée dans metadata.document_date',
+  })
+  @IsOptional()
+  @IsString()
+  document_date?: string;
+
   @ApiPropertyOptional({ description: 'Métadonnées du document' })
   @IsOptional()
   @IsJSON()

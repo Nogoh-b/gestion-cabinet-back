@@ -340,6 +340,8 @@ export class DocumentCustomer extends BaseEntity {
   })
   metadata: {
     keywords?: string[];
+    /** Date propre du document (YYYY-MM-DD), distincte de l'upload. */
+    document_date?: string;
     page_count?: number;
     language?: string;
     original_filename?: string;

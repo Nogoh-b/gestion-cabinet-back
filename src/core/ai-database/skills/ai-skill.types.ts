@@ -104,6 +104,8 @@ export interface DocumentDraft {
   /** Dossier où classer le PDF généré. */
   dossierId?: number;
   dossierLabel?: string;
+  /** Audience visée : le document classé est rangé dans ses documents. */
+  audience?: { id: number; label: string; past: boolean };
   fileName: string;
   /** Variables du modèle remplies par l'IA (subject, bodyContent…). */
   variables: Record<string, string>;

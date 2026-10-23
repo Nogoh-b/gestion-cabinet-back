@@ -58,6 +58,7 @@ import {
   type DocumentVersionSource,
 } from './entities/document-customer-version.entity';
 import { signUploadUrl } from 'src/core/security/uploads-access';
+import { withDocumentMeta } from './document-metadata';
 
 /** Ligne de l'historique des versions (la version courante comprise). */
 export interface DocumentVersionView {
@@ -260,8 +261,11 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       strict = true,
       audience_id,
       audience_phase,
+      keywords,
+      document_date,
       ...restDto
     } = createDto;
+    const metadata = withDocumentMeta(restDto.metadata, { keywords, document_date });
 
     try {
       // 1. Validation du dossier : le client est déduit de cette relation.
@@ -363,6 +367,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       // 8. Création du document
       const document = await this.createDocument({
         ...restDto,
+        metadata,
         document_type: docType ?? undefined,
         customer,
         status: options?.status ?? DocumentCustomerStatus.ACCEPTED,
@@ -539,6 +544,13 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       } catch {
         // existing.metadata = { error: 'Invalid JSON format' };
       }
+    }
+    // Mots-clés et date saisis à plat : fusionnés dans les métadonnées.
+    if (updateDto.keywords !== undefined || updateDto.document_date !== undefined) {
+      existing.metadata = withDocumentMeta(existing.metadata, {
+        keywords: updateDto.keywords,
+        document_date: updateDto.document_date,
+      }) as DocumentCustomer['metadata'];
     }
 
     // 7. Versioning : seul un nouveau fichier change la version (cf. replaceFile).
@@ -998,7 +1010,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     required_for_hearing?: boolean;
     is_confidential?: boolean;
     notify_client?: boolean;
-    metadata?: string;
+    metadata?: string | Record<string, any>;
   }): Promise<DocumentCustomer | any> {
     const {
       document_type,

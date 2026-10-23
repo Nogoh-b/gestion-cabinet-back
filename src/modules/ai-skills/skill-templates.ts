@@ -1,7 +1,7 @@
 // src/modules/ai-skills/skill-templates.ts
 import type { DocumentDraft, InlinePdfTemplate } from 'src/core/ai-database/skills/ai-skill.types';
 import { todayFr } from 'src/core/ai-database/skills/skill-helpers';
-import { customerName, TargetInfo } from './skill-targets.service';
+import { customerName, draftAudience, TargetInfo } from './skill-targets.service';
 
 /**
  * Mises en page PDF des compétences d'analyse et d'actes (note, acte de
@@ -184,6 +184,7 @@ export function inlineDraft(input: InlineDraftInput): DocumentDraft {
     templateName: input.name,
     entityType: 'general',
     ...(dossier && { dossierId: dossier.id, dossierLabel: dossier.dossier_number }),
+    ...(dossier && draftAudience(info) && { audience: draftAudience(info) }),
     fileName: `${input.name}${suffix ? ` - ${suffix}` : ''}`.slice(0, 120),
     variables: {
       date_fmt: todayFr(),

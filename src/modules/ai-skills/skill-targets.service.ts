@@ -186,6 +186,21 @@ const dateFr = (value: unknown): string => {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString('fr-FR');
 };
 
+/**
+ * Audience visée par une compétence qui produit un document : le classement
+ * depuis la carte le range dans ses documents (avant, ou après si elle est
+ * tenue ou passée).
+ */
+export function draftAudience(info?: TargetInfo | null): { id: number; label: string; past: boolean } | undefined {
+  if (info?.type !== 'audience' || !info.resource?.id) return undefined;
+  const audience = info.resource;
+  const date = audience.audience_date ? new Date(audience.audience_date) : null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const past = Number(audience.status) === 1 || (!!date && !Number.isNaN(date.getTime()) && date.getTime() < today.getTime());
+  return { id: Number(audience.id), label: `Audience du ${dateFr(audience.audience_date)}`, past };
+}
+
 const money = (value: unknown): string =>
   `${Number(value ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} FCFA`;
 

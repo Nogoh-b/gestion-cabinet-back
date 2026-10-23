@@ -54,3 +54,5 @@ Une **audience** est un rendez-vous devant une juridiction lié à un dossier. L
 
 ## Créer depuis le chat
 « Programme une audience pour le dossier DOS-2026-0039 le 15 juin 2026 à 14h30, salle 4B. » Seuls le dossier et la date sont obligatoires ; la juridiction vient du dossier et l'heure par défaut est 09:00. Je peux aussi reporter une audience si vous donnez la nouvelle date (et l'heure si elle change) ; le motif est conseillé, le rapport facultatif. Une carte de confirmation modifiable s'affiche avant l'enregistrement.
+
+**Documents d'une audience depuis le chat** : joignez les fichiers et mentionnez l'audience avec **@** (ou écrivez depuis sa fiche), par exemple « Classe ces pièces pour l'audience ». Ils sont rangés dans le dossier de l'audience et dans ses documents, avec nom, note, catégorie, nature, date et mots-clés déduits de leur contenu ; la carte de confirmation propose le **Moment** (Préparation ou Après l'audience, « après » par défaut pour une audience tenue ou passée). Un document rédigé dans le chat pour une audience (acte, compte rendu, transcription…) et classé depuis sa carte y est rattaché de la même façon.
