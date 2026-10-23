@@ -7,6 +7,7 @@ import {
   IsEnum,
   IsString,
   IsJSON,
+  IsIn,
 } from 'class-validator';
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -71,6 +72,24 @@ export class CreateDocumentCustomerDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   required_for_hearing?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Audience que le document sert à préparer : il y est rattaché (audience_documents) et marqué requis pour l'audience",
+  })
+  @IsOptional()
+  @IsNumber()
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
+  audience_id?: number;
+
+  @ApiPropertyOptional({
+    enum: ['preparation', 'after'],
+    description:
+      "Moment du document par rapport à l'audience (avec audience_id) : « preparation » (avant, marqué requis pour l'audience) ou « after » (après l'audience)",
+  })
+  @IsOptional()
+  @IsIn(['preparation', 'after'])
+  audience_phase?: 'preparation' | 'after';
 
   @ApiPropertyOptional({ description: 'Document confidentiel' })
   @IsOptional()

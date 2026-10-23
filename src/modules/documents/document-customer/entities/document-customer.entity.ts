@@ -312,8 +312,9 @@ export class DocumentCustomer extends BaseEntity {
 
   @Column({ name: 'required_for_hearing', default: false })
   @BusinessColumn({
-    label: 'Requis pour audience',
-    description: 'True = document obligatoire pour une audience',
+    label: "Pour préparer l'audience",
+    description:
+      "True = pièce à préparer pour une audience (case « Pour préparer l'audience »). L'audience visée est dans la table de jointure audience_documents (audience_id, document_id).",
     importance: 'high',
     group: 'audience',
   })

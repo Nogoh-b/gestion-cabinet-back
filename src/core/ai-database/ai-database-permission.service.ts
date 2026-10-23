@@ -32,7 +32,7 @@ type AiUserLike = AiUserContext | string | number | undefined | null;
 const SUPER_ADMIN = 'SUPER_ADMIN';
 const PERMISSION_CACHE_TTL_MS = 10_000;
 
-const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
+export const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
   // Dossiers
   dossiers: {
     READ: 'view_dossiers',
@@ -153,6 +153,28 @@ const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
   dossier_billing_profiles: { READ: 'view_billable_items' },
   dossier_billing_rules: { READ: 'view_billable_items' },
   billable_items: { READ: 'view_billable_items' },
+
+  // Modèles de documents PDF, de mails et blocs d'en-tête / pied de page :
+  // mêmes droits que la gestion hors chat (pages Modèles PDF, Modèles de
+  // mails, Blocs). Les modèles de mails suivent les mêmes rôles que le PDF.
+  pdf_templates: {
+    READ: 'view_pdf_templates',
+    INSERT: 'create_pdf_template',
+    UPDATE: 'edit_pdf_template',
+    DELETE: 'delete_pdf_template',
+  },
+  template_blocks: {
+    READ: 'view_pdf_templates',
+    INSERT: 'create_pdf_template',
+    UPDATE: 'edit_pdf_template',
+    DELETE: 'delete_pdf_template',
+  },
+  mail_templates: {
+    READ: 'view_mail_templates',
+    INSERT: 'create_mail_template',
+    UPDATE: 'edit_mail_template',
+    DELETE: 'delete_mail_template',
+  },
   invoice_lines: { READ: 'view_factures' },
 
   // Procedure/workflow

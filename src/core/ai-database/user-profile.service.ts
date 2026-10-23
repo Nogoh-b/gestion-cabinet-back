@@ -143,7 +143,7 @@ export class UserProfileService {
         quotas.push({ label: 'Stockage', used: usedGb, max: maxGb === -1 || !Number.isFinite(maxGb) ? null : maxGb, unit: 'Go' });
       }
     }
-    const aiQuota = quota?.ai_requests;
+    const aiQuota = quota?.ai_credits;
 
     return {
       userId,
@@ -177,8 +177,9 @@ export class UserProfileService {
       quotas,
       ai: aiQuota
         ? {
-          used: Number(aiQuota.current ?? 0),
-          max: aiQuota.max === -1 || aiQuota.max == null ? null : Number(aiQuota.max),
+          // Pourcentage du forfait : l'assistant ne connaît jamais de crédits ni de montants.
+          used: Number(aiQuota.monthPct ?? 0),
+          max: aiQuota.unlimited ? null : 100,
           resetsAt: aiQuota.resetsAt ?? null,
           enabled: aiQuota.enabled !== false,
         }

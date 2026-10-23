@@ -126,6 +126,7 @@ import {
   UPDATE_TARGET_FIELD,
 } from './write/ambiguity.exception';
 import { parseValueList } from './write/plan-field-options';
+import { applyDossierNumberChoice } from '../../modules/dossiers/dossier-write.handler';
 import { BaseWriteHandler } from './write/base-write-handler';
 import { outerJoinRetry } from './outer-join-fallback';
 import { extractPdfText } from './pdf-text';
@@ -143,6 +144,7 @@ import {
   summarizeWriteResults,
 } from './write/write-result-summary';
 import { normalizeIdentity } from './write/exact-match';
+import { changesAnything, kindWords, labelHasWord, pageOnlyTargets } from './write/vague-target';
 import {
   coalesceSums,
   INCLUSIVE_SQL_RULES,
@@ -2298,6 +2300,7 @@ Contraintes obligatoires :
 
   /** Libellé lisible pour un alias de champ FK */
   private getFieldLabel(fieldName: string): string {
+    if (fieldName === 'dossier_number') return 'numéro de dossier';
     // Le projet injecte ses labels via AI_DATABASE_PROJECT_CONFIG.fieldLabels
     const projectLabel = this.projectConfig?.fieldLabels?.[fieldName];
     if (projectLabel) return projectLabel;
@@ -2817,6 +2820,17 @@ Contraintes obligatoires :
         requestContext.referenced,
       );
       this.confirmUnverifiedTargets(intentResult, user, dto.question, historyOverride, requestContext.referenced);
+      // Cible devinée à partir de la page : on demande, on ne choisit pas au hasard.
+      const vague = await this.clarifyVagueTargets(
+        intentResult.writePlan,
+        user,
+        dto.question,
+        historyOverride,
+        requestContext.referenced,
+      );
+      if (vague) {
+        return this.respondWithTargetClarification(vague, dto, userId, startTime, requestContext.referenced, fileInfo);
+      }
     }
 
     // Mode écriture forcé mais génération du plan impossible : message honnête,
@@ -4049,6 +4063,34 @@ ${legalContext}` : ''}`;
       }
     }
 
+    // ── Conflit de numéro de dossier : le choix porte sur la création elle-même
+    // (réutiliser l'existant, numéro automatique, ou autre numéro saisi).
+    // handleOtherChoice ne s'applique pas ici : il créerait une entité.
+    if (op.entity === 'dossiers' && fieldName === 'dossier_number') {
+      const wanted = String(op.fields?.dossier_number ?? '').trim();
+      const applied = applyDossierNumberChoice(
+        op.fields ?? {},
+        resolvedId,
+        customValue,
+      );
+      op.fields = applied.fields;
+      this.logger.log(
+        `🔢 Reprise conflit dossier ${wanted || '(sans numéro)'}: ${applied.note} ` +
+          `(opération ${operationIndex})`,
+      );
+      await this.aiPermissionService.assertCanWritePlan(
+        user as AiUserContext,
+        patchedPlan,
+      );
+      return this.executePatchedPlan(
+        patchedPlan,
+        userId,
+        conversationId,
+        startTime,
+        `🔢 Numéro « ${wanted} » déjà utilisé : ${applied.note}.\n\n`,
+      );
+    }
+
     // ── Option « Autre » : customValue fourni ───────────────────────────────
     if (customValue && !resolvedId) {
       return this.handleOtherChoice(
@@ -4660,6 +4702,165 @@ ${lines.join('\n')}
     intentResult.requiresConfirmation = true;
   }
 
+  /**
+   * Demande de modification qui ne tient que par la fiche de la page ouverte :
+   * ni désignée (ce / cette / celui-ci, numéro, @), ni accompagnée d'un
+   * changement réel. Rien n'est deviné : l'utilisateur choisit parmi de vraies
+   * pistes (la fiche ouverte, éléments du même type, éléments d'un type que sa
+   * demande évoque). Null quand la cible est claire.
+   */
+  private async clarifyVagueTargets(
+    plan: WritePlan | undefined,
+    user: AiUserContext | string,
+    question: string,
+    history: VisibleHistoryMessage[],
+    referenced: ReferencedEntityContext[],
+  ): Promise<ReadClarificationContext | null> {
+    if (!plan?.operations?.length) return null;
+    try {
+      const pageKeys = knownRecordKeys([], referenced.filter((ref) => ref.source === 'page'));
+      if (!pageKeys.size) return null;
+      const remembered = this.lastDisplayedRecords.get(this.displayedRecordsKey(user))?.records ?? [];
+      const explicitKeys = knownRecordKeys(history, referenced.filter((ref) => ref.source !== 'page'), remembered);
+      const guessed = pageOnlyTargets(plan.operations, question, pageKeys, explicitKeys);
+      for (const target of guessed) {
+        const op = plan.operations[target.index];
+        const meta = this.dataSource.entityMetadatas.find((item) => item.tableName === op.entity);
+        const row = await this.leadRow(op.entity, target.id);
+        const columns = new Set((meta?.columns ?? []).flatMap((column) => [column.propertyName, column.databaseName]));
+        // Un vrai changement donné avec la demande (« passe-le en clôturé ») reste exécutable.
+        if (String(op.operation).toUpperCase() === 'UPDATE' && changesAnything(op.fields, row, columns)) continue;
+        return await this.buildTargetClarification(op.entity, row, target.id, question, user);
+      }
+    } catch (error) {
+      this.logger.warn(`clarifyVagueTargets: ${(error as Error).message}`);
+    }
+    return null;
+  }
+
+  /** Question de précision (pistes réelles) enregistrée dans la conversation puis renvoyée au chat. */
+  private async respondWithTargetClarification(
+    clarification: ReadClarificationContext,
+    dto: AskQuestionDto,
+    userId: string,
+    startTime: number,
+    referenced: ReferencedEntityContext[],
+    fileInfo?: any,
+  ): Promise<AnalysisResponseDto> {
+    let conversationId = dto.conversationId;
+    if (!conversationId) {
+      const conv = await this.conversationManager.createConversation(userId, this.generateConversationTitle(dto.question));
+      conversationId = conv.id;
+    }
+    await this.conversationManager.addUserMessage(conversationId, dto.question, referenced);
+    const analysis = `${clarification.question}\n\n${clarification.reason}`;
+    await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, {
+      results: [],
+      rowCount: 0,
+      requiresClarification: true,
+      clarificationContext: clarification,
+      ...(fileInfo && { fileInfo }),
+    });
+    return {
+      success: true,
+      question: dto.question,
+      analysis,
+      results: [],
+      rowCount: 0,
+      conversationId,
+      executionTimeMs: Date.now() - startTime,
+      requiresClarification: true,
+      clarificationContext: clarification,
+      ...(fileInfo && { fileInfo }),
+    };
+  }
+
+  /** Libellé lisible d'une fiche (numéro, code, nom…) pour les pistes proposées. */
+  private leadLabel(row: Record<string, any> | null, id: string | number): string {
+    const parts = ['dossier_number', 'numero', 'reference', 'code', 'name', 'label', 'title', 'full_name', 'company_name', 'last_name']
+      .map((column) => row?.[column])
+      .filter((value) => value !== null && value !== undefined && String(value).trim() !== '')
+      .slice(0, 2)
+      .map((value) => String(value).trim());
+    return parts.length ? parts.join(' — ') : `#${id}`;
+  }
+
+  /** Lignes d'une table du cabinet (récentes d'abord), ou une fiche précise. Tables connues du schéma seulement. */
+  private async leadRows(table: string, take: number, id?: string | number): Promise<Array<Record<string, any>>> {
+    if (!/^[a-z0-9_]+$/i.test(table) || !this.schemaMetadata.getAllVisibleTables().includes(table)) return [];
+    const meta = this.dataSource.entityMetadatas.find((item) => item.tableName === table);
+    const has = (name: string) => !!meta?.columns.some((column) => column.databaseName === name);
+    const where: string[] = [];
+    const params: any[] = [];
+    if (id !== undefined) {
+      where.push('id = ?');
+      params.push(id);
+    }
+    if (has('deleted_at')) where.push('deleted_at IS NULL');
+    if (hasActiveTenant() && has('tenant_id')) {
+      where.push('tenant_id = ?');
+      params.push(getCurrentTenantId());
+    }
+    return this.dataSource.query(
+      `SELECT * FROM \`${table}\`${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ${Math.max(1, Math.floor(take))}`,
+      params,
+    );
+  }
+
+  private async leadRow(table: string, id: string | number): Promise<Record<string, any> | null> {
+    return (await this.leadRows(table, 1, id))[0] ?? null;
+  }
+
+  private async buildTargetClarification(
+    table: string,
+    pageRow: Record<string, any> | null,
+    pageId: string,
+    question: string,
+    user: AiUserContext | string,
+  ): Promise<ReadClarificationContext> {
+    const kind = (name: string) => this.schemaMetadata.getTableLabel(name);
+    const option = (name: string, row: Record<string, any>, description: string) => {
+      const label = this.leadLabel(row, row.id);
+      return {
+        id: `${name}:${row.id}`,
+        label: `${kind(name)} · ${label}`,
+        description,
+        // Le numéro tapé désigne la cible sans équivoque pour le planificateur.
+        followUpQuestion: `${question} (cible : ${kind(name)} n°${row.id} « ${label} »)`,
+      };
+    };
+
+    const options = [] as ReadClarificationContext['options'];
+    if (pageRow) options.push(option(table, pageRow, 'La fiche affichée sur cette page'));
+
+    // Types d'éléments évoqués par la demande (« modèle » → Modèles de mails, de documents PDF…).
+    const ownLabel = kind(table);
+    const words = kindWords(question).filter((word) => !labelHasWord(ownLabel, word));
+    const otherTables = this.schemaMetadata
+      .getAllVisibleTables()
+      .filter((name) => name !== table && words.some((word) => labelHasWord(kind(name), word)));
+    const { allowed } = otherTables.length
+      ? await this.aiPermissionService.partitionReadableTables(user as AiUserContext, otherTables)
+      : { allowed: [] as string[] };
+    for (const name of allowed.slice(0, 3)) {
+      for (const row of await this.leadRows(name, 2)) {
+        options.push(option(name, row, `${kind(name)} le plus récent`));
+      }
+    }
+    for (const row of await this.leadRows(table, 4)) {
+      if (String(row.id) === String(pageId)) continue;
+      options.push(option(table, row, `${ownLabel} récent`));
+    }
+
+    const shown = pageRow ? `« ${this.leadLabel(pageRow, pageId)} » (${ownLabel.toLowerCase()})` : `la fiche n°${pageId}`;
+    return {
+      reason: `Je ne devine pas la cible : la page affiche ${shown}, mais votre demande ne la désigne pas et ne dit pas quoi changer.`,
+      question: 'Quel élément voulez-vous modifier ?',
+      options: options.slice(0, 7),
+      intentMode: 'write',
+    };
+  }
+
   private enrichWritePlanWithReferencedEntities(
     plan: WritePlan | undefined,
     referenced: ReferencedEntityContext[],
@@ -5119,7 +5320,19 @@ ${blocks.join('\n\n')}
           ),
         })
       : null;
-    const carriedDocuments = focus ? selectFocusedDocuments(dto.question, candidates) : [];
+    // Retouche d'un document depuis sa carte (« ajoute une clause… ») : les fichiers
+    // joints qui ont servi à le rédiger restent lus, même si la consigne ne les nomme pas.
+    const reviseSources = parseSkillParams(dto.skillParams).revise?.sources;
+    const revisedFrom = new Set(
+      (Array.isArray(reviseSources) ? reviseSources : [])
+        .filter((source: any) => source?.origin === 'chat' && typeof source.name === 'string')
+        .map((source: any) => source.name as string),
+    );
+    const focused = focus ? selectFocusedDocuments(dto.question, candidates) : [];
+    const carriedDocuments = [
+      ...focused,
+      ...candidates.filter((item) => revisedFrom.has(item.name) && !focused.some((other) => other.name === item.name)),
+    ];
     // « Demander » sur un message : ses documents (pièces lues, document rédigé) sont toujours relus.
     const quotedMessageId = Number(dto.quoteMessageId);
     const quotedDocuments = quotedMessageId > 0
@@ -6338,6 +6551,24 @@ ${blocks.join('\n\n')}
         return;
       }
 
+      // Cible devinée à partir de la page : on demande, on ne choisit pas au hasard.
+      if (intentResult.type === 'WRITE' && intentResult.writePlan) {
+        const vague = await this.clarifyVagueTargets(
+          intentResult.writePlan,
+          user,
+          dto.question,
+          historyOverride,
+          requestContext.referenced,
+        );
+        if (vague) {
+          sendEvent(
+            'result',
+            await this.respondWithTargetClarification(vague, dto, userId, startTime, requestContext.referenced, fileInfo),
+          );
+          return;
+        }
+      }
+
       // Le planner n'a retenu aucune écriture : la pièce jointe reste le sujet.
       if (hasReadableDocument && intentResult.type === 'READ') {
         if (await answerFromDocuments()) return;
@@ -7315,9 +7546,9 @@ RÉPONSE :`;
       previousQuestion?: string;
     } = {},
   ): Promise<void> {
-    const code = String(dto.skill).trim().toLowerCase();
+    let code = String(dto.skill).trim().toLowerCase();
     this.markMetric({ intent: `SKILL:${code}`.slice(0, 32) });
-    const label = this.skills!.label(code);
+    let label = this.skills!.label(code);
     sendEvent('intent', {
       type: 'SKILL',
       skill: code,
@@ -7420,6 +7651,7 @@ RÉPONSE :`;
         },
       },
       status: (message) => sendEvent('status', { step: 'skill', message, detail: `${label} · ${message}` }),
+      step: (key, message, detail) => sendEvent('status', { step: key, message, ...(detail && { detail }) }),
       readDocuments: async (ids) => {
         const items: Array<{ id: number; name: string; content: string }> = [];
         for (const id of ids) {
@@ -7438,6 +7670,19 @@ RÉPONSE :`;
     let refused = false;
     try {
       outcome = await this.skills!.run(code, ctx);
+      // Demande qui relève d'une autre compétence (« modifie le modèle de contrat »
+      // reçu par la rédaction) : relancée une fois avec celle-ci, sur la même demande.
+      if (outcome.type === 'handoff') {
+        const next = String(outcome.skill).trim().toLowerCase();
+        if (next === code || this.skills!.label(next) === next) throw new HttpException('Compétence de relais introuvable', 400);
+        code = next;
+        label = this.skills!.label(code);
+        ctx.params = { ...ctx.params, ...(outcome.params ?? {}) };
+        sendEvent('intent', { type: 'SKILL', skill: code, origin: 'auto' });
+        sendEvent('status', { step: 'skill', message: `⚡ ${label}`, detail: label });
+        outcome = await this.skills!.run(code, ctx);
+        if (outcome.type === 'handoff') throw new HttpException('Compétence de relais en boucle', 400);
+      }
       if (outcome.type === 'write') {
         outcome = await this.planSkillWrite(outcome, dto, user, requestContext, history);
       }
@@ -7458,7 +7703,7 @@ RÉPONSE :`;
     // Demande de précision (cible manquante…) : la compétence attend la
     // réponse de l'utilisateur, le chat la garde sélectionnée.
     const skillPending = outcome.type === 'clarify' && !refused
-      ? { code, label, question: previousQuestion || dto.question, at: new Date().toISOString() }
+      ? { code, label, question: outcome.pendingQuestion || previousQuestion || dto.question, at: new Date().toISOString() }
       : undefined;
     // Compétence lancée et ses paramètres : « Demander » sur la réponse la relance
     // pour corriger, et les actions recommandées en partent.
@@ -7497,7 +7742,7 @@ RÉPONSE :`;
     }
 
     // Écriture guidée déjà convertie en plan ou en demande de précision.
-    if (outcome.type === 'write') return;
+    if (outcome.type === 'write' || outcome.type === 'handoff') return;
     const markdown = outcome.markdown;
     if (!(outcome.type === 'answer' && outcome.streamed && streamed) && !(outcome.type === 'document_draft' && liveDrafted)) {
       sendEvent('token', { text: markdown });
@@ -7518,6 +7763,7 @@ RÉPONSE :`;
     } else if (skillPending) {
       extras.skillPending = skillPending;
       if (outcome.type === 'clarify' && outcome.followUps?.length) extras.skillFollowUps = outcome.followUps;
+      if (outcome.type === 'clarify' && outcome.templateDraft) extras.templateDraft = outcome.templateDraft;
     }
     if (outcome.type !== 'clarify') extras.skillRun = skillRun;
     // Brouillon modifiable (courrier, WhatsApp) : références de la fiche à insérer.
@@ -7670,7 +7916,7 @@ RÉPONSE :`;
             merged.rowCount = result.rowCount ?? result.results.length;
           }
           if (Array.isArray(result.resultSets)) merged.resultSets = [...(merged.resultSets ?? []), ...result.resultSets];
-          for (const key of ['skillFollowUps', 'skillDownload', 'documentDraft', 'messageDraft', 'skillPending', 'skill', 'skillRun', 'fileInfo', 'chart']) {
+          for (const key of ['skillFollowUps', 'skillDownload', 'documentDraft', 'messageDraft', 'templateDraft', 'skillPending', 'skill', 'skillRun', 'fileInfo', 'chart']) {
             if (result[key]) merged[key] = result[key];
           }
         }

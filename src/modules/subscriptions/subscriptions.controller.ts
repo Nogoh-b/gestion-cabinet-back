@@ -25,6 +25,7 @@ import { ChangeSubscriptionDto } from './dto/change-subscription.dto';
 import { cabinetUserActor } from './subscription-events.service';
 import { PaymentMethodsService } from './payment/payment-methods.service';
 import { ReceiptService } from './billing/receipt.service';
+import { AiCreditsService } from '../plans/ai-credits/ai-credits.service';
 
 @ApiTags('Subscriptions')
 @Controller('subscriptions')
@@ -36,6 +37,7 @@ export class SubscriptionsController {
     private readonly service: SubscriptionsService,
     private readonly methods: PaymentMethodsService,
     private readonly receipts: ReceiptService,
+    private readonly aiCredits: AiCreditsService,
   ) {}
 
   /**
@@ -121,6 +123,37 @@ export class SubscriptionsController {
       methodCode: dto?.method_code,
       customer: { email: req.user?.email ?? null },
     });
+  }
+
+  // ── Crédits IA ──────────────────────────────────────────────────────────────
+
+  /** Packs de crédits proposés : nom, prix, « ≈ +N % du forfait » (jamais de crédits). */
+  @Get('/ai-credits/packs')
+  @ApiOperation({ summary: 'Packs de crédits IA disponibles à l’achat' })
+  aiCreditPacks(@Request() req: any) {
+    return this.aiCredits.packsForCabinet(this.tenantOf(req));
+  }
+
+  /** Achat d'un pack : même flux de paiement que l'abonnement (passerelle ou manuel). */
+  @Post('/ai-credits/purchase')
+  @RequirePermissions('manage_subscription')
+  @ApiOperation({ summary: 'Acheter un pack de crédits IA' })
+  purchaseAiCredits(@Request() req: any, @Body() dto: { pack_id?: number; method_code?: string }) {
+    const packId = Number(dto?.pack_id);
+    if (!Number.isInteger(packId) || packId < 1) throw new BadRequestException('Pack invalide.');
+    return this.service.purchaseAiCredits(this.tenantOf(req), {
+      packId,
+      methodCode: dto?.method_code,
+      customer: { email: req.user?.email ?? null },
+    });
+  }
+
+  /** Historique des achats de crédits du cabinet. */
+  @Get('/ai-credits/purchases')
+  @RequirePermissions('manage_subscription')
+  @ApiOperation({ summary: 'Historique des achats de crédits IA du cabinet' })
+  aiCreditPurchases(@Request() req: any) {
+    return this.service.listAiPurchases(this.tenantOf(req));
   }
 
   /** Applique un code promo à l'échéance due (avant paiement). */

@@ -9,7 +9,7 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { DataSource, LessThan, Repository, In } from 'typeorm';
+import { DataSource, IsNull, LessThan, Repository, In } from 'typeorm';
 
 import { Subscription, BillingCycle } from './entities/subscription.entity';
 import { SubscriptionPayment } from './entities/subscription-payment.entity';
@@ -24,6 +24,8 @@ import {
   PaymentStartResult,
 } from './payment/payment-gateway.service';
 import { PaymentMethodsService } from './payment/payment-methods.service';
+import { AiCreditsService } from '../plans/ai-credits/ai-credits.service';
+import { withoutCreditAllowance } from '../plans/ai-credits/ai-credits';
 import { ReceiptService } from './billing/receipt.service';
 import { CouponQuote, CouponsService, computeDiscount } from './coupons/coupons.service';
 import {
@@ -108,6 +110,7 @@ export class SubscriptionsService {
     private readonly coupons: CouponsService,
     private readonly events: SubscriptionEventsService,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly aiCredits: AiCreditsService,
     @Optional() private readonly appEvents?: EventEmitter2,
   ) {}
 
@@ -431,7 +434,7 @@ export class SubscriptionsService {
 
     // Ajuste l'échéance la plus récente (au lieu d'en créer une nouvelle).
     const lastPayment = await this.payRepo.findOne({
-      where: { subscription_id: sub.id },
+      where: { subscription_id: sub.id, kind: 'subscription' },
       order: { id: 'DESC' },
     });
     if (lastPayment && lastPayment.status === 'pending') {
@@ -501,6 +504,7 @@ export class SubscriptionsService {
       const p = await this.payRepo.findOne({
         where: {
           subscription_id: sub.id,
+          kind: 'subscription',
           status: In(['pending', 'awaiting_validation']),
         },
         order: { id: 'DESC' },
@@ -521,9 +525,11 @@ export class SubscriptionsService {
       }
     }
 
+    // Le cabinet ne voit jamais le nombre de crédits IA du forfait (pourcentages seulement).
+    const visiblePlan = withoutCreditAllowance(sub?.plan ?? null);
     return {
-      subscription: sub,
-      plan: sub?.plan ?? null,
+      subscription: sub ? ({ ...sub, plan: visiblePlan } as Subscription) : null,
+      plan: visiblePlan,
       days_remaining: requiresPayment ? null : remaining,
       is_expiring:
         !isExpired &&
@@ -550,7 +556,11 @@ export class SubscriptionsService {
   /** Historique de facturation du cabinet (échéances + paiements). */
   async listPayments(cabinetId: number) {
     const rows = await this.payRepo.find({
-      where: { cabinet_id: cabinetId, status: In(['pending', 'awaiting_validation', 'paid', 'failed', 'refunded']) },
+      where: {
+        cabinet_id: cabinetId,
+        kind: 'subscription',
+        status: In(['pending', 'awaiting_validation', 'paid', 'failed', 'refunded']),
+      },
       order: { due_date: 'DESC', id: 'DESC' },
     });
     return rows.map(({ provider_payload, proof_file, validated_by_admin_id, notes, ...rest }) => ({
@@ -572,7 +582,7 @@ export class SubscriptionsService {
     const sub = await this.getRawCurrent(cabinetId);
     if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
     const payment = await this.payRepo.findOne({
-      where: { subscription_id: sub.id, status: In(['pending', 'awaiting_validation']) },
+      where: { subscription_id: sub.id, kind: 'subscription', status: In(['pending', 'awaiting_validation']) },
       order: { id: 'DESC' },
     });
     if (!payment) throw new BadRequestException('Aucune échéance à régler');
@@ -606,6 +616,91 @@ export class SubscriptionsService {
     );
   }
 
+  // ── Crédits IA ────────────────────────────────────────────────────────────
+
+  /**
+   * Démarre l'achat d'un pack de crédits IA : crée un paiement
+   * `kind = 'ai_credits'` rattaché à l'abonnement courant puis réutilise le flux
+   * des passerelles (en ligne, manuel, passerelle de test). Les crédits sont
+   * ajoutés au ledger par `confirmPayment`, à l'encaissement.
+   */
+  async purchaseAiCredits(
+    cabinetId: number,
+    input: { packId: number; methodCode?: string; customer?: Partial<PaymentCustomer> },
+  ): Promise<PaymentStartResult> {
+    const sub = await this.getRawCurrent(cabinetId);
+    if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
+    const plan = sub.plan ?? (await this.planRepo.findOne({ where: { id: sub.plan_id } }));
+    if (!plan?.ai_enabled) {
+      throw new BadRequestException("L'assistant IA n'est pas inclus dans votre forfait.");
+    }
+    if (plan.ai_credits_per_month === null || plan.ai_credits_per_month === undefined || plan.ai_credits_per_month === -1) {
+      throw new BadRequestException('Votre forfait inclut déjà un usage IA illimité.');
+    }
+    const pack = await this.aiCredits.findPack(Number(input.packId));
+    if (!pack.is_active) throw new BadRequestException("Ce pack n'est plus proposé.");
+
+    const methodCode =
+      input.methodCode ?? (await this.methods.listActiveForCabinet(pack.currency))[0]?.code;
+    if (!methodCode) throw new BadRequestException('Aucun moyen de paiement disponible pour le moment.');
+    const method = await this.methods.resolveForPayment(methodCode);
+
+    // Les tentatives jamais lancées auprès d'une passerelle (sans référence) sont
+    // closes ; celles dont la session de paiement existe restent rapprochables.
+    await this.payRepo.update(
+      { cabinet_id: cabinetId, kind: 'ai_credits', status: 'pending', reference: IsNull() },
+      { status: 'cancelled', notes: 'Achat de crédits IA remplacé par une nouvelle tentative' },
+    );
+
+    const today = new Date();
+    const payment = await this.payRepo.save(
+      this.payRepo.create({
+        subscription_id: sub.id,
+        cabinet_id: cabinetId,
+        kind: 'ai_credits',
+        ai_credit_pack_id: pack.id,
+        ai_credits: pack.credits,
+        amount: Number(pack.price),
+        currency: pack.currency,
+        status: 'pending',
+        due_date: today,
+        period_start: today,
+        period_end: null,
+      }),
+    );
+    const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
+    return this.gateway.start(
+      payment,
+      method,
+      {
+        email: input.customer?.email ?? cabinet?.contact_email ?? null,
+        name: input.customer?.name ?? cabinet?.name ?? null,
+        phone: input.customer?.phone ?? cabinet?.contact_phone ?? null,
+      },
+      `Crédits IA ${pack.name} — ${cabinet?.name ?? `cabinet ${cabinetId}`}`.trim(),
+    );
+  }
+
+  /**
+   * Historique des achats de crédits IA du cabinet (admin du cabinet) : pack,
+   * prix payé, statut. Aucun nombre de crédits.
+   */
+  async listAiPurchases(cabinetId: number) {
+    const rows: Array<Record<string, any>> = await this.dataSource.query(
+      `SELECT sp.id, sp.amount, sp.currency, sp.status, sp.method, sp.provider, sp.paid_at, sp.created_at,
+              sp.declared_at, sp.failure_reason, sp.receipt_number, sp.checkout_url, p.name AS pack_name
+         FROM subscription_payments sp
+         LEFT JOIN ai_credit_packs p ON p.id = sp.ai_credit_pack_id
+        WHERE sp.cabinet_id = ? AND sp.kind = 'ai_credits'
+          AND sp.status IN ('pending','awaiting_validation','paid','failed','refunded')
+          AND (sp.status <> 'pending' OR sp.created_at > DATE_SUB(NOW(), INTERVAL 2 DAY))
+        ORDER BY sp.created_at DESC, sp.id DESC
+        LIMIT 100`,
+      [cabinetId],
+    );
+    return rows.map((row) => ({ ...row, amount: Number(row.amount) }));
+  }
+
   /**
    * Relit l'état d'une transaction auprès de sa passerelle et l'applique :
    * confirmation si payée (montant contrôlé), motif d'échec sinon. Idempotent.
@@ -632,7 +727,7 @@ export class SubscriptionsService {
           cabinetId: payment.cabinet_id,
           subscriptionId: payment.subscription_id,
           type: 'payment_failed',
-          payload: { payment_id: payment.id, reason: payment.failure_reason },
+          payload: { payment_id: payment.id, reason: payment.failure_reason, kind: payment.kind ?? 'subscription' },
         });
         return 'pending';
       }
@@ -655,6 +750,7 @@ export class SubscriptionsService {
             provider: payment.provider,
             reference: payment.reference,
             reason: payment.failure_reason,
+            kind: payment.kind ?? 'subscription',
           },
         });
       }
@@ -817,6 +913,7 @@ export class SubscriptionsService {
           .createQueryBuilder('p')
           .innerJoin(Subscription, 's', 's.id = p.subscription_id')
           .where('p.cabinet_id = :cabinetId', { cabinetId })
+          .andWhere("p.kind = 'subscription'")
           .andWhere("p.status IN ('pending','awaiting_validation')")
           .andWhere("s.status <> 'cancelled'")
           .orderBy('p.id', 'DESC')
@@ -882,12 +979,20 @@ export class SubscriptionsService {
     payment.refund_reason = input.reason.slice(0, 255);
     if (payment.refund_amount >= paid - 0.001) payment.status = 'refunded';
     await this.payRepo.save(payment);
+    if (payment.kind === 'ai_credits' && paid > 0) {
+      // Les crédits vendus par ce paiement sont retirés au prorata du remboursement.
+      await this.aiCredits.refundPurchase({
+        tenantId: payment.cabinet_id,
+        paymentId: payment.id,
+        credits: (Number(payment.ai_credits ?? 0) * amount) / paid,
+      });
+    }
     await this.events.record({
       cabinetId: payment.cabinet_id,
       subscriptionId: payment.subscription_id,
       type: 'payment_refunded',
       actor,
-      payload: { payment_id: payment.id, amount, total_refunded: payment.refund_amount, reason: input.reason, provider: providerMessage },
+      payload: { payment_id: payment.id, amount, total_refunded: payment.refund_amount, reason: input.reason, provider: providerMessage, kind: payment.kind ?? 'subscription' },
     });
     return payment;
   }
@@ -904,7 +1009,11 @@ export class SubscriptionsService {
     payment.status = 'cancelled';
     payment.notes = `Échéance annulée : ${reason}`.slice(0, 500);
     await this.payRepo.save(payment);
-    const sub = await this.subRepo.findOne({ where: { id: payment.subscription_id } });
+    // Un achat de crédits IA annulé ne débloque jamais l'abonnement.
+    const sub =
+      payment.kind === 'ai_credits'
+        ? null
+        : await this.subRepo.findOne({ where: { id: payment.subscription_id } });
     if (sub && sub.status === 'pending_payment') {
       sub.status = sub.is_trial ? 'trial' : 'active';
       await this.subRepo.save(sub);
@@ -971,6 +1080,8 @@ export class SubscriptionsService {
   /**
    * Confirme un encaissement : marque l'échéance payée, active l'abonnement
    * (pending_payment → active) et réactive le cabinet. Idempotent.
+   * L'achat d'un pack de crédits IA (`kind = 'ai_credits'`) crédite seulement
+   * le ledger du cabinet : l'abonnement n'est jamais modifié.
    */
   async confirmPayment(
     payment: SubscriptionPayment,
@@ -999,8 +1110,26 @@ export class SubscriptionsService {
           method: payment.method,
           provider: payment.provider,
           reference: payment.reference,
+          kind: payment.kind ?? 'subscription',
         },
       });
+    }
+
+    if (payment.kind === 'ai_credits') {
+      // Hors du bloc « premier passage » : une relance (webhook rejoué, plantage
+      // entre l'encaissement et le crédit) crédite encore, une seule fois grâce
+      // à la clé unique `payment_id` du ledger.
+      const credited = await this.aiCredits.creditPurchase({
+        tenantId: payment.cabinet_id,
+        paymentId: payment.id,
+        credits: Number(payment.ai_credits ?? 0),
+      });
+      if (credited) {
+        this.logger.log(
+          `[AiCredits] Paiement #${payment.id} confirmé — cabinet=${payment.cabinet_id} +${Number(payment.ai_credits)} crédits`,
+        );
+      }
+      return null;
     }
 
     const sub = await this.subRepo.findOne({
@@ -1041,7 +1170,7 @@ export class SubscriptionsService {
     const payment = where
       ? await this.payRepo.findOne({ where })
       : await this.payRepo.findOne({
-          where: { cabinet_id: cabinetId, status: 'pending' },
+          where: { cabinet_id: cabinetId, kind: 'subscription', status: 'pending' },
           order: { id: 'DESC' },
         });
     if (!payment) throw new NotFoundException('Aucune échéance à régler');
@@ -1248,7 +1377,7 @@ export class SubscriptionsService {
       { status: 'cancelled', cancelled_at: new Date(), cancel_reason: reason },
     );
     await this.payRepo.update(
-      { subscription_id: In(ids), status: In(['pending', 'awaiting_validation']) },
+      { subscription_id: In(ids), kind: 'subscription', status: In(['pending', 'awaiting_validation']) },
       { status: 'cancelled', notes: `Échéance d'un abonnement ${reason === 'renewed' ? 'renouvelé' : 'remplacé'}` },
     );
   }
@@ -1336,7 +1465,7 @@ export class SubscriptionsService {
     const sub = await this.getRawCurrent(cabinetId);
     if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
     const payment = await this.payRepo.findOne({
-      where: { subscription_id: sub.id, status: 'pending' },
+      where: { subscription_id: sub.id, kind: 'subscription', status: 'pending' },
       order: { id: 'DESC' },
     });
     if (!payment || Number(payment.amount) <= 0) {
@@ -1645,7 +1774,7 @@ export class SubscriptionsService {
     current.amount = planPriceForCycle(plan, cycle);
     const saved = await this.subRepo.save(current);
     const pending = await this.payRepo.findOne({
-      where: { subscription_id: saved.id, status: 'pending' },
+      where: { subscription_id: saved.id, kind: 'subscription', status: 'pending' },
       order: { id: 'DESC' },
     });
     if (pending) {
@@ -1737,7 +1866,7 @@ export class SubscriptionsService {
     await this.subRepo.save(sub);
 
     const lastPayment = await this.payRepo.findOne({
-      where: { subscription_id: sub.id },
+      where: { subscription_id: sub.id, kind: 'subscription' },
       order: { id: 'DESC' },
     });
     if (lastPayment) {

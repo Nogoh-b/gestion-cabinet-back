@@ -49,12 +49,8 @@ export async function postponeAudienceWithManager(
     );
   }
 
+  // Rapport facultatif : enregistr\u00e9 s'il accompagne le report.
   const reportContent = input.report_content?.trim();
-  if (!reportContent && !audience.report_content?.trim()) {
-    throw new BadRequestException(
-      `Le rapport d'audience doit \u00eatre r\u00e9dig\u00e9 avant de reporter cette audience.`,
-    );
-  }
 
   const nextDate = new Date(input.audience_date);
   if (Number.isNaN(nextDate.getTime())) {

@@ -150,9 +150,13 @@ export class AudiencesService extends BaseServiceV1<Audience> {
         "L'audience renvoyée est introuvable dans ce dossier",
       );
     }
-    if (parentAudience && !reason) {
-      throw new BadRequestException('Le motif du renvoi est obligatoire');
-    }
+    // Audience d'origine et motif restent facultatifs : un renvoi peut être
+    // saisi sans l'un ou l'autre et complété plus tard.
+    const postponementNote = parentAudience
+      ? `Audience issue du renvoi de #${parentAudience.id}.${reason ? ` Motif : ${reason}` : ''}`
+      : reason
+        ? `Audience issue d'un renvoi. Motif : ${reason}`
+        : null;
 
     // ✅ VÉRIFICATION DU STATUT DU DOSSIER
     // Vérifier si l'audience est compatible avec le statut actuel
@@ -197,13 +201,8 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       room: dto.room,
       duration_minutes: dto.duration_minutes,
       judge_name: dto.judge_name,
-      notes: parentAudience
-        ? [
-            dto.notes,
-            `Audience issue du renvoi de #${parentAudience.id}. Motif : ${reason}`,
-          ]
-            .filter(Boolean)
-            .join('\n')
+      notes: postponementNote
+        ? [dto.notes, postponementNote].filter(Boolean).join('\n')
         : dto.notes,
       postponed_to: dto.postponed_to,
       ...(audience_type ? { audience_type } : {}),
@@ -548,6 +547,69 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       report_date: audience.report_date,
       report_author_id: audience.report_author_id,
       report_documents: audience.report_documents ?? [],
+    };
+  }
+
+  /**
+   * Documents de l'audience en deux groupes : `preparation` (avant) et
+   * `after` (après), ce dernier incluant les pièces du compte rendu et de la
+   * décision, signalées par `badge`. Filtré par cabinet.
+   */
+  async getDocuments(id: number): Promise<{ preparation: any[]; after: any[] }> {
+    const tenantId = getCurrentTenantId();
+    const manager = this.repository.manager;
+    const owner = await manager.query(
+      'SELECT id FROM audiences WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
+      [id, tenantId],
+    );
+    if (!owner.length) throw new NotFoundException(`Audience ${id} introuvable`);
+
+    const select = (source: string, badge: string | null, table: string, phaseColumn: string) => `
+      SELECT d.id, d.name, d.description, d.file_mimetype, d.file_size, d.uploaded_at,
+             d.required_for_hearing, d.is_confidential,
+             cat.name AS category_name, dt.name AS type_name,
+             TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS author_name,
+             ${phaseColumn} AS phase, '${source}' AS source, ${badge ? `'${badge}'` : 'NULL'} AS badge
+        FROM ${table} link
+        JOIN document_customer d ON d.id = link.document_id
+        LEFT JOIN document_categories cat ON cat.id = d.category_id
+        LEFT JOIN document_type dt ON dt.id = d.document_type_id
+        LEFT JOIN \`user\` u ON u.id = d.uploaded_by_id
+       WHERE link.audience_id = ? AND d.tenant_id = ? AND d.deleted_at IS NULL
+         AND COALESCE(d.is_current_version, 1) = 1`;
+
+    const rows: any[] = await manager.query(
+      `${select('link', null, 'audience_documents', 'link.phase')}
+       UNION ALL ${select('report', 'Compte rendu', 'audience_report_documents', "'after'")}
+       UNION ALL ${select('decision', 'Décision', 'audience_decision_documents', "'after'")}
+       ORDER BY uploaded_at DESC, id DESC`,
+      [id, tenantId, id, tenantId, id, tenantId],
+    );
+
+    // Une pièce déjà rangée dans « après » et aussi au compte rendu / à la
+    // décision n'apparaît qu'une fois, avec son badge.
+    const byId = new Map<number, any>();
+    for (const row of rows) {
+      const kept = byId.get(Number(row.id));
+      if (!kept || (!kept.badge && row.badge)) byId.set(Number(row.id), row);
+    }
+    const documents = [...byId.values()].map((row) => ({
+      id: Number(row.id),
+      name: row.name,
+      description: row.description,
+      category: row.category_name ?? null,
+      document_type: row.type_name ?? null,
+      date: row.uploaded_at,
+      author: row.author_name || null,
+      mimetype: row.file_mimetype ?? null,
+      size: row.file_size != null ? Number(row.file_size) : null,
+      is_confidential: !!row.is_confidential,
+      badge: row.badge ?? null,
+      phase: row.phase === 'after' ? 'after' : 'preparation',
+    }));
+    return {
+      preparation: documents.filter((doc) => doc.phase === 'preparation'),
+      after: documents.filter((doc) => doc.phase === 'after'),
     };
   }
 

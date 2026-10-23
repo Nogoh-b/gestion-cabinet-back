@@ -20,6 +20,12 @@ export type SubscriptionPaymentStatus =
   /** Échéance annulée (abonnement remplacé, échéance offerte). */
   | 'cancelled';
 
+/**
+ * Nature du paiement : une échéance d'abonnement, ou l'achat d'un pack de
+ * crédits IA (réutilise les passerelles mais ne touche jamais à l'abonnement).
+ */
+export type SubscriptionPaymentKind = 'subscription' | 'ai_credits';
+
 export const SUBSCRIPTION_PAYMENT_STATUSES: SubscriptionPaymentStatus[] = [
   'pending',
   'awaiting_validation',
@@ -155,6 +161,17 @@ export class SubscriptionPayment {
 
   @Column({ type: 'varchar', length: 255, nullable: true, name: 'refund_reason' })
   refund_reason: string | null;
+
+  @Column({ type: 'varchar', length: 20, default: 'subscription' })
+  kind: SubscriptionPaymentKind;
+
+  /** Pack de crédits IA acheté (kind = 'ai_credits'). */
+  @Column({ type: 'int', nullable: true, name: 'ai_credit_pack_id' })
+  ai_credit_pack_id: number | null;
+
+  /** Crédits IA vendus par ce paiement (figés à l'achat). */
+  @Column({ type: 'decimal', precision: 14, scale: 4, nullable: true, name: 'ai_credits' })
+  ai_credits: number | null;
 
   /** Numéro du reçu (attribué à l'encaissement). */
   @Column({ type: 'varchar', length: 40, nullable: true, name: 'receipt_number' })

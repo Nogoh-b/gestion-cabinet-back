@@ -88,7 +88,7 @@ export class AudienceWriteHandler extends BaseWriteHandler {
       },
       report_content: {
         description:
-          "Proces-verbal ou rapport d'audience. Obligatoire avant un report.",
+          "Proces-verbal ou rapport d'audience. Facultatif, y compris pour un report.",
         example:
           "L'audience s'est tenue. L'affaire est renvoyee a une date ulterieure pour depot de conclusions.",
       },
@@ -131,9 +131,8 @@ export class AudienceWriteHandler extends BaseWriteHandler {
       if (time) transformed.audience_time = time;
       else delete transformed.audience_time;
     }
-    // Report : comme le report manuel, seul le rapport d'audience est exigé
-    // (contrôlé dans doUpdate, car il peut déjà exister sur l'audience) ; le
-    // motif est facultatif et la nouvelle date peut rester « à fixer ».
+    // Report : comme le report manuel, rien d'autre n'est exigé ; le rapport
+    // et le motif sont facultatifs et la nouvelle date peut rester « à fixer ».
     return {
       valid: errors.length === 0,
       errors,
@@ -265,17 +264,11 @@ export class AudienceWriteHandler extends BaseWriteHandler {
 
       const reason =
         typeof safeFields.reason === 'string' ? safeFields.reason.trim() : '';
-      // Rapport exigé comme dans le report manuel, mais il peut déjà figurer
-      // sur l'audience ; à défaut, le motif fourni tient lieu de rapport.
+      // Rapport facultatif, comme dans le report manuel : enregistré s'il est fourni.
       const reportContent =
-        (typeof safeFields.report_content === 'string'
+        typeof safeFields.report_content === 'string'
           ? safeFields.report_content.trim()
-          : '') || (audience.report_content?.trim() ? '' : reason);
-      if (!reportContent && !audience.report_content?.trim()) {
-        throw new BadRequestException(
-          "Le rapport d'audience doit être rédigé avant de reporter cette audience : précisez ce qui s'est passé ou le motif du renvoi.",
-        );
-      }
+          : '';
       const postponedDate = safeFields.postponed_to
         ? new Date(safeFields.postponed_to)
         : safeFields.audience_date
@@ -288,8 +281,10 @@ export class AudienceWriteHandler extends BaseWriteHandler {
           : '';
 
       // Trace de la décision de report (toujours enregistrée)
-      if (reportContent) audience.report_content = reportContent;
-      audience.report_date = audience.report_date ?? new Date();
+      if (reportContent) {
+        audience.report_content = reportContent;
+        audience.report_date = audience.report_date ?? new Date();
+      }
       audience.outcome = safeFields.outcome
         ? String(safeFields.outcome)
         : 'postponed';

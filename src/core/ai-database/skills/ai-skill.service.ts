@@ -43,6 +43,7 @@ export class AiSkillService {
         examples: d.examples ?? [],
         keywords: d.keywords ?? [],
         ...(d.autoTriggers?.length && { autoTriggers: d.autoTriggers }),
+    ...(d.autoLaunchOnConsultation ? { autoLaunchOnConsultation: true as const } : {}),
         ...(d.autoExclude?.length && { autoExclude: d.autoExclude }),
       });
     }

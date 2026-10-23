@@ -14,7 +14,7 @@ import {
   cabinetLogoToDataUri,
 } from 'src/modules/cabinet/entities/cabinet.entity';
 import { logoFileToUrl } from 'src/modules/cabinet/cabinet-logo.util';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
 
 export interface RenderedMail {
   subject: string;
@@ -49,15 +49,39 @@ export class MailTemplateService {
     return this.repository.save(tpl);
   }
 
+  /**
+   * Les modèles sont partagés (@SharedAcrossTenants) : un cabinet lit ceux du
+   * référentiel global (tenant 1) en plus des siens, et chaque cabinet reçoit
+   * une copie des modèles globaux à sa création. Pour un même code, la copie
+   * du cabinet l'emporte : sans cela la liste montre chaque modèle en double
+   * et un code peut désigner le modèle global.
+   */
+  private preferOwn(rows: MailTemplate[]): MailTemplate[] {
+    if (!hasActiveTenant()) return rows;
+    const tenantId = getCurrentTenantId();
+    const byCode = new Map<string, MailTemplate>();
+    for (const row of rows) {
+      const kept = byCode.get(row.code);
+      if (!kept || (kept.tenant_id !== tenantId && row.tenant_id === tenantId)) {
+        byCode.set(row.code, row);
+      }
+    }
+    return rows.filter((row) => byCode.get(row.code) === row);
+  }
+
   async findAll(): Promise<MailTemplate[]> {
-    return this.repository.find({ order: { category: 'ASC', name: 'ASC' } });
+    return this.preferOwn(
+      await this.repository.find({ order: { category: 'ASC', name: 'ASC' } }),
+    );
   }
 
   async findActive(): Promise<MailTemplate[]> {
-    return this.repository.find({
-      where: { is_active: true },
-      order: { name: 'ASC' },
-    });
+    return this.preferOwn(
+      await this.repository.find({
+        where: { is_active: true },
+        order: { name: 'ASC' },
+      }),
+    );
   }
 
   async findOne(id: number): Promise<MailTemplate> {
@@ -67,11 +91,24 @@ export class MailTemplateService {
   }
 
   async findByCode(code: string): Promise<MailTemplate | null> {
-    return this.repository.findOne({ where: { code } });
+    const [tpl] = this.preferOwn(await this.repository.find({ where: { code } }));
+    return tpl ?? null;
   }
 
   async update(id: number, dto: UpdateMailTemplateDto): Promise<MailTemplate> {
-    const tpl = await this.findOne(id);
+    let tpl = await this.findOne(id);
+    // Modèle global vu par un cabinet : on modifie la copie du cabinet (créée
+    // au besoin), jamais le référentiel. `save` réécrit tenant_id avec le
+    // cabinet courant et déplacerait sinon la ligne globale dans le cabinet.
+    if (hasActiveTenant() && tpl.tenant_id !== getCurrentTenantId()) {
+      const own = await this.findByCode(tpl.code);
+      if (own && own.tenant_id === getCurrentTenantId()) {
+        tpl = own;
+      } else {
+        const { id: _id, tenant_id: _tenant, created_at: _created, updated_at: _updated, deleted_at: _deleted, ...copy } = tpl as any;
+        tpl = this.repository.create(copy as Partial<MailTemplate>);
+      }
+    }
     Object.assign(tpl, dto);
     return this.repository.save(tpl);
   }

@@ -36,7 +36,6 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AiDatabaseModule } from './ai-database/ai-database.module';
@@ -130,7 +129,8 @@ import { RestrictedFieldsInterceptor } from './security/restricted-fields.interc
     forwardRef(() => NotificationModule), // Pour éviter les dépendances circulaires
     // forwardRef(() => NotificationModule),
     // SeedersModule,
-    ScheduleModule.forRoot(),
+    // ScheduleModule.forRoot() : déjà initialisé dans AppModule (un second
+    // forRoot risquerait de déclencher chaque cron deux fois).
     AiDatabaseModule,
     PlansModule,
     CoreNotificationsModule,

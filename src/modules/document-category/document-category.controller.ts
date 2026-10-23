@@ -41,9 +41,8 @@ export class DocumentCategoryController {
     @Query() searchParams?: SearchCriteria,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.service.searchWithTransformer(
+    return this.service.searchOwnFirst(
       searchParams as SearchCriteria,
-      DocumentCategoryResponseDto,
       paginationParams,
     );
   }

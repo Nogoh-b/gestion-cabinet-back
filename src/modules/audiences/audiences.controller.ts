@@ -101,6 +101,14 @@ export class AudiencesController {
     return await this.audiencesService.findOne(+id);
   }
 
+  // Documents de l'audience : { preparation, after } (compte rendu et décision inclus dans after)
+  @Get(':id/documents')
+  @RequirePermissions('view_audiences')
+  @ApiOperation({ summary: "Documents d'une audience, avant et après" })
+  async getDocuments(@Param('id') id: string) {
+    return await this.audiencesService.getDocuments(+id);
+  }
+
   // ✅ UPDATE - PATCH /audiences/:id
   @Patch(':id')
   @RequirePermissions('edit_audience')

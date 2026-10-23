@@ -6,6 +6,9 @@ import {
   SearchOptions,
 } from 'src/core/shared/services/search/base-v1.service';
 import { In, Repository } from 'typeorm';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
 import {
   ConflictException,
   Injectable,
@@ -39,6 +42,42 @@ export class DocumentTypeService extends BaseServiceV1<DocumentType> {
       dateRangeFields: ['created_at'],
       relationFields: ['documents', 'categories'],
     };
+  }
+
+  /**
+   * Recherche paginée ; `category_id` ne garde que les natures de cette
+   * catégorie (jointure `document_type_categories`) et celles qui ne sont
+   * rattachées à aucune catégorie, utilisables partout.
+   */
+  async searchByCategory(
+    criteria: SearchCriteria,
+    paginationParams?: PaginationParamsDto,
+  ) {
+    const { category_id, ...rest } = criteria ?? {};
+    const categoryId = Number(category_id);
+    if (!categoryId) {
+      return this.searchWithTransformer(rest, DocumentTypeResponseDto, paginationParams);
+    }
+    const tenantSql = hasActiveTenant() ? 'AND t.tenant_id = ?' : '';
+    const params: number[] = hasActiveTenant() ? [getCurrentTenantId()] : [];
+    const found: Array<{ id: number }> = await this.repository.manager.query(
+      `SELECT t.id FROM document_type t
+        WHERE t.deleted_at IS NULL ${tenantSql}
+          AND (
+            EXISTS (SELECT 1 FROM document_type_categories c
+                     WHERE c.document_type_id = t.id AND c.document_category_id = ?)
+            OR NOT EXISTS (SELECT 1 FROM document_type_categories c WHERE c.document_type_id = t.id)
+          )`,
+      [...params, categoryId],
+    );
+    return this.searchWithTransformer(
+      rest,
+      DocumentTypeResponseDto,
+      paginationParams,
+      undefined,
+      undefined,
+      { id: In(found.map((row) => Number(row.id))) },
+    );
   }
 
   /**

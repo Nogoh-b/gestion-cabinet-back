@@ -71,6 +71,12 @@ export interface AiSkillDefinition {
    * messages et actions enregistrés avec eux restent valides ; `params`
    * préremplit la demande (« courrier » → modèle general_courrier).
    */
+  /**
+   * Consultation auto-lançable : la compétence sait répondre elle-même aux
+   * questions de consultation qui la désignent sans ambiguïté (« liste les
+   * modèles de mails ») au lieu de laisser la lecture générique répondre.
+   */
+  autoLaunchOnConsultation?: boolean;
   aliases?: Array<{ code: string; params?: Record<string, unknown> }>;
 }
 
@@ -82,6 +88,8 @@ export interface AiSkillFollowUp {
   params?: Record<string, any>;
   /** Mention à joindre (cible déjà connue). */
   reference?: { type: string; id: number | string; label: string; href?: string };
+  /** Nature de ce que le bouton désigne (modèle de mail, de document, bloc), affichée en pastille. */
+  badge?: 'mail' | 'document' | 'bloc';
 }
 
 /** Courrier / attestation… prêt à être rendu en PDF par le chat. */
@@ -169,6 +177,11 @@ export interface StudioLayout {
   font_family: string | null;
   header_block_id: number | null;
   footer_block_id: number | null;
+  /** Taille (pt) et interligne du texte, marges, numéros de page (`pdf_templates.layout_options`). */
+  font_size?: number | null;
+  line_height?: number | null;
+  margins?: 'narrow' | 'normal' | 'wide' | null;
+  page_numbers?: boolean;
 }
 
 /** Modèle PDF intégré à une compétence (mêmes champs que `pdf_templates`). */
@@ -184,6 +197,51 @@ export interface InlinePdfTemplate {
   font_family: null;
   header_block_id: null;
   footer_block_id: null;
+}
+
+/**
+ * Modèle (mail, document PDF ou bloc d'en-tête / pied de page) proposé par le
+ * chat, version actuelle ou réécrite : la carte montre l'aperçu et l'éditeur ;
+ * rien n'est enregistré avant « Enregistrer le modèle ». La compétence reste en
+ * attente : la réponse suivante retouche la version affichée (renvoyée en `revise`).
+ */
+export interface MailTemplateDraft {
+  /** Document : taille, interligne, marges, numéros de page (`pdf_templates.layout_options`). */
+  layout_options?: Record<string, unknown> | null;
+  /** Famille du modèle (mail par défaut). */
+  family?: 'mail' | 'pdf' | 'bloc';
+  /** create : nouveau modèle (id null, créé par « Créer le modèle ») ; update : modèle existant. */
+  mode: 'create' | 'update';
+  id: number | null;
+  code: string;
+  name: string;
+  category?: string;
+  audience?: string;
+  description?: string;
+  /** Objet du mail ('' pour un document ou un bloc). */
+  subject: string;
+  /** Titre imprimé en tête d'un document PDF. */
+  title?: string;
+  body_html: string;
+  /** Version enregistrée, pour revenir en arrière dans la carte. */
+  original: { subject: string; body_html: string; name?: string; title?: string };
+  header_block_id: number | null;
+  footer_block_id: number | null;
+  font_family: string | null;
+  /** Mise en page d'un document PDF (aperçu). */
+  orientation?: string;
+  paper_size?: string;
+  /** Bloc : canal et nature (aperçu). */
+  channel?: 'mail' | 'pdf';
+  kind?: 'header' | 'footer';
+  /**
+   * Autres champs changés par la demande (activation, orientation, en-tête…),
+   * enregistrés avec la carte, et leur version en clair (« Orientation : paysage »).
+   */
+  changes?: Record<string, unknown>;
+  changeLabels?: string[];
+  /** Variables {{…}} disponibles (celles du modèle). */
+  variables: string[];
 }
 
 /** Message prêt à partir par un canal externe (WhatsApp). */
@@ -234,8 +292,26 @@ export type AiSkillOutcome =
   | { type: 'answer'; markdown: string; followUps?: AiSkillFollowUp[]; download?: AiSkillDownload; streamed?: boolean; chart?: ChartSpec }
   | { type: 'document_draft'; markdown: string; draft: DocumentDraft; followUps?: AiSkillFollowUp[] }
   | { type: 'message_draft'; markdown: string; draft: MessageDraft; followUps?: AiSkillFollowUp[] }
+  /**
+   * La demande relève d'une autre compétence (« modifie le modèle de contrat »
+   * reçu par la rédaction de documents) : le chat la relance une fois avec
+   * celle-ci, sur la même demande, avec ces paramètres en plus.
+   */
+  | { type: 'handoff'; skill: string; params?: Record<string, any> }
   /** Il manque une information (cible…) : on la demande. */
-  | { type: 'clarify'; markdown: string; /** Réponses toutes prêtes (« Quel document ? »). */ followUps?: AiSkillFollowUp[] };
+  | {
+      type: 'clarify';
+      markdown: string;
+      /** Réponses toutes prêtes (« Quel document ? »). */
+      followUps?: AiSkillFollowUp[];
+      /**
+       * Demande que la compétence reprendra avec la précision de l'utilisateur,
+       * à la place de la demande initiale (ex. le modèle désormais choisi).
+       */
+      pendingQuestion?: string;
+      /** Modèle de mail affiché dans sa carte d'édition pendant la précision. */
+      templateDraft?: MailTemplateDraft;
+    };
 
 /** Graphique affiché sous la réponse (voir chart-spec). */
 export type { ChartSpec };
@@ -271,6 +347,11 @@ export interface AiSkillContext {
   llm: AiSkillLlm;
   /** Étape affichée pendant le traitement. */
   status(message: string): void;
+  /**
+   * Étape à part dans le déroulé du chat (ex. `template` : « Modèle utilisé »
+   * avec le nom du modèle), au lieu d'un simple message de progression.
+   */
+  step?(key: string, message: string, detail?: string): void;
   /** Texte des pièces de la GED (lecture et OCR du chat), dans le cabinet courant. */
   readDocuments(ids: number[]): Promise<Array<{ id: number; name: string; content: string }>>;
   /**
@@ -317,6 +398,7 @@ export interface AiSkillCatalogItem {
   placeholder: string;
   examples: string[];
   keywords: string[];
+  autoLaunchOnConsultation?: boolean;
   autoTriggers?: string[];
   autoExclude?: string[];
 }

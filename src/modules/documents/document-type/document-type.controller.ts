@@ -108,9 +108,8 @@ export class DocumentTypeController {
     @Query() searchParams?: Record<string, any>,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return await this.service.searchWithTransformer(
+    return await this.service.searchByCategory(
       searchParams as SearchCriteria,
-      DocumentTypeResponseDto,
       paginationParams,
     );
   }

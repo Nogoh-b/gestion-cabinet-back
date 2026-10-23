@@ -161,6 +161,15 @@ export class CreatePlanDto {
   @IsOptional()
   ai_requests_per_month?: number;
 
+  @ApiPropertyOptional({
+    example: 5000,
+    description: 'Crédits IA par mois (vide ou -1 = illimité)',
+  })
+  @IsNumber()
+  @Min(-1)
+  @IsOptional()
+  ai_credits_per_month?: number | null;
+
   @ApiProperty({ example: 49.0, description: 'Prix mensuel en €' })
   @IsNumber()
   @Min(0)

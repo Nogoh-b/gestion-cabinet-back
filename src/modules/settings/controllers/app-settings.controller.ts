@@ -133,6 +133,27 @@ export class AppSettingsController {
     return isClientUser(req.user) ? clientSettingsResponse(settings) : settings;
   }
 
+  @Get('dictionary')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Mots du dictionnaire du cabinet (correcteur d'orthographe des éditeurs)" })
+  async dictionary(@Req() req: Request) {
+    if (isClientUser(req.user)) throw new ForbiddenException('Réservé aux membres du cabinet');
+    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
+    return { words: await this.appSettingsService.dictionary(cabinetId) };
+  }
+
+  /** Tout membre du cabinet peut ajouter un mot (pas de droit « paramètres » requis). */
+  @Post('dictionary')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Ajouter des mots au dictionnaire du cabinet' })
+  async addToDictionary(@Req() req: Request, @Body() body: { word?: string; words?: string[] }) {
+    if (isClientUser(req.user)) throw new ForbiddenException('Réservé aux membres du cabinet');
+    const words = [...(Array.isArray(body?.words) ? body.words : []), ...(body?.word ? [body.word] : [])].slice(0, 100);
+    if (!words.length) throw new BadRequestException('Aucun mot à ajouter');
+    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
+    return { words: await this.appSettingsService.addDictionaryWords(cabinetId, words) };
+  }
+
   @Put()
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Mettre à jour les paramètres du cabinet' })

@@ -258,6 +258,8 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       loan_id,
       file,
       strict = true,
+      audience_id,
+      audience_phase,
       ...restDto
     } = createDto;
 
@@ -268,6 +270,13 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
         strict,
       );
       if (!dossier && !strict) return null;
+
+      // 1 bis. Pièce pour préparer une audience : audience du même dossier.
+      if (audience_id) {
+        await this.validateHearing(audience_id, dossier_id);
+        // Seule la préparation est « requise pour l'audience ».
+        if (audience_phase !== 'after') restDto.required_for_hearing = true;
+      }
 
       // 2. Le type et la catégorie sont des informations complémentaires.
       const docType = document_type_id
@@ -393,6 +402,12 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       // if (createDto.status === DocumentCustomerStatus.ACCEPTED) {
       //   await this.stepsService.updateStepMetrics(document.id);
       // }
+      if (audience_id) {
+        await this.docRepository.manager.query(
+          'INSERT IGNORE INTO audience_documents (audience_id, document_id, phase) VALUES (?, ?, ?)',
+          [audience_id, document.id, audience_phase === 'after' ? 'after' : 'preparation'],
+        );
+      }
       if (createDto.sub_stage_visit_id) {
         await this.linkDocumentsToSubStage(
           [document.id],
@@ -404,6 +419,23 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     } catch (error) {
       if (!strict) return null;
       throw error;
+    }
+  }
+
+  /** L'audience visée existe dans le cabinet et appartient au dossier du document. */
+  private async validateHearing(audienceId: number, dossierId: number): Promise<void> {
+    const rows: Array<{ dossier_id: number | null }> =
+      await this.docRepository.manager.query(
+        'SELECT dossier_id FROM audiences WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
+        [audienceId, getCurrentTenantId()],
+      );
+    if (!rows.length) {
+      throw new NotFoundException(`Audience ${audienceId} introuvable`);
+    }
+    if (Number(rows[0].dossier_id) !== Number(dossierId)) {
+      throw new BadRequestException(
+        "L'audience choisie n'appartient pas au dossier du document.",
+      );
     }
   }
 

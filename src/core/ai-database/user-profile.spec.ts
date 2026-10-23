@@ -42,7 +42,7 @@ const snapshot = (extra: Partial<UserProfileSnapshot> = {}): UserProfileSnapshot
     { label: 'Collaborateurs', used: 8, max: 10 },
     { label: 'Dossiers', used: 140, max: null },
   ],
-  ai: { used: 87, max: 1000, resetsAt: '2026-11-01T00:00:00.000Z', enabled: true },
+  ai: { used: 87, max: 100, resetsAt: '2026-11-01T00:00:00.000Z', enabled: true },
   canSeeBilling: false,
   skills: 30,
   ...extra,
@@ -129,11 +129,11 @@ describe('réponses construites à partir du profil', () => {
     expect(answer).toContain("🔒 La paie n'est pas incluse dans votre plan.");
   });
 
-  it('quotas : tableau et remise à zéro des requêtes IA', () => {
+  it('quotas : tableau et remise à zéro des crédits IA', () => {
     const answer = buildSelfProfileAnswer('mes quotas', snapshot(), access)!;
     expect(answer).toContain('| Collaborateurs | 8 | 10 |');
     expect(answer).toContain('| Dossiers | 140 | illimité |');
-    expect(answer).toContain('| Requêtes IA ce mois | 87 | 1000 |');
+    expect(answer).toContain('| Crédits IA du forfait ce mois | 87 % | 100 % |');
     expect(answer).toContain('01/11/2026');
   });
 
@@ -152,13 +152,13 @@ describe('profil embarqué dans les prompts', () => {
     expect(block).toContain('Non accessible avec ce rôle : Paie, Comptabilité');
     expect(block).toContain('Plan : Pro');
     expect(block).toContain('Abonnement : abonnement actif');
-    expect(block).toContain('Requêtes IA ce mois : 87 / 1000');
+    expect(block).toContain('Crédits IA du forfait ce mois (en %) : 87 % / 100 %');
   });
 
   it('bloc court (classification) : sans détail des droits ni quotas', () => {
     const block = renderUserProfileBlock(snapshot(), 'short');
     expect(block).toContain('Modules accessibles : Dossiers, Audiences');
-    expect(block).not.toContain('Requêtes IA');
+    expect(block).not.toContain('Crédits IA');
   });
 
   it('SQL : identifiant du collaborateur pour « mes dossiers »', () => {

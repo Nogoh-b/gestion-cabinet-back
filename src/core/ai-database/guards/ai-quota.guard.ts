@@ -5,20 +5,24 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThanOrEqual, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 
 import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
+import { AiCreditsService } from 'src/modules/plans/ai-credits/ai-credits.service';
+import { AI_CREDITS_EXHAUSTED } from 'src/modules/plans/ai-credits/ai-credits';
 import { AiRequestLog } from '../entities/ai-request-log.entity';
 
 /**
- * AiQuotaGuard — applique le module IA (`ai_enabled`) et le quota mensuel
- * `ai_requests_per_month` du plan sur les routes qui appellent le modèle
- * (ask, ask/stream, form/prepare, analyze).
+ * AiQuotaGuard — applique le module IA (`ai_enabled`) et le budget de crédits
+ * mensuel (`ai_credits_per_month` + crédits achetés) sur les routes qui
+ * appellent le modèle (ask, ask/stream, form/prepare, analyze).
  *
  * Isolé du cœur du module ai-database (en cours de refonte) : ne dépend que de
- * son propre journal `AiRequestLog` et de PlanQuotaService. Refuse si le plan
- * n'inclut pas l'IA, compte les tentatives du mois courant, refuse si la limite
- * est atteinte, sinon enregistre la requête. Aucun plan → aucune restriction.
+ * son propre journal `AiRequestLog`, de PlanQuotaService et d'AiCreditsService.
+ * Refuse si le plan n'inclut pas l'IA, puis (403 `AI_CREDITS_EXHAUSTED`) si le
+ * forfait du mois et les crédits achetés sont épuisés, sinon enregistre la
+ * requête. Aucun plan → aucune restriction. Une requête déjà en cours peut
+ * dépasser légèrement : la consommation n'est connue qu'à la fin de l'appel.
  */
 @Injectable()
 export class AiQuotaGuard implements CanActivate {
@@ -26,6 +30,7 @@ export class AiQuotaGuard implements CanActivate {
     @InjectRepository(AiRequestLog)
     private readonly repo: Repository<AiRequestLog>,
     private readonly planQuota: PlanQuotaService,
+    private readonly credits: AiCreditsService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -37,22 +42,15 @@ export class AiQuotaGuard implements CanActivate {
     const plan = await this.planQuota.getCabinetPlan(tenantId);
     // Module IA absent du plan : refus avant tout comptage ou journal.
     this.planQuota.assertModuleEnabled(plan, 'ai');
-    const limit = plan?.ai_requests_per_month;
 
-    // null / -1 = illimité (ou aucun plan) → aucune limite appliquée.
-    if (limit !== null && limit !== undefined && limit !== -1) {
-      const monthStart = new Date();
-      monthStart.setDate(1);
-      monthStart.setHours(0, 0, 0, 0);
-      const used = await this.repo.count({
-        where: { tenant_id: tenantId, created_at: MoreThanOrEqual(monthStart) },
+    // Forfait du mois + crédits achetés épuisés → l'IA est bloquée.
+    if (await this.credits.isExhausted(tenantId, plan)) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: AI_CREDITS_EXHAUSTED,
+        message: 'Crédits IA épuisés — achetez un pack dans Abonnement.',
+        error: 'Forbidden',
       });
-      if (used >= limit) {
-        throw new ForbiddenException(
-          `Quota de requêtes IA atteint (${used}/${limit} ce mois). ` +
-            `Veuillez mettre à niveau votre plan${plan?.name ? ` "${plan.name}"` : ''}.`,
-        );
-      }
     }
 
     // Enregistre la requête (comptée comme une tentative).

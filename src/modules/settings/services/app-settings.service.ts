@@ -21,6 +21,15 @@ import { mergeSmtpConfig } from '../smtp-config.util';
  * désormais directement sur l'entité `Cabinet` (source de configuration UNIQUE).
  * Le nom de classe est conservé pour limiter le churn d'imports.
  */
+/** Taille maximale du dictionnaire d'un cabinet. */
+export const DICTIONARY_LIMIT = 5000;
+
+/** Mot du dictionnaire : lettres, apostrophes et traits d'union, 1 à 60 caractères. */
+export function normalizeDictionaryWord(word: unknown): string | null {
+  const value = String(word ?? '').trim().replace(/’/g, "'");
+  return /^[\p{L}][\p{L}'\-]{0,59}$/u.test(value) ? value : null;
+}
+
 @Injectable()
 export class AppSettingsService {
   constructor(
@@ -74,6 +83,26 @@ export class AppSettingsService {
       throw new NotFoundException(`Cabinet #${cabinetId} introuvable`);
     }
     return cabinet;
+  }
+
+  /** Mots ajoutés au correcteur d'orthographe des éditeurs par le cabinet. */
+  async dictionary(cabinetId: number): Promise<string[]> {
+    const cabinet = await this.findByCabinet(cabinetId);
+    return Array.isArray(cabinet.custom_dictionary) ? cabinet.custom_dictionary : [];
+  }
+
+  /**
+   * Ajoute des mots au dictionnaire du cabinet (sans doublon, 5 000 mots au
+   * plus) ; écriture ciblée de la seule colonne (pas de `save` du cabinet).
+   */
+  async addDictionaryWords(cabinetId: number, words: string[]): Promise<string[]> {
+    const current = await this.dictionary(cabinetId);
+    const known = new Set(current);
+    const added = words.map(normalizeDictionaryWord).filter((word): word is string => !!word && !known.has(word));
+    if (!added.length) return current;
+    const next = [...current, ...new Set(added)].slice(-DICTIONARY_LIMIT);
+    await this.cabinetRepository.update({ id: cabinetId }, { custom_dictionary: next });
+    return next;
   }
 
   /** Exception IA posée par la plateforme pour ce cabinet (lecture seule ici). */

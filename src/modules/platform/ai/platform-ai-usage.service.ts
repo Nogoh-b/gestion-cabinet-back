@@ -13,6 +13,8 @@ import {
 } from 'src/core/ai-database/ai-usage';
 import { parseStoredAiConfig, PLATFORM_AI_SETTING_KEY } from 'src/core/ai-database/ai-provider-config';
 import { PlatformAuditContext } from '../audit/platform-audit.context';
+import { AiCreditsService } from 'src/modules/plans/ai-credits/ai-credits.service';
+import { toCredits } from 'src/modules/plans/ai-credits/ai-credits';
 
 const MAX_RANGE_DAYS = 366;
 const DAY_MS = 86_400_000;
@@ -81,12 +83,13 @@ export class PlatformAiUsageService {
     @InjectDataSource() private readonly db: DataSource,
     private readonly router: AiModelRouterService,
     private readonly usage: AiUsageService,
+    private readonly credits: AiCreditsService,
   ) {}
 
   async overview(fromRaw?: string, toRaw?: string) {
     const period = usagePeriod(fromRaw, toRaw);
     const args = [period.from, period.to];
-    const [requests, calls, requestDays, callDays, requestCabinets, callCabinets, models, intents, monthRequests] =
+    const [requests, calls, requestDays, callDays, requestCabinets, callCabinets, models, intents, monthCosts, creditSettings, ledger] =
       await Promise.all([
         this.db.query(
           `SELECT COUNT(*) requests, SUM(status = 'error') errors, AVG(total_ms) avg_ms,
@@ -115,24 +118,30 @@ export class PlatformAiUsageService {
         ),
         this.modelRows('', args),
         this.intentRows('', args),
-        // Quota du plan : compté sur le mois civil en cours, comme le garde.
+        // Crédits du forfait : coût du mois civil en cours, comme le garde.
         this.db.query(
-          `SELECT tenant_id, COUNT(*) requests FROM ai_request_log
+          `SELECT tenant_id, SUM(cost_usd) cost FROM ai_request_calls
             WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01') GROUP BY tenant_id`,
         ),
+        this.credits.loadSettings(),
+        this.db.query(`SELECT tenant_id, SUM(credits) balance FROM ai_credit_ledger GROUP BY tenant_id`),
       ]);
 
     const tenantIds = [
       ...new Set([...requestCabinets, ...callCabinets].map((row: any) => num(row.tenant_id))),
     ];
     const cabinets = await this.cabinetInfo(tenantIds);
-    const month = new Map(monthRequests.map((row: any) => [num(row.tenant_id), num(row.requests)]));
+    const month = new Map<number, number>(
+      monthCosts.map((row: any) => [num(row.tenant_id), toCredits(row.cost, creditSettings.usd_per_credit)]),
+    );
+    const extra = new Map<number, number>(ledger.map((row: any) => [num(row.tenant_id), num(row.balance)]));
     const callsByTenant = new Map(callCabinets.map((row: any) => [num(row.tenant_id), row]));
     const requestsByTenant = new Map(requestCabinets.map((row: any) => [num(row.tenant_id), row]));
 
     return {
       period,
       currency: 'USD',
+      usd_per_credit: creditSettings.usd_per_credit,
       totals: {
         requests: num(requests[0]?.requests),
         errors: num(requests[0]?.errors),
@@ -161,8 +170,10 @@ export class PlatformAiUsageService {
             output_tokens: num(call.output_tokens),
             cost_usd: money(call.cost_usd),
             unpriced_calls: num(call.unpriced_calls),
-            month_requests: month.get(tenantId) ?? 0,
+            /** Crédits consommés ce mois, forfait mensuel (null = illimité) et crédits achetés restants. */
+            month_credits: month.get(tenantId) ?? 0,
             month_limit: info?.ai_limit ?? null,
+            extra_credits: Math.max(0, extra.get(tenantId) ?? 0),
           };
         })
         .sort((a, b) => b.cost_usd - a.cost_usd || b.requests - a.requests),
@@ -177,6 +188,7 @@ export class PlatformAiUsageService {
     const period = usagePeriod(fromRaw, toRaw);
     const info = (await this.cabinetInfo([cabinetId])).get(cabinetId);
     if (cabinetId !== 0 && !info) throw new NotFoundException(`Cabinet #${cabinetId} introuvable`);
+    const credits = cabinetId === 0 ? null : await this.credits.detail(cabinetId);
     const args = [cabinetId, period.from, period.to];
     const tenant = 'tenant_id = ? AND';
     const [requests, calls, requestDays, callDays, models, intents, userRequests, userCalls, recent] =
@@ -234,11 +246,13 @@ export class PlatformAiUsageService {
     return {
       period,
       currency: 'USD',
+      usd_per_credit: (await this.credits.loadSettings()).usd_per_credit,
       cabinet: {
         id: cabinetId,
         name: cabinetId === 0 ? 'Plateforme (hors cabinet)' : info!.name,
         plan_name: info?.plan_name ?? null,
         month_limit: info?.ai_limit ?? null,
+        credits,
       },
       totals: {
         requests: num(requests[0]?.requests),
@@ -479,7 +493,7 @@ export class PlatformAiUsageService {
     const info = new Map<number, { name: string; plan_name: string | null; ai_limit: number | null }>();
     if (!wanted.length) return info;
     const rows = await this.db.query(
-      `SELECT c.id, c.name, p.name plan_name, p.ai_requests_per_month ai_limit
+      `SELECT c.id, c.name, p.name plan_name, p.ai_credits_per_month ai_limit
          FROM cabinets c LEFT JOIN plans p ON p.id = c.plan_id
         WHERE c.id IN (${wanted.map(() => '?').join(', ')})`,
       wanted,

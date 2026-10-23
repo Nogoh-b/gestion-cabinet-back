@@ -13,11 +13,12 @@ import * as studio from './document-studio.skills';
 import * as legal from './legal-tools.skills';
 import * as reports from './report.skills';
 import * as transcription from './transcription.skills';
+import * as templates from './template.skills';
 
 /** Catalogue complet, comme `AiSkillService.catalog` pour un administrateur. */
 function fullCatalog(): AiSkillCatalogItem[] {
   const handlers: AiSkillHandler[] = [];
-  for (const exported of [agenda, analysis, billing, communication, documents, studio, legal, reports, transcription]) {
+  for (const exported of [agenda, analysis, billing, communication, documents, studio, legal, reports, transcription, templates]) {
     for (const value of Object.values(exported)) {
       if (typeof value !== 'function' || !/Skill$/.test(value.name) || typeof value.prototype?.run !== 'function') continue;
       handlers.push(new (value as any)());
@@ -37,6 +38,7 @@ function fullCatalog(): AiSkillCatalogItem[] {
     keywords: d.keywords ?? [],
     ...(d.autoTriggers && { autoTriggers: d.autoTriggers }),
     ...(d.autoExclude && { autoExclude: d.autoExclude }),
+    ...(d.autoLaunchOnConsultation ? { autoLaunchOnConsultation: true as const } : {}),
   }));
 }
 
@@ -44,8 +46,9 @@ const catalog = fullCatalog();
 const detect = (question: string) => detectSkillRequest(question, catalog);
 
 describe('compétences reconnues en mode auto', () => {
-  it('charge les 33 compétences', () => {
-    expect(catalog).toHaveLength(33);
+  // 34 depuis l'ajout de la compétence « Modèles » (template.skills.ts).
+  it('charge les 34 compétences', () => {
+    expect(catalog).toHaveLength(34);
   });
 
   it.each([
@@ -97,6 +100,35 @@ describe('compétences reconnues en mode auto', () => {
     ['configure la facturation du dossier DOS-2026-0037 : forfait de 500 000 FCFA', 'configurer_facturation'],
     ['propose les honoraires du dossier d’après ses pièces', 'configurer_facturation'],
     ["fais le devis d'honoraires du dossier DOS-2026-0037", 'devis_honoraires'],
+    // Compétence « Modèles » : consultations et gestions désignées sans ambiguïté.
+    ['liste les modèles de mails', 'modeles'],
+    ['lis le modèle facture_standard', 'modeles'],
+    ['modifie le modèle dossier_created_client', 'modeles'],
+    // 22/10/2026 : « un » n'était pas reconnu → le planificateur d'écriture prenait le document de la page.
+    ['je veux modifier un modele de document', 'modeles'],
+    ['je veux changer un modèle de document PDF', 'modeles'],
+    ['modifier le modèle de document', 'modeles'],
+    ['crée un modèle de mail de relance pour les factures impayées', 'modeles'],
+    ['montre le bloc pdf_header_defaut', 'modeles'],
+    // 22/10/2026 : partait en « Envoyer un e-mail » (demandait une cible @).
+    ["je veux modifier le mail d'Activation de compte", 'modeles'],
+    ['change le mail de réinitialisation du mot de passe', 'modeles'],
+    ['personnalise le courriel de bienvenue', 'modeles'],
+    // 22/10/2026 : partaient dans l'écriture générique (choix au hasard, carte « Confirmation requise »).
+    ['désactive le modèle Audience — Compte-rendu', 'modeles'],
+    ['réactive le modèle Audience — Compte-rendu', 'modeles'],
+    ["renomme le modèle Audience — Avis au client en Avis d'audience", 'modeles'],
+    ['modifie le pied de page PDF : ajoute le numéro RCCM', 'modeles'],
+    ["change l'en-tête mail : ajoute le logo", 'modeles'],
+    // 22/10/2026 : modifier le modèle lui-même ≠ produire un document depuis le modèle.
+    ['modifie le modèle de contrat de bail', 'modeles'],
+    ['ajoute une clause de confidentialité au modèle de bail', 'modeles'],
+    ['renomme le modèle de lettre de relance', 'modeles'],
+    ['liste les modèles de contrat', 'modeles'],
+    ['crée un modèle de contrat de prestation', 'rediger_document'],
+    ['rédige un courrier à partir du modèle de relance', 'rediger_document'],
+    ['modifie le contrat du dossier', 'rediger_document'],
+    ['rédige un mail au client à partir du modèle de convocation', 'envoyer_email'],
   ])('« %s » → %s', (question, code) => {
     const result = detect(question);
     expect(result.code).toBe(code);

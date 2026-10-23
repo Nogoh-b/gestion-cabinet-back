@@ -43,6 +43,10 @@ import {
 } from './impersonation/platform-impersonation.controller';
 import { PlatformAiService } from './ai/platform-ai.service';
 import { PlatformAiUsageService } from './ai/platform-ai-usage.service';
+import {
+  PlatformAiCreditsController,
+  PlatformCabinetAiCreditsController,
+} from './ai/platform-ai-credits.controller';
 import { PlatformAiController } from './ai/platform-ai.controller';
 
 /**
@@ -83,6 +87,8 @@ import { PlatformAiController } from './ai/platform-ai.controller';
     PlatformImpersonationController,
     TenantImpersonationController,
     PlatformAiController,
+    PlatformAiCreditsController,
+    PlatformCabinetAiCreditsController,
   ],
   providers: [
     PlatformJwtStrategy,

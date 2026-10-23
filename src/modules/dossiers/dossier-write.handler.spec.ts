@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { TenantContext } from 'src/core/tenant/tenant.context';
 import { WorkflowEngine } from 'src/modules/case-workflow/case-workflow.enums';
-import { DossierWriteHandler } from './dossier-write.handler';
+import {
+  applyDossierNumberChoice,
+  DOSSIER_NUMBER_AUTO_CHOICE,
+  DossierWriteHandler,
+  REUSE_DOSSIER_ID_FIELD,
+} from './dossier-write.handler';
+import { AmbiguityException } from 'src/core/ai-database/write/ambiguity.exception';
 
 describe('DossierWriteHandler', () => {
   const createHandler = (): DossierWriteHandler => {
@@ -166,7 +172,7 @@ describe('DossierWriteHandler', () => {
   });
 
   describe('numéro de dossier fourni (référence lue dans un document)', () => {
-    const insertHandler = (holder: { deleted_at: Date | null } | null, save?: () => Promise<any>) => {
+    const insertHandler = (holder: { deleted_at: Date | null } | null, save?: () => Promise<any>, reuseTarget: any = null) => {
       const handler = createHandler();
       const stubs: Record<string, unknown> = {
         filterKnownColumns: (fields: any) => ({ ...fields }),
@@ -178,7 +184,7 @@ describe('DossierWriteHandler', () => {
         generateDossierNumber: jest.fn(async () => 'DOS-2026-0043'),
         findDossierByNumber: jest.fn(async () => holder),
         schemaMetadata: { getTableLabel: () => 'Dossiers', getBusinessLabel: (_t: string, c: string) => c },
-        dossierRepo: { save: jest.fn(save ?? (async (d: any) => ({ id: 101, ...d }))) },
+        dossierRepo: { save: jest.fn(save ?? (async (d: any) => ({ id: 101, ...d }))), findOne: jest.fn(async () => reuseTarget) },
       };
       for (const [key, value] of Object.entries(stubs)) {
         Object.defineProperty(handler, key, { value });
@@ -192,10 +198,10 @@ describe('DossierWriteHandler', () => {
       expect(result.message).toBe('Dossier CD-2026-010 créé avec succès');
     });
 
-    it('refuse un numéro déjà porté par un dossier actif, comme la création manuelle', async () => {
+    it('propose un choix au lieu d’échouer quand le numéro appartient à un dossier actif', async () => {
       await expect(
         insertHandler({ deleted_at: null }).doInsert({ dossier_number: 'CD-2026-010', client_id: 9 }, '7'),
-      ).rejects.toThrow('Le code dossier « CD-2026-010 » est déjà utilisé par un autre dossier.');
+      ).rejects.toBeInstanceOf(AmbiguityException);
     });
 
     it('attribue un numéro libre quand il appartient à un dossier en corbeille', async () => {
@@ -215,6 +221,49 @@ describe('DossierWriteHandler', () => {
       await expect(
         new TenantContext().run(22, () => handler.doInsert({ dossier_number: 'CD-2026-010', client_id: 9 }, '7')),
       ).rejects.toThrow('Un enregistrement « Dossiers » avec la valeur « CD-2026-010 » existe déjà.');
+    });
+
+    it('détaille le choix : dossier existant ou nouveau numéro automatique', async () => {
+      const holder = { id: 55, dossier_number: 'CD-2026-010', object: 'Litige foncier', deleted_at: null } as any;
+      const error = await insertHandler(holder)
+        .doInsert({ dossier_number: 'CD-2026-010', client_id: 9 }, '7')
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(AmbiguityException);
+      const ambiguity = error as AmbiguityException;
+      expect(ambiguity.fieldName).toBe('dossier_number');
+      expect(ambiguity.searchTerm).toBe('CD-2026-010');
+      expect(ambiguity.candidates.map((c) => c.id)).toEqual([55, DOSSIER_NUMBER_AUTO_CHOICE]);
+    });
+
+    it('réutilise le dossier existant quand l’utilisateur le choisit (pas de doublon)', async () => {
+      const existing: any = { id: 55, dossier_number: 'CD-2026-010', object: 'Litige foncier' };
+      const result = await insertHandler({ deleted_at: null }, undefined, existing)
+        .doInsert({ dossier_number: 'CD-2026-010', client_id: 9, [REUSE_DOSSIER_ID_FIELD]: 55 }, '7');
+      expect(result.affected).toBe(0);
+      expect(result.entityId).toBe(55);
+      expect(result.data).toBe(existing);
+      expect(result.message).toContain('pas de doublon créé');
+    });
+
+    it('applique le choix numéro automatique / réutilisation / numéro saisi', () => {
+      expect(
+        applyDossierNumberChoice({ dossier_number: 'CD-2026-010', client_id: 9 }, DOSSIER_NUMBER_AUTO_CHOICE, undefined),
+      ).toEqual({ fields: { client_id: 9 }, note: 'création avec un nouveau numéro automatique' });
+      expect(
+        applyDossierNumberChoice({ dossier_number: 'CD-2026-010', client_id: 9 }, 55, undefined),
+      ).toEqual({
+        fields: { dossier_number: 'CD-2026-010', client_id: 9, [REUSE_DOSSIER_ID_FIELD]: 55 },
+        note: 'dossier existant réutilisé',
+      });
+      expect(
+        applyDossierNumberChoice({ dossier_number: 'CD-2026-010', client_id: 9 }, undefined, 'CD-2026-999'),
+      ).toEqual({
+        fields: { dossier_number: 'CD-2026-999', client_id: 9 },
+        note: 'numéro « CD-2026-999 » demandé',
+      });
+      expect(() => applyDossierNumberChoice({ client_id: 9 }, undefined, undefined)).toThrow(
+        'Choisissez le dossier existant',
+      );
     });
   });
 

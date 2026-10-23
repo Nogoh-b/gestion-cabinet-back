@@ -34,6 +34,7 @@ import {
 import { pastedText, senderLine, str } from './skill-drafting';
 import { customerName, SkillTargetsService, TargetInfo } from './skill-targets.service';
 import { pdfText } from './skill-templates';
+import { editsTemplate, TEMPLATE_EDIT_PATTERN } from './template-search';
 
 /**
  * Studio de documents du chat, une seule compétence « Créer / modifier un
@@ -285,6 +286,8 @@ function layoutOf(template: PdfTemplate): StudioLayout {
     font_family: template.font_family ?? null,
     header_block_id: template.header_block_id ?? null,
     footer_block_id: template.footer_block_id ?? null,
+    // Taille, interligne, marges, numéros de page choisis dans l'éditeur du modèle.
+    ...(template.layout_options ?? {}),
   };
 }
 
@@ -484,7 +487,7 @@ export class RedigerDocumentSkill implements AiSkillHandler {
   readonly definition: AiSkillDefinition = {
     code: 'rediger_document',
     label: 'Créer / modifier un document (Word / PDF)',
-    description: "Depuis vos modèles ou rédigé par l'IA, ou modification versionnée d'un Word / PDF du dossier",
+    description: "Produire un document (depuis un modèle ou rédigé par l'IA), modifier un Word / PDF du dossier (versionné), ou créer un nouveau modèle de document",
     icon: 'file-pen',
     category: 'documents',
     targets: [...STUDIO_TARGETS, 'document'],
@@ -515,6 +518,13 @@ export class RedigerDocumentSkill implements AiSkillHandler {
       'mentions obligatoires', 'nullite', 'injonction', 'conclusions', 'convention d honoraires', 'lettre de mission',
       'traduire', 'traduis', 'traduction', 'bilingue', 'anonymiser', 'anonymise', 'whatsapp', 'courriel',
       'jugement', 'compte rendu',
+      // Gestion des modèles de mails : compétence « Modèles », pas rédaction.
+      // Motif (pas des mots : « modèle » est un mot vide, « mail » seul exclurait trop).
+      '/\\bmodeles?\\b.{0,30}\\bmail\\b/',
+      // « Rédige un mail à partir du modèle X » : un e-mail à envoyer, pas un document.
+      '/\\b(?:mail|mails|e mail|email|courriel)\\b.{0,40}\\bmodeles?\\b/',
+      // Modifier le modèle lui-même (« modifie le modèle de contrat ») : compétence « Modèles ».
+      TEMPLATE_EDIT_PATTERN,
     ],
     // Anciennes compétences fusionnées : leurs boutons et messages restent valides.
     aliases: [
@@ -544,6 +554,13 @@ export class RedigerDocumentSkill implements AiSkillHandler {
     // Modification demandée depuis la carte (« ajoute une clause… »).
     const revise = revisionInput(ctx.params.revise);
     if (revise) return reviseStudioDocument(ctx, this.targets, revise);
+
+    // « Modifie le modèle de contrat », « ajoute une clause au modèle de bail » :
+    // le modèle lui-même change (compétence « Modèles »), aucun document n'est produit.
+    if (!ctx.params.createTemplate && !ctx.params.templateId && !ctx.params.templateCode && !ctx.params.sourceDocumentId
+      && editsTemplate(ctx.question)) {
+      return { type: 'handoff', skill: 'modeles', params: { action: 'update' } };
+    }
 
     // Nouveau modèle (« crée un modèle de… », « transforme ce document en modèle »).
     if (ctx.params.createTemplate || typeof ctx.params.fromHtml === 'string' || wantsTemplateCreation(ctx.question)) {
@@ -676,6 +693,8 @@ export class RedigerDocumentSkill implements AiSkillHandler {
         markdown: `❓ Le modèle « ${template.name} » se remplit avec une fiche ${TEMPLATE_TYPES[entityType] ?? entityType} : mentionnez-la avec **@** (ou ouvrez-la), puis renvoyez la demande.`,
       };
     }
+    // Dit clairement dans le déroulé quel modèle sert de base.
+    ctx.step?.('template', `📄 Modèle utilisé : ${template.name}`, template.name);
     // Un modèle sans aucun champ (texte type à blancs) : l'IA le complète en le suivant.
     if (!templateVariableNames(`${template.body_html} ${template.title ?? ''}`).length) {
       return draftStudioDocument(ctx, this.deps, info, template);
@@ -696,6 +715,7 @@ export class RedigerDocumentSkill implements AiSkillHandler {
         skill: 'rediger_document',
         question: ctx.question,
         params: { templateId: item.id, ...targetParam },
+        badge: 'document' as const,
       }));
     followUps.push({ label: '✍️ Rédiger sans modèle', skill: 'rediger_document', question: ctx.question, params: { freeDraft: true, ...targetParam } });
     return {
@@ -712,7 +732,7 @@ export class RedigerDocumentSkill implements AiSkillHandler {
       .filter((item) => !target || item.entity_type === target.type || item.entity_type === 'general')
       .sort((a, b) => Number(a.is_system) - Number(b.is_system) || a.name.localeCompare(b.name))
       .slice(0, 6)
-      .map((item) => ({ label: item.name, skill: 'rediger_document', question: `Prépare le document « ${item.name} »`, params: { templateId: item.id, ...targetParam } }));
+      .map((item) => ({ label: item.name, skill: 'rediger_document', question: `Prépare le document « ${item.name} »`, params: { templateId: item.id, ...targetParam }, badge: 'document' as const }));
     if (info?.dossier && !(await this.missing(ctx, [Permission.VIEW_DOCUMENTS, Permission.EDIT_DOCUMENT])).length) {
       const docs = await this.targets.attachableDocuments(info, 30).catch(() => [] as any[]);
       for (const doc of docs.filter((item: any) => !item.is_confidential && editableFormat(item)).slice(0, 4)) {
@@ -753,6 +773,8 @@ async function draftStudioDocument(
     };
   }
   const sender = await deps.targets.sender(ctx.userId);
+  // Sans modèle du cabinet, le déroulé le dit aussi (le modèle éventuel est annoncé par fromTemplate).
+  if (!guide) ctx.step?.('template', '📄 Aucun modèle du cabinet utilisé', 'aucun : rédaction libre');
   ctx.status('⚖️ Recherche des textes applicables…');
   const legal = await legalBlock(ctx, `${ctx.question} ${info?.dossier?.object ?? ''}`.slice(0, 1500));
   const facts = info ? await deps.targets.facts(info, ctx.user, ctx.question) : '';
@@ -823,7 +845,11 @@ async function reviseStudioDocument(
   const target = resolveSkillTarget(ctx, STUDIO_TARGETS);
   const info = target ? await targets.load(target).catch(() => null) : null;
   const facts = info ? await targets.facts(info, ctx.user, ctx.question) : '';
-  const attachments = ctx.documents.filter((doc) => doc.content?.trim()).slice(0, 4);
+  // Le document repris (mentionné avec @) est déjà le « document actuel » : pas aussi en pièce jointe.
+  const current = new Set([revise.sourceDocument?.name, revise.fileName].filter(Boolean).map((name) => withoutExtension(String(name)).toLowerCase()));
+  const attachments = ctx.documents
+    .filter((doc) => doc.content?.trim() && !current.has(withoutExtension(doc.name).toLowerCase()))
+    .slice(0, 4);
   const template = revise.mode === 'template';
   ctx.status('✏️ Modification du document…');
   const text = await writeLong(ctx, `Tu reprends ${template ? 'un modèle de document' : 'un document'} déjà rédigé et tu appliques la modification demandée.

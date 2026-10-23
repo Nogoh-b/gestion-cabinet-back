@@ -1,7 +1,8 @@
 /// <reference types="jest" />
 // Transcription audio (21/10/2026) : le chat envoie des morceaux WAV 16 kHz ;
 // Gemini (compatible OpenAI) reçoit l'audio en `input_audio`.
-import { AudioTranscriptionService, audioFormat } from './audio-transcription.service';
+import { AudioTranscriptionService, assemblyAiText, audioFormat } from './audio-transcription.service';
+import { AiModelRouterService } from './ai-model-router.service';
 
 const wav = { buffer: Buffer.from('RIFF....WAVEfmt '), mimetype: 'audio/wav', originalname: 'enregistrement-1.wav' };
 
@@ -100,5 +101,127 @@ describe('AudioTranscriptionService', () => {
     expect(audioFormat('audio/x-wav', 'a')).toBe('wav');
     expect(audioFormat('application/octet-stream', 'note.mp3')).toBe('mp3');
     expect(audioFormat('audio/ogg', 'a.ogg')).toBeNull();
+  });
+});
+
+describe('AudioTranscriptionService — AssemblyAI', () => {
+  const fetchMock = jest.fn();
+  const runtime = { base_url: 'https://api.assemblyai.com', api_key: 'aai', model: 'universal-3-5-pro', provider: 'assemblyai', label: 'assemblyai/universal-3-5-pro' };
+  beforeEach(() => {
+    fetchMock.mockReset();
+    (global as any).fetch = fetchMock;
+    delete process.env.AI_ASR_LANGUAGE;
+  });
+
+  function service() {
+    const router = { getTranscriptionRuntime: jest.fn(() => runtime), reportUsage: jest.fn() };
+    const instance = new AudioTranscriptionService(router as any);
+    instance.pollMs = 0;
+    return { router, instance };
+  }
+
+  it('envoie le fichier, crée la transcription en français, la suit puis l’efface', async () => {
+    fetchMock
+      .mockResolvedValueOnce(reply(200, { upload_url: 'https://cdn.assemblyai.com/upload/u1' }))
+      .mockResolvedValueOnce(reply(200, { id: 't1', status: 'queued' }))
+      .mockResolvedValueOnce(reply(200, { id: 't1', status: 'processing' }))
+      .mockResolvedValueOnce(reply(200, {
+        id: 't1', status: 'completed', audio_duration: 12.4, speech_model_used: 'universal-3-5-pro', text: 'Bonjour maître. Bonjour.',
+        utterances: [{ speaker: 'A', text: 'Bonjour maître.' }, { speaker: 'B', text: 'Bonjour.' }, { speaker: 'A', text: 'Le loyer est impayé.' }],
+      }))
+      .mockResolvedValueOnce(reply(200, { id: 't1', status: 'deleted' }));
+    const { instance, router } = service();
+
+    const result = await instance.transcribe(wav);
+
+    const [uploadUrl, upload] = fetchMock.mock.calls[0];
+    expect(uploadUrl).toBe('https://api.assemblyai.com/v2/upload');
+    expect(upload.headers.authorization).toBe('aai');
+    expect(Buffer.from(upload.body).equals(wav.buffer)).toBe(true);
+    const [createUrl, create] = fetchMock.mock.calls[1];
+    expect(createUrl).toBe('https://api.assemblyai.com/v2/transcript');
+    expect(JSON.parse(create.body)).toEqual({
+      audio_url: 'https://cdn.assemblyai.com/upload/u1',
+      speech_models: ['universal-3-5-pro', 'universal-2'],
+      language_code: 'fr',
+      speaker_labels: true,
+      punctuate: true,
+      format_text: true,
+    });
+    expect(fetchMock.mock.calls[2][0]).toBe('https://api.assemblyai.com/v2/transcript/t1');
+    expect(fetchMock.mock.calls[4][0]).toBe('https://api.assemblyai.com/v2/transcript/t1');
+    expect(fetchMock.mock.calls[4][1].method).toBe('DELETE');
+    expect(result).toEqual({
+      text: 'Intervenant 1 : Bonjour maître.\n\nIntervenant 2 : Bonjour.\n\nIntervenant 1 : Le loyer est impayé.',
+      model: 'assemblyai/universal-3-5-pro',
+    });
+    // Facturé à la seconde : la durée compte en jetons d'entrée.
+    expect(router.reportUsage).toHaveBeenCalledWith(
+      { provider: 'assemblyai', model: 'universal-3-5-pro', profile: 'asr' },
+      { input: 12, output: 0 },
+      expect.any(Object),
+    );
+  });
+
+  it('« auto » : détection de la langue au lieu du français', async () => {
+    process.env.AI_ASR_LANGUAGE = 'auto';
+    fetchMock
+      .mockResolvedValueOnce(reply(200, { upload_url: 'u' }))
+      .mockResolvedValueOnce(reply(200, { id: 't2', status: 'completed', text: 'Hello.' }))
+      .mockResolvedValue(reply(200, {}));
+    await expect(service().instance.transcribe(wav)).resolves.toMatchObject({ text: 'Hello.' });
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(body.language_detection).toBe(true);
+    expect(body).not.toHaveProperty('language_code');
+  });
+
+  it('transcription en erreur : message lisible, et effacement quand même', async () => {
+    fetchMock
+      .mockResolvedValueOnce(reply(200, { upload_url: 'u' }))
+      .mockResolvedValueOnce(reply(200, { id: 't3', status: 'queued' }))
+      .mockResolvedValueOnce(reply(200, { id: 't3', status: 'error', error: 'File does not appear to contain audio.' }))
+      .mockResolvedValue(reply(200, {}));
+    await expect(service().instance.transcribe(wav)).rejects.toThrow(/does not appear to contain audio/);
+    expect(fetchMock.mock.calls.at(-1)?.[1].method).toBe('DELETE');
+  });
+
+  it('clé refusée ou crédit épuisé : message pour l’administrateur', async () => {
+    fetchMock.mockResolvedValueOnce(reply(401, { error: 'Invalid API key' }));
+    await expect(service().instance.transcribe(wav)).rejects.toThrow(/clé AssemblyAI/);
+    fetchMock.mockResolvedValueOnce(reply(200, { upload_url: 'u' })).mockResolvedValueOnce(reply(400, { error: 'Your balance is insufficient.' }));
+    await expect(service().instance.transcribe(wav)).rejects.toThrow(/n’a plus de crédit/);
+  });
+
+  it('une seule voix : texte sans intervenants', () => {
+    expect(assemblyAiText({ text: 'Bonjour.', utterances: [{ speaker: 'A', text: 'Bonjour.' }] })).toBe('Bonjour.');
+  });
+});
+
+describe('Choix du moteur de transcription', () => {
+  const keys = ['ASSEMBLYAI_API_KEY', 'ASSEMBLYAI_BASE_URL', 'AI_ASR_PROVIDER', 'AI_ASR_MODEL', 'AI_ASR_BASE_URL', 'AI_ASR_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_BASE_URL'];
+  const saved: Record<string, string | undefined> = {};
+  beforeEach(() => keys.forEach((key) => { saved[key] = process.env[key]; delete process.env[key]; }));
+  afterEach(() => keys.forEach((key) => { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; }));
+
+  it('AssemblyAI dès que sa clé est là, avant Gemini', () => {
+    process.env.ASSEMBLYAI_API_KEY = 'aai';
+    process.env.GOOGLE_API_KEY = 'g';
+    expect(new AiModelRouterService().getTranscriptionRuntime()).toMatchObject({
+      provider: 'assemblyai', base_url: 'https://api.assemblyai.com', api_key: 'aai', model: 'universal-3-5-pro', label: 'assemblyai/universal-3-5-pro',
+    });
+    process.env.ASSEMBLYAI_BASE_URL = 'https://api.eu.assemblyai.com';
+    expect(new AiModelRouterService().getTranscriptionRuntime()?.base_url).toBe('https://api.eu.assemblyai.com');
+  });
+
+  it('AI_ASR_PROVIDER=google garde Gemini malgré la clé AssemblyAI', () => {
+    process.env.ASSEMBLYAI_API_KEY = 'aai';
+    process.env.GOOGLE_API_KEY = 'g';
+    process.env.AI_ASR_PROVIDER = 'google';
+    expect(new AiModelRouterService().getTranscriptionRuntime()).toMatchObject({ provider: 'google', model: 'gemini-2.5-flash' });
+  });
+
+  it('sans clé AssemblyAI : Gemini comme avant', () => {
+    process.env.GOOGLE_API_KEY = 'g';
+    expect(new AiModelRouterService().getTranscriptionRuntime()).toMatchObject({ provider: 'google' });
   });
 });

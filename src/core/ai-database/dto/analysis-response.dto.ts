@@ -76,6 +76,8 @@ export interface ReadClarificationContext {
   reason: string;
   question: string;
   options: ReadClarificationOption[];
+  /** Mode de la réponse choisie (écriture : le choix précise la cible d'une modification). */
+  intentMode?: 'write';
 }
 
 export interface WritePlan {

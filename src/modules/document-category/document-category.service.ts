@@ -1,7 +1,7 @@
 import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, In, Not, Repository } from 'typeorm';
 import {
   Injectable,
   NotFoundException,
@@ -9,6 +9,10 @@ import {
 } from '@nestjs/common';
 import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { InjectRepository } from '@nestjs/typeorm';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
+import { ownCopyOf, preferOwnByCode } from 'src/core/tenant/shared-rows';
 
 import { CreateDocumentCategoryDto } from './dto/create-document-category.dto';
 import { DocumentCategoryResponseDto } from './dto/document-category-response.dto';
@@ -72,7 +76,43 @@ export class DocumentCategoryService extends BaseServiceV1<DocumentCategory> {
       order: { sort_order: 'ASC', name: 'ASC' },
     });
 
-    return plainToInstance(DocumentCategoryResponseDto, categories);
+    // Catégories partagées : le cabinet lit les globales (tenant 1) en plus
+    // de ses copies ; une seule ligne par code, la sienne d'abord.
+    return plainToInstance(DocumentCategoryResponseDto, preferOwnByCode(categories));
+  }
+
+  /** Recherche paginée sans les globales déjà copiées dans le cabinet. */
+  async searchOwnFirst(
+    criteria: SearchCriteria,
+    paginationParams?: PaginationParamsDto,
+  ) {
+    const shadowed = await this.shadowedGlobalIds();
+    const scope: FindOptionsWhere<DocumentCategory> | undefined =
+      shadowed.length && criteria?.id === undefined
+        ? { id: Not(In(shadowed)) }
+        : undefined;
+    return this.searchWithTransformer(
+      criteria,
+      DocumentCategoryResponseDto,
+      paginationParams,
+      undefined,
+      undefined,
+      scope,
+    );
+  }
+
+  /** Ids des catégories globales qui ont une copie (même code) dans le cabinet. */
+  private async shadowedGlobalIds(): Promise<number[]> {
+    if (!hasActiveTenant()) return [];
+    const tenantId = getCurrentTenantId();
+    if (!tenantId || tenantId === 1) return [];
+    const rows: Array<{ id: number }> = await this.categoryRepository.manager.query(
+      `SELECT g.id FROM document_categories g
+         JOIN document_categories o ON o.code = g.code AND o.tenant_id = ?
+        WHERE g.tenant_id = 1`,
+      [tenantId],
+    );
+    return rows.map((row) => Number(row.id));
   }
 
   async findOne(id: number): Promise<DocumentCategoryResponseDto> {
@@ -92,7 +132,17 @@ export class DocumentCategoryService extends BaseServiceV1<DocumentCategory> {
     id: number,
     dto: UpdateDocumentCategoryDto,
   ): Promise<DocumentCategoryResponseDto> {
-    const category = await this.findOne(id);
+    const found = await this.categoryRepository.findOne({ where: { id } });
+    if (!found) {
+      throw new NotFoundException(`Catégorie avec l'ID ${id} introuvable`);
+    }
+    // Une catégorie globale se modifie dans la copie du cabinet : `save`
+    // déplacerait sinon la ligne du référentiel dans le cabinet.
+    const category = await ownCopyOf(
+      found,
+      (code) => this.categoryRepository.findOne({ where: { code } as any, order: { tenant_id: 'DESC' } as any }),
+      (copy) => this.categoryRepository.create(copy),
+    );
 
     Object.assign(category, dto);
     const updated = await this.categoryRepository.save(category);

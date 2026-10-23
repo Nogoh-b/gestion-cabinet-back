@@ -116,7 +116,7 @@ export class PlatformCabinetsService {
               (SELECT COUNT(*) FROM subscription_payments sp
                  JOIN subscriptions sx ON sx.id = sp.subscription_id
                 WHERE sp.cabinet_id = c.id AND sp.status = 'pending' AND sp.amount > 0
-                  AND sx.status <> 'cancelled') AS pending_payments
+                  AND sp.kind = 'subscription' AND sx.status <> 'cancelled') AS pending_payments
          FROM cabinets c
          ${CURRENT_SUB_JOIN}
          ${whereSql}
@@ -168,7 +168,7 @@ export class PlatformCabinetsService {
         this.db.query(
           `SELECT
              COALESCE(SUM(CASE WHEN sp.status = 'paid' THEN sp.amount END), 0) AS paid_total,
-             COALESCE(SUM(CASE WHEN sp.status = 'pending' AND s.status <> 'cancelled' THEN sp.amount END), 0) AS pending_total,
+             COALESCE(SUM(CASE WHEN sp.status = 'pending' AND sp.kind = 'subscription' AND s.status <> 'cancelled' THEN sp.amount END), 0) AS pending_total,
              COUNT(CASE WHEN sp.status = 'paid' THEN 1 END) AS paid_count,
              MAX(CASE WHEN sp.status = 'paid' THEN sp.paid_at END) AS last_paid_at
            FROM subscription_payments sp

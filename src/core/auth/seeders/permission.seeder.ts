@@ -386,6 +386,10 @@ export const PERMISSION_DEFINITIONS: {
   { code: 'create_pdf_template', description: 'Créer un modèle PDF' },
   { code: 'edit_pdf_template', description: 'Modifier un modèle PDF' },
   { code: 'delete_pdf_template', description: 'Supprimer un modèle PDF' },
+  { code: 'view_mail_templates', description: 'Voir les modèles de mails' },
+  { code: 'create_mail_template', description: 'Créer un modèle de mail' },
+  { code: 'edit_mail_template', description: 'Modifier un modèle de mail' },
+  { code: 'delete_mail_template', description: 'Supprimer un modèle de mail' },
 
   // ===================================================================
   // CABINET — COMPTABILITÉ (ACCOUNTING)

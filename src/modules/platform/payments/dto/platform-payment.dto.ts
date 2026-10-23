@@ -16,6 +16,10 @@ import {
 } from 'class-validator';
 
 export class PlatformPaymentQueryDto {
+  /** Nature : paiements d'abonnement (défaut) ou achats de crédits IA. */
+  @IsOptional() @IsIn(['subscription', 'ai_credits'])
+  kind?: string;
+
   @IsOptional() @IsIn(['pending', 'awaiting_validation', 'paid', 'failed', 'refunded', 'cancelled', 'due'])
   status?: string;
 

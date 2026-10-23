@@ -31,6 +31,53 @@ import {
   WorkflowEngine,
 } from 'src/modules/case-workflow/case-workflow.enums';
 import { CaseWorkflowFeature } from 'src/modules/case-workflow/entities/workflow-audit.entity';
+/**
+ * Candidat "créer quand même avec un nouveau numéro automatique" proposé
+ * quand le numéro de dossier lu dans un document est déjà pris par un dossier
+ * actif. Même principe que ALL_MATCHING_TARGETS pour les mises à jour groupées.
+ */
+export const DOSSIER_NUMBER_AUTO_CHOICE = '__auto__';
+
+/** Champ interne : réutiliser ce dossier existant au lieu de créer un doublon. */
+export const REUSE_DOSSIER_ID_FIELD = '__reuse_dossier_id';
+
+/**
+ * Applique le choix de l'utilisateur après un conflit de numéro de dossier :
+ * - resolvedId = ID d'un dossier existant → le réutiliser (pas de doublon) ;
+ * - resolvedId = DOSSIER_NUMBER_AUTO_CHOICE → numéro auto-généré ;
+ * - customValue (option "Autre") → le numéro précis saisi par l'utilisateur.
+ */
+export function applyDossierNumberChoice(
+  fields: Record<string, any>,
+  resolvedId: string | number | undefined,
+  customValue: string | undefined,
+): { fields: Record<string, any>; note: string } {
+  const out = { ...fields };
+  delete out[REUSE_DOSSIER_ID_FIELD];
+  if (
+    resolvedId !== undefined &&
+    resolvedId !== null &&
+    String(resolvedId) !== ''
+  ) {
+    if (String(resolvedId) === DOSSIER_NUMBER_AUTO_CHOICE) {
+      delete out.dossier_number;
+      return {
+        fields: out,
+        note: 'création avec un nouveau numéro automatique',
+      };
+    }
+    out[REUSE_DOSSIER_ID_FIELD] = resolvedId;
+    return { fields: out, note: 'dossier existant réutilisé' };
+  }
+  const typed = customValue?.trim() ?? '';
+  if (!typed) {
+    throw new BadRequestException(
+      'Choisissez le dossier existant, un numéro automatique, ou saisissez un numéro libre.',
+    );
+  }
+  out.dossier_number = typed;
+  return { fields: out, note: `numéro « ${typed} » demandé` };
+}
 
 /**
  * Handler custom pour les dossiers.
@@ -575,6 +622,30 @@ export class DossierWriteHandler extends BaseWriteHandler {
     fields: Record<string, any>,
     userId: string,
   ): Promise<WriteResult> {
+    // Choix "réutiliser le dossier existant" après un conflit de numéro :
+    // aucun doublon n'est créé, le dossier existant est renvoyé pour la suite du plan.
+    const reuseId = fields?.[REUSE_DOSSIER_ID_FIELD];
+    if (
+      reuseId !== undefined &&
+      reuseId !== null &&
+      String(reuseId) !== '' &&
+      String(reuseId) !== DOSSIER_NUMBER_AUTO_CHOICE
+    ) {
+      const existing = await this.dossierRepo.findOne({
+        where: { id: Number(reuseId) as any },
+      });
+      if (!existing) {
+        throw new NotFoundException(`Dossier ID ${reuseId} introuvable`);
+      }
+      return {
+        success: true,
+        operation: 'INSERT',
+        entityId: existing.id,
+        affected: 0,
+        data: existing,
+        message: `Dossier ${existing.dossier_number} déjà existant réutilisé (ID: ${existing.id}) — pas de doublon créé`,
+      };
+    }
     // Numéro de dossier : honoré s'il est fourni (référence lue dans un
     // document…), sinon auto-généré selon les settings du cabinet
     // (dossier_prefix / dossier_number_format).
@@ -586,9 +657,28 @@ export class DossierWriteHandler extends BaseWriteHandler {
     if (providedNumber) {
       const holder = await this.findDossierByNumber(providedNumber);
       if (holder && !holder.deleted_at) {
-        // Même règle que la création manuelle (DossiersService.create).
-        throw new BadRequestException(
-          `Le code dossier « ${providedNumber} » est déjà utilisé par un autre dossier.`,
+        // Numéro déjà porté par un dossier actif : proposer un choix
+        // (réutiliser / numéro auto / autre numéro / annuler) au lieu d'échouer.
+        throw new AmbiguityException(
+          'dossiers',
+          'dossier_number',
+          providedNumber,
+          [
+            {
+              id: holder.id,
+              label: `📁 Utiliser le dossier existant ${holder.dossier_number}${holder.object ? ` — ${holder.object}` : ''}`,
+              score: 100,
+              data: holder,
+            },
+            {
+              id: DOSSIER_NUMBER_AUTO_CHOICE,
+              label: '➕ Créer quand même avec un nouveau numéro automatique',
+              score: 0,
+              data: { auto: true },
+            },
+          ],
+          -1,
+          'dossiers',
         );
       }
       if (holder) {

@@ -84,6 +84,11 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 - Une regle applicable appartient au meme dossier, est active, a le bon trigger (ACTION_COMPLETED pour une action terminee) et cible action_definition_code = dossier_actions.definition_code ou une valeur NULL pour la regle generale. Preferer la regle specifique a la regle generale, puis la version la plus recente. Ne pas appliquer indistinctement toutes les regles du dossier ni additionner leurs tarifs.
 - Sans element calcule, distinguer le tarif configure d'un montant final et ne pas inventer de quantite, de duree ou de validation. Ne demander au responsable que les donnees effectivement manquantes apres consultation. Une absence de droit ou de resultat signifie information inaccessible ou non trouvee, pas preuve d'absence de configuration.
 
+### Pieces d'une audience / preparer une audience
+- Les documents rattaches a une audience sont dans la table de jointure audience_documents (audience_id, document_id -> document_customer.id, phase = 'preparation' avant l'audience ou 'after' apres). document_customer.required_for_hearing = 1 marque une piece a preparer (phase 'preparation' ajoutee depuis l'audience ou la page Nouveau document). Les pieces du compte rendu et de la decision sont dans audience_report_documents et audience_decision_documents (document_id -> document_customer.id).
+- "Pieces de l'audience X", "documents a preparer pour l'audience", "que reste-t-il a preparer" : partir de audiences, LEFT JOIN audience_documents puis document_customer (nom, statut, date, required_for_hearing), en gardant l'audience meme sans piece ; completer avec les documents du dossier ou required_for_hearing = 1 qui ne sont rattaches a aucune audience, et les actions encore ouvertes du dossier.
+- Ne conclus jamais "aucune piece" sans avoir consulte audience_documents ET required_for_hearing.
+
 ### Point / synthese / etat d'un dossier
 - Pour "fais le point", "synthese", "resume", "etat" ou "bilan" d'un dossier (ou d'une reference dossier de la page), ne te limite jamais a la table dossiers : la facturation fait partie du point.
 - Retourne UNE requete qui couvre : identite (dossier_number, client, juridiction, avocat referent, dates), statut lisible, facturation, activite (actions par statut, prochaine audience).
@@ -642,12 +647,12 @@ Quand l'utilisateur demande de renvoyer, reporter, reprogrammer ou marquer une a
 - inclus TOUJOURS :
   - "status": "2"
   - "reason": motif du renvoi
-  - "report_content": rapport d'audience rédigé
   - "audience_date": nouvelle date du renvoi
   - "audience_time": nouvelle heure du renvoi
   - "outcome": "postponed"
+- "report_content" (rapport d'audience) est facultatif : ne l'ajoute que si l'utilisateur le fournit
 - ne propose PAS un simple UPDATE avec seulement "status" et "outcome"
-- si la nouvelle date, l'heure ou le rapport manquent, baisse la confiance et demande confirmation
+- si la nouvelle date ou l'heure manquent, baisse la confiance et demande confirmation
 
 ### 6. 🗂️ Règle CRITIQUE pour le CATALOGUE D'ACTIONS (familles, définitions, règles)
 Le catalogue se compose de 3 niveaux : FAMILLE (regroupement) → DÉFINITION (type d'action) → RÈGLE de recommandation (optionnelle).

@@ -421,6 +421,10 @@ export class Cabinet {
   @Column({ type: 'json', nullable: true, name: 'billing_account_mapping' })
   billing_account_mapping: Record<string, string> | null;
 
+  /** Mots ajoutés au correcteur d'orthographe des éditeurs par les membres du cabinet. */
+  @Column({ type: 'json', nullable: true, name: 'custom_dictionary' })
+  custom_dictionary: string[] | null;
+
   @CreateDateColumn()
   created_at: Date;
 

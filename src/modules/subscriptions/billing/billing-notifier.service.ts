@@ -71,7 +71,9 @@ export class BillingNotifierService {
           subject: 'Votre paiement n’a pas abouti',
           title: 'Paiement non abouti',
           paragraphs: [
-            'Le paiement de votre abonnement n’a pas pu être confirmé.',
+            p.kind === 'ai_credits'
+              ? 'Le paiement de votre pack de crédits IA n’a pas pu être confirmé.'
+              : 'Le paiement de votre abonnement n’a pas pu être confirmé.',
             p.reason ? `Motif : ${p.reason}` : 'Vous pouvez réessayer avec le même moyen ou en choisir un autre.',
           ],
           withAction: 'Régler mon abonnement',
@@ -156,11 +158,13 @@ export class BillingNotifierService {
   private async paymentReceived(cabinetId: number, paymentId: number) {
     const [p] = await this.db.query(
       `SELECT sp.amount, sp.currency, sp.period_start, sp.period_end, sp.paid_at, sp.receipt_number,
-              sp.method, pm.label AS method_label, pl.name AS plan_name, s.billing_cycle
+              sp.method, sp.kind, pm.label AS method_label, pl.name AS plan_name, s.billing_cycle,
+              ap.name AS pack_name
          FROM subscription_payments sp
          LEFT JOIN subscriptions s ON s.id = sp.subscription_id
          LEFT JOIN plans pl ON pl.id = s.plan_id
          LEFT JOIN platform_payment_methods pm ON pm.id = sp.payment_method_id
+         LEFT JOIN ai_credit_packs ap ON ap.id = sp.ai_credit_pack_id
         WHERE sp.id = ?`,
       [paymentId],
     );
@@ -171,6 +175,21 @@ export class BillingNotifierService {
       attachment = { filename: pdf.filename, content: pdf.buffer, contentType: 'application/pdf' };
     } catch (error) {
       this.logger.warn(`Reçu #${paymentId} non généré : ${(error as Error).message}`);
+    }
+    if (p.kind === 'ai_credits') {
+      return this.toCabinet(cabinetId, {
+        subject: `Crédits IA ajoutés${p.receipt_number ? ` — reçu ${p.receipt_number}` : ''}`,
+        title: 'Merci, vos crédits IA sont ajoutés',
+        paragraphs: ['Votre achat est confirmé : vos crédits IA sont disponibles. Votre reçu est joint à cet email.'],
+        details: [
+          ['Montant', formatAmount(Number(p.amount), p.currency || 'XAF')],
+          ['Pack', p.pack_name ?? '—'],
+          ['Moyen', p.method_label ?? p.method ?? '—'],
+          ['Reçu', p.receipt_number ?? '—'],
+        ],
+        withAction: 'Voir mon abonnement',
+        attachments: attachment ? [attachment] : undefined,
+      });
     }
     await this.toCabinet(cabinetId, {
       subject: `Paiement reçu${p.receipt_number ? ` — reçu ${p.receipt_number}` : ''}`,

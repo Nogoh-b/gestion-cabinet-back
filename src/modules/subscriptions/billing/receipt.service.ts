@@ -68,9 +68,10 @@ export class ReceiptService {
     const [p] = await this.db.query(
       `SELECT sp.*, c.name AS cabinet_name, c.address AS cabinet_address, c.contact_email AS cabinet_email,
               c.contact_phone AS cabinet_phone, c.code AS cabinet_code,
-              pl.name AS plan_name, s.billing_cycle, pm.label AS method_label
+              pl.name AS plan_name, s.billing_cycle, pm.label AS method_label, ap.name AS pack_name
          FROM subscription_payments sp
          JOIN cabinets c ON c.id = sp.cabinet_id
+         LEFT JOIN ai_credit_packs ap ON ap.id = sp.ai_credit_pack_id
          LEFT JOIN subscriptions s ON s.id = sp.subscription_id
          LEFT JOIN plans pl ON pl.id = s.plan_id
          LEFT JOIN platform_payment_methods pm ON pm.id = sp.payment_method_id
@@ -136,9 +137,17 @@ export class ReceiptService {
     doc.text('Montant', cols[2], y + 7, { width: 112, align: 'right' });
     y += 30;
     doc.font('Helvetica').fontSize(10).fillColor('#334155');
-    const label = `Abonnement ${p.plan_name ?? ''}${p.billing_cycle ? ` (${CYCLES[p.billing_cycle] ?? p.billing_cycle})` : ''}`;
+    const isCredits = p.kind === 'ai_credits';
+    const label = isCredits
+      ? `Credits IA ${p.pack_name ?? ''}`.trim()
+      : `Abonnement ${p.plan_name ?? ''}${p.billing_cycle ? ` (${CYCLES[p.billing_cycle] ?? p.billing_cycle})` : ''}`;
     doc.text(pdfText(label), cols[0] + 8, y, { width: 245 });
-    doc.text(pdfText(`${frDate(p.period_start)} au ${frDate(p.period_end)}`), cols[1], y, { width: 150 });
+    doc.text(
+      pdfText(isCredits ? `Achat du ${frDate(p.paid_at)}` : `${frDate(p.period_start)} au ${frDate(p.period_end)}`),
+      cols[1],
+      y,
+      { width: 150 },
+    );
     doc.text(pdfText(formatAmount(gross, currency)), cols[2], y, { width: 112, align: 'right' });
     y = Math.max(doc.y, y + 14) + 14;
     doc.moveTo(left, y).lineTo(right, y).strokeColor('#e2e8f0').stroke();

@@ -50,6 +50,7 @@ export interface UserProfileSnapshot {
     daysRemaining: number | null;
   } | null;
   quotas: UserProfileQuota[];
+  /** Crédits IA du mois en pourcentage du forfait (`used` 0-100, `max` 100 ; null = illimité). */
   ai: { used: number; max: number | null; resetsAt: string | null; enabled: boolean } | null;
   /** Montants et tarifs visibles (administrateur ou droit `manage_subscription`). */
   canSeeBilling: boolean;
@@ -257,7 +258,7 @@ export function renderUserProfileBlock(snapshot: UserProfileSnapshot | null | un
   }
   if (level === 'full') {
     if (snapshot.quotas.length) lines.push(`- Utilisation : ${snapshot.quotas.map((q) => `${q.label} ${quotaText(q)}`).join(' ; ')}`);
-    if (snapshot.ai) lines.push(`- Requêtes IA ce mois : ${quotaText({ label: '', used: snapshot.ai.used, max: snapshot.ai.max })}`);
+    if (snapshot.ai) lines.push(`- Crédits IA du forfait ce mois (en %) : ${quotaText({ label: '', used: snapshot.ai.used, max: snapshot.ai.max, unit: '%' })}`);
   }
   return `CONTEXTE DE L'UTILISATEUR CONNECTÉ (fourni par l'application, fiable). N'en parle QUE si la question porte sur l'utilisateur (son rôle, ses droits, son cabinet, son abonnement) ou si un droit ou un module manquant l'empêche d'obtenir ce qu'il demande ; sinon ne le mentionne pas :
 ${lines.join('\n')}`;
@@ -344,7 +345,7 @@ export function buildSelfProfileAnswer(
 
   if (topics.includes('quotas')) {
     const rows = [...snapshot.quotas];
-    if (snapshot.ai) rows.push({ label: 'Requêtes IA ce mois', used: snapshot.ai.used, max: snapshot.ai.max });
+    if (snapshot.ai) rows.push({ label: 'Crédits IA du forfait ce mois', used: snapshot.ai.used, max: snapshot.ai.max, unit: '%' });
     if (!rows.length) {
       sections.push('Je ne trouve pas les compteurs de votre cabinet pour le moment.');
     } else {
@@ -353,7 +354,7 @@ export function buildSelfProfileAnswer(
         '|---|---|---|',
         ...rows.map((q) => `| ${q.label} | ${q.used}${q.unit ? ` ${q.unit}` : ''} | ${q.max === null ? 'illimité' : `${q.max}${q.unit ? ` ${q.unit}` : ''}`} |`),
       ];
-      const reset = snapshot.ai?.resetsAt ? `\n\nLe compteur de requêtes IA repart à zéro le ${frDate(snapshot.ai.resetsAt)}.` : '';
+      const reset = snapshot.ai?.resetsAt ? `\n\nLe forfait de crédits IA repart à zéro le ${frDate(snapshot.ai.resetsAt)}.` : '';
       sections.push(`Utilisation de votre cabinet${snapshot.plan ? ` (plan **${snapshot.plan.name}**)` : ''} :\n\n${table.join('\n')}${reset}`);
     }
   }

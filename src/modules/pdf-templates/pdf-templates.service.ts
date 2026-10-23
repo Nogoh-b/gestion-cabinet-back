@@ -6,6 +6,7 @@ import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
 import { PdfTemplate } from './entities/pdf-template.entity';
 import { CreatePdfTemplateDto } from './dto/create-pdf-template.dto';
 import { UpdatePdfTemplateDto } from './dto/update-pdf-template.dto';
+import { ownCopyOf, preferOwnByCode } from 'src/core/tenant/shared-rows';
 
 @Injectable()
 export class PdfTemplatesService extends BaseServiceV1<PdfTemplate> {
@@ -22,27 +23,34 @@ export class PdfTemplatesService extends BaseServiceV1<PdfTemplate> {
     return this.repository.save(tpl as any);
   }
 
+  // Modèles partagés (@SharedAcrossTenants) : la copie du cabinet l'emporte sur le
+  // modèle global de même code (voir preferOwnByCode).
   async findAll(): Promise<PdfTemplate[]> {
-    return this.repository.find({ order: { entity_type: 'ASC', name: 'ASC' } });
+    return preferOwnByCode(await this.repository.find({ order: { entity_type: 'ASC', name: 'ASC' } }));
   }
 
   async findActive(): Promise<PdfTemplate[]> {
-    return this.repository.find({
-      where: { is_active: true },
-      order: { entity_type: 'ASC', name: 'ASC' },
-    });
+    return preferOwnByCode(
+      await this.repository.find({
+        where: { is_active: true },
+        order: { entity_type: 'ASC', name: 'ASC' },
+      }),
+    );
   }
 
   /** Modèles actifs d'un type d'entité donné (ex. toutes les variantes de facture). */
   async findByEntity(entityType: string): Promise<PdfTemplate[]> {
-    return this.repository.find({
-      where: { entity_type: entityType, is_active: true },
-      order: { variant: 'ASC', name: 'ASC' },
-    });
+    return preferOwnByCode(
+      await this.repository.find({
+        where: { entity_type: entityType, is_active: true },
+        order: { variant: 'ASC', name: 'ASC' },
+      }),
+    );
   }
 
   async findByCode(code: string): Promise<PdfTemplate | null> {
-    return this.repository.findOne({ where: { code } });
+    const [tpl] = preferOwnByCode(await this.repository.find({ where: { code } }));
+    return tpl ?? null;
   }
 
   async findOne(id: number): Promise<PdfTemplate> {
@@ -52,7 +60,12 @@ export class PdfTemplatesService extends BaseServiceV1<PdfTemplate> {
   }
 
   async update(id: number, dto: UpdatePdfTemplateDto): Promise<PdfTemplate> {
-    const tpl = await this.findOne(id);
+    // Modèle global vu par un cabinet : on modifie la copie du cabinet (créée au besoin).
+    const tpl = await ownCopyOf(
+      await this.findOne(id),
+      (code) => this.findByCode(code),
+      (copy) => this.repository.create(copy as Partial<PdfTemplate>),
+    );
     // Le code des modèles système ne peut pas changer.
     if (tpl.is_system && dto.code && dto.code !== tpl.code) {
       delete (dto as any).code;

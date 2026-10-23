@@ -11,6 +11,8 @@ import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { Plan } from './entities/plan.entity';
 import { PlanQuotaService } from './plan-quota.service';
+import { AiCreditsService } from './ai-credits/ai-credits.service';
+import { withoutCreditAllowance } from './ai-credits/ai-credits';
 
 @Injectable()
 export class PlansService extends BaseServiceV1<Plan> {
@@ -21,6 +23,7 @@ export class PlansService extends BaseServiceV1<Plan> {
     @InjectRepository(Cabinet)
     private cabinetRepo: Repository<Cabinet>,
     private readonly quotaService: PlanQuotaService,
+    private readonly aiCredits: AiCreditsService,
     @Optional() private readonly appEvents?: EventEmitter2,
   ) {
     super(repository, paginationService);
@@ -39,11 +42,13 @@ export class PlansService extends BaseServiceV1<Plan> {
     return this.repository.find({ order: { name: 'ASC' } });
   }
 
+  /** Plans proposés aux cabinets : sans le nombre de crédits IA du forfait. */
   async findActive(): Promise<Plan[]> {
-    return this.repository.find({
+    const plans = await this.repository.find({
       where: { is_active: true },
       order: { name: 'ASC' },
     });
+    return plans.map((plan) => withoutCreditAllowance(plan));
   }
 
   async findByCode(code: string): Promise<Plan | null> {
@@ -94,7 +99,7 @@ export class PlansService extends BaseServiceV1<Plan> {
    */
   async getQuotaStatus(cabinetId: number): Promise<any> {
     // Comptages directs via requêtes SQL tenant-scoped
-    const [employees, clients, dossiers, storage, aiRequests] = await Promise.all([
+    const [employees, clients, dossiers, storage, aiStatus] = await Promise.all([
       this.cabinetRepo.manager.query(
         'SELECT COUNT(*) as cnt FROM employee WHERE tenant_id = ?',
         [cabinetId],
@@ -111,10 +116,8 @@ export class PlansService extends BaseServiceV1<Plan> {
         'SELECT COALESCE(SUM(file_size), 0) as total FROM document_customer WHERE tenant_id = ?',
         [cabinetId],
       ),
-      this.cabinetRepo.manager.query(
-        'SELECT COUNT(*) as cnt FROM ai_request_log WHERE tenant_id = ? AND created_at >= ?',
-        [cabinetId, PlanQuotaService.monthStart()],
-      ),
+      // Crédits IA du mois : pourcentages seulement (jamais de crédits ni de montants).
+      this.aiCredits.status(cabinetId),
     ]);
 
     const counts = {
@@ -122,9 +125,10 @@ export class PlansService extends BaseServiceV1<Plan> {
       clients: Number(clients[0]?.cnt ?? 0),
       dossiers: Number(dossiers[0]?.cnt ?? 0),
       storageBytes: Number(storage[0]?.total ?? 0),
-      aiRequests: Number(aiRequests[0]?.cnt ?? 0),
     };
 
-    return this.quotaService.getUsageStatus(cabinetId, counts);
+    const usage = await this.quotaService.getUsageStatus(cabinetId, counts, aiStatus);
+    // Le cabinet ne voit que des pourcentages : jamais le nombre de crédits du forfait.
+    return { ...usage, plan: withoutCreditAllowance(usage.plan) };
   }
 }

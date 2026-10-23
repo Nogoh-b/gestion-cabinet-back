@@ -1,20 +1,20 @@
 ---
 id: audiences
 title: Audiences et agenda
-keywords: audience, audiences, agenda, calendrier des audiences, nouvelle audience, planifier une audience, programmer une audience, reporter une audience, report d'audience, renvoi, renvoyer une audience, audience renvoyee, rapport d'audience, proces-verbal, decision d'audience, marquer tenue, audience tenue, annuler une audience, type d'audience, types d'audience, rappel d'audience, plaidoirie, mise en etat, juge, salle d'audience, audience de jugement, audience de conciliation, une audience
+keywords: audience, audiences, preparer l'audience, pieces pour l'audience, documents de l'audience, ajouter des documents a une audience, modifier une audience, agenda, calendrier des audiences, nouvelle audience, planifier une audience, programmer une audience, reporter une audience, report d'audience, renvoi, renvoyer une audience, audience renvoyee, rapport d'audience, proces-verbal, decision d'audience, marquer tenue, audience tenue, annuler une audience, type d'audience, types d'audience, rappel d'audience, plaidoirie, mise en etat, juge, salle d'audience, audience de jugement, audience de conciliation, une audience
 paths: /audiences
 ---
 
 # Audiences et agenda
 
 ## À quoi ça sert
-Une **audience** est un rendez-vous devant une juridiction lié à un dossier. Le module permet de la **planifier**, de la **reporter** (avec rapport obligatoire), de la marquer **tenue**, d'**enregistrer la décision** rendue et de suivre le calendrier du cabinet. Un rappel automatique est envoyé aux avocats et collaborateurs du dossier.
+Une **audience** est un rendez-vous devant une juridiction lié à un dossier. Le module permet de la **planifier**, de la **reporter** (nouvelle date, heure et motif), de la marquer **tenue**, d'**enregistrer la décision** rendue et de suivre le calendrier du cabinet. Un rappel automatique est envoyé aux avocats et collaborateurs du dossier.
 
 ## Où le trouver
 - Menu **Agenda** (`/audiences/calendrier`, permission « voir l'agenda ») : calendrier mensuel des audiences, une pastille de couleur par statut (Planifiée, Tenue, Reportée, Annulée), navigation de mois en mois.
 - **Plus > Pilotage > Audiences** (`/audiences`, permission « voir les audiences ») : la liste avec statistiques, filtres et recherche. Boutons **Nouvelle audience** et un export des audiences d'une période.
 - Depuis un dossier : l'onglet des audiences du dossier permet de planifier une audience déjà rattachée à ce dossier.
-- Fiche d'une audience (`/audiences/<id>`) : onglets **Aperçu**, **Communication**, **Rapport**, **Décision**, **Documents**, **Historique**.
+- Fiche d'une audience (`/audiences/<id>`) : informations, deux cartes de documents (**Préparation de l'audience** et **Après l'audience**), notes et compte rendu, décision, rapport d'audience et dossier associé. Boutons **Reporter**, **Marquer tenue**, **Ajouter des documents**, **Modifier**, **Rapport**, **Exporter**. Sous le titre, la barre IA propose des raccourcis (préparer l'audience, pièces requises…) et la compétence **Compte rendu d'audience** (⚡).
 
 ## Prérequis
 - Un **dossier** existant : une audience est toujours rattachée à un dossier. La **juridiction** n'est pas à saisir, elle est héritée du dossier.
@@ -33,11 +33,12 @@ Une **audience** est un rendez-vous devant une juridiction lié à un dossier. L
 ## Statuts et règles
 - **Planifiée** → **Tenue**, **Reportée** ou **Annulée**.
 - **Marquer tenue** (permission « marquer tenue ») : possible seulement une fois la date et l'heure de l'audience passées (« Impossible de marquer l'audience comme tenue car elle n'a pas encore eu lieu »).
-- **Reporter** (permission « reporter une audience ») : indisponible si l'audience est déjà reportée ou annulée. Il faut saisir le **rapport d'audience** (obligatoire avant tout report), la **nouvelle date**, la **nouvelle heure** et le **motif**. L'audience d'origine passe **Reportée** et est **figée** (plus modifiable) ; une **nouvelle audience Planifiée** est créée automatiquement avec les mêmes dossier, juridiction, type, salle, juge et durée, liée à l'originale (« issue du report de #…»).
+- **Reporter** (permission « reporter une audience ») : indisponible si l'audience est déjà reportée ou annulée. La fenêtre demande seulement la **nouvelle date**, la **nouvelle heure** (préremplie avec l'heure actuelle) et le **motif du renvoi**. Le rapport d'audience n'est pas exigé pour reporter : il se rédige à part (bouton **Rapport**). L'audience d'origine passe **Reportée** et est **figée** (plus modifiable) ; une **nouvelle audience Planifiée** est créée automatiquement avec les mêmes dossier, juridiction, type, salle, juge et durée, liée à l'originale (« issue du report de #…»).
 - **Annuler** (permission « annuler une audience ») : possible tant que l'audience n'est ni tenue, ni reportée, ni annulée.
 - **Décision** : le bouton **Decision** n'apparaît que sur une audience **Tenue**. Il enregistre le texte de la **Décision**, l'**Issue de la décision** (Favorable, Défavorable, Partiel), la **Date de la décision**, les **Observations** et des **Documents de décision**.
-- **Ajout de documents** : possible tant que l'audience n'est ni tenue ni reportée.
-- **Modifier** : indisponible sur une audience reportée.
+- **Documents de l'audience** : la fiche affiche toujours deux cartes, **Préparation de l'audience (N)** (documents rangés avant l'audience) et **Après l'audience (N)** (documents ajoutés ensuite, plus les pièces du **compte rendu** et de la **décision**, signalées par un badge « Compte rendu » ou « Décision »). Chaque ligne montre l'icône du format, le nom, la nature, la date et s'ouvre d'un clic ; une carte vide l'indique. Chaque carte a son bouton **Ajouter**.
+- **Ajouter des documents** (permission « envoyer un document ») : reste disponible sur une audience tenue (sauf reportée). Ouvre la page **Nouveau document** (`/documents/nouveau?audience=<id>&phase=preparation|after`) avec le dossier et l'audience déjà choisis et verrouillés, la case **Lié à une audience** cochée d'office et le **Moment** déjà choisi : « après » pour une audience tenue ou passée (ou `phase=after`), « préparation » sinon, modifiable. On peut y ajouter plusieurs documents, chacun avec son fichier (importé ou rédigé) et ses propres informations ; après l'enregistrement on revient à la fiche de l'audience, où ils apparaissent dans la bonne carte.
+- **Modifier** : ouvre la page de modification (`/audiences/<id>/modifier`), le même formulaire que la création, prérempli. Le dossier ne change pas ; le renvoi, le rapport et la décision gardent leurs boutons. Indisponible sur une audience reportée. Des documents existants du dossier peuvent y être liés (champ **Documents liés**).
 
 ## Automatismes
 - **Rappel** : toutes les heures, le système prévient (notification « Rappel d'audience ») l'avocat responsable et les collaborateurs du dossier pour toute audience Planifiée qui a lieu dans les 48 heures, une seule fois.
@@ -45,7 +46,6 @@ Une **audience** est un rendez-vous devant une juridiction lié à un dossier. L
 - La procédure du dossier (étape et sous-étape en cours) est rattachée automatiquement à l'audience.
 
 ## Erreurs fréquentes
-- « Le rapport d'audience doit être rédigé avant de reporter cette audience. »
 - « Cette audience a déjà été reportée. » / « Une audience annulée ne peut pas être reportée. »
 - « Cette audience a été reportée et ne peut plus être modifiée. Consultez l'audience de remplacement. »
 - « Impossible d'ajouter une décision car l'audience n'est pas encore tenue. »
@@ -53,4 +53,4 @@ Une **audience** est un rendez-vous devant une juridiction lié à un dossier. L
 - Bouton absent (Reporter, Marquer tenue, Annuler…) → permission manquante ou statut qui ne le permet pas.
 
 ## Créer depuis le chat
-« Programme une audience pour le dossier DOS-2026-0039 le 15 juin 2026 à 14h30, salle 4B. » Seuls le dossier et la date sont obligatoires ; la juridiction vient du dossier et l'heure par défaut est 09:00. Je peux aussi reporter une audience si vous donnez la nouvelle date et le rapport ou le motif. Une carte de confirmation modifiable s'affiche avant l'enregistrement.
+« Programme une audience pour le dossier DOS-2026-0039 le 15 juin 2026 à 14h30, salle 4B. » Seuls le dossier et la date sont obligatoires ; la juridiction vient du dossier et l'heure par défaut est 09:00. Je peux aussi reporter une audience si vous donnez la nouvelle date (et l'heure si elle change) ; le motif est conseillé, le rapport facultatif. Une carte de confirmation modifiable s'affiche avant l'enregistrement.

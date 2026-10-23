@@ -157,7 +157,9 @@ async function bootstrap() {
   const isDevelopment = process.env.NODE_ENV !== 'production';
   const isLocalDevelopmentOrigin = (origin: string): boolean =>
     isDevelopment &&
-    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(
+      origin,
+    );
   if (process.env.NODE_ENV === 'production' && corsOrigins.includes('*')) {
     console.warn(
       '⚠️  [SECURITE] CORS_ORIGINS contient "*" en production — configuration dangereuse. ' +

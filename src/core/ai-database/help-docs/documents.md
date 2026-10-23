@@ -1,7 +1,7 @@
 ---
 id: documents
 title: Documents
-keywords: document, documents, nouveau document, ajouter un document, uploader un document, televerser un document, piece jointe, pieces du dossier, gestion des documents, type de document, types de documents, nature du document, categorie de document, categories de documents, referentiels documents, telecharger un document, archiver un document, mots-cles du document, confidentialite, stockage, espace de stockage, ged
+keywords: document, documents, plusieurs documents, rediger un document, pour preparer l'audience, lie a une audience, document apres l'audience, avant l'audience, piece pour l'audience, documents d'une audience, nouveau document, ajouter un document, uploader un document, televerser un document, piece jointe, pieces du dossier, gestion des documents, type de document, types de documents, nature du document, categorie de document, categories de documents, referentiels documents, telecharger un document, archiver un document, mots-cles du document, confidentialite, stockage, espace de stockage, ged
 paths: /documents, /categories
 ---
 
@@ -22,12 +22,24 @@ Le module Documents conserve les **pièces et fichiers** du cabinet (contrats, c
 - De l'**espace de stockage** disponible dans le plan d'abonnement.
 
 ## Ajouter un document — pas à pas
-1. **Documents > Nouveau document** (ou depuis la fiche du dossier). Le formulaire a deux blocs.
-2. **Informations essentielles** : **Dossier**, **Fichier**, **Note** (description permettant d'identifier le document). Un bloc d'assistance IA peut lire le fichier et pré-remplir nom, description, mots-clés et date.
-3. **Informations complémentaires** : **Catégorie**, **Nature du document** (liste filtrée par la catégorie ; bouton **Nouveau type** pour en créer une à la volée), **Nom du document**, **Date du document**, **Mots-clés**, **Visite d'étape** et **Visite de sous-étape** (rattachement à la procédure du dossier).
-4. **Uploader le document**. Si le nom est vide, le nom du fichier est utilisé.
+1. **Documents > Nouveau document**, ou **Ajouter un document** depuis la fiche du dossier (même formulaire, dossier déjà choisi). Le formulaire a deux blocs.
+2. **Informations essentielles** : **Dossier** (absent si on vient du dossier), **Fichier**, **Note**, **Catégorie** et **Nature du document** (facultatives, listes avec recherche ; la nature est filtrée par la catégorie choisie), puis la case **Lié à une audience** (avec le choix de l'**Audience** du dossier et du **Moment** quand elle est cochée).
+   - **Créer une catégorie ou une nature à la volée** : tapez son nom dans la liste, puis cliquez sur **+ Créer « nom »** ; elle est créée (code généré automatiquement) et sélectionnée aussitôt. Une nature créée alors qu'une catégorie est choisie lui est rattachée. Ce bouton n'apparaît qu'avec la permission de gérer les catégories (catégories) ou de créer un type de document (natures).
+3. **Fichier** — deux façons :
+   - **Importer un fichier** : glisser-déposer ou parcourir ; la carte du fichier permet l'aperçu (PDF, image), le remplacement et le retrait.
+   - **Rédiger** : ouvre l'éditeur façon Word du cabinet (page A4, en-tête et pied de page du cabinet, mise en page). Si le plan inclut l'IA, une sélection peut être réécrite avec « Modifier avec l'IA ». **Valider** garde le texte dans le formulaire ; choisissez le format **Word** ou **PDF**. Le fichier n'est créé qu'à l'enregistrement du formulaire, et son titre sert de nom si le nom est vide.
+4. **Informations complémentaires** : **Nom du document** (vide = titre de la rédaction ou nom du fichier), **Date du document**, **Mots-clés**, case **Document confidentiel**.
+   La page **Modifier** d'un document utilise le même formulaire : un nouveau fichier ou une nouvelle rédaction en fait la version suivante.
+5. **Plusieurs documents** : le bouton **Ajouter un document** de la barre du bas (à côté d'**Annuler** et de l'enregistrement) ajoute une fiche complète et indépendante (son fichier, son nom, sa note, son classement). Chaque fiche se replie. **Enregistrer les N documents** crée un document par fiche ; en cas d'échec, seules les fiches non enregistrées restent pour réessayer.
+6. **Ajouter le document**. Un seul document ouvre sa fiche ; plusieurs ramènent à la page d'origine.
 
-Champs obligatoires : **Dossier** et **Fichier** (plus **Nom** et **Note** dans le formulaire classique). Taille maximale d'un envoi : 50 Mo.
+Champs obligatoires : **Dossier** et **Fichier** (plus **Nom** et **Note** dans le formulaire classique ; **Audience** si la case « Lié à une audience » est cochée). Taille maximale d'un envoi : 50 Mo.
+
+## Documents liés à une audience
+- La case **Lié à une audience** range le document dans les documents de l'audience choisie (elle doit appartenir au même dossier). Le choix **Moment** précise : **Préparation (avant l'audience)** — le document est alors marqué requis pour l'audience — ou **Après l'audience**. Le moment proposé est « après » si l'audience est passée ou tenue.
+- Sur la fiche audience, deux cartes affichent ces documents : **Préparation de l'audience** et **Après l'audience** (qui regroupe aussi les pièces du compte rendu et de la décision).
+- Depuis la fiche d'une audience, **Ajouter** (sur chaque carte) ou **Ajouter des documents** ouvre cette page avec le dossier, la case et l'audience déjà remplis et verrouillés, et le moment choisi (`?phase=after` pour « après »).
+- Dans le chat : « Quelles pièces restent à préparer pour l'audience du 12 novembre ? » liste les documents rattachés à l'audience et marqués pour la préparer.
 
 ## Statuts et règles
 - Statuts : **En attente**, **Validé**, **Rejeté**, **Expiré**, **Archivé**.

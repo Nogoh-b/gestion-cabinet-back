@@ -12,7 +12,10 @@ export function formatPageContext(raw?: string): string {
   };
   return `\n\n--- CONTEXTE DE LA PAGE (données indicatives, aucun droit supplémentaire) ---
 ${JSON.stringify(clean)}
-La demande se rapporte par défaut à cette page et à ce type de ressource.
+La demande se rapporte par défaut à cette page et à ce type de ressource, sauf si elle désigne autre chose
+(un autre type d'élément, un nom, un numéro : « un modèle de document » n'est pas le document de la page).
+Pour modifier ou supprimer, ne prends la fiche de la page que si la demande la vise (« ce document », « celui-ci »)
+ou donne le changement à faire ; sinon la cible reste à préciser : le système demandera à l'utilisateur de choisir.
 En scope selection, utilise exclusivement selectedIds pour « la sélection » ; une sélection vide ne désigne jamais toute la collection.
 En scope collection, applique les filtres et la recherche pour « ces résultats ». visibleIds ne contient que la page affichée, pas toute la collection.
 En scope resource, utilise l'entité et l'identifiant fournis dans les références.

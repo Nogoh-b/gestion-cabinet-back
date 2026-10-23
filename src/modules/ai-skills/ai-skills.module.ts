@@ -13,6 +13,7 @@ import { ClientPortalModule } from '../client-portal/client-portal.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { MailTemplateModule } from '../mail-template/mail-template.module';
 import { PdfTemplatesModule } from '../pdf-templates/pdf-templates.module';
+import { TemplateBlocksModule } from '../template-blocks/template-blocks.module';
 import { ReportsModule } from '../reports/reports.module';
 import {
   CreerDiligenceSkill,
@@ -30,6 +31,7 @@ import {
 } from './communication.skills';
 import { TraduireSkill } from './document.skills';
 import { RedigerDocumentSkill } from './document-studio.skills';
+import { ModelesSkill } from './template.skills';
 import {
   CompteRenduAudienceSkill,
   EtatImpayesSkill,
@@ -78,6 +80,7 @@ const SKILLS = [
   RelancerImpayesSkill,
   // Documents
   RedigerDocumentSkill,
+  ModelesSkill,
   TraduireSkill,
   VersionBilingueSkill,
   AnonymiserSkill,
@@ -125,6 +128,7 @@ const SKILLS = [
     DocumentsModule,
     MailTemplateModule,
     PdfTemplatesModule,
+    TemplateBlocksModule,
     ReportsModule,
     // Facturation des dossiers (profil, éléments facturables) : même service que l'onglet Facturation.
     forwardRef(() => CaseWorkflowModule),

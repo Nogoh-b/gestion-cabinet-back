@@ -122,6 +122,11 @@ export const ROLES_CONFIG: {
       'create_pdf_template',
       'edit_pdf_template',
       'delete_pdf_template',
+      // Modèles de mails (mêmes rôles que les modèles PDF)
+      'view_mail_templates',
+      'create_mail_template',
+      'edit_mail_template',
+      'delete_mail_template',
       // Communications
       'view_messages',
       'send_message',

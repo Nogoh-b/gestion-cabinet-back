@@ -94,7 +94,8 @@ export class PlatformRevenueService {
           `SELECT COUNT(*) AS n, COALESCE(SUM(sp.amount), 0) AS amount
              FROM subscription_payments sp
              JOIN subscriptions s ON s.id = sp.subscription_id
-            WHERE sp.status = 'pending' AND sp.amount > 0 AND s.status <> 'cancelled'`,
+            WHERE sp.status = 'pending' AND sp.amount > 0 AND s.status <> 'cancelled'
+              AND sp.kind = 'subscription'`,
         ),
         this.db.query(
           `SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS amount
@@ -108,10 +109,10 @@ export class PlatformRevenueService {
              (SELECT COUNT(DISTINCT cabinet_id) FROM subscription_events
                WHERE type = 'trial_ended' AND created_at BETWEEN ? AND ?) AS trials_ended,
              (SELECT COUNT(DISTINCT sp.cabinet_id) FROM subscription_payments sp
-               WHERE sp.status IN ('paid','refunded') AND sp.paid_at BETWEEN ? AND ?
+               WHERE sp.status IN ('paid','refunded') AND sp.paid_at BETWEEN ? AND ? AND sp.kind = 'subscription'
                  AND NOT EXISTS (SELECT 1 FROM subscription_payments x
                                   WHERE x.cabinet_id = sp.cabinet_id AND x.status IN ('paid','refunded')
-                                    AND x.paid_at < ?)) AS first_payments`,
+                                    AND x.kind = 'subscription' AND x.paid_at < ?)) AS first_payments`,
           [from, to, from, to, from, to, from, to, from],
         ),
       ]);
@@ -285,7 +286,7 @@ export class PlatformRevenueService {
               s.trial_ends_at
          FROM subscription_payments sp
          LEFT JOIN subscriptions s ON s.id = sp.subscription_id
-        WHERE sp.status IN ('paid','refunded') AND sp.amount > 0
+        WHERE sp.status IN ('paid','refunded') AND sp.amount > 0 AND sp.kind = 'subscription'
           AND (sp.period_end IS NULL OR sp.period_end >= ?)
           AND COALESCE(sp.period_start, sp.paid_at) < ?`,
       [startSql.slice(0, 10), endSql.slice(0, 10)],

@@ -8,6 +8,7 @@ import {
 } from './entities/template-block.entity';
 import { CreateTemplateBlockDto } from './dto/create-template-block.dto';
 import { UpdateTemplateBlockDto } from './dto/update-template-block.dto';
+import { ownCopyOf, preferOwnByCode } from 'src/core/tenant/shared-rows';
 
 @Injectable()
 export class TemplateBlocksService {
@@ -27,25 +28,33 @@ export class TemplateBlocksService {
     return saved;
   }
 
-  findAll(): Promise<TemplateBlock[]> {
-    return this.repository.find({
-      order: { channel: 'ASC', kind: 'ASC', name: 'ASC' },
-    });
+  // Blocs partagés (@SharedAcrossTenants) : la copie du cabinet l'emporte sur le
+  // bloc global de même code (voir preferOwnByCode).
+  async findAll(): Promise<TemplateBlock[]> {
+    return preferOwnByCode(
+      await this.repository.find({
+        order: { channel: 'ASC', kind: 'ASC', name: 'ASC' },
+      }),
+    );
   }
 
-  findActive(): Promise<TemplateBlock[]> {
-    return this.repository.find({
-      where: { is_active: true },
-      order: { channel: 'ASC', kind: 'ASC', name: 'ASC' },
-    });
+  async findActive(): Promise<TemplateBlock[]> {
+    return preferOwnByCode(
+      await this.repository.find({
+        where: { is_active: true },
+        order: { channel: 'ASC', kind: 'ASC', name: 'ASC' },
+      }),
+    );
   }
 
   /** Blocs actifs d'un canal donné (mail | pdf). */
-  findByChannel(channel: TemplateBlockChannel): Promise<TemplateBlock[]> {
-    return this.repository.find({
-      where: { channel, is_active: true },
-      order: { kind: 'ASC', name: 'ASC' },
-    });
+  async findByChannel(channel: TemplateBlockChannel): Promise<TemplateBlock[]> {
+    return preferOwnByCode(
+      await this.repository.find({
+        where: { channel, is_active: true },
+        order: { kind: 'ASC', name: 'ASC' },
+      }),
+    );
   }
 
   /** Bloc par défaut d'un couple (channel, kind). */
@@ -64,15 +73,21 @@ export class TemplateBlocksService {
     return block;
   }
 
-  findByCode(code: string): Promise<TemplateBlock | null> {
-    return this.repository.findOne({ where: { code } });
+  async findByCode(code: string): Promise<TemplateBlock | null> {
+    const [block] = preferOwnByCode(await this.repository.find({ where: { code } }));
+    return block ?? null;
   }
 
   async update(
     id: number,
     dto: UpdateTemplateBlockDto,
   ): Promise<TemplateBlock> {
-    const block = await this.findOne(id);
+    // Bloc global vu par un cabinet : on modifie la copie du cabinet (créée au besoin).
+    const block = await ownCopyOf(
+      await this.findOne(id),
+      (code) => this.findByCode(code),
+      (copy) => this.repository.create(copy as Partial<TemplateBlock>),
+    );
     // Code et canal/nature des blocs système restent figés.
     if (block.is_system) {
       delete (dto as any).code;

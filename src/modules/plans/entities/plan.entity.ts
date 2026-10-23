@@ -80,6 +80,10 @@ export class Plan {
   @Column({ type: 'int', nullable: true, name: 'ai_requests_per_month' })
   ai_requests_per_month: number | null;
 
+  /** Crédits IA par mois (1 crédit = `usd_per_credit` USD de coût fournisseur). NULL / -1 = illimité. */
+  @Column({ type: 'int', nullable: true, name: 'ai_credits_per_month' })
+  ai_credits_per_month: number | null;
+
   @Column({ type: 'json', nullable: true })
   ai_policy: AiPlanPolicy | null;
 

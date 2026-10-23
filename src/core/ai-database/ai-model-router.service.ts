@@ -1537,15 +1537,27 @@ export class AiModelRouterService {
   /**
    * Modèle de transcription audio (chat/completions avec `input_audio`).
    * `AI_ASR_MODEL` (+ `AI_ASR_PROVIDER`, ou `AI_ASR_BASE_URL` / `AI_ASR_API_KEY`)
-   * l'impose ; sinon Gemini dès que sa clé est configurée (il comprend le
-   * français, contrairement à MiMo ASR : chinois et anglais seulement).
+   * l'impose ; sinon AssemblyAI dès que `ASSEMBLYAI_API_KEY` est renseignée
+   * (service de transcription dédié, intervenants repérés), sinon Gemini dès
+   * que sa clé est configurée (il comprend le français, contrairement à
+   * MiMo ASR : chinois et anglais seulement).
    * null : la transcription n'est pas disponible.
    */
   getTranscriptionRuntime(): (AiProviderRuntimeConfig & { provider: string; label: string }) | null {
     const envModel = process.env.AI_ASR_MODEL?.trim();
     let provider = '';
     let runtime: AiProviderRuntimeConfig | null = null;
-    if (envModel && process.env.AI_ASR_BASE_URL?.trim()) {
+    const assemblyKey = process.env.ASSEMBLYAI_API_KEY?.trim();
+    const envProvider = process.env.AI_ASR_PROVIDER?.trim().toLowerCase();
+    if (envProvider === 'assemblyai' || (!envProvider && assemblyKey && !process.env.AI_ASR_BASE_URL?.trim())) {
+      // AssemblyAI : son propre protocole (envoi du fichier, puis suivi de la transcription).
+      provider = 'assemblyai';
+      runtime = {
+        base_url: process.env.ASSEMBLYAI_BASE_URL?.trim() || 'https://api.assemblyai.com',
+        api_key: assemblyKey || process.env.AI_ASR_API_KEY?.trim() || undefined,
+        model: envModel || 'universal-3-5-pro',
+      };
+    } else if (envModel && process.env.AI_ASR_BASE_URL?.trim()) {
       provider = process.env.AI_ASR_PROVIDER?.trim() || 'custom';
       runtime = {
         base_url: process.env.AI_ASR_BASE_URL.trim(),

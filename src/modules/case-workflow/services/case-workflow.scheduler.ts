@@ -170,6 +170,24 @@ export class CaseWorkflowScheduler {
         });
         if (alreadyNotified || recipients.length === 0) continue;
 
+        // Événement d'idempotence écrit AVANT la notification : une instance
+        // concurrente échoue sur la clé unique et n'envoie rien.
+        try {
+          await this.eventService.append(this.actionRepository.manager, {
+            dossierId: dossier.id,
+            eventType: 'DOSSIER_ACTION_OVERDUE_NOTIFIED',
+            aggregateType: 'DossierAction',
+            aggregateId: action.id,
+            actorUserId: null,
+            payload: {
+              dueAt: action.due_at.toISOString(),
+              overdueDays: deadlineState.overdueDays,
+            },
+            idempotencyKey: overdueEventKey,
+          });
+        } catch {
+          continue;
+        }
         await this.notifications.createBulk(
           {
             user_ids: recipients,
@@ -187,18 +205,6 @@ export class CaseWorkflowScheduler {
           },
           SYSTEM_SENDER_ID,
         );
-        await this.eventService.append(this.actionRepository.manager, {
-          dossierId: dossier.id,
-          eventType: 'DOSSIER_ACTION_OVERDUE_NOTIFIED',
-          aggregateType: 'DossierAction',
-          aggregateId: action.id,
-          actorUserId: null,
-          payload: {
-            dueAt: action.due_at.toISOString(),
-            overdueDays: deadlineState.overdueDays,
-          },
-          idempotencyKey: overdueEventKey,
-        });
         continue;
       }
 

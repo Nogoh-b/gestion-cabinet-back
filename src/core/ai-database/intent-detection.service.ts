@@ -702,6 +702,7 @@ identifiant exact. Les liens « [DOS-2026-0004](/dossiers/94) » donnent aussi l
   l'opération, en priorité dans le message le plus récent.
 - Même règle pour « ENREGISTREMENTS AFFICHES A L'UTILISATEUR » (#N) et pour les identifiants donnés
   par le contexte de page ou les mentions @.
+- Une demande qui précise « (cible : <type> n°<id> « … ») » vise exactement ce type et cet identifiant.
 - N'invente JAMAIS un identifiant : un id absent de l'historique, du contexte et de la demande est
   interdit. Sans identifiant connu, applique la règle 7.
 

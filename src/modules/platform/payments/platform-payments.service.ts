@@ -25,7 +25,7 @@ const PAYMENT_COLUMNS = `
   sp.method, sp.provider, sp.reference, sp.provider_reference, sp.checkout_url, sp.failure_reason,
   sp.declared_reference, sp.declared_at, (sp.proof_file IS NOT NULL) AS has_proof,
   sp.validated_at, sp.refunded_at, sp.refund_amount, sp.refund_reason, sp.receipt_number,
-  sp.notes, sp.created_at, sp.updated_at,
+  sp.notes, sp.created_at, sp.updated_at, sp.kind, sp.ai_credit_pack_id, sp.ai_credits,
   c.name AS cabinet_name, c.code AS cabinet_code,
   p.name AS plan_name, s.billing_cycle, s.status AS subscription_status,
   pm.label AS method_label, pa.email AS validated_by_email`;
@@ -61,6 +61,9 @@ export class PlatformPaymentsService {
   private where(query: PlatformPaymentQueryDto) {
     const where: string[] = [];
     const params: any[] = [];
+    // Les achats de crédits IA ont leur page (services payants) : hors liste par défaut.
+    where.push('sp.kind = ?');
+    params.push(query.kind === 'ai_credits' ? 'ai_credits' : 'subscription');
     if (query.status === 'due') {
       where.push("sp.status = 'pending' AND sp.amount > 0 AND s.status <> 'cancelled'");
     } else if (query.status) {
@@ -119,7 +122,7 @@ export class PlatformPaymentsService {
       `SELECT
          SUM(sp.status = 'awaiting_validation') AS awaiting_validation,
          SUM(sp.status = 'pending' AND sp.amount > 0 AND s.status <> 'cancelled') AS due
-         ${PAYMENT_JOINS}`,
+         ${PAYMENT_JOINS} WHERE sp.kind = 'subscription'`,
     );
     return {
       data: rows.map(normalize),

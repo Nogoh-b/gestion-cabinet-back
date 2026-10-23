@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Plan } from './entities/plan.entity';
+import type { AiCreditStatus } from './ai-credits/ai-credits';
 
 export type QuotaResource =
   | 'employees'
@@ -18,8 +19,7 @@ export type QuotaResource =
   | 'branches'
   | 'audiences'
   | 'payslips'
-  | 'expenses'
-  | 'ai_requests';
+  | 'expenses';
 
 export type PlanModule =
   | 'payroll'
@@ -43,12 +43,13 @@ export interface StorageUsage {
   exceeded: boolean;
 }
 
-/** Requêtes IA du mois civil, comptées comme le garde de quota (une par question). */
-export interface AiRequestsUsage extends QuotaUsage {
+/**
+ * Crédits IA du mois civil : pourcentages uniquement (le cabinet ne voit ni
+ * crédits ni montants). Voir AiCreditsService.
+ */
+export interface AiCreditsUsage extends AiCreditStatus {
   /** Module IA inclus dans le plan. */
   enabled: boolean;
-  /** Remise à zéro : 1er jour du mois suivant (ISO). */
-  resetsAt: string;
 }
 
 export interface PlanUsageStatus {
@@ -59,7 +60,7 @@ export interface PlanUsageStatus {
     clients: QuotaUsage;
     dossiers: QuotaUsage;
     storage: StorageUsage;
-    ai_requests: AiRequestsUsage;
+    ai_credits: AiCreditsUsage;
   };
 }
 
@@ -89,15 +90,11 @@ export class PlanQuotaService {
       clients: number;
       dossiers: number;
       storageBytes: number;
-      aiRequests: number;
     },
+    aiCredits: AiCreditStatus,
   ): Promise<PlanUsageStatus> {
     const plan = await this.getCabinetPlan(cabinetId);
-    const aiRequests = (max: number | null, enabled: boolean): AiRequestsUsage => ({
-      ...this.buildUsage('ai_requests', counts.aiRequests, max),
-      enabled,
-      resetsAt: PlanQuotaService.nextMonthStart().toISOString(),
-    });
+    const aiUsage = (enabled: boolean): AiCreditsUsage => ({ ...aiCredits, enabled });
 
     if (!plan) {
       // Pas de plan lié — pas de limites affichées
@@ -109,7 +106,7 @@ export class PlanQuotaService {
           clients: this.buildUsage('clients', counts.clients, null),
           dossiers: this.buildUsage('dossiers', counts.dossiers, null),
           storage: this.buildStorageUsage(counts.storageBytes, null),
-          ai_requests: aiRequests(null, true),
+          ai_credits: aiUsage(true),
         },
       };
     }
@@ -133,7 +130,7 @@ export class PlanQuotaService {
           counts.storageBytes,
           plan.max_storage_gb,
         ),
-        ai_requests: aiRequests(plan.ai_requests_per_month, !!plan.ai_enabled),
+        ai_credits: aiUsage(!!plan.ai_enabled),
       },
     };
   }
@@ -165,7 +162,6 @@ export class PlanQuotaService {
       audiences: plan.max_audiences,
       payslips: plan.max_payslips_per_month,
       expenses: plan.max_expenses_per_month,
-      ai_requests: plan.ai_requests_per_month,
     };
 
     const labelMap: Record<QuotaResource, string> = {
@@ -176,7 +172,6 @@ export class PlanQuotaService {
       audiences: 'audiences',
       payslips: 'bulletins de paie',
       expenses: 'dépenses',
-      ai_requests: 'requêtes IA ce mois',
     };
 
     const max = limitMap[resource];

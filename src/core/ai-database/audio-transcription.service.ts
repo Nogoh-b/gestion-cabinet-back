@@ -40,6 +40,19 @@ export function audioFormat(mimetype: string, name: string): 'wav' | 'mp3' | nul
 }
 
 /**
+ * Texte d'une transcription AssemblyAI : une prise de parole par paragraphe,
+ * « Intervenant N : » dès que deux voix sont repérées (A → 1, B → 2…).
+ */
+export function assemblyAiText(result: { text?: string | null; utterances?: Array<{ speaker?: string; text?: string }> | null }): string {
+  const utterances = (result?.utterances ?? []).filter((item) => item?.text?.trim());
+  const speakers = [...new Set(utterances.map((item) => String(item.speaker ?? '')))];
+  if (speakers.length < 2) return String(result?.text ?? utterances.map((item) => item.text).join('\n\n')).trim();
+  return utterances
+    .map((item) => `Intervenant ${speakers.indexOf(String(item.speaker ?? '')) + 1} : ${item.text!.trim()}`)
+    .join('\n\n');
+}
+
+/**
  * Transcription d'un morceau d'enregistrement (le chat découpe et convertit
  * l'audio en WAV 16 kHz mono) par le modèle audio de la plateforme, appelé
  * directement sur `chat/completions` avec `input_audio`.
@@ -47,6 +60,8 @@ export function audioFormat(mimetype: string, name: string): 'wav' | 'mp3' | nul
 @Injectable()
 export class AudioTranscriptionService {
   private readonly logger = new Logger(AudioTranscriptionService.name);
+  /** Intervalle de suivi d'une transcription AssemblyAI. */
+  pollMs = 1500;
 
   constructor(private readonly router: AiModelRouterService) {}
 
@@ -70,6 +85,8 @@ export class AudioTranscriptionService {
       throw new ServiceUnavailableException('La transcription audio n’est pas configurée sur la plateforme (clé Gemini ou AI_ASR_MODEL).');
     }
 
+    // AssemblyAI : envoi du fichier, création de la transcription, puis suivi.
+    if (runtime.provider === 'assemblyai') return this.transcribeAssemblyAi(runtime, file);
     // Modèles Whisper (OpenAI, Groq…) : point d'accès dédié `audio/transcriptions`.
     if (/whisper|transcribe/i.test(runtime.model)) return this.transcribeWhisper(runtime, file, format, options);
 
@@ -130,6 +147,94 @@ export class AudioTranscriptionService {
     );
     this.logger.log(`🎙️ Transcription ${options.part ?? 1}/${options.parts ?? 1} — ${Math.round(file.buffer.length / 1024)} Ko, ${text.length} caractères, ${Date.now() - started} ms (${runtime.label})`);
     return { text, model: runtime.label };
+  }
+
+  /**
+   * Protocole AssemblyAI (https://www.assemblyai.com/docs) : le fichier brut
+   * part sur `/v2/upload`, la transcription est créée sur `/v2/transcript`
+   * puis suivie jusqu'à `completed`. Les intervenants (A, B…) deviennent
+   * « Intervenant 1 : », « Intervenant 2 : »… comme avec les autres modèles.
+   * La transcription et le fichier sont ensuite effacés chez AssemblyAI :
+   * le texte n'est gardé que dans le chat (pièces d'un cabinet d'avocats).
+   */
+  private async transcribeAssemblyAi(
+    runtime: { base_url: string; api_key?: string; model: string; provider: string; label: string },
+    file: { buffer: Buffer },
+  ): Promise<TranscriptionResult> {
+    const base = runtime.base_url.replace(/\/+$/, '');
+    const headers = { authorization: runtime.api_key ?? '' };
+    const started = Date.now();
+
+    const upload = await fetch(`${base}/v2/upload`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/octet-stream' },
+      body: new Uint8Array(file.buffer),
+      signal: AbortSignal.timeout(120_000),
+    });
+    const uploaded: any = await upload.json().catch(() => null);
+    if (!upload.ok || !uploaded?.upload_url) this.assemblyAiFailure(runtime, upload.status, uploaded);
+
+    // Universal-3.5 Pro (français compris), Universal-2 si le premier n'est pas disponible.
+    const speechModels = runtime.model === 'universal-3-5-pro' ? ['universal-3-5-pro', 'universal-2'] : [runtime.model];
+    const language = process.env.AI_ASR_LANGUAGE?.trim() || 'fr';
+    const created = await fetch(`${base}/v2/transcript`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        audio_url: uploaded.upload_url,
+        speech_models: speechModels,
+        ...(language === 'auto' ? { language_detection: true } : { language_code: language }),
+        speaker_labels: true,
+        punctuate: true,
+        format_text: true,
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const job: any = await created.json().catch(() => null);
+    if (!created.ok || !job?.id) this.assemblyAiFailure(runtime, created.status, job);
+
+    let result: any = job;
+    try {
+      // Un morceau de 4 minutes se transcrit en quelques secondes ; 5 minutes au plus.
+      while (result?.status !== 'completed') {
+        if (result?.status === 'error') this.assemblyAiFailure(runtime, 502, { error: result.error });
+        if (Date.now() - started > 300_000) throw new BadGatewayException('La transcription a échoué (délai dépassé chez AssemblyAI).');
+        await new Promise((resolve) => setTimeout(resolve, this.pollMs));
+        const poll = await fetch(`${base}/v2/transcript/${job.id}`, { headers, signal: AbortSignal.timeout(30_000) });
+        result = await poll.json().catch(() => null);
+        if (!poll.ok) this.assemblyAiFailure(runtime, poll.status, result);
+      }
+    } finally {
+      // Effacement chez AssemblyAI (transcription et fichier envoyé), même en cas d'échec.
+      void fetch(`${base}/v2/transcript/${job.id}`, { method: 'DELETE', headers, signal: AbortSignal.timeout(30_000) })
+        .then((response) => { if (!response.ok) this.logger.warn(`AssemblyAI : effacement de ${job.id} refusé (HTTP ${response.status})`); })
+        .catch((error) => this.logger.warn(`AssemblyAI : effacement de ${job.id} impossible (${(error as Error).message})`));
+    }
+
+    const text = assemblyAiText(result);
+    const model = String(result?.speech_model_used ?? result?.speech_model ?? speechModels[0]);
+    // AssemblyAI facture à la seconde d'audio : la durée tient lieu de jetons
+    // d'entrée (tarif plateforme à saisir « par million de secondes »).
+    const seconds = Math.max(1, Math.round(Number(result?.audio_duration) || file.buffer.length / 32_000));
+    this.router.reportUsage(
+      { provider: runtime.provider, model, profile: 'asr' },
+      { input: seconds, output: 0 },
+      { inputChars: 0, outputChars: text.length },
+    );
+    this.logger.log(`🎙️ Transcription AssemblyAI — ${seconds} s d'audio, ${text.length} caractères, ${Date.now() - started} ms (${model})`);
+    return { text, model: `assemblyai/${model}` };
+  }
+
+  private assemblyAiFailure(runtime: { label: string }, status: number, payload: any): never {
+    const message = String(payload?.error ?? payload?.message ?? `HTTP ${status}`);
+    this.logger.warn(`Transcription refusée par ${runtime.label} : ${message}`);
+    if (status === 401) {
+      throw new ServiceUnavailableException('Transcription indisponible : la clé AssemblyAI de la plateforme est refusée. Prévenez l’administrateur de la plateforme.');
+    }
+    if (status === 402 || status === 429 || /balance|credit|insufficient|quota/i.test(message)) {
+      throw new ServiceUnavailableException(`Transcription indisponible : le compte du fournisseur (${runtime.label}) n’a plus de crédit ou atteint sa limite. Prévenez l’administrateur de la plateforme.`);
+    }
+    throw new BadGatewayException(`La transcription a échoué (${message.slice(0, 200)}).`);
   }
 
   /** Protocole Whisper : fichier en multipart, texte en retour (`{ text }`). */

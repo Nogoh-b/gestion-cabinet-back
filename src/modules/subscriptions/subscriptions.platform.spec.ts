@@ -80,6 +80,7 @@ function build() {
     {} as any,
     events,
     {} as any,
+    {} as any,
   );
   return { service, cabinetRepo, subRepo, payRepo, events };
 }

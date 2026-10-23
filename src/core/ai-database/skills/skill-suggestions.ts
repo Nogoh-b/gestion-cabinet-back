@@ -198,7 +198,10 @@ export function detectSkillRequest(question: string, catalog: AiSkillCatalogItem
   const [best, second] = scored;
   const usage = USAGE_QUESTION.test(normalized);
   const consultation = READ_QUESTION.test(normalized) && !hasModalCue(normalized);
-  const decisive = !usage && !consultation
+  // Une compétence « consultation auto-lançable » répond elle-même (liste, lecture)
+  // quand la demande la désigne sans ambiguïté, au lieu de la lecture générique.
+  const selfAnswered = best.skill.autoLaunchOnConsultation === true;
+  const decisive = !usage && (!consultation || selfAnswered)
     && (best.score >= PATTERN_SCORE || hasActionCue(question))
     && (!second || best.score > second.score);
   return {
