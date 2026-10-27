@@ -77,6 +77,7 @@ import {
   DossierOutcome,
 } from './entities/dossier.entity';
 import { Step, StepStatus, StepType } from './entities/step.entity';
+import { DossierChatSyncService } from './dossier-chat-sync.service';
 
 // import { StepsService } from './step.service';
 
@@ -107,6 +108,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     private readonly caseWorkflowFeatureRepository: Repository<CaseWorkflowFeature>,
     @InjectRepository(DossierBillingProfile)
     private readonly billingProfileRepository: Repository<DossierBillingProfile>,
+    private readonly dossierChatSync: DossierChatSyncService,
     protected readonly emailsService?: MailService, // Optionnel
   ) {
     super(dossierRepository, paginationService, emailsService);
@@ -858,6 +860,10 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     console.log(updateDossierDto, dossier);
     dossier.confidentiality_level = dossier.confidentiality_level;
     const updatedDossier = await this.dossierRepository.save(dossier);
+    // Si seuls les collaborateurs ont changé, afterUpdate n'a pas été émis.
+    if (updateDossierDto.collaborator_ids || updateDossierDto.lawyer_id) {
+      await this.dossierChatSync.sync(updatedDossier.id);
+    }
     return this.mapToResponseDto(updatedDossier);
   }
 
@@ -1319,6 +1325,8 @@ export class DossiersService extends BaseServiceV1<Dossier> {
 
     dossier.collaborators.push(employee);
     const saved = await this.dossierRepository.save(dossier);
+    // Seule la relation ManyToMany change : pas d'afterUpdate, synchro explicite.
+    await this.dossierChatSync.sync(saved.id);
 
     return this.mapToResponseDto(saved);
   }
@@ -1367,6 +1375,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       (c) => c.id !== empId,
     );
     const saved = await this.dossierRepository.save(dossier);
+    await this.dossierChatSync.sync(saved.id);
 
     return this.mapToResponseDto(saved);
   }
@@ -1415,6 +1424,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
 
     dossier.collaborators = employees;
     const saved = await this.dossierRepository.save(dossier);
+    await this.dossierChatSync.sync(saved.id);
 
     return this.mapToResponseDto(saved);
   }

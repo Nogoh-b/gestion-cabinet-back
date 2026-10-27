@@ -400,6 +400,97 @@ describe('Document depuis un modèle', () => {
   });
 });
 
+// 25/10/2026 : « rediges un document sous la base de ce modèle facture client »
+// partait en lecture des factures ; le modèle et la fiche se lisent désormais
+// dans la demande et dans la conversation.
+describe('Document depuis un modèle cité dans la conversation', () => {
+  const factureClient = {
+    id: 50, code: 'facture_client', name: 'Facture — Version client', title: 'FACTURE', entity_type: 'facture', variant: 'client',
+    body_html: '<p>Facture {{numero}}</p>', orientation: 'portrait', paper_size: 'a4', font_family: null,
+    header_block_id: null, footer_block_id: null, is_active: true, is_system: true,
+  };
+  const factureStandard = { ...factureClient, id: 51, code: 'facture_standard', name: 'Facture — Standard', variant: 'standard' };
+  const invoice = (id: number, numero: string) => ({ type: 'facture' as const, id, label: `Facture ${numero}` });
+
+  function targets(records: Array<{ type: 'facture'; id: number; label: string }> = []) {
+    const mock: any = targetsMock();
+    mock.load = jest.fn(async (target: any) => target.type === 'facture'
+      ? info({ type: 'facture', table: 'factures', id: target.id, label: target.label, resource: { id: target.id }, mailEntity: { type: 'facture', id: target.id } })
+      : info());
+    mock.recordsFor = jest.fn(async () => records);
+    return mock;
+  }
+
+  const readAnswer = {
+    role: 'assistant',
+    content: 'Facture FAC-2026-0001 — Client : Patrick Talla — Échéance : 23 novembre 2026',
+    refs: [{ entity: 'factures', type: 'facture', id: 7, label: 'FAC-2026-0001' }, { entity: 'dossiers', type: 'dossier', id: 91, label: 'DOS-2026-0001' }],
+  };
+
+  it('la phrase signalée : modèle nommé par son code, facture lue au tour précédent', async () => {
+    const mock = targets();
+    const context = ctx({
+      question: 'rediges un document sous la base de ce modèle facture client',
+      history: [{ role: 'user', content: 'les factures du dossier DOS-2026-0001' }, readAnswer],
+    });
+    (context.llm.draft as jest.Mock).mockResolvedValue('{}');
+    const outcome: any = await new RedigerDocumentSkill(mock, templatesMock([factureStandard, factureClient]) as any).run(context);
+    expect(draftOf(outcome)).toMatchObject({ templateId: 50, entityType: 'facture', entityId: 7 });
+    expect(mock.load).toHaveBeenCalledWith(expect.objectContaining({ type: 'facture', id: 7 }));
+    // Suites : voir le modèle, en choisir un autre, rédiger sans modèle.
+    expect(outcome.followUps.map((item: any) => item.label)).toEqual([
+      'Voir le modèle « Facture — Version client »',
+      'Choisir un autre modèle',
+      '✍️ Rédiger sans modèle',
+    ]);
+    expect(outcome.followUps[0]).toMatchObject({ skill: 'modeles', params: { action: 'read', family: 'pdf', code: 'facture_client' } });
+    expect(outcome.followUps[1]).toMatchObject({ skill: 'rediger_document', question: context.question, params: { chooseTemplate: true } });
+  });
+
+  it('plusieurs factures au dossier : un bouton par facture, sans choix au hasard', async () => {
+    const mock = targets([invoice(7, 'FAC-2026-0001'), invoice(8, 'FAC-2026-0002')]);
+    const context = ctx({ question: 'rédige un document sur la base du modèle facture client' });
+    const outcome: any = await new RedigerDocumentSkill(mock, templatesMock([factureClient]) as any).run(context);
+    expect(outcome.type).toBe('clarify');
+    expect(outcome.markdown).toContain('Laquelle utiliser pour Dossier DOS-2026-0001');
+    expect(outcome.followUps.slice(0, 2).map((item: any) => item.params)).toEqual([
+      { templateId: 50, target: { type: 'facture', id: 7, label: 'Facture FAC-2026-0001' } },
+      { templateId: 50, target: { type: 'facture', id: 8, label: 'Facture FAC-2026-0002' } },
+    ]);
+    expect(outcome.followUps.at(-1)).toMatchObject({ label: 'Choisir un autre modèle', params: { chooseTemplate: true } });
+  });
+
+  it('« ce modèle » : le modèle lu au tour précédent, la seule facture du dossier', async () => {
+    const mock = targets([invoice(7, 'FAC-2026-0001')]);
+    const context = ctx({
+      question: 'rédige un document sur la base de ce modèle',
+      history: [
+        { role: 'user', content: 'montre-moi le modèle facture client' },
+        { role: 'assistant', content: '## Facture — Version client\n\nModèle de document pour les factures' },
+      ],
+    });
+    (context.llm.draft as jest.Mock).mockResolvedValue('{}');
+    const draft = draftOf(await new RedigerDocumentSkill(mock, templatesMock([factureStandard, factureClient]) as any).run(context));
+    expect(draft).toMatchObject({ templateId: 50, entityType: 'facture', entityId: 7 });
+  });
+
+  it('« ce modèle » sans modèle cité plus tôt : les modèles au choix', async () => {
+    const context = ctx({ question: 'rédige un document sur la base de ce modèle' });
+    const outcome: any = await new RedigerDocumentSkill(targets(), templatesMock([factureStandard, factureClient]) as any).run(context);
+    expect(outcome.type).toBe('answer');
+    expect(outcome.markdown).toContain('Je ne retrouve pas le modèle évoqué');
+    expect(outcome.followUps.map((item: any) => item.params.templateId ?? item.params.freeDraft)).toEqual(expect.arrayContaining([50, 51, true]));
+  });
+
+  it('« Choisir un autre modèle » : tous les modèles, la cible gardée', async () => {
+    const context = ctx({ question: 'rediges un document sous la base de ce modèle facture client', params: { chooseTemplate: true } });
+    const outcome: any = await new RedigerDocumentSkill(targets(), templatesMock([factureStandard, factureClient]) as any).run(context);
+    expect(outcome.type).toBe('answer');
+    expect(outcome.followUps.filter((item: any) => item.params.templateId).map((item: any) => item.params.templateId).sort()).toEqual([50, 51]);
+    expect(outcome.followUps[0].params.target).toMatchObject({ type: 'dossier', id: 91 });
+  });
+});
+
 // 21/10/2026 : modifier un Word / PDF déjà classé ; « Classer » en fait la
 // version suivante du même document.
 describe('Modifier un document classé', () => {

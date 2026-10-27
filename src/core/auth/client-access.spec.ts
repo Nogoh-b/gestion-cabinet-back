@@ -531,6 +531,7 @@ describe('Dossiers : projection pour le client (liste blanche)', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
     );
 
     it('GET /dossiers/:id : le client reçoit la projection', async () => {
@@ -634,7 +635,8 @@ describe('MainGateway : connexion temps réel', () => {
       userService as any,
       { verifyAsync: jest.fn(async () => ({ sub: 50, tenantId: 25 })) } as any,
     );
-    gateway.server = { emit: jest.fn() } as any;
+    const emit = jest.fn();
+    gateway.server = { emit, to: jest.fn(() => ({ emit })) } as any;
     const socket = {
       id: 'socket-1',
       handshake: { auth: { token: 'jwt' } },

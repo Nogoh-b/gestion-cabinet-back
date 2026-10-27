@@ -9,6 +9,8 @@ import {
   REUSE_DOSSIER_ID_FIELD,
 } from './dossier-write.handler';
 import { AmbiguityException } from 'src/core/ai-database/write/ambiguity.exception';
+import { initializeNewCabinetWorkflow } from 'src/modules/case-workflow/new-cabinet-workflow';
+import { PlatformSetting } from 'src/modules/platform/entities/platform-setting.entity';
 
 describe('DossierWriteHandler', () => {
   const createHandler = (): DossierWriteHandler => {
@@ -283,5 +285,60 @@ describe('DossierWriteHandler', () => {
     );
 
     expect(workflowEngine).toBe(WorkflowEngine.LEGACY);
+  });
+
+  describe('cabinet nouvellement créé', () => {
+    const engineFor = async (rows: any[], tenantId: number) => {
+      const handler = createHandler();
+      Object.defineProperty(handler, 'caseWorkflowFeatureRepository', {
+        value: {
+          findOne: jest.fn(
+            async ({ where }: any) =>
+              rows.find((r) => r.tenant_id === where.tenant_id) ?? null,
+          ),
+        },
+      });
+      return new TenantContext().run(tenantId, () =>
+        (handler as any).getNewDossierWorkflowEngine(),
+      );
+    };
+    const memoryEm = (rows: any[], setting?: Record<string, unknown>) =>
+      ({
+        findOneBy: async (entity: any, where: any) =>
+          entity === PlatformSetting
+            ? setting
+              ? { key: 'workflow', value: setting }
+              : null
+            : (rows.find((r) => r.tenant_id === where.tenant_id) ?? null),
+        create: (_entity: any, value: any) => ({ ...value }),
+        save: async (_entity: any, value: any) => {
+          rows.push(value);
+          return value;
+        },
+      }) as any;
+
+    it('crée ses dossiers en V2 par défaut', async () => {
+      const rows: any[] = [];
+      await initializeNewCabinetWorkflow(memoryEm(rows), 31);
+
+      expect(await engineFor(rows, 31)).toBe(WorkflowEngine.ACTIONS_V2);
+    });
+
+    it('suit le parcours historique si la plateforme le demande', async () => {
+      const rows: any[] = [];
+      await initializeNewCabinetWorkflow(
+        memoryEm(rows, { new_cabinet_engine: WorkflowEngine.LEGACY }),
+        31,
+      );
+
+      expect(await engineFor(rows, 31)).toBe(WorkflowEngine.LEGACY);
+    });
+
+    it('ne change pas un cabinet existant sans paramétrage', async () => {
+      const rows: any[] = [];
+      await initializeNewCabinetWorkflow(memoryEm(rows), 31);
+
+      expect(await engineFor(rows, 7)).toBe(WorkflowEngine.LEGACY);
+    });
   });
 });

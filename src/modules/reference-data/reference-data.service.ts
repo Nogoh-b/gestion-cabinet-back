@@ -1,7 +1,10 @@
 import { PERMISSION_DEFINITIONS } from 'src/core/auth/seeders/permission.seeder';
 import { PlatformAuditContext } from '../platform/audit/platform-audit.context';
 import { CURRENCIES } from './legacy-currencies';
-import { Conversation as ChatConversation } from '../chat/entities/conversation.entity';
+import {
+  Conversation as ChatConversation,
+  ConversationType,
+} from '../chat/entities/conversation.entity';
 import { TenantContext } from 'src/core/tenant/tenant.context';
 import {
   BadRequestException,
@@ -24,6 +27,7 @@ import {
   ReferenceTenantBinding,
 } from './entities/reference-data.entity';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
+import { initializeNewCabinetWorkflow } from '../case-workflow/new-cabinet-workflow';
 
 export const STANDARD_PROFILE_ID = '8e895d44-7ed0-4e54-8798-000000000001';
 export const BASELINE_REVISION_ID = '8e895d44-7ed0-4e54-8798-000000000002';
@@ -661,6 +665,8 @@ export class ReferenceDataService implements OnApplicationBootstrap {
           .map((c) => itemId(c.item)),
         em,
       );
+      // After the profile: a "Parcours dossier" item it carries wins.
+      await initializeNewCabinetWorkflow(em, cabinetId);
       const cabinet = await em.findOneByOrFail(Cabinet, { id: cabinetId });
       if (
         !(await em.findOneBy(ChatConversation, {
@@ -673,6 +679,7 @@ export class ReferenceDataService implements OnApplicationBootstrap {
           tenant_id: cabinetId,
           name: cabinet.default_chat_group_name,
           isGroup: true,
+          type: ConversationType.GLOBAL,
           participants: [],
         });
     };

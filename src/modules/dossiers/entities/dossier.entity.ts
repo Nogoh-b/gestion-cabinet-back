@@ -3,6 +3,7 @@ import {
   BusinessColumn,
 } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
+import { getCurrentRequestUser } from 'src/core/security/request-user.context';
 import {
   ClientDecision,
   DossierStatus,
@@ -420,6 +421,10 @@ export class Dossier extends BaseEntity {
     group: 'communication',
   })
   conversation_id?: number;
+
+  /** Employé ayant ouvert le dossier : membre de droit de son chat. */
+  @Column({ name: 'created_by_id', type: 'int', nullable: true })
+  created_by_id?: number | null;
 
   @Column({ name: 'final_decision', type: 'text', nullable: true })
   @BusinessColumn({
@@ -1204,5 +1209,8 @@ export class Dossier extends BaseEntity {
   @BeforeInsert()
   beforeCreate() {
     this.is_archived = this.is_archived ?? false;
+    // Renseigné pour toutes les voies de création (formulaire, assistant IA).
+    this.created_by_id =
+      this.created_by_id ?? getCurrentRequestUser()?.userId ?? null;
   }
 }

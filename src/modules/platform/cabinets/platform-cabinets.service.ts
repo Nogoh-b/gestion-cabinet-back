@@ -5,7 +5,9 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { randomUUID } from 'crypto';
 import { TenantContext } from 'src/core/tenant/tenant.context';
+import { WorkflowEngine } from 'src/modules/case-workflow/case-workflow.enums';
 import { AuthService } from 'src/core/auth/auth.service';
 import { ActivitiesUserService } from 'src/modules/iam/activities-user/activities-user.service';
 import { PlansService } from 'src/modules/plans/plans.service';
@@ -388,6 +390,80 @@ export class PlatformCabinetsService {
       after: await this.userSnapshot(cabinetId, userId),
     });
     return { success: true };
+  }
+
+  // ── Parcours dossier ──────────────────────────────────────────────────────
+
+  /**
+   * Parcours appliqué aux prochains dossiers du cabinet (même règle que la
+   * création d'un dossier : `enabled && default_for_new_dossiers` → V2) et
+   * répartition des dossiers existants.
+   */
+  async workflow(cabinetId: number) {
+    await this.ensureCabinet(cabinetId);
+    const [feature] = await this.db.query(
+      `SELECT enabled, default_for_new_dossiers FROM case_workflow_features
+        WHERE tenant_id = ? AND deleted_at IS NULL`,
+      [cabinetId],
+    );
+    const counts: Array<{ engine: string; total: string }> = await this.db.query(
+      `SELECT workflow_engine AS engine, COUNT(*) AS total FROM dossiers
+        WHERE tenant_id = ? GROUP BY workflow_engine`,
+      [cabinetId],
+    );
+    const enabled = !!Number(feature?.enabled ?? 0);
+    const dossiers = { [WorkflowEngine.LEGACY]: 0, [WorkflowEngine.ACTIONS_V2]: 0 };
+    for (const c of counts) {
+      if (c.engine in dossiers) dossiers[c.engine as WorkflowEngine] = Number(c.total);
+    }
+    return {
+      configured: !!feature,
+      enabled,
+      new_dossiers_engine:
+        enabled && !!Number(feature.default_for_new_dossiers)
+          ? WorkflowEngine.ACTIONS_V2
+          : WorkflowEngine.LEGACY,
+      dossiers,
+    };
+  }
+
+  /**
+   * Choisit le parcours des prochains dossiers. Les dossiers existants gardent
+   * le leur ; repasser en LEGACY laisse le parcours V2 actif pour ceux déjà en V2.
+   */
+  async setWorkflow(cabinetId: number, engine: WorkflowEngine) {
+    const before = await this.workflow(cabinetId);
+    const v2 = engine === WorkflowEngine.ACTIONS_V2;
+    // Ligne unique par cabinet, y compris supprimée (UQ sur tenant_id).
+    const [row] = await this.db.query(
+      'SELECT id FROM case_workflow_features WHERE tenant_id = ?',
+      [cabinetId],
+    );
+    if (row) {
+      await this.db.query(
+        `UPDATE case_workflow_features
+            SET enabled = ${v2 ? '1' : 'enabled'}, default_for_new_dossiers = ?, deleted_at = NULL
+          WHERE id = ?`,
+        [v2 ? 1 : 0, row.id],
+      );
+    } else {
+      await this.db.query(
+        `INSERT INTO case_workflow_features (id, tenant_id, enabled, default_for_new_dossiers)
+         VALUES (?, ?, 1, ?)`,
+        [randomUUID(), cabinetId, v2 ? 1 : 0],
+      );
+    }
+    const after = await this.workflow(cabinetId);
+    PlatformAuditContext.set({
+      action: 'cabinet.workflow_engine',
+      targetType: 'cabinet',
+      targetId: cabinetId,
+      cabinetId,
+      summary: `Nouveaux dossiers en ${v2 ? 'traitement orienté actions (V2)' : 'parcours historique'}`,
+      before,
+      after,
+    });
+    return after;
   }
 
   // ── Communication ─────────────────────────────────────────────────────────

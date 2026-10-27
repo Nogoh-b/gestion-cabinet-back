@@ -71,6 +71,21 @@ export class SendMessageDto {
   @IsOptional()
   @IsArray()
   references?: ChatReferenceDto[];
+
+  @ApiPropertyOptional({
+    description:
+      "Identifiant provisoire du message côté client, renvoyé tel quel pour remplacer l'affichage optimiste",
+  })
+  @IsOptional()
+  @IsString()
+  clientTempId?: string;
+}
+
+export class CreateDirectConversationDto {
+  @ApiProperty({ description: 'Collaborateur avec qui discuter', example: 4 })
+  @IsNumber()
+  @IsNotEmpty()
+  employeeId: number;
 }
 
 export interface ChatReferenceDto {

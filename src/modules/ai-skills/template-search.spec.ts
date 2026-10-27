@@ -1,5 +1,8 @@
 /// <reference types="jest" />
-import { confidentMatch, designatingWords, designationPart, humanVariable, mailUsage, pdfUsage, rankTemplates, readableText } from './template-search';
+import {
+  confidentMatch, designatingWords, designationPart, humanVariable, mailUsage, pdfUsage, rankTemplates, readableText,
+  refersToEarlierTemplate, templateCitedEarlier, templateCitedIn,
+} from './template-search';
 
 const catalog = [
   { code: 'audience_convocation', name: 'Audience — Avis au client', usage: 'pour les audiences' },
@@ -64,5 +67,35 @@ describe('texte lisible', () => {
   it('décrit l’usage sans vocabulaire technique', () => {
     expect(pdfUsage('audience')).toBe('les audiences');
     expect(mailUsage('dossier', 'client')).toBe('sujet : dossiers, envoyé aux clients');
+  });
+});
+
+// 25/10/2026 : « rédige un document sous la base de ce modèle facture client ».
+describe('modèle cité dans la conversation', () => {
+  it('reconnaît un renvoi à un modèle déjà cité', () => {
+    for (const question of ['rédige un document sur la base de ce modèle', 'utilise le même modèle', 'remplis le modèle ci-dessus', 'prends celui-ci']) {
+      expect(refersToEarlierTemplate(question)).toBe(true);
+    }
+    expect(refersToEarlierTemplate('liste les modèles de documents')).toBe(false);
+  });
+
+  it('retrouve un modèle cité par son code ou son nom complet', () => {
+    expect(templateCitedIn(catalog, 'rediges un document sous la base de ce modèle facture client').entry?.code).toBe('facture_client');
+    expect(templateCitedIn(catalog, '📄 Modèle utilisé : Audience — Avis au client').entry?.code).toBe('audience_convocation');
+    // Deux noms de même longueur (une liste) : cité, mais aucun choisi au hasard.
+    expect(templateCitedIn(catalog, '- Facture standard\n- Facture client')).toEqual({ cited: true });
+    expect(templateCitedIn(catalog, 'liste les factures du dossier')).toEqual({ cited: false });
+  });
+
+  it('« ce modèle » : le dernier modèle cité, le message le plus récent d’abord', () => {
+    const history = [
+      { role: 'user', content: 'montre le modèle Courrier général' },
+      { role: 'assistant', content: '## Facture client\n\nModèle de document pour les factures' },
+      { role: 'user', content: 'merci' },
+    ];
+    expect(templateCitedEarlier(catalog, history)?.code).toBe('facture_client');
+    // Le message le plus récent qui cite des modèles est une liste : aucun choix.
+    expect(templateCitedEarlier(catalog, [...history, { role: 'assistant', content: 'Facture standard, Facture client' }])).toBeUndefined();
+    expect(templateCitedEarlier(catalog, [])).toBeUndefined();
   });
 });

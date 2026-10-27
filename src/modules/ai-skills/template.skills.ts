@@ -13,7 +13,7 @@ import { normalizeSkillText } from 'src/core/ai-database/skills/skill-suggestion
 import { parseLlmJson } from 'src/core/ai-database/skills/skill-helpers';
 import {
   confidentMatch, designatingWords, designationPart, editsTemplate, humanVariable, mailUsage, pdfUsage, rankTemplates, readableText,
-  TEMPLATE_EDIT_PATTERN,
+  refersToEarlierTemplate, TEMPLATE_EDIT_PATTERN, templateCitedEarlier, templateCitedIn,
 } from './template-search';
 import { AiDatabasePermissionService } from 'src/core/ai-database/ai-database-permission.service';
 import { PdfTemplatesService } from '../pdf-templates/pdf-templates.service';
@@ -126,7 +126,9 @@ function explicitAction(question: string): TemplateAction | null {
   if (create >= 0 && (update < 0 || create < update)) return 'create';
   if (update >= 0 || editsTemplate(text)) return 'update';
   if (/liste|lister|quels\b|quelles\b|tous les|toutes les/.test(text)) return 'list';
-  if (/lis|voir|vois|affiche|montre|detail|contenu|ouvre|quel est/.test(text)) return 'read';
+  // Chercher un modèle par son nom (« cherche le modèle facture client », « y a-t-il un
+  // modèle de convocation ? ») : le plus proche est montré, sinon les modèles voisins.
+  if (/lis|voir|vois|affiche|montre|detail|contenu|ouvre|quel est|cherche|trouve|consulte|y a t il|existe t il|avons nous|avez vous/.test(text)) return 'read';
   return null;
 }
 
@@ -168,7 +170,9 @@ function extractCode(question: string, params: Record<string, any>): string | nu
   // Mots composés courants (« e-mail », « en-tête ») : jamais des codes.
   const tokens = [...question.matchAll(/\b([a-z][a-z0-9]*(?:[_-][a-z0-9]+)+)\b/gi)]
     .map((match) => match[1])
-    .filter((token) => !/^(?:e-mails?|en-t[eê]tes?|peut-[eê]tre|c-[aà]-d)$/i.test(token));
+    .filter((token) => !/^(?:e-mails?|en-t[eê]tes?|peut-[eê]tre|c-[aà]-d)$/i.test(token))
+    // « montre-moi », « ouvre-le » : un verbe et son pronom, pas un code.
+    .filter((token) => !/^[a-zà-ÿ]+-(?:moi|nous|vous|toi|le|la|les|lui|leur|en|y)$/i.test(token));
   return tokens.find((token) => token.includes('_')) ?? tokens[0] ?? null;
 }
 
@@ -316,7 +320,11 @@ export class ModelesSkill implements AiSkillHandler {
       // est un mot vide du détecteur, un déclencheur « modèle de X » retomberait
       // sur X seul et volerait les autres compétences.
       '/\\bliste(?:r)? (?:les |des |tous les |toutes les )?(?:modeles?|blocs?)\\b/',
-      '/\\b(?:lis|lire|lisez|voir|vois|montre|montrer|affiche|afficher) (?:le |la |les |un |une |des |ce |cette |mon |ma |mes )?(?:modele|bloc)/',
+      // « montre-moi le modèle », « cherche le modèle facture client », « trouve un modèle de facture ».
+      '/\\b(?:lis|lire|lisez|voir|vois|montre|montrer|affiche|afficher|ouvre|ouvrir|cherche|chercher|recherche|rechercher|trouve|trouver|retrouve|retrouver|consulte|consulter)(?: moi| nous)? (?:le |la |les |un |une |des |ce |cette |mon |ma |mes |nos )?(?:modele|bloc|template|gabarit)/',
+      // « Quels modèles de facture avons-nous ? », « y a-t-il un modèle de convocation ? ».
+      '/\\b(?:quels?|quelles?) (?:sont )?(?:les |nos |vos |mes )?(?:modeles?|templates?|gabarits?|blocs?)\\b/',
+      '/\\b(?:y a t il|existe t il|avons nous|avez vous|as tu|a t on|on a|ai je) (?:deja )?(?:un |une |des |le |les )?(?:modeles?|templates?|gabarits?)\\b/',
       // « je veux modifier un modèle de document » : l'article indéfini compte aussi.
       // Renommer, désactiver, réactiver un modèle : modifications aussi (sinon l'écriture
       // générique cherchait « Audience — Compte-rendu » au hasard dans les tables).
@@ -457,7 +465,9 @@ export class ModelesSkill implements AiSkillHandler {
     // Le nom suffit (le code reste accepté) ; la précision donnée après une question l'emporte.
     const request = splitRequest(ctx.question);
     const query = designationPart(request.precision || request.base);
-    const hit = confidentMatch(catalog, query, wanted) ?? (await this.matchElsewhere(ctx, families, query, wanted, VIEW_CODES));
+    const hit = confidentMatch(catalog, query, wanted)
+      ?? (await this.matchElsewhere(ctx, families, query, wanted, VIEW_CODES))
+      ?? this.fromHistory(ctx, catalog, query, wanted);
     if (hit) return this.describe(hit.family, hit.item);
     return this.chooseTemplate('read', families, catalog, `${query} ${wanted ?? ''}`, request.base);
   }
@@ -572,6 +582,16 @@ export class ModelesSkill implements AiSkillHandler {
       type: 'answer',
       markdown: lines.join('\n').trim(),
       followUps: [
+        // Modèle de document : s'en servir est la suite la plus courante.
+        ...(family === 'pdf' && item.id
+          ? [{
+              label: 'Générer le document depuis ce modèle',
+              skill: 'rediger_document',
+              question: `Rédige un document à partir du modèle « ${item.name} »`,
+              params: { templateId: item.id },
+              badge: 'document' as const,
+            }]
+          : []),
         {
           label: 'Modifier ce modèle',
           skill: 'modeles',
@@ -579,9 +599,20 @@ export class ModelesSkill implements AiSkillHandler {
           params: { action: 'update', family, code: item.code },
           badge: FAMILY_TAG[family],
         },
-        { label: 'Voir tous les modèles', skill: 'modeles', question: 'liste les modèles', params: { action: 'list', family: 'all' } },
+        { label: 'Choisir un autre modèle', skill: 'modeles', question: 'liste les modèles', params: { action: 'list', family } },
       ],
     };
+  }
+
+  /**
+   * « Montre ce modèle », « modifie le même modèle » : le modèle cité plus tôt
+   * dans la conversation, quand la demande ne le nomme pas elle-même.
+   */
+  private fromHistory(ctx: AiSkillContext, catalog: CatalogEntry[], query: string, wanted: string | null): CatalogEntry | null {
+    // Un code connu a déjà été retrouvé ; un code inconnu ne désigne rien.
+    if (!refersToEarlierTemplate(ctx.question) || (wanted && catalog.some((entry) => norm(entry.code) === norm(wanted)))) return null;
+    if (designatingWords(query).length && templateCitedIn(catalog, query).cited) return null;
+    return templateCitedEarlier(catalog, ctx.history) ?? null;
   }
 
   // ── Créer / modifier ──────────────────────────────────────────────────────
@@ -658,7 +689,7 @@ export class ModelesSkill implements AiSkillHandler {
     if (family === 'all') {
       // Famille non précisée : le nom du modèle la donne, sinon on la demande.
       const catalog = await this.catalogOf(['pdf', 'mail', 'bloc']);
-      const hit = confidentMatch(catalog, query, wanted);
+      const hit = confidentMatch(catalog, query, wanted) ?? this.fromHistory(ctx, catalog, query, wanted);
       if (!hit) {
         if (designatingWords(query).length || wanted) return this.chooseTemplate('update', ['pdf', 'mail', 'bloc'], catalog, `${query} ${wanted ?? ''}`, request.base);
         return this.clarify(
@@ -679,7 +710,9 @@ export class ModelesSkill implements AiSkillHandler {
     if (!target && wanted) target = await this.findByCode(family, wanted);
     if (!target) {
       const catalog = await this.catalogOf([family]);
-      const hit = confidentMatch(catalog, query, wanted) ?? (await this.matchElsewhere(ctx, [family], query, wanted, EDIT_CODES));
+      const hit = confidentMatch(catalog, query, wanted)
+        ?? (await this.matchElsewhere(ctx, [family], query, wanted, EDIT_CODES))
+        ?? this.fromHistory(ctx, catalog, query, wanted);
       // Rien de net : jamais de choix au hasard, on propose les modèles les plus proches.
       if (!hit) return this.chooseTemplate('update', [family], catalog, `${query} ${wanted ?? ''}`, request.base || undefined);
       family = hit.family;

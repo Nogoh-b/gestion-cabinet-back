@@ -1,6 +1,7 @@
 // src/core/ai-database/recommended-actions.ts
 import type { AiSkillCatalogItem, AiSkillFollowUp, AiSkillTargetType } from './skills/ai-skill.types';
 import { canonicalTargetType, parseLlmJson } from './skills/skill-helpers';
+import { mentionsTemplate, TEMPLATE_SKILLS } from './skills/template-routing';
 
 /**
  * Actions recommandées sous chaque réponse du chat (2026-10-21) : compétences,
@@ -192,7 +193,11 @@ export function buildActionCandidates(ctx: ActionContext): ActionCandidate[] {
   const candidates: ActionCandidate[] = [];
   const seen = new Set<string>();
   const push = (candidate: Omit<ActionCandidate, 'id'>) => {
-    const key = `${candidate.skill ?? candidate.kind}:${candidate.references?.map((ref) => `${ref.type}#${ref.id}`).join(',') ?? ''}:${candidate.skill ? '' : candidate.prompt}`;
+    // L'action demandée à la compétence (`read`, `list` des modèles) et ses options
+    // (`chooseTemplate`, `freeDraft`) distinguent deux boutons de la même compétence.
+    const params = candidate.skillParams ?? {};
+    const mode = `${String(params.action ?? '')}${Object.keys(params).filter((name) => params[name] === true).sort().join('+')}`;
+    const key = `${candidate.skill ?? candidate.kind}:${candidate.references?.map((ref) => `${ref.type}#${ref.id}`).join(',') ?? ''}:${candidate.skill ? mode : candidate.prompt}`;
     if (seen.has(key)) return;
     seen.add(key);
     candidates.push({ ...candidate, id: `c${candidates.length + 1}` });
@@ -226,6 +231,34 @@ export function buildActionCandidates(ctx: ActionContext): ActionCandidate[] {
         prompt: `${ctx.question}`.trim() || text.prompt,
         ...(record && { skillParams: { target: referenceOf(record) }, references: [referenceOf(record)] }),
         score: 95,
+      });
+    }
+  }
+
+  // 2 bis. Demande sur un modèle traitée hors des compétences de modèle (lecture…) :
+  // s'en servir pour produire le document, le voir, ou en choisir un autre.
+  if (mentionsTemplate(ctx.question) && ctx.skill !== TEMPLATE_SKILLS.produce && ctx.skill !== TEMPLATE_SKILLS.manage) {
+    const produce = byCode.get(TEMPLATE_SKILLS.produce);
+    const record = produce && ctx.records.find((item) => produce.targets.includes(item.type));
+    if (produce) {
+      push({
+        kind: 'skill',
+        skill: TEMPLATE_SKILLS.produce,
+        label: record ? `Générer le document depuis le modèle · ${record.label}` : 'Générer le document depuis le modèle',
+        prompt: ctx.question,
+        ...(record && { skillParams: { target: referenceOf(record) }, references: [referenceOf(record)] }),
+        score: 92,
+      });
+    }
+    if (byCode.has(TEMPLATE_SKILLS.manage)) {
+      push({ kind: 'skill', skill: TEMPLATE_SKILLS.manage, label: 'Voir le modèle', prompt: ctx.question, skillParams: { action: 'read' }, score: 90 });
+      push({
+        kind: 'skill',
+        skill: TEMPLATE_SKILLS.manage,
+        label: 'Choisir un autre modèle',
+        prompt: 'Liste les modèles de documents',
+        skillParams: { action: 'list', family: 'pdf' },
+        score: 88,
       });
     }
   }

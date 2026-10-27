@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -28,6 +29,7 @@ import {
   GrantFreePeriodDto,
   PlatformCabinetQueryDto,
   SuspendCabinetDto,
+  UpdateCabinetWorkflowDto,
 } from './dto/platform-cabinet.dto';
 
 const CABINET = { targetType: 'cabinet', cabinetParam: 'id' };
@@ -69,6 +71,23 @@ export class PlatformCabinetsController {
   @ApiOperation({ summary: 'Utilisateurs du cabinet' })
   users(@Param('id', ParseIntPipe) id: number) {
     return this.service.users(id);
+  }
+
+  @Get(':id/workflow')
+  @ApiOperation({ summary: 'Parcours des nouveaux dossiers du cabinet' })
+  workflow(@Param('id', ParseIntPipe) id: number) {
+    return this.service.workflow(id);
+  }
+
+  @Patch(':id/workflow')
+  @PlatformRoles('support')
+  @PlatformAudit({ action: 'cabinet.workflow_engine', ...CABINET })
+  @ApiOperation({ summary: 'Choisir le parcours des nouveaux dossiers (dossiers existants inchangés)' })
+  setWorkflow(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCabinetWorkflowDto,
+  ) {
+    return this.service.setWorkflow(id, dto.new_dossiers_engine);
   }
 
   // ── Actions abonnement ────────────────────────────────────────────────────

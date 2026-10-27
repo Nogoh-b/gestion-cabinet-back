@@ -28,6 +28,8 @@ describe('MentionSearchService', () => {
   /** Cabinet et appelant vus par chaque recherche au moment de l'appel. */
   let seen: Array<{ type: string; tenantId: number; userId?: number }>;
   let service: MentionSearchService;
+  /** Modèles : listés en entier par leur module, filtrés par la recherche @. */
+  let templates: Record<string, { findAll: jest.Mock }>;
 
   const page = (rows: any[], total = rows.length) => ({
     data: rows,
@@ -117,6 +119,19 @@ describe('MentionSearchService', () => {
         ]),
       },
     };
+    templates = {
+      pdf: {
+        findAll: jest.fn(async () => [
+          { id: 1, tenant_id: 1, code: 'facture_client', name: 'Facture client', entity_type: 'facture' },
+          { id: 2, tenant_id: 8, code: 'attestation_dossier', name: 'Attestation de dossier', entity_type: 'dossier' },
+        ]),
+      },
+      mail: {
+        findAll: jest.fn(async () => [
+          { id: 3, tenant_id: 1, code: 'avis_audience', name: 'Avis d’audience', subject: 'Votre prochaine audience' },
+        ]),
+      },
+    };
     const s = services as any;
     service = new MentionSearchService(
       s.customers,
@@ -128,7 +143,40 @@ describe('MentionSearchService', () => {
       s.documents,
       s.suppliers,
       s.referrers,
+      templates.pdf as any,
+      templates.mail as any,
     );
+  });
+
+  it('cherche les modèles de documents et de mails, globaux compris', async () => {
+    const withTemplates = {
+      ...user,
+      permissions: ['view_pdf_templates', 'view_mail_templates'],
+    };
+    const groups = await service.search({ q: 'Attéstation', limit: 3 }, withTemplates);
+    expect(groups.find((group) => group.type === 'modele_document')).toEqual({
+      type: 'modele_document',
+      items: [
+        {
+          id: 2,
+          label: 'Attestation de dossier',
+          sublabel: 'Document · pour les dossiers',
+          data: { numero: 'attestation_dossier' },
+        },
+      ],
+      hasMore: false,
+    });
+
+    const mails = await service.search({ q: 'audience', limit: 3 }, withTemplates);
+    // Modèle global (tenant 1) : visible de chaque cabinet.
+    expect(mails.find((group) => group.type === 'modele_mail')?.items[0]).toMatchObject({
+      id: 3,
+      label: 'Avis d’audience',
+      sublabel: 'Votre prochaine audience',
+    });
+    expect(
+      (await service.search({ q: 'facture', limit: 3 }, user)).map((group) => group.type),
+    ).not.toContain('modele_document');
   });
 
   const allMocks = () =>
@@ -221,18 +269,19 @@ describe('MentionSearchService', () => {
   });
 
   it("l'administrateur et SUPER_ADMIN voient toutes les catégories", async () => {
+    // « do » : un modèle de document (« Attestation de dossier »), aucun mail.
     expect(
       await service.search(
         { q: 'do', limit: 3 },
         { ...user, role: 'admin', permissions: [] },
       ),
-    ).toHaveLength(9);
+    ).toHaveLength(10);
     expect(
       await service.search(
         { q: 'do', limit: 3 },
         { ...user, permissions: ['SUPER_ADMIN'] },
       ),
-    ).toHaveLength(9);
+    ).toHaveLength(10);
   });
 
   it("reste dans le cabinet et l'appelant de chaque requête, même en parallèle", async () => {

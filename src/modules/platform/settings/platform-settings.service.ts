@@ -11,6 +11,7 @@ import {
   isSidebarStyle,
   isThemeName,
 } from 'src/modules/settings/appearance.constants';
+import { WorkflowEngine } from 'src/modules/case-workflow/case-workflow.enums';
 
 /** Valeurs par défaut (et typage) des paramètres plateforme modifiables. */
 export const PLATFORM_SETTING_DEFAULTS = {
@@ -46,6 +47,13 @@ export const PLATFORM_SETTING_DEFAULTS = {
   },
   /** Apparence copiée sur chaque nouveau cabinet (puis sur ses membres). */
   appearance: { ...APPEARANCE_FALLBACK } as AppearanceDefaults,
+  /**
+   * Parcours des dossiers d'un nouveau cabinet, si son profil de référentiel
+   * ne définit pas « Parcours dossier ». Les cabinets existants ne changent pas.
+   */
+  workflow: {
+    new_cabinet_engine: WorkflowEngine.ACTIONS_V2 as WorkflowEngine,
+  },
 };
 
 export type PlatformSettings = typeof PLATFORM_SETTING_DEFAULTS;
@@ -128,6 +136,13 @@ export class PlatformSettingsService {
         throw new BadRequestException('Préfixe de reçu : 1 à 10 lettres ou chiffres.');
       }
       value = { ...value, prefix };
+    }
+    if (
+      key === 'workflow' &&
+      value.new_cabinet_engine !== undefined &&
+      !Object.values(WorkflowEngine).includes(value.new_cabinet_engine)
+    ) {
+      throw new BadRequestException('Parcours des nouveaux cabinets invalide.');
     }
     if (key === 'appearance') {
       const invalid = (field: string) => {

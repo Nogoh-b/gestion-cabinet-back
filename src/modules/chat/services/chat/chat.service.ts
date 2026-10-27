@@ -1,12 +1,15 @@
 // src/chat/services/chat.service.ts
-import { plainToInstance } from 'class-transformer';
-import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
+import {
+  Employee,
+  EmployeeStatus,
+} from 'src/modules/agencies/employee/entities/employee.entity';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { conversationTypeBackfill } from '../../conversation-type.backfill';
 import { In, Repository } from 'typeorm';
 import {
   BadRequestException,
-  forwardRef,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,14 +22,138 @@ import {
   CreateGroupDto,
   ChatReferenceDto,
 } from '../../dto/create-conversation.dto';
-import { MessageResponseDto } from '../../dto/message-response.dto';
-import { Conversation } from '../../entities/conversation.entity';
+import {
+  Conversation,
+  ConversationType,
+} from '../../entities/conversation.entity';
 import { Message } from '../../entities/messages.entity';
 import { MessageRead } from '../../entities/message-read.entity';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
 import { Attachment } from '../../entities/attachment.entity';
 import { FilesUtil } from 'src/core/shared/utils/file.util';
 import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+
+/** Taille maximale d'une pièce jointe (alignée sur la limite multer). */
+export const CHAT_MAX_FILE_SIZE = 50 * 1024 * 1024;
+
+/** Types MIME acceptés en pièce jointe du chat. */
+const ALLOWED_MIME_PREFIXES = ['image/', 'video/', 'audio/', 'text/'];
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'application/rtf',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/octet-stream',
+]);
+
+const MESSAGES_PAGE_SIZE = 50;
+
+export type LastMessageStatus = 'sent' | 'delivered' | 'read';
+
+/** Collaborateur réduit aux champs affichables (jamais de jeton ni de hash). */
+export interface ChatEmployee {
+  id: number;
+  full_name?: string;
+  username?: string;
+  is_online?: boolean;
+  lastSeen?: string | null;
+  position?: string;
+  status?: number;
+  user?: {
+    id: number;
+    username?: string;
+    email?: string;
+    first_name?: string;
+    last_name?: string;
+    full_name?: string;
+    is_online?: boolean;
+    lastSeen?: string | null;
+  };
+}
+
+export function toChatEmployee(employee?: Employee | null): ChatEmployee {
+  if (!employee) return { id: 0 };
+  const user = employee.user;
+  return {
+    id: employee.id,
+    full_name: user?.full_name || '',
+    username: user?.username,
+    is_online: !!user?.is_online,
+    lastSeen: user?.lastSeen ?? null,
+    position: employee.position,
+    status: employee.status,
+    user: user
+      ? {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          full_name: user.full_name,
+          is_online: user.is_online,
+          lastSeen: user.lastSeen ?? null,
+        }
+      : undefined,
+  };
+}
+
+/** Message tel qu'envoyé au front (HTTP et socket). */
+export interface ChatMessagePayload {
+  id: number;
+  content: string;
+  conversationId: number;
+  createdAt: Date;
+  sender: ChatEmployee;
+  sender_name: string;
+  hasAttachments: boolean;
+  attachments: Attachment[];
+  references: ChatReferenceDto[];
+  reads: Array<{
+    id: number;
+    reader: number;
+    isRead: boolean;
+    isReceive: boolean;
+    readAt: Date;
+  }>;
+  isRead: boolean;
+  clientTempId?: string;
+}
+
+/** Conversation telle qu'affichée dans la liste du front. */
+export type ConversationSummary = {
+  id: number;
+  name: string;
+  isGroup: boolean;
+  type: ConversationType;
+  createdAt: Date;
+  lastMessageAt: Date;
+  lastMessageData?: Conversation['lastMessageData'];
+  participants: ChatEmployee[];
+  lastMessage?: Conversation['lastMessageData'];
+  unreadCount: number;
+  dossier?: {
+    id: number;
+    dossier_number: string;
+    object: string | null;
+    status: number;
+    is_closed: boolean;
+  };
+};
+
+/** Accusés modifiés pour un lecteur : par conversation, les messages concernés. */
+export interface ReceiptUpdate {
+  conversationId: number;
+  messageIds: number[];
+  at: string;
+}
 
 @Injectable()
 export class ChatService {
@@ -42,9 +169,7 @@ export class ChatService {
     private userRepository: Repository<Employee>,
     @InjectRepository(Attachment)
     private attachmentRepository: Repository<Attachment>,
-  ) {
-    console.log(forwardRef);
-  }
+  ) {}
 
   private sanitizeReferences(
     references?: ChatReferenceDto[],
@@ -124,34 +249,117 @@ export class ChatService {
       });
   }
 
+  // ────────────────────────────────────────────────────────────────────────────
+  // ACCÈS
+  // ────────────────────────────────────────────────────────────────────────────
+
+  /** true si l'employé est participant de la conversation (cabinet courant). */
+  async isParticipant(
+    conversationId: number,
+    userId: number,
+  ): Promise<boolean> {
+    if (!conversationId || !userId) return false;
+    const qb = this.conversationRepository
+      .createQueryBuilder('conversation')
+      .innerJoin(
+        'conversation.participants',
+        'participant',
+        'participant.id = :userId',
+        { userId: Number(userId) },
+      )
+      .where('conversation.id = :id', { id: Number(conversationId) });
+    addTenantCondition(qb, 'conversation');
+    return (await qb.getCount()) > 0;
+  }
+
+  /**
+   * Refuse l'accès à une conversation dont l'appelant n'est pas (ou plus)
+   * participant : un membre retiré d'un dossier perd ainsi lecture et écriture.
+   */
+  async assertParticipant(
+    conversationId: number,
+    userId: number,
+  ): Promise<void> {
+    if (!(await this.isParticipant(conversationId, userId))) {
+      throw new ForbiddenException(
+        'Vous ne faites pas partie de cette conversation.',
+      );
+    }
+  }
+
+  async getDossierConversationId(dossierId: number): Promise<number | null> {
+    if (!dossierId) return null;
+    const qb = this.conversationRepository
+      .createQueryBuilder('conversation')
+      .innerJoin('conversation.dossier', 'dossier', 'dossier.id = :dossierId', {
+        dossierId,
+      })
+      .select('conversation.id', 'id');
+    addTenantCondition(qb, 'conversation');
+    const row = await qb.getRawOne<{ id: number }>();
+    return row?.id ? Number(row.id) : null;
+  }
+
+  async getParticipantIds(conversationId: number): Promise<number[]> {
+    const rows = await this.conversationRepository
+      .createQueryBuilder()
+      .relation(Conversation, 'participants')
+      .of(conversationId)
+      .loadMany<Employee>();
+    return rows.map((p) => p.id);
+  }
+
+  async getParticipantIdsExcluding(
+    conversationId: number,
+    excludeUserId: number,
+  ): Promise<number[]> {
+    const ids = await this.getParticipantIds(conversationId);
+    return ids.filter((id) => id !== excludeUserId);
+  }
+
+  /** Reclasse les conversations du cabinet courant (global, dossier, direct). */
+  async normalizeConversationTypes(): Promise<void> {
+    for (const sql of conversationTypeBackfill('c.`tenant_id` = ?')) {
+      await this.conversationRepository.query(sql, [getCurrentTenantId()]);
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // CRÉATION
+  // ────────────────────────────────────────────────────────────────────────────
+
+  private async findActiveEmployees(ids: number[]): Promise<Employee[]> {
+    const unique = [...new Set(ids.map(Number).filter(Boolean))];
+    if (!unique.length) return [];
+    const employees = await this.userRepository.find({
+      where: { id: In(unique) },
+    });
+    return employees.filter(
+      (e) =>
+        e.status !== EmployeeStatus.INACTIVE &&
+        e.status !== EmployeeStatus.SUSPENDED,
+    );
+  }
+
   async createConversation(
     dto: CreateConversationDto,
     creatorId: number,
   ): Promise<Conversation> {
-    const ids = [...dto.participantIds, creatorId];
-    console.log('Creating conversation with DTO:', dto, 'and creatorId:', [
-      ...dto.participantIds,
-      creatorId,
-    ]);
-    const participants = await this.userRepository.findByIds(ids);
-
-    if (participants.length !== ids.length) {
-      // throw new NotFoundException('Certains utilisateurs n\'existent pas');
+    const others = (dto.participantIds ?? [])
+      .map(Number)
+      .filter((id) => id && id !== Number(creatorId));
+    if (!dto.isGroup && !dto.name && others.length === 1) {
+      return this.findOrCreateDirect(creatorId, others[0]);
     }
-
-    const conversation = this.conversationRepository.create({
-      name: dto.name,
-      isGroup: dto.isGroup || false,
-      participants,
-    });
-
-    return await this.conversationRepository.save(conversation);
+    return this.createGroup(
+      { name: dto.name?.trim() || 'Nouveau groupe', participantIds: others },
+      creatorId,
+    );
   }
 
   /**
    * Conversation directe (non groupe) entre deux collaborateurs : la
-   * conversation existante, sinon une nouvelle. `createConversation` en crée
-   * toujours une nouvelle.
+   * conversation existante, sinon une nouvelle.
    */
   async findOrCreateDirect(
     creatorId: number,
@@ -162,29 +370,37 @@ export class ChatService {
         'Impossible de vous envoyer un message à vous-même.',
       );
     }
-    const rows: Array<{ id: number }> = await this.conversationRepository
+    const qb = this.conversationRepository
       .createQueryBuilder('c')
       .innerJoin('c.participants', 'p')
       .select('c.id', 'id')
       .where('c.isGroup = :group', { group: false })
       .groupBy('c.id')
       .having('COUNT(DISTINCT p.id) = 2')
-      .andHaving(
-        'SUM(CASE WHEN p.id IN (:...ids) THEN 1 ELSE 0 END) = 2',
-        { ids: [Number(creatorId), Number(otherId)] },
-      )
+      .andHaving('SUM(CASE WHEN p.id IN (:...ids) THEN 1 ELSE 0 END) = 2', {
+        ids: [Number(creatorId), Number(otherId)],
+      })
       .orderBy('c.id', 'DESC')
-      .limit(1)
-      .getRawMany();
+      .limit(1);
+    addTenantCondition(qb, 'c');
+    const rows: Array<{ id: number }> = await qb.getRawMany();
     if (rows[0]?.id) {
       const existing = await this.conversationRepository.findOne({
         where: { id: Number(rows[0].id) },
       });
       if (existing) return existing;
     }
-    return this.createConversation(
-      { participantIds: [Number(otherId)], isGroup: false } as CreateConversationDto,
-      Number(creatorId),
+
+    const participants = await this.findActiveEmployees([creatorId, otherId]);
+    if (participants.length !== 2) {
+      throw new NotFoundException('Collaborateur introuvable ou inactif.');
+    }
+    return this.conversationRepository.save(
+      this.conversationRepository.create({
+        isGroup: false,
+        type: ConversationType.DIRECT,
+        participants,
+      }),
     );
   }
 
@@ -192,228 +408,71 @@ export class ChatService {
     dto: CreateGroupDto,
     creatorId: number,
   ): Promise<Conversation> {
-    const creator = await this.userRepository.findOne({
-      where: { id: creatorId },
-    });
-    const participants = await this.userRepository.findByIds([
+    const participants = await this.findActiveEmployees([
       creatorId,
-      ...dto.participantIds,
+      ...(dto.participantIds ?? []),
     ]);
-
-    const conversation = this.conversationRepository.create({
-      name: dto.name,
-      isGroup: true,
-      participants,
-    });
-
-    const group = await this.conversationRepository.save(conversation);
-
-    return group;
-  }
-
-  async sendMessage(dto: SendMessageDto, senderId: number): Promise<any> {
-    const references = this.sanitizeReferences(dto.references);
-    const conversation = await this.conversationRepository.findOne({
-      where: { id: dto.conversationId },
-      relations: ['participants', 'participants.user'],
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversation non trouvée');
-    }
-
-    const sender = await this.userService.findOne(senderId);
-
-    if (!sender) {
-      throw new NotFoundException(
-        `Utilisateur avec l'ID ${senderId} non trouvé`,
+    if (participants.length < 2) {
+      throw new BadRequestException(
+        'Un groupe doit compter au moins un autre membre.',
       );
     }
 
-    const message = this.messageRepository.create({
-      content: dto.content ?? '',
-      sender,
-      conversation,
-      references,
-    });
+    return this.conversationRepository.save(
+      this.conversationRepository.create({
+        name: dto.name,
+        isGroup: true,
+        type: ConversationType.GROUP,
+        participants,
+      }),
+    );
+  }
 
-    const savedMessage = await this.messageRepository.save(message);
+  // ────────────────────────────────────────────────────────────────────────────
+  // ENVOI
+  // ────────────────────────────────────────────────────────────────────────────
 
-    // ✅ METTRE À JOUR lastMessageData (la vraie colonne)
-    await this.conversationRepository.update(dto.conversationId, {
-      lastMessageAt: new Date(),
-      lastMessageData: {
-        // ← Utiliser lastMessageData, pas lastMessage
-        content: dto.content ?? '',
-        createdAt: new Date().toISOString(),
-        senderId: senderId,
-        senderName:
-          sender.user?.full_name || sender.user?.username || 'Utilisateur',
-        referencesCount: references.length,
-      },
-    });
-
-    const finalMessage = await this.messageRepository.findOne({
-      where: { id: savedMessage.id },
-      relations: ['sender', 'sender.user', 'conversation', 'reads'],
-    });
-
-    if (!finalMessage) {
-      throw new NotFoundException('Le message enregistré est introuvable');
-    }
-
-    const reads = conversation.participants.map((p) => ({
-      message: savedMessage,
-      reader: p,
-      isRead: p.id === senderId,
-      isReceive: p.id === senderId,
-    }));
-
-    await this.messageReadRepository.save(reads);
-
-    return plainToInstance(MessageResponseDto, finalMessage);
+  async sendMessage(
+    dto: SendMessageDto,
+    senderId: number,
+  ): Promise<ChatMessagePayload> {
+    return this.sendMessageWithExistingAttachments(dto, senderId);
   }
 
   async sendMessageWithAttachments(
     dto: SendMessageDto,
     senderId: number,
     files: Express.Multer.File[],
-  ): Promise<MessageResponseDto> {
-    const references = this.sanitizeReferences(dto.references);
-    // Validation de base
-    if (!dto.content && files.length === 0) {
+  ): Promise<ChatMessagePayload> {
+    if (!dto.content?.trim() && files.length === 0) {
       throw new BadRequestException(
         'Un message doit avoir du contenu ou des pièces jointes',
       );
     }
-
-    // 1. Récupération et validation de la conversation
-    const conversation = await this.conversationRepository.findOne({
-      where: { id: dto.conversationId },
-      relations: ['participants', 'participants.user'],
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversation non trouvée');
-    }
-
-    // 2. Validation de l'expéditeur
-    const sender = await this.userService.findOne(senderId);
-    if (!sender) {
-      throw new NotFoundException(
-        `Utilisateur avec l'ID ${senderId} non trouvé`,
-      );
-    }
-
-    // 3. Validation des fichiers
-    // const validatedFiles = await this.validateFiles(files);
-
-    // 4. Upload des fichiers
-    const uploadedAttachments = await FilesUtil.uploadFiles(
-      files,
-      UPLOAD_DOCS_PATH,
-      'docType.mimetype',
-      {
-        maxSizeKB: 300, // 3MB
-        quality: 70,
-      },
+    await this.assertParticipant(dto.conversationId, senderId);
+    const ids = await this.uploadAttachments(senderId, files);
+    return this.sendMessageWithExistingAttachments(
+      { ...dto, attachmentIds: ids },
+      senderId,
     );
-
-    // 5. Création du message
-    const message = this.messageRepository.create({
-      content: dto.content ?? '',
-      sender,
-      conversation,
-      hasAttachments: uploadedAttachments.length > 0,
-      references,
-    });
-
-    const savedMessage = await this.messageRepository.save(message);
-
-    // 6. Création des attachments liés au message
-    if (uploadedAttachments.length > 0) {
-      const attachments = uploadedAttachments.map((fileInfo) =>
-        this.attachmentRepository.create({
-          ...fileInfo,
-          message: savedMessage,
-        }),
-      );
-      await this.attachmentRepository.save(attachments);
-      savedMessage.attachments = attachments;
-    }
-
-    // 7. Mise à jour de la conversation
-    const lastMessageData: any = {
-      content: dto.content || (files.length > 0 ? '📎 Pièce jointe' : ''),
-      createdAt: new Date().toISOString(),
-      senderId: senderId,
-      senderName:
-        sender.user?.full_name || sender.user?.username || 'Utilisateur',
-      referencesCount: references.length,
-    };
-
-    if (uploadedAttachments.length > 0) {
-      lastMessageData.hasAttachments = true;
-      lastMessageData.attachmentsCount = uploadedAttachments.length;
-      lastMessageData.attachmentsTypes = [
-        ...new Set(uploadedAttachments.map((a) => a.fileMimeType)),
-      ];
-    }
-
-    await this.conversationRepository.update(dto.conversationId, {
-      lastMessageAt: new Date(),
-      lastMessageData: lastMessageData,
-    });
-
-    // 8. Création des entrées de lecture
-    const reads = conversation.participants.map((p) => ({
-      message: savedMessage,
-      reader: p,
-      isRead: p.id === senderId,
-      isReceive: p.id === senderId,
-    }));
-
-    await this.messageReadRepository.save(reads);
-
-    // 9. Récupération du message final avec toutes ses relations
-    const finalMessage = await this.messageRepository.findOne({
-      where: { id: savedMessage.id },
-      relations: [
-        'sender',
-        'sender.user',
-        'conversation',
-        'reads',
-        'attachments',
-      ],
-    });
-
-    return plainToInstance(MessageResponseDto, finalMessage);
   }
 
   async sendMessageWithExistingAttachments(
     dto: SendMessageDto,
     senderId: number,
-  ): Promise<MessageResponseDto> {
-    // Validation de base
-    const attachmentIds = dto.attachmentIds ?? [];
+  ): Promise<ChatMessagePayload> {
+    const conversationId = Number(dto.conversationId);
+    const attachmentIds = (dto.attachmentIds ?? []).map(Number);
     const references = this.sanitizeReferences(dto.references);
-    if (!dto.content && attachmentIds.length === 0) {
+    const content = (dto.content ?? '').trim();
+    if (!content && attachmentIds.length === 0) {
       throw new BadRequestException(
         'Un message doit avoir du contenu ou des pièces jointes',
       );
     }
 
-    // 1. Récupération et validation de la conversation
-    const conversation = await this.conversationRepository.findOne({
-      where: { id: dto.conversationId },
-      relations: ['participants', 'participants.user'],
-    });
+    await this.assertParticipant(conversationId, senderId);
 
-    if (!conversation) {
-      throw new NotFoundException('Conversation non trouvée');
-    }
-
-    // 2. Validation de l'expéditeur
     const sender = await this.userService.findOne(senderId);
     if (!sender) {
       throw new NotFoundException(
@@ -421,181 +480,209 @@ export class ChatService {
       );
     }
 
-    // 3. Récupération des attachments existants par leurs IDs
+    // Seules les pièces téléversées par l'expéditeur et pas encore envoyées
+    // peuvent être jointes : un identifiant ne permet pas de détourner le
+    // fichier d'un autre collaborateur.
     let attachments: Attachment[] = [];
     if (attachmentIds.length > 0) {
-      attachments = await this.attachmentRepository.findByIds(attachmentIds);
-
-      // Vérifier que tous les IDs sont valides
-      if (attachments.length !== attachmentIds.length) {
-        const foundIds = attachments.map((a) => a.id);
-        const missingIds = attachmentIds.filter((id) => !foundIds.includes(id));
-        throw new NotFoundException(
-          `Attachments non trouvés: ${missingIds.join(', ')}`,
-        );
-      }
-
-      console.log(attachments);
-
-      // Optionnel: Vérifier que les attachments n'appartiennent pas déjà à un message
-      const alreadyLinked = attachments.some(
-        (a) => a.message !== null && a.message !== undefined,
+      attachments = await this.attachmentRepository.find({
+        where: { id: In(attachmentIds) },
+        relations: ['message'],
+      });
+      const usable = attachments.filter(
+        (a) => !a.message && Number(a.uploadedById) === Number(senderId),
       );
-      if (alreadyLinked) {
+      if (usable.length !== attachmentIds.length) {
         throw new BadRequestException(
-          'Certains attachments sont déjà liés à un message',
+          'Certaines pièces jointes sont introuvables ou déjà envoyées.',
         );
       }
     }
 
-    // 4. Création du message
-    const message = this.messageRepository.create({
-      content: dto.content ?? '',
-      sender,
-      conversation,
-      hasAttachments: attachments.length > 0,
-      references,
-    });
+    const savedMessage = await this.messageRepository.save(
+      this.messageRepository.create({
+        content,
+        sender,
+        conversation: { id: conversationId } as Conversation,
+        conversationId,
+        hasAttachments: attachments.length > 0,
+        references,
+      }),
+    );
 
-    const savedMessage = await this.messageRepository.save(message);
-
-    // 5. Liaison des attachments au message
     if (attachments.length > 0) {
-      // Mettre à jour chaque attachment avec le message
-      await Promise.all(
-        attachments.map((attachment) =>
-          this.attachmentRepository.update(attachment.id, {
-            message: savedMessage,
-          }),
-        ),
+      await this.attachmentRepository.update(
+        { id: In(attachments.map((a) => a.id)) },
+        { message: { id: savedMessage.id } as Message },
       );
-
-      // Mettre à jour la relation pour le retour
-      savedMessage.attachments = attachments;
     }
 
-    // 6. Mise à jour de la conversation
-    const lastMessageData: any = {
-      content:
-        dto.content || (attachmentIds.length > 0 ? '📎 Pièce jointe' : ''),
-      createdAt: new Date().toISOString(),
-      senderId: senderId,
-      senderName:
-        sender.user?.full_name || sender.user?.username || 'Utilisateur',
-      referencesCount: references.length,
-    };
+    // Une ligne d'accusé par participant : l'expéditeur a lu son message.
+    const participantIds = await this.getParticipantIds(conversationId);
+    await this.messageReadRepository.save(
+      participantIds.map((id) =>
+        this.messageReadRepository.create({
+          message: { id: savedMessage.id } as Message,
+          reader: { id } as Employee,
+          isRead: id === senderId,
+          isReceive: id === senderId,
+        }),
+      ),
+    );
 
-    if (attachments.length > 0) {
-      lastMessageData.hasAttachments = true;
-      lastMessageData.attachmentsCount = attachments.length;
-      lastMessageData.attachmentsTypes = [
-        ...new Set(attachments.map((a) => a.mimeType)),
-      ];
-      lastMessageData.attachmentIds = attachmentIds; // Optionnel: stocker les IDs
-    }
-
-    await this.conversationRepository.update(dto.conversationId, {
-      lastMessageAt: new Date(),
-      lastMessageData: lastMessageData,
+    const now = new Date();
+    await this.conversationRepository.update(conversationId, {
+      lastMessageAt: now,
+      lastMessageData: {
+        messageId: savedMessage.id,
+        content: content || (attachments.length ? '📎 Pièce jointe' : ''),
+        createdAt: now.toISOString(),
+        senderId,
+        senderName:
+          sender.user?.full_name || sender.user?.username || 'Utilisateur',
+        referencesCount: references.length,
+        hasAttachments: attachments.length > 0,
+        attachmentsCount: attachments.length,
+        attachmentsTypes: [
+          ...new Set(attachments.map((a) => a.mimeType).filter(Boolean)),
+        ],
+        attachmentIds: attachments.map((a) => a.id),
+        status: participantIds.length > 1 ? 'sent' : 'read',
+      },
     });
 
-    // 7. Création des entrées de lecture
-    const reads = conversation.participants.map((p) => ({
-      message: savedMessage,
-      reader: p,
-      isRead: p.id === senderId,
-      isReceive: p.id === senderId,
-    }));
-
-    await this.messageReadRepository.save(reads);
-
-    // 8. Récupération du message final avec toutes ses relations
-    const finalMessage = await this.messageRepository.findOne({
-      where: { id: savedMessage.id },
-      relations: [
-        'sender',
-        'sender.user',
-        'conversation',
-        'reads',
-        'attachments',
-      ],
-    });
-
-    return plainToInstance(MessageResponseDto, finalMessage);
+    const payload = await this.getMessagePayload(savedMessage.id);
+    return { ...payload, clientTempId: dto.clientTempId };
   }
 
   async uploadAttachments(
     senderId: number,
     files: Express.Multer.File[],
   ): Promise<number[]> {
-    const uploadedAttachments = await FilesUtil.uploadFiles(
+    this.validateFiles(files);
+    const uploadedAttachments = (await FilesUtil.uploadFiles(
       files,
       UPLOAD_DOCS_PATH,
       'docType.mimetype',
       {
-        maxSizeKB: 300,
+        maxSizeKB: 300, // recompression des images uniquement
         quality: 70,
       },
-    );
+    )) as unknown as Array<Partial<Attachment>>;
 
     if (!uploadedAttachments.length) {
       return [];
     }
 
-    // créer les entités
-    const attachments = uploadedAttachments.map((fileInfo) =>
-      this.attachmentRepository.create({
-        ...fileInfo,
-      }),
+    const savedAttachments = await this.attachmentRepository.save(
+      uploadedAttachments.map((fileInfo) =>
+        this.attachmentRepository.create({
+          ...fileInfo,
+          isUploaded: true,
+          uploadedById: Number(senderId),
+        }),
+      ),
     );
 
-    // ⚠️ save retourne les entités AVEC leurs ids
-    const savedAttachments = await this.attachmentRepository.save(attachments);
-
-    // ✅ extraire les ids
     return savedAttachments.map((att) => att.id);
   }
 
-  // private async validateFiles(files: Express.Multer.File[]): Promise<Express.Multer.File[]> {
-  //   const maxSize = this.configService.get<number>('MAX_FILE_SIZE', 10 * 1024 * 1024); // 10MB par défaut
-  //   const allowedMimeTypes = [
-  //     'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-  //     'application/pdf', 'application/msword',
-  //     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  //     'application/vnd.ms-excel',
-  //     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  //     'text/plain', 'text/csv'
-  //   ];
+  private validateFiles(files: Express.Multer.File[]): void {
+    for (const file of files ?? []) {
+      if (file.size > CHAT_MAX_FILE_SIZE) {
+        throw new BadRequestException(
+          `Le fichier ${file.originalname} dépasse la taille maximale de 50 Mo.`,
+        );
+      }
+      const mime = (file.mimetype || '').toLowerCase();
+      const allowed =
+        ALLOWED_MIME_TYPES.has(mime) ||
+        ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix));
+      if (!allowed) {
+        throw new BadRequestException(
+          `Le type de fichier ${file.mimetype} n'est pas autorisé (${file.originalname}).`,
+        );
+      }
+    }
+  }
 
-  //   for (const file of files) {
-  //     if (file.size > maxSize) {
-  //       throw new BadRequestException(
-  //         `Le fichier ${file.originalname} dépasse la taille maximale de ${maxSize / 1024 / 1024}MB`
-  //       );
-  //     }
+  // ────────────────────────────────────────────────────────────────────────────
+  // LECTURE
+  // ────────────────────────────────────────────────────────────────────────────
 
-  //     if (!allowedMimeTypes.includes(file.mimetype)) {
-  //       throw new BadRequestException(
-  //         `Le type de fichier ${file.mimetype} n'est pas autorisé pour ${file.originalname}`
-  //       );
-  //     }
-  //   }
+  private messagesQuery() {
+    return this.messageRepository
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('sender.user', 'senderUser')
+      .leftJoinAndSelect('message.attachments', 'attachments')
+      .leftJoinAndSelect('message.reads', 'reads')
+      .leftJoin('reads.reader', 'reader')
+      .addSelect('reader.id');
+  }
 
-  //   return files;
-  // }
+  /** Forme commune d'un message pour le front : `reader` réduit à son id. */
+  private toPayload(message: Message): ChatMessagePayload {
+    return {
+      id: message.id,
+      content: message.content,
+      conversationId: message.conversationId,
+      createdAt: message.createdAt,
+      sender: toChatEmployee(message.sender),
+      sender_name: message.sender?.user?.full_name || '',
+      hasAttachments: message.hasAttachments,
+      attachments: message.attachments ?? [],
+      references: message.references ?? [],
+      reads: (message.reads ?? []).map((read) => ({
+        id: read.id,
+        reader: read.reader?.id,
+        isRead: read.isRead,
+        isReceive: read.isReceive,
+        readAt: read.readAt,
+      })),
+      isRead: (message.reads ?? []).every((r) => r.isRead),
+    };
+  }
 
-  async getUserConversations(userId: number): Promise<Conversation[]> {
+  async getMessagePayload(messageId: number): Promise<ChatMessagePayload> {
+    const message = await this.messagesQuery()
+      .where('message.id = :id', { id: messageId })
+      .getOne();
+    if (!message) {
+      throw new NotFoundException('Le message enregistré est introuvable');
+    }
+    return this.toPayload(message);
+  }
+
+  /**
+   * Conversations de l'utilisateur (ou une seule avec `conversationId`), avec
+   * le nombre de non-lus, le dernier message et le dossier lié.
+   */
+  async getUserConversations(
+    userId: number,
+    conversationId?: number,
+  ): Promise<ConversationSummary[]> {
     const conversationsQB = this.conversationRepository
       .createQueryBuilder('conversation')
       .leftJoinAndSelect('conversation.participants', 'participant')
       .leftJoinAndSelect('participant.user', 'user')
+      .leftJoin('conversation.dossier', 'dossier')
+      .addSelect([
+        'dossier.id',
+        'dossier.dossier_number',
+        'dossier.object',
+        'dossier.status',
+        'dossier.is_archived',
+        'dossier.workflow_engine',
+        'dossier.lifecycle_phase',
+      ])
       .loadRelationCountAndMap(
         'conversation.unreadCount',
         'conversation.messages',
         'unreadMessages',
         (qb) =>
           qb
-            .leftJoin('unreadMessages.reads', 'read')
+            .innerJoin('unreadMessages.reads', 'read')
             .where('read.readerId = :userId', { userId })
             .andWhere('read.isRead = :isRead', { isRead: false }),
       )
@@ -604,305 +691,247 @@ export class ChatService {
         { userId },
       )
       .orderBy('conversation.lastMessageAt', 'DESC');
+    if (conversationId) {
+      conversationsQB.andWhere('conversation.id = :conversationId', {
+        conversationId,
+      });
+    }
     // Isolation multi-tenant : limite aux conversations du cabinet courant.
     addTenantCondition(conversationsQB, 'conversation');
     const conversations = await conversationsQB.getMany();
 
-    // Récupérer les derniers messages avec leurs pièces jointes
-    const conversationIds = conversations.map((c) => c.id);
-
-    if (conversationIds.length === 0) {
-      return plainToInstance(Conversation, conversations, {
-        excludeExtraneousValues: false,
-      });
-    }
-
-    // Requête corrigée - ne pas utiliser la notation pointée dans select
-    const lastMessagesQB = this.messageRepository
-      .createQueryBuilder('message')
-      .leftJoinAndSelect('message.attachments', 'attachments')
-      .leftJoin('message.sender', 'sender')
-      .leftJoin('sender.user', 'user')
-      .addSelect([
-        // Sélectionner les colonnes de sender
-        'sender.id',
-        // Sélectionner les colonnes de user
-        'user.id',
-        'user.first_name',
-        'user.last_name',
-        'user.username',
-      ])
-      .where('message.conversationId IN (:...ids)', { ids: conversationIds })
-      .andWhere((qb) => {
-        const subQuery = qb
-          .subQuery()
-          .select('MAX(m.createdAt)')
-          .from('message', 'm')
-          .where('m.conversationId = message.conversationId')
-          .getQuery();
-        return 'message.createdAt = ' + subQuery;
-      });
-    // Isolation multi-tenant.
-    addTenantCondition(lastMessagesQB, 'message');
-    const lastMessages = await lastMessagesQB.getMany();
-
-    // Créer un map des derniers messages par conversation
-    const lastMessagesMap = new Map();
-    lastMessages.forEach((msg) => {
-      lastMessagesMap.set(msg.conversationId, msg);
-    });
-
-    // Enrichir les conversations avec les données du dernier message
-    const enrichedConversations = conversations.map((conv) => {
-      const lastMsg = lastMessagesMap.get(conv.id);
-
-      if (lastMsg) {
-        // Construire le nom complet de l'expéditeur
-        let senderName = 'Utilisateur';
-        if (lastMsg.sender?.user) {
-          const user = lastMsg.sender.user;
-          if (user.first_name && user.last_name) {
-            senderName = `${user.first_name} ${user.last_name}`;
-          } else if (user.username) {
-            senderName = user.username;
-          }
-        }
-
-        // Traiter les pièces jointes
-        const attachments = lastMsg.attachments || [];
-        const hasAttachments = attachments.length > 0;
-        const attachmentsTypes = hasAttachments
-          ? [
-              ...new Set(
-                attachments.map((a) => a.mimeType || a.type).filter(Boolean),
-              ),
-            ]
-          : [];
-        const attachmentIds = attachments.map((a) => a.id).filter(Boolean);
-
-        // Ajouter les données du dernier message à la conversation
-        Object.assign(conv, {
-          lastMessageData: {
-            content: lastMsg.content || '',
-            createdAt: lastMsg.createdAt.toISOString(),
-            senderId: lastMsg.sender?.id,
-            senderName: senderName,
-            hasAttachments: hasAttachments,
-            attachmentsCount: attachments.length,
-            attachmentsTypes: attachmentsTypes,
-            attachmentIds: attachmentIds,
-            referencesCount: lastMsg.references?.length || 0,
-          },
-        });
-      }
-
-      return conv;
-    });
-
-    return plainToInstance(Conversation, enrichedConversations, {
-      excludeExtraneousValues: false,
-    });
+    return conversations.map((conv) => this.toSummary(conv));
   }
+
+  async getConversationSummaryFor(
+    userId: number,
+    conversationId: number,
+  ): Promise<ConversationSummary | null> {
+    const [summary] = await this.getUserConversations(userId, conversationId);
+    return summary ?? null;
+  }
+
+  /** Objet simple (sérialisable tel quel sur le socket). */
+  private toSummary(conv: Conversation): ConversationSummary {
+    const dossier = conv.dossier;
+    return {
+      id: conv.id,
+      name: conv.name,
+      isGroup: conv.isGroup,
+      type: conv.type,
+      createdAt: conv.createdAt,
+      lastMessageAt: conv.lastMessageAt,
+      lastMessageData: conv.lastMessageData,
+      participants: (conv.participants ?? []).map(toChatEmployee),
+      lastMessage: conv.lastMessageData ?? undefined,
+      unreadCount: Number((conv as any).unreadCount ?? 0),
+      dossier: dossier
+        ? {
+            id: dossier.id,
+            dossier_number: dossier.dossier_number,
+            object: dossier.object,
+            status: dossier.status,
+            is_closed: !!(dossier.is_closed || dossier.is_archived),
+          }
+        : undefined,
+    };
+  }
+
+  /**
+   * Page de messages (du plus ancien au plus récent) antérieurs à `before`.
+   */
   async getConversationMessages(
     conversationId: number,
     userId: number,
-  ): Promise<Message[]> {
-    const conversation = await this.conversationRepository.findOne({
-      where: { id: conversationId },
-      relations: ['participants', 'attachments'],
-    });
+    options: { before?: number; limit?: number } = {},
+  ): Promise<{ messages: ChatMessagePayload[]; hasMore: boolean }> {
+    await this.assertParticipant(conversationId, userId);
+    const limit = Math.min(
+      Math.max(Number(options.limit) || MESSAGES_PAGE_SIZE, 1),
+      100,
+    );
 
-    if (
-      !conversation ||
-      !conversation.participants.some((p) => p.id === userId)
-    ) {
-      throw new NotFoundException('Conversation non trouvée');
+    // Les ids sont paginés seuls : une jointure sur reads/attachments
+    // fausserait la limite.
+    const idsQB = this.messageRepository
+      .createQueryBuilder('message')
+      .select('message.id', 'id')
+      .where('message.conversationId = :conversationId', { conversationId })
+      .orderBy('message.id', 'DESC')
+      .limit(limit + 1);
+    if (options.before) {
+      idsQB.andWhere('message.id < :before', { before: Number(options.before) });
     }
+    addTenantCondition(idsQB, 'message');
+    const ids = (await idsQB.getRawMany<{ id: number }>()).map((r) =>
+      Number(r.id),
+    );
+    const hasMore = ids.length > limit;
+    const pageIds = ids.slice(0, limit);
+    if (!pageIds.length) return { messages: [], hasMore: false };
 
-    return await this.messageRepository.find({
-      where: { conversation: { id: conversationId } },
-      relations: ['sender'],
-      order: { createdAt: 'ASC' },
-    });
+    const messages = await this.messagesQuery()
+      .where('message.id IN (:...ids)', { ids: pageIds })
+      .orderBy('message.id', 'ASC')
+      .getMany();
+
+    return { messages: messages.map((m) => this.toPayload(m)), hasMore };
   }
 
-  async getConversation(conversationId: number, userId?: number) {
-    const conversationQB = this.conversationRepository
-      .createQueryBuilder('conversation')
-      .leftJoinAndSelect('conversation.participants', 'participant')
-      .leftJoinAndSelect('participant.user', 'user')
-      .leftJoinAndSelect('conversation.messages', 'message')
-      .leftJoinAndSelect('message.sender', 'sender')
-      .leftJoinAndSelect('message.attachments', 'attachments')
-      .leftJoinAndSelect('message.reads', 'reads')
-      .leftJoinAndSelect('reads.reader', 'reader')
-      .leftJoinAndSelect('sender.user', 'senderUser')
-      .addSelect(['reads.id', 'reads.isRead', 'reads.readAt', 'reader.id'])
-      .where('conversation.id = :id', { id: conversationId });
-    // Isolation multi-tenant.
-    addTenantCondition(conversationQB, 'conversation');
-    const conversation = await conversationQB.getOne();
-
-    if (
-      !conversation ||
-      !conversation.participants.some((p) => p.id === userId)
-    ) {
-      throw new NotFoundException('Conversation non trouvée');
-    }
-
-    // Transformer pour que reader soit directement l'ID
-    if (conversation.messages) {
-      conversation.messages.forEach((message) => {
-        if (message.reads) {
-          message.reads = message.reads.map((read) => ({
-            ...read,
-            reader: read.reader?.id,
-          })) as any; // 👈 Force le type
-        }
+  /** En-tête de la conversation + dernière page de messages. */
+  async getConversation(conversationId: number, userId: number) {
+    const summary = await this.getConversationSummaryFor(
+      userId,
+      conversationId,
+    );
+    if (!summary) {
+      const exists = await this.conversationRepository.exists({
+        where: { id: conversationId },
       });
+      if (exists) {
+        throw new ForbiddenException(
+          'Vous ne faites pas partie de cette conversation.',
+        );
+      }
+      throw new NotFoundException('Conversation non trouvée');
     }
-
-    return plainToInstance(Conversation, conversation, {
-      excludeExtraneousValues: false,
-    });
+    const page = await this.getConversationMessages(conversationId, userId);
+    return { ...summary, messages: page.messages, hasMore: page.hasMore };
   }
 
-  async getParticipantIdsExcluding(
-    conversationId: number,
-    excludeUserId: number,
-  ): Promise<number[]> {
-    const conversation = await this.conversationRepository.findOne({
-      where: { id: conversationId },
-      relations: ['participants'],
-    });
+  // ────────────────────────────────────────────────────────────────────────────
+  // ACCUSÉS DE RÉCEPTION ET DE LECTURE
+  // ────────────────────────────────────────────────────────────────────────────
 
-    if (!conversation) {
-      throw new NotFoundException(
-        `Conversation avec l'ID ${conversationId} non trouvée`,
-      );
-    }
-
-    return conversation.participants
-      .filter((participant) => participant.id !== excludeUserId)
-      .map((participant) => participant.id);
-  }
-
-  // for one user, mark all messages as read in a conversation
+  /**
+   * Passe à « lu » (et donc « reçu ») les messages de la conversation que
+   * l'utilisateur n'avait pas encore lus. Ne touche qu'aux lignes de ce
+   * lecteur et renvoie les messages concernés.
+   */
   async markMessagesAsRead(
     conversationId: number,
     userId: number,
-  ): Promise<any> {
-    const messages = await this.messageRepository.find({
-      where: { conversation: { id: conversationId } },
-      select: ['id'],
-    });
+  ): Promise<ReceiptUpdate | null> {
+    await this.assertParticipant(conversationId, userId);
+    const rows = await this.pendingReceipts(userId, 'isRead', conversationId);
+    if (!rows.length) return null;
 
-    const messageIds = messages.map((m) => m.id);
-    if (messageIds.length === 0) return;
-
-    // 1️⃣ count BEFORE
-    const before = await this.messageReadRepository.count({
-      where: {
-        isRead: false,
-        message: { id: In(messageIds) },
-      },
-    });
-
-    if (before === 0) return; // rien à changer → inutile d’update
-
-    // 2️⃣ update
-    await this.messageReadRepository
-      .createQueryBuilder()
-      .update()
-      .set({
-        isRead: true,
-        readAt: new Date(),
-      })
-      .where('readerId = :userId', { userId })
-      .andWhere('isRead = false')
-      .andWhere('messageId IN (:...messageIds)', { messageIds })
-      // Isolation multi-tenant (UPDATE sur table tenantée).
-      .andWhere('tenant_id = :tenantId', { tenantId: getCurrentTenantId() })
-      .execute();
-
-    // 3️⃣ count AFTER
-    const after = await this.messageReadRepository.count({
-      where: {
-        isRead: false,
-        message: { id: In(messageIds) },
-      },
-    });
-
-    // 4️⃣ compare
-    if (after < before) {
-      // this.chatGateway.emitMessagesRead(conversationId, userId);
-    }
-    return messageIds[0];
+    const at = new Date();
+    await this.messageReadRepository.update(
+      { id: In(rows.map((r) => r.readId)) },
+      { isRead: true, isReceive: true, readAt: at },
+    );
+    await this.refreshLastMessageStatus(conversationId);
+    return {
+      conversationId,
+      messageIds: rows.map((r) => r.messageId),
+      at: at.toISOString(),
+    };
   }
-  // for one user, mark all messages as read in a conversation
+
+  /** Passe à « reçu » les messages d'une conversation pour ce lecteur. */
   async markMessagesAsReceive(
     conversationId: number,
     userId: number,
-  ): Promise<any> {
-    const messages = await this.messageRepository.find({
-      where: { conversation: { id: conversationId } },
-      select: ['id'],
-    });
-
-    const messageIds = messages.map((m) => m.id);
-    if (messageIds.length === 0) return;
-
-    // 1️⃣ count BEFORE
-    const before = await this.messageReadRepository.count({
-      where: {
-        isReceive: false,
-        message: { id: In(messageIds) },
-      },
-    });
-
-    if (before === 0) return; // rien à changer → inutile d’update
-
-    // 2️⃣ update
-    await this.messageReadRepository
-      .createQueryBuilder()
-      .update()
-      .set({
-        isReceive: true,
-        readAt: new Date(),
-      })
-      .where('readerId = :userId', { userId })
-      .andWhere('isReceive = false')
-      .andWhere('messageId IN (:...messageIds)', { messageIds })
-      .execute();
-
-    // 3️⃣ count AFTER
-    const after = await this.messageReadRepository.count({
-      where: {
-        isReceive: false,
-        message: { id: In(messageIds) },
-      },
-    });
-
-    // 4️⃣ compare
-    if (after < before) {
-      // this.chatGateway.emitMessagesRead(conversationId, userId);
-    }
-    return messageIds[0];
+  ): Promise<ReceiptUpdate | null> {
+    await this.assertParticipant(conversationId, userId);
+    const [update] = await this.markReceived(userId, conversationId);
+    return update ?? null;
   }
 
-  async setReceiveMessagesWithCount(
-    userId: number,
-  ): Promise<{ updated: number }> {
-    const result = await this.messageReadRepository
-      .createQueryBuilder()
-      .update(MessageRead)
-      .set({ isReceive: true })
-      .where('reader.id = :userId', { userId })
-      .andWhere('isReceive = :isReceive', { isReceive: false })
-      // Isolation multi-tenant (UPDATE sur table tenantée).
-      .andWhere('tenant_id = :tenantId', { tenantId: getCurrentTenantId() })
-      .execute();
+  /**
+   * À la connexion : tout ce qui attendait l'utilisateur est désormais
+   * « reçu ». Renvoie les mises à jour par conversation pour prévenir les
+   * expéditeurs.
+   */
+  async setReceiveMessagesWithCount(userId: number): Promise<ReceiptUpdate[]> {
+    return this.markReceived(userId);
+  }
 
-    return { updated: result.affected || 0 };
+  private async markReceived(
+    userId: number,
+    conversationId?: number,
+  ): Promise<ReceiptUpdate[]> {
+    const rows = await this.pendingReceipts(userId, 'isReceive', conversationId);
+    if (!rows.length) return [];
+
+    const at = new Date();
+    await this.messageReadRepository.update(
+      { id: In(rows.map((r) => r.readId)) },
+      { isReceive: true },
+    );
+
+    const byConversation = new Map<number, number[]>();
+    for (const row of rows) {
+      const list = byConversation.get(row.conversationId) ?? [];
+      list.push(row.messageId);
+      byConversation.set(row.conversationId, list);
+    }
+    const updates: ReceiptUpdate[] = [];
+    for (const [convId, messageIds] of byConversation) {
+      await this.refreshLastMessageStatus(convId);
+      updates.push({
+        conversationId: convId,
+        messageIds,
+        at: at.toISOString(),
+      });
+    }
+    return updates;
+  }
+
+  private async pendingReceipts(
+    userId: number,
+    flag: 'isRead' | 'isReceive',
+    conversationId?: number,
+  ): Promise<
+    Array<{ readId: number; messageId: number; conversationId: number }>
+  > {
+    const qb = this.messageReadRepository
+      .createQueryBuilder('read')
+      .innerJoin('read.message', 'message')
+      .select('read.id', 'readId')
+      .addSelect('message.id', 'messageId')
+      .addSelect('message.conversationId', 'conversationId')
+      .where('read.readerId = :userId', { userId })
+      .andWhere(`read.${flag} = :flag`, { flag: false });
+    if (conversationId) {
+      qb.andWhere('message.conversationId = :conversationId', {
+        conversationId,
+      });
+    }
+    addTenantCondition(qb, 'read');
+    const rows = await qb.getRawMany();
+    return rows.map((r) => ({
+      readId: Number(r.readId),
+      messageId: Number(r.messageId),
+      conversationId: Number(r.conversationId),
+    }));
+  }
+
+  /** Statut (envoyé / reçu / lu) du dernier message, affiché dans la liste. */
+  private async refreshLastMessageStatus(
+    conversationId: number,
+  ): Promise<void> {
+    const conversation = await this.conversationRepository.findOne({
+      where: { id: conversationId },
+      select: ['id', 'lastMessageData'],
+    });
+    const data = conversation?.lastMessageData;
+    if (!data?.messageId) return;
+
+    const reads = await this.messageReadRepository.find({
+      where: { message: { id: data.messageId } },
+      select: ['id', 'isRead', 'isReceive'],
+    });
+    if (!reads.length) return;
+    const status: LastMessageStatus = reads.every((r) => r.isRead)
+      ? 'read'
+      : reads.every((r) => r.isReceive)
+        ? 'delivered'
+        : 'sent';
+    if (status === data.status) return;
+    await this.conversationRepository.update(conversationId, {
+      lastMessageData: { ...data, status },
+    });
   }
 }

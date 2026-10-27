@@ -487,7 +487,7 @@ export class AiDatabasePermissionService {
   private readonly logger = new Logger(AiDatabasePermissionService.name);
   private readonly permissionCache = new Map<
     string,
-    { codes: Set<string>; at: number }
+    { codes: Set<string>; isAdmin: boolean; at: number }
   >();
 
   constructor(
@@ -601,9 +601,9 @@ export class AiDatabasePermissionService {
     const concerned = this.normalizeTables(tables).filter(
       (table) => AI_RESTRICTED_COLUMNS[table],
     );
-    if (!concerned.length || this.isAdmin(user)) return hidden;
-    const permissions = await this.getUserPermissionCodes(user);
-    if (permissions.has(SUPER_ADMIN)) return hidden;
+    if (!concerned.length) return hidden;
+    const { codes: permissions, fullAccess } = await this.getUserAccess(user);
+    if (fullAccess) return hidden;
     for (const table of concerned) {
       const columns = Object.entries(AI_RESTRICTED_COLUMNS[table])
         .filter(([, codes]) => !codes.some((code) => permissions.has(code)))
@@ -662,13 +662,14 @@ export class AiDatabasePermissionService {
         );
       }
     }
+    const access = await this.getUserAccess(user);
     if (!permissions.size) {
-      for (const code of await this.getUserPermissionCodes(user)) {
+      for (const code of access.codes) {
         permissions.set(code, '');
       }
     }
     return {
-      isAdmin: this.isAdmin(user) || permissions.has(SUPER_ADMIN),
+      isAdmin: access.fullAccess || permissions.has(SUPER_ADMIN),
       roleName,
       permissions,
     };
@@ -710,9 +711,9 @@ export class AiDatabasePermissionService {
 
   /** Permissions de `codes` que l'utilisateur n'a pas (admin : aucune). */
   async missingPermissions(user: AiUserLike, codes: string[]): Promise<string[]> {
-    if (!codes.length || this.isAdmin(user)) return [];
-    const permissions = await this.getUserPermissionCodes(user);
-    if (permissions.has(SUPER_ADMIN)) return [];
+    if (!codes.length) return [];
+    const { codes: permissions, fullAccess } = await this.getUserAccess(user);
+    if (fullAccess) return [];
     return codes.filter((code) => !permissions.has(code));
   }
 
@@ -756,10 +757,8 @@ export class AiDatabasePermissionService {
       permission: string | null;
     }>
   > {
-    if (this.isAdmin(user)) return [];
-
-    const permissions = await this.getUserPermissionCodes(user);
-    if (permissions.has(SUPER_ADMIN)) return [];
+    const { codes: permissions, fullAccess } = await this.getUserAccess(user);
+    if (fullAccess) return [];
 
     return this.normalizeRequirements(requirements)
       .map((requirement) => {
@@ -849,7 +848,26 @@ export class AiDatabasePermissionService {
     return typeof user === 'object' && user?.role === 'admin';
   }
 
-  private async getUserPermissionCodes(user: AiUserLike): Promise<Set<string>> {
+  /**
+   * Droits effectifs + accès total (rôle admin ou SUPER_ADMIN), comme le
+   * PermissionsGuard des écrans manuels. Le rôle est relu en DB : les appels
+   * internes (création en cascade, auto-création) ne passent qu'un userId et
+   * perdaient sinon le contournement admin — l'admin se voyait alors refuser
+   * les codes legacy (MANAGE_JURISDICTIONS…) que son rôle ne liste pas.
+   */
+  private async getUserAccess(
+    user: AiUserLike,
+  ): Promise<{ codes: Set<string>; fullAccess: boolean }> {
+    const { codes, isAdmin } = await this.loadUserAccess(user);
+    return {
+      codes,
+      fullAccess: this.isAdmin(user) || isAdmin || codes.has(SUPER_ADMIN),
+    };
+  }
+
+  private async loadUserAccess(
+    user: AiUserLike,
+  ): Promise<{ codes: Set<string>; isAdmin: boolean }> {
     const jwtPermissions =
       typeof user === 'object' &&
       Array.isArray(user?.permissions) &&
@@ -871,17 +889,21 @@ export class AiDatabasePermissionService {
       const cacheKey = `${hasActiveTenant() ? getCurrentTenantId() : '-'}:${userId}`;
       const cached = this.permissionCache.get(cacheKey);
       if (cached && Date.now() - cached.at < PERMISSION_CACHE_TTL_MS) {
-        return cached.codes;
+        return { codes: cached.codes, isAdmin: cached.isAdmin };
       }
       try {
-        const permissions = await this.usersService.getUserPermissions(userId);
+        const [profile, permissions]: [any, any] = await Promise.all([
+          this.usersService.findOne(userId),
+          this.usersService.getUserPermissions(userId),
+        ]);
+        const isAdmin = profile?.role === 'admin';
         const codes = (permissions ?? []).map(
           (permission: any) => permission.code ?? permission,
         );
-        if (codes.length > 0) {
+        if (codes.length > 0 || isAdmin) {
           const set = new Set<string>(codes);
-          this.permissionCache.set(cacheKey, { codes: set, at: Date.now() });
-          return set;
+          this.permissionCache.set(cacheKey, { codes: set, isAdmin, at: Date.now() });
+          return { codes: set, isAdmin };
         }
         // Rôle sans permission en DB : ne pas retomber sur un JWT périmé.
         if (jwtPermissions) {
@@ -889,17 +911,16 @@ export class AiDatabasePermissionService {
             `Permissions DB vides pour user=${userId}, JWT ignoré (risque de stale)`,
           );
         }
-        return new Set();
+        return { codes: new Set(), isAdmin: false };
       } catch (error: any) {
         this.logger.warn(
           `Impossible de charger les permissions IAM pour user=${userId}: ${error?.message ?? error}`,
         );
-        if (jwtPermissions) return jwtPermissions;
-        return new Set();
+        return { codes: jwtPermissions ?? new Set(), isAdmin: false };
       }
     }
 
-    return jwtPermissions ?? new Set();
+    return { codes: jwtPermissions ?? new Set(), isAdmin: false };
   }
 
   private getUserDebugId(user: AiUserLike): string {

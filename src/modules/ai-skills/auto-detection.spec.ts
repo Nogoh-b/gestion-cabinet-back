@@ -129,6 +129,24 @@ describe('compétences reconnues en mode auto', () => {
     ['rédige un courrier à partir du modèle de relance', 'rediger_document'],
     ['modifie le contrat du dossier', 'rediger_document'],
     ['rédige un mail au client à partir du modèle de convocation', 'envoyer_email'],
+    // 25/10/2026 : partait en lecture (mode Lire auto) et listait les lignes des factures.
+    ['rediges un document sous la base de ce modèle facture client', 'rediger_document'],
+    ['rédige un document sur la base de ce modèle facture client', 'rediger_document'],
+    ['Rédige un document à la base du modèle facture client', 'rediger_document'],
+    ['génère la facture du client avec le modèle facture client', 'rediger_document'],
+    ['fais-moi un document avec ce modèle', 'rediger_document'],
+    ['prépare le courrier en suivant le modèle de relance', 'rediger_document'],
+    ["rédige l'attestation en te basant sur le modèle client", 'rediger_document'],
+    ['établis le document conformément au modèle facture client', 'rediger_document'],
+    ['prépare la facture sur le même modèle', 'rediger_document'],
+    // Chercher, consulter un modèle : la compétence « Modèles », pas la base.
+    ['cherche le modèle facture client', 'modeles'],
+    ['montre-moi le modèle facture client', 'modeles'],
+    ['ouvre le modèle facture client', 'modeles'],
+    ['trouve un modèle de facture', 'modeles'],
+    ['quels modèles de facture avons-nous ?', 'modeles'],
+    ['y a-t-il un modèle de convocation ?', 'modeles'],
+    ['avons-nous un modèle de mise en demeure ?', 'modeles'],
   ])('« %s » → %s', (question, code) => {
     const result = detect(question);
     expect(result.code).toBe(code);
@@ -155,6 +173,7 @@ describe('compétences reconnues en mode auto', () => {
     "qu'a demandé le client du dossier DOS-2026-0037 ?",
     // Questions d'usage sur les modèles.
     'comment créer un modèle ?',
+    'comment rédiger un document à partir du modèle facture client ?',
     // Questions sur le compte.
     'quel est mon role dans le cabinet',
     "quels est mon plan d'abonement actuel",

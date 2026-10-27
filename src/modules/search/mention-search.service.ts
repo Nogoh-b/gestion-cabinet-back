@@ -16,6 +16,10 @@ import { SuppliersService } from '../supplier/supplier.service';
 import { Supplier } from '../supplier/entities/supplier.entity';
 import { ReferrersService } from '../referral/referral.service';
 import { Referrer } from '../referral/entities/referral.entity';
+import { PdfTemplatesService } from '../pdf-templates/pdf-templates.service';
+import { MailTemplateService } from '../mail-template/mail-template.service';
+import { mailUsage, pdfUsage } from '../ai-skills/template-search';
+import { normalizeSkillText } from 'src/core/ai-database/skills/skill-suggestions';
 import {
   MentionGroup,
   MentionItem,
@@ -42,6 +46,11 @@ interface MentionSource {
   ) => Promise<Page>;
   label: (row: Row) => unknown;
   sublabel?: (row: Row) => unknown;
+  /**
+   * Lignes partagées entre cabinets (@SharedAcrossTenants) : les modèles
+   * globaux (tenant 1) sont légitimement visibles de chaque cabinet.
+   */
+  shared?: boolean;
 }
 
 /** Premier texte non vide (même règle que les libellés du menu @). */
@@ -51,6 +60,25 @@ function firstText(...values: unknown[]): string | undefined {
     if (typeof value === 'string' && value.trim()) return value.trim();
   }
   return undefined;
+}
+
+/**
+ * Modèles (peu nombreux, sans recherche paginée côté module) : filtrés en
+ * mémoire sur le nom, le code et la description, sans tenir compte des accents.
+ */
+async function searchTemplates(
+  rows: Promise<Row[]>,
+  search: string,
+  { limit }: Paging,
+): Promise<Page> {
+  const words = normalizeSkillText(search).split(' ').filter(Boolean);
+  const data = (await rows).filter((row) => {
+    const haystack = normalizeSkillText(
+      `${row.name ?? ''} ${row.code ?? ''} ${row.description ?? ''}`,
+    );
+    return words.every((word) => haystack.includes(word));
+  });
+  return { data: data.slice(0, limit), meta: { total: data.length } };
 }
 
 /** Date d'audience au format du front (jj/mm/aaaa, heure du Cameroun). */
@@ -114,6 +142,8 @@ export class MentionSearchService {
     documents: DocumentCustomerService,
     suppliers: SuppliersService,
     referrers: ReferrersService,
+    pdfTemplates: PdfTemplatesService,
+    mailTemplates: MailTemplateService,
   ) {
     this.sources = [
       {
@@ -221,6 +251,24 @@ export class MentionSearchService {
           referrers.searchWithTransformer(criteria, Referrer, paging as any),
         label: (r) => firstText(r.company_name, r.contact_name, r.email),
       },
+      {
+        type: 'modele_document',
+        permission: 'view_pdf_templates',
+        shared: true,
+        search: (criteria, paging) =>
+          searchTemplates(pdfTemplates.findAll(), criteria.search, paging),
+        label: (t) => firstText(t.name, t.code),
+        sublabel: (t) => `Document · pour ${pdfUsage(t.entity_type)}`,
+      },
+      {
+        type: 'modele_mail',
+        permission: 'view_mail_templates',
+        shared: true,
+        search: (criteria, paging) =>
+          searchTemplates(mailTemplates.findAll(), criteria.search, paging),
+        label: (t) => firstText(t.name, t.code),
+        sublabel: (t) => firstText(t.subject, mailUsage(t.category, t.audience)),
+      },
     ];
   }
 
@@ -260,6 +308,7 @@ export class MentionSearchService {
         // Filet de sécurité : jamais une ligne d'un autre cabinet.
         .filter(
           (row) =>
+            source.shared ||
             row?.tenant_id == null ||
             Number(row.tenant_id) === Number(user.tenantId),
         )

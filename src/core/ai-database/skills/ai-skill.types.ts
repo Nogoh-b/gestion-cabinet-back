@@ -344,8 +344,12 @@ export interface AiSkillContext {
   params: Record<string, any>;
   user: any;
   userId: string;
-  /** Messages visibles récents (le plus ancien d'abord). */
-  history: Array<{ role: string; content: string }>;
+  /**
+   * Messages visibles récents (le plus ancien d'abord), avec les fiches qu'ils
+   * citent (mentions @, enregistrements lus) : « ce modèle », « cette facture »
+   * se résolvent à partir des tours précédents.
+   */
+  history: Array<{ role: string; content: string; refs?: Array<{ entity?: string; type?: string; id: string | number; label?: string }> }>;
   llm: AiSkillLlm;
   /** Étape affichée pendant le traitement. */
   status(message: string): void;
