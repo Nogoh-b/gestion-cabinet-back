@@ -86,6 +86,7 @@ import {
 } from './recommended-actions';
 import type { ResponseMode } from './response-mode';
 import { detectSkillRequest, skillForReferencedRecord, suggestSkills, type SkillDetection } from './skills/skill-suggestions';
+import { withTemplateSkills } from './skills/template-routing';
 import type { AiSkillCatalogItem, AiSkillTargetType, EditableDocument } from './skills/ai-skill.types';
 import type { SkillCandidate } from './intent-detection.service';
 import {
@@ -109,7 +110,7 @@ import {
   renderUserProfileBlock,
 } from './user-profile';
 import type { AiSkillContext, AiSkillOutcome } from './skills/ai-skill.types';
-import { canonicalTargetType, findTarget, wantsWholeCabinet } from './skills/skill-helpers';
+import { canonicalTargetType, findTarget, recordCitedEarlier, type SkillTarget, wantsWholeCabinet } from './skills/skill-helpers';
 import { GenericWriteService } from './generic-write.service';
 import { IntentDetectionService } from './intent-detection.service';
 import {
@@ -6091,7 +6092,9 @@ ${blocks.join('\n\n')}
           );
           return;
         }
-        skillCandidates = detection.candidates;
+        // Demande sur un modèle sans forme nette : les compétences de modèle sont
+        // proposées au classifieur (jamais une lecture brute des tables).
+        skillCandidates = withTemplateSkills(dto.question, detection.candidates, skillCatalog);
       }
       if (
         intentMode === 'auto' &&
@@ -7592,7 +7595,7 @@ RÉPONSE :`;
       params,
       user,
       userId,
-      history: history.map((message) => ({ role: message.role, content: message.content })),
+      history: history.map((message) => ({ role: message.role, content: message.content, ...(message.refs?.length && { refs: message.refs }) })),
       llm: {
         complete: async (prompt, maxTokens) =>
           this.extractLlmText(
@@ -7988,7 +7991,16 @@ RÉPONSE :`;
     // « … du cabinet » : pas de fiche reprise de l'historique.
     if (!this.skills?.targetRequired?.(code) && wantsWholeCabinet(question)) return referenced;
     const last = [...history].reverse().find((message) => message.refs?.length);
-    if (!last?.refs || last.refs.length > 3) return referenced;
+    if (!last?.refs) return referenced;
+    if (last.refs.length > 3) {
+      // Réponse qui cite plusieurs fiches (deux factures, leur dossier, le client) :
+      // seulement celle que la demande nomme, ou la seule de chaque type visé.
+      const cited = targets
+        .map((type) => recordCitedEarlier(history, type, question))
+        .filter((target): target is SkillTarget => !!target)
+        .map((target) => ({ type: target.type, id: target.id, label: target.label }));
+      return [...cited, ...referenced];
+    }
     const fromHistory = last.refs
       .map((ref) => ({ type: String(ref.entity ?? ref.type ?? ''), id: ref.id, label: ref.label ?? `#${ref.id}` }))
       .filter((ref) => canonicalTargetType(ref.type));

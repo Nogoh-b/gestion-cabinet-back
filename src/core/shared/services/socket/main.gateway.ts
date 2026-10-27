@@ -9,15 +9,36 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+  UseInterceptors,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { NotificationType } from 'src/modules/notification/enum/notification-type.enum';
-import { ChatService } from 'src/modules/chat/services/chat/chat.service';
+import {
+  ChatMessagePayload,
+  ChatService,
+  ConversationSummary,
+  ReceiptUpdate,
+} from 'src/modules/chat/services/chat/chat.service';
 import { NotificationService } from 'src/modules/notification/notification.service';
 import { NotificationResponseDto } from 'src/modules/notification/dto/notification-response.dto';
 import { UsersService } from 'src/modules/iam/user/user.service';
 import { EmployeeStatus } from 'src/modules/agencies/employee/entities/employee.entity';
 import { isClientUser } from 'src/core/auth/client-access';
+import { TenantContext } from 'src/core/tenant/tenant.context';
+import { WsTenantInterceptor } from 'src/core/tenant/ws-tenant.interceptor';
+import { signUploadUrlsDeep } from '../../interceptors/sign-upload-urls.interceptor';
+
+/** `conversation_<id>` → id, sinon null. */
+function conversationIdFromRoom(room: unknown): number | null {
+  const match = /^conversation_(\d+)$/.exec(String(room ?? ''));
+  return match ? Number(match[1]) : null;
+}
 
 @WebSocketGateway({
   cors: {
@@ -27,6 +48,7 @@ import { isClientUser } from 'src/core/auth/client-access';
   // PAS DE NAMESPACE - utilise le namespace par défaut
 })
 @Injectable()
+@UseInterceptors(WsTenantInterceptor)
 export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
@@ -77,21 +99,33 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.data.userId = userId;
       client.data.tenantId = tenantId;
 
-      // Joindre la room personnelle
+      // Joindre la room personnelle et celle du cabinet (présence)
       const userRoom = `user_${userId}`;
       await client.join(userRoom);
+      await client.join(this.tenantRoom(tenantId));
       this.addUserRoom(userId, userRoom);
       if (!wasOnline) {
         await this.userService.update(userId, { is_online: true });
-        this.server.emit('user_status_changed', {
+        const presence = this.server.to(this.tenantRoom(tenantId));
+        presence.emit('user_status_changed', {
           userId,
           status: 'online',
           isOnline: true,
           timestamp: new Date().toISOString(),
         });
-        this.server.emit('userOnline', { userId });
+        presence.emit('userOnline', { userId });
       }
-      void this.chatService.setReceiveMessagesWithCount(userId);
+      // Tout ce qui l'attendait est désormais « reçu » : on prévient les
+      // expéditeurs (double coche grise).
+      await this.runInTenant(tenantId, async () => {
+        const updates =
+          (await this.chatService.setReceiveMessagesWithCount(userId)) ?? [];
+        for (const update of updates) {
+          await this.emitReceipts(update, userId, 'delivered');
+        }
+      }).catch((err) =>
+        this.logger.warn(`Accusés de réception non mis à jour : ${err?.message}`),
+      );
       // Envoyer les notifications non lues (comportement de NotificationGateway)
       const unreadNotifications = await this.getUnreadNotifications(userId);
       if (unreadNotifications.length > 0) {
@@ -115,19 +149,18 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.removeConnection(client.id);
 
       if (!this.isUserOnline(userId)) {
-        client.broadcast.to(`conversation_4`).emit('userOffline', {
-          type: 'new_message',
-          room: `conversation_4`,
-        });
         const lastSeen = new Date().toISOString();
+        const presence = this.server.to(
+          this.tenantRoom(Number(client.data?.tenantId)),
+        );
         // Notifier les deux types d'événements
-        this.server.emit('userOffline', {
+        presence.emit('userOffline', {
           userId,
           status: 'offline',
           timestamp: new Date().toISOString(),
           lastSeen,
         });
-        this.server.emit('user_status_changed', {
+        presence.emit('user_status_changed', {
           userId,
           status: 'offline',
           isOnline: false,
@@ -144,19 +177,28 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   // ========== ÉVÉNEMENTS CHAT ==========
+  /**
+   * Seules les rooms `conversation_<id>` dont l'appelant est participant
+   * peuvent être rejointes (indicateur de saisie, présence dans le fil).
+   */
   @SubscribeMessage('join_room')
   async joinRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: any, // SendMessageDto
+    @MessageBody() data: { room: string },
   ) {
-    const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-    const room = data.room;
+    const userId = this.getUserIdBySocketId(client.id);
+    const room = String(data?.room ?? '');
+    const conversationId = conversationIdFromRoom(room);
+    if (
+      !userId ||
+      !conversationId ||
+      !(await this.chatService.isParticipant(conversationId, userId))
+    ) {
+      client.emit('room_denied', { room });
+      return { success: false };
+    }
     await client.join(room);
     this.addUserRoom(userId, room);
-    if (data.join_parent) {
-      await client.join(room.split('_')[0]);
-      this.addUserRoom(userId, room.split('_')[0]);
-    }
     client.emit('joined_room', { room });
     this.logger.log(`📌 User ${userId} rejoint la room ${room}`);
 
@@ -179,100 +221,74 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       userId,
       room,
     });
+    return { success: true };
   }
 
-  // ========== ÉVÉNEMENTS CHAT ==========
+  @SubscribeMessage('leave_room')
+  async leaveRoom(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { room: string },
+  ) {
+    const room = String(data?.room ?? '');
+    if (!conversationIdFromRoom(room)) return { success: false };
+    await client.leave(room);
+    const userId = this.getUserIdBySocketId(client.id);
+    if (userId) this.userRooms.get(userId)?.delete(room);
+    return { success: true };
+  }
+
+  /**
+   * Envoi d'un message. La réponse (accusé socket.io) porte le message
+   * enregistré ou l'erreur, pour que le front remplace son affichage
+   * optimiste (`clientTempId`).
+   */
   @SubscribeMessage('sendMessage')
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any, // SendMessageDto
   ) {
+    const userId = this.getUserIdBySocketId(client.id);
     try {
-      const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-      this.logger.log(`📨 sendMessage reçu de user ${userId}:`, data);
-
-      // Appeler votre service chat existant
+      if (!userId) throw new Error('Session socket inconnue');
       const message = await this.chatService.sendMessageWithExistingAttachments(
         data,
         userId,
       );
-      // const message = await this.chatService.sendMessage(data, userId);
-      const idsParticipants = await this.chatService.getParticipantIdsExcluding(
-        data.conversationId,
-        userId,
-      );
-
-      idsParticipants.forEach((participantId) => {
-        this.server.to(`user_${participantId}`).emit('new_message', {
-          type: 'room_message',
-          conversationId: data.conversationId,
-          message,
-          room: `conversation_${data.conversationId}`, // ✅ Ajouter la room
-        });
-      });
-
-      // idsParticipants.forEach(participantId => {
-      //   this.server.to(`conversation`).emit('new_message', {
-      //     type: 'room_message',
-      //     conversationId: data.conversationId,
-      //     message,
-      //     room: `conversation`, // ✅ Ajouter la room
-      //   });
-      // });
-
-      client.broadcast
-        .to(`conversation_${data.conversationId}`)
-        .emit('room_message', {
-          type: 'new_message',
-          message,
-          room: `conversation_${data.conversationId}`, // ✅ Ajouter la room
-        });
-      this.logger.log(
-        `✅ Message envoyé à la conversation ${data.conversationId}`,
-      );
-
-      // Notifications via le service notification existant
-      await this.notificationService.sendMessageNotification(message, userId);
-
-      return { success: true, message };
+      await this.broadcastChatMessage(message, userId);
+      return { success: true, message: this.signed(message) };
     } catch (error) {
-      client.emit('error', { message: error.message });
+      const reason = error?.response?.message ?? error?.message;
+      client.emit('chat:send_failed', {
+        conversationId: data?.conversationId,
+        clientTempId: data?.clientTempId,
+        message: reason,
+      });
+      return { success: false, error: reason };
     }
   }
 
   @SubscribeMessage('typing')
-  handleTyping(
+  async handleTyping(
     @ConnectedSocket() client: Socket,
     @MessageBody()
     data: {
       conversationId: number;
       isTyping: boolean;
-      room: string;
       userName: string;
     },
   ) {
-    try {
-      const userId = this.getUserIdBySocketId(client.id);
-      if (!userId) return;
+    const userId = this.getUserIdBySocketId(client.id);
+    const conversationId = Number(data?.conversationId);
+    if (!userId || !conversationId) return;
+    if (!client.rooms.has(`conversation_${conversationId}`)) return;
 
-      this.logger.debug(
-        `⌨️ typing user ${userId} in ${data.room}: ${data.isTyping}`,
-      );
-
-      // broadcast à la room SAUF l'émetteur
-      client.broadcast.to(data.room).emit('typing', {
-        userId,
-        conversationId: data.conversationId,
-        isTyping: data.isTyping,
-        room: data.room,
-        userName: data.userName, // Vous pouvez remplacer par le nom réel de l'utilisateur si disponible
-      });
-
-      return { success: true };
-    } catch (error) {
-      this.logger.error('❌ typing error', error);
-      client.emit('error', { message: error.message });
-    }
+    client.broadcast.to(`conversation_${conversationId}`).emit('chat:typing', {
+      userId,
+      conversationId,
+      isTyping: !!data.isTyping,
+      userName: String(data.userName ?? '').slice(0, 120),
+    });
+    return { success: true };
   }
 
   // src/shared/gateways/main.gateway.ts (extrait des méthodes à ajouter)
@@ -643,129 +659,66 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return sockets;
   }
 
+  /** L'utilisateur a ouvert la conversation : ses messages en attente sont lus. */
   @SubscribeMessage('userReadMessage')
   async handleReadsMessageConversation(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: number; roomName: string },
+    @MessageBody() data: { conversationId: number },
   ) {
-    const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-
-    const lastMessageId = await this.chatService.markMessagesAsRead(
-      data.conversationId,
-      userId,
-    );
-
-    client.broadcast.to(data.roomName).emit('messagesReaded', {
-      room: data.roomName,
-      conversationId: data.conversationId,
-      lastMessageId,
-      userId,
-    });
-    this.logger.log(
-      `📌 Socket ${userId} a lu les message de la conversation  ${data.roomName}`,
-    );
+    const userId = this.getUserIdBySocketId(client.id);
+    if (!userId || !data?.conversationId) return;
+    try {
+      const update = await this.chatService.markMessagesAsRead(
+        Number(data.conversationId),
+        userId,
+      );
+      if (update) await this.emitReceipts(update, userId, 'read');
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error?.message };
+    }
   }
 
+  /** Un message est arrivé sur le poste de l'utilisateur (fil fermé). */
   @SubscribeMessage('userReceiveMessage')
   async handleUserReceiveMessageConversation(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: number; roomName: string },
+    @MessageBody() data: { conversationId: number },
   ) {
-    const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-
-    const lastMessageId = await this.chatService.markMessagesAsReceive(
-      data.conversationId,
-      userId,
-    );
-
-    const idsParticipants = await this.chatService.getParticipantIdsExcluding(
-      data.conversationId,
-      userId,
-    );
-
-    idsParticipants.forEach((participantId) => {
-      this.logger.log(
-        `📌 Envoi messagesReceived a  ${participantId} a lu les message de la conversation  ${data.roomName}`,
-      );
-
-      this.server.to(`user_${participantId}`).emit('new_message', {
-        type: 'messagesReceived',
-        conversationId: data.conversationId,
-        lastMessageId,
-        room: data.roomName, // ✅ Ajouter la room
+    const userId = this.getUserIdBySocketId(client.id);
+    if (!userId || !data?.conversationId) return;
+    try {
+      const update = await this.chatService.markMessagesAsReceive(
+        Number(data.conversationId),
         userId,
-      });
-    });
-
-    client.broadcast.to(data.roomName).emit('messagesReceived', {
-      room: data.roomName,
-      conversationId: data.conversationId,
-      lastMessageId,
-      userId,
-    });
-    this.logger.log(
-      `📌 Socket ${userId} a lu les message de la conversation  ${data.roomName}`,
-    );
-  }
-
-  // @SubscribeMessage('typing')
-  // handleTyping(
-  //   @ConnectedSocket() client: Socket,
-  //   @MessageBody() data: { conversationId: number, isTyping: boolean },
-  // ) {
-  //   const userId = this.getUserIdBySocketId(client.id);
-  //   client.broadcast.to(`conversation_${data.conversationId}`).emit('userTyping', {
-  //     userId,
-  //     isTyping: data.isTyping,
-  //   });
-  // }
-
-  @SubscribeMessage('messages_read')
-  async handleMessagesRead(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: number; lastReadMessageId?: number },
-  ) {
-    const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-
-    // Marquer comme lu en DB
-    await this.chatService.markMessagesAsRead(data.conversationId, userId);
-
-    // Notifier les autres participants
-    const conversation = await this.chatService.getConversation(
-      data.conversationId,
-      userId,
-    );
-    const participantIds = conversation.participants.map((p) => p.id);
-
-    participantIds.forEach((participantId) => {
-      if (participantId !== userId) {
-        this.sendToUser(participantId, 'messages_read', {
-          type: 'messages_read',
-          conversationId: data.conversationId,
-          readerUserId: userId,
-          lastReadMessageId: data.lastReadMessageId,
-        });
-
-        this.sendToUser(participantId, 'messages_readA', {
-          type: 'messages_readA',
-          conversationId: data.conversationId,
-          readerUserId: userId,
-          readAt: new Date().toISOString(),
-        });
-      }
-    });
+      );
+      if (update) await this.emitReceipts(update, userId, 'delivered');
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error?.message };
+    }
   }
 
   // ========== ÉVÉNEMENTS NOTIFICATION ==========
   @SubscribeMessage('subscribe_to_dossier')
-  handleSubscribeToDossier(
+  async handleSubscribeToDossier(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { dossierId: number },
   ) {
     const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
     const room = `dossier_${data.dossierId}`;
+    // Même règle que le fil du dossier : réservé aux membres de son chat.
+    const conversationId = await this.chatService.getDossierConversationId(
+      Number(data.dossierId),
+    );
+    if (
+      !conversationId ||
+      !(await this.chatService.isParticipant(conversationId, userId))
+    ) {
+      return { success: false };
+    }
 
-    client.join(room);
+    await client.join(room);
     this.addUserRoom(userId, room);
 
     this.logger.log(
@@ -879,6 +832,112 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(
       `🔐 [WS] ✅ permissions_updated émis à ${connectedSockets} socket(s)`,
     );
+  }
+
+  // ========== CHAT : DIFFUSION ==========
+  /**
+   * Copie du payload avec des URLs `/uploads` signées : hors HTTP, le
+   * `SignUploadUrlsInterceptor` ne passe pas et les pièces jointes
+   * répondraient 401.
+   */
+  signed<T>(payload: T): T {
+    return signUploadUrlsDeep(JSON.parse(JSON.stringify(payload)) as T);
+  }
+
+  /**
+   * Nouveau message : à chaque participant (expéditeur compris, pour ses
+   * autres onglets). Les participants hors ligne reçoivent une notification.
+   */
+  async broadcastChatMessage(
+    message: ChatMessagePayload,
+    senderId: number,
+  ): Promise<void> {
+    const conversationId = message.conversationId;
+    const participantIds =
+      await this.chatService.getParticipantIds(conversationId);
+    const payload = this.signed({ conversationId, message });
+    for (const id of participantIds) {
+      this.server.to(`user_${id}`).emit('chat:message', payload);
+    }
+
+    const offline = participantIds.filter(
+      (id) => id !== senderId && !this.isUserOnline(id),
+    );
+    if (offline.length) {
+      await this.notificationService
+        .sendMessageNotification(message, senderId, offline)
+        .catch((err) =>
+          this.logger.warn(`Notification de message ignorée : ${err?.message}`),
+        );
+    }
+  }
+
+  /** Accusés (reçu / lu) d'un lecteur, diffusés aux participants. */
+  async emitReceipts(
+    update: ReceiptUpdate,
+    readerId: number,
+    kind: 'delivered' | 'read',
+  ): Promise<void> {
+    const participantIds = await this.chatService.getParticipantIds(
+      update.conversationId,
+    );
+    const payload = {
+      conversationId: update.conversationId,
+      readerId,
+      messageIds: update.messageIds,
+      kind,
+      at: update.at,
+    };
+    for (const id of participantIds) {
+      this.server.to(`user_${id}`).emit('chat:receipts', payload);
+    }
+  }
+
+  /** La conversation apparaît dans la liste du membre ajouté. */
+  emitConversationAdded(userId: number, conversation: ConversationSummary) {
+    this.server
+      .to(`user_${userId}`)
+      .emit('chat:conversation_added', this.signed({ conversation }));
+  }
+
+  /**
+   * Le membre retiré perd la conversation : elle quitte sa liste et ses
+   * sockets sortent de la room (plus d'indicateur de saisie).
+   */
+  emitConversationRemoved(
+    userId: number,
+    conversationId: number,
+    reason?: string,
+  ) {
+    this.server
+      .in(`user_${userId}`)
+      .socketsLeave(`conversation_${conversationId}`);
+    this.server
+      .to(`user_${userId}`)
+      .emit('chat:conversation_removed', { conversationId, reason });
+  }
+
+  /** Liste des participants modifiée, pour les membres restants. */
+  emitConversationUpdated(
+    userIds: number[],
+    conversationId: number,
+    changes: Partial<ConversationSummary>,
+  ) {
+    for (const id of userIds) {
+      this.server
+        .to(`user_${id}`)
+        .emit('chat:conversation_updated', { conversationId, changes });
+    }
+  }
+
+  private tenantRoom(tenantId: number): string {
+    return `tenant_${Number.isInteger(tenantId) && tenantId > 0 ? tenantId : 1}`;
+  }
+
+  /** Exécute `fn` dans le contexte du cabinet de la socket (hors handlers). */
+  private runInTenant<T>(tenantId: number, fn: () => Promise<T>): Promise<T> {
+    if (!this.tenantContext || !tenantId) return fn();
+    return this.tenantContext.run(tenantId, fn);
   }
 
   // ========== MÉTHODES D'ENVOI ==========
@@ -1030,5 +1089,6 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private notificationService: NotificationService,
     private userService: UsersService,
     private readonly jwtService: JwtService,
+    @Optional() private readonly tenantContext?: TenantContext,
   ) {}
 }

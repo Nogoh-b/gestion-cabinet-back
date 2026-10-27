@@ -3,8 +3,13 @@ import { Exclude, Expose } from 'class-transformer';
 
 @Exclude()
 export class NotificationResponseDto {
+  /** Entrée `user_notifications` du destinataire (lu, archivé, supprimé). */
   @Expose()
   id: number;
+
+  /** Notification partagée par tous les destinataires. */
+  @Expose()
+  notification_id: number;
 
   @Expose()
   type: string;

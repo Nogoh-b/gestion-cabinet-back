@@ -3,9 +3,7 @@ import { NotificationDispatcher } from 'src/core/notifications/notification-disp
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
-import { Conversation } from 'src/modules/chat/entities/conversation.entity';
 import {
   StatutFacture,
   TypeFacture,
@@ -17,11 +15,12 @@ import { DEFAULT_PROCEDURE_TEMPLATE_NAME } from 'src/modules/procedure/seeder/de
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
 import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
-import { DataSource, In, InsertEvent, Repository, UpdateEvent } from 'typeorm';
+import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Dossier } from '../entities/dossier.entity';
+import { DossierChatSyncService } from '../dossier-chat-sync.service';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { WorkflowEngine } from 'src/modules/case-workflow/case-workflow.enums';
 
@@ -29,13 +28,11 @@ import { WorkflowEngine } from 'src/modules/case-workflow/case-workflow.enums';
  * Subscriber métier pour l'entité Dossier.
  *
  * Effets gérés automatiquement :
- *  1. Création d'un dossier → crée la conversation de suivi de groupe
- *     et l'associe via dossier.conversation_id.
- *     L'avocat référent est ajouté comme participant initial.
+ *  1. Création d'un dossier → crée son chat (avocat référent,
+ *     collaborateurs, auteur) et l'associe via dossier.conversation_id.
  *
- *  2. Mise à jour des collaborateurs → synchronise la conversation.
- *     Tout collaborateur ajouté au dossier est automatiquement
- *     intégré comme participant de la conversation.
+ *  2. Mise à jour → le chat est réaligné sur les membres du dossier
+ *     (ajouts et retraits, cf. DossierChatSyncService).
  *
  * Pour ajouter un nouvel effet de bord :
  *   - Surcharge onAfterCreate ou onAfterUpdate
@@ -46,10 +43,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
-    @InjectRepository(Conversation)
-    private readonly conversationRepo: Repository<Conversation>,
-    @InjectRepository(Employee)
-    private readonly employeeRepo: Repository<Employee>,
+    private readonly dossierChatSync: DossierChatSyncService,
     @InjectRepository(ProcedureType)
     private readonly procedureTypeRepo: Repository<ProcedureType>,
     @InjectRepository(ProcedureTemplate)
@@ -358,58 +352,19 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     });
   }
 
+  /**
+   * Chat du dossier (avocat, collaborateurs, auteur). Via event.manager →
+   * même transaction que l'insertion : un rollback annule aussi la
+   * conversation (pas d'orphelin).
+   */
   private async createConversation(
     entity: Dossier,
     event: InsertEvent<Dossier>,
   ): Promise<void> {
-    const participants: Employee[] = [];
-    const seen = new Set<number>();
-
-    // Avocat référent
-    if (entity.lawyer_id) {
-      const lawyer = await this.employeeRepo.findOne({
-        where: { id: entity.lawyer_id as any },
-      });
-      if (lawyer) {
-        participants.push(lawyer);
-        seen.add(lawyer.id);
-      }
-    }
-
-    // Collaborateurs du dossier (rattachés sur l'entité avant l'insert).
-    const collaboratorIds = (entity.collaborators ?? [])
-      .map((c) => c?.id)
-      .filter((id): id is number => !!id && !seen.has(id));
-    if (collaboratorIds.length) {
-      const collaborators = await this.employeeRepo.find({
-        where: { id: In(collaboratorIds) },
-      });
-      participants.push(...collaborators);
-    }
-
-    // Enregistrée via event.manager → même transaction que l'insertion du
-    // dossier : un rollback annule aussi la conversation (pas d'orphelin).
-    const convRepo = event.manager.getRepository(Conversation);
-    const conversation = convRepo.create({
-      name: `Dossier ${entity.dossier_number}`,
-      isGroup: true,
-      participants,
-      tenant_id: entity.tenant_id,
+    const result = await this.dossierChatSync.sync(entity.id, event.manager, {
+      notifyAdded: false,
     });
-    const saved = await convRepo.save(conversation);
-
-    await event.manager
-      .createQueryBuilder()
-      .update(Dossier)
-      .set({ conversation_id: saved.id })
-      .where('id = :id', { id: entity.id })
-      .execute();
-
-    entity.conversation_id = saved.id;
-
-    this.logger.log(
-      `Conversation #${saved.id} créée (${participants.length} participant(s)) et liée au dossier ${entity.dossier_number}`,
-    );
+    if (result) entity.conversation_id = result.conversationId;
   }
 
   private async createProcedureInstance(
@@ -483,21 +438,29 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
 
   /**
    * Après une mise à jour du dossier :
-   *  - Si la relation `collaborators` a changé → synchronise les participants
-   *    de la conversation (ajout uniquement, pas de suppression automatique)
-   *  - Extensible : ajoute d'autres blocs conditionnels pour d'autres champs
+   *  - aligne le chat du dossier sur ses membres (avocat, collaborateurs,
+   *    auteur : ajouts et retraits) ;
+   *  - notifie un changement de statut.
+   *
+   * ⚠️ TypeORM ne déclenche pas `afterUpdate` quand seule la relation
+   * ManyToMany `collaborators` change : les routes dédiées aux collaborateurs
+   * appellent donc `DossierChatSyncService` explicitement. La synchro est
+   * idempotente.
    */
   protected async onAfterUpdate(
     entity: Partial<Dossier>,
     event: UpdateEvent<Dossier>,
   ): Promise<void> {
-    // ⚠️ TypeORM ne renseigne pas de façon fiable `event.updatedRelations`
-    // pour les ManyToMany (ex: ajout d'un collaborateur via
-    // `dossier.collaborators.push(...)` + save). On ne peut donc pas se fier à
-    // `hasRelationChanged('collaborators')`. La synchro est idempotente
-    // (n'ajoute que les participants manquants et ne notifie que les nouveaux),
-    // on l'exécute donc à chaque update du dossier.
-    await this.syncCollaboratorsToConversation(entity, event);
+    const dossierId = entity.id ?? event.databaseEntity?.id;
+    if (dossierId) {
+      try {
+        await this.dossierChatSync.sync(dossierId, event.manager);
+      } catch (err) {
+        this.logger.error(
+          `Synchro du chat du dossier #${dossierId} : ${(err as Error).message}`,
+        );
+      }
+    }
 
     if (this.hasColumnChanged(event, 'status')) {
       await this.notifyStatusChanged(entity, event);
@@ -565,98 +528,6 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     });
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // LOGIQUE PRIVÉE
-  // ────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Ajoute à la conversation les collaborateurs qui ne sont pas encore participants.
-   * N'enlève pas les participants existants (retrait = action délibérée).
-   */
-  private async syncCollaboratorsToConversation(
-    entity: Partial<Dossier>,
-    event: UpdateEvent<Dossier>,
-  ): Promise<void> {
-    const dossierId = entity.id ?? event.databaseEntity?.id;
-    this.logger.log(
-      `🔄 syncCollaboratorsToConversation START | dossierId=${dossierId} | entity.id=${entity.id} | dbEntity.id=${event.databaseEntity?.id}`,
-    );
-    if (!dossierId) {
-      this.logger.warn(`🔄 syncCollaborators SKIP — no dossierId`);
-      return;
-    }
-
-    const dossier = await this.loadWithConversation(dossierId, event);
-
-    this.logger.log(
-      `🔄 syncCollaborators loaded dossier | found=${!!dossier} | conversation_id=${dossier?.conversation_id ?? dossier?.conversation?.id ?? 'NONE'} | collaborators=${dossier?.collaborators?.length ?? 0} | conversation.participants=${dossier?.conversation?.participants?.length ?? 0}`,
-    );
-
-    if (!dossier?.conversation) {
-      this.logger.warn(
-        `Dossier #${dossierId} sans conversation — synchronisation ignorée`,
-      );
-      return;
-    }
-
-    const conversation = dossier.conversation;
-    const existingIds = new Set(conversation.participants.map((p) => p.id));
-    const collaboratorIds = (dossier.collaborators ?? []).map((c) => c.id);
-
-    this.logger.log(
-      `🔄 syncCollaborators comparing | existing participants=[${[...existingIds].join(', ')}] | dossier collaborators=[${collaboratorIds.join(', ')}]`,
-    );
-
-    const toAdd = (dossier.collaborators ?? []).filter(
-      (c) => !existingIds.has(c.id),
-    );
-
-    if (toAdd.length === 0) {
-      this.logger.log(
-        `🔄 syncCollaborators — aucun nouveau collaborateur à ajouter (tous déjà participants)`,
-      );
-      return;
-    }
-
-    conversation.participants = [...conversation.participants, ...toAdd];
-    await this.conversationRepo.save(conversation);
-
-    this.logger.log(
-      `✅ ${toAdd.length} collaborateur(s) ajouté(s) à la conversation #${conversation.id}` +
-        ` du dossier ${dossier.dossier_number}` +
-        ` [${toAdd.map((e) => e.id).join(', ')}]`,
-    );
-
-    // Notifier chaque nouveau collaborateur en in-app + e-mail
-    const newCollabUserIds = toAdd
-      .map((emp) => (emp as any).user_id ?? (emp as any).user?.id ?? emp.id)
-      .filter(Boolean);
-    if (newCollabUserIds.length > 0) {
-      const mailDossier =
-        (await this.load(dossier.id, event).catch(() => null)) ?? dossier;
-
-      this.logger.log(
-        `📢 Collaborateurs ajoutés au dossier | id=${dossier.id} | number="${dossier.dossier_number}" | new_users=[${newCollabUserIds.join(', ')}]`,
-      );
-      await this.notify({
-        event: NotifiableEvent.COLLABORATOR_ADDED,
-        title: `Vous avez été ajouté au dossier ${dossier.dossier_number}`,
-        content: dossier.object?.trim() || '',
-        link: `/dossiers/${dossier.id}`,
-        audience: {
-          lawyer_id: null,
-          collaborator_ids: newCollabUserIds,
-        },
-        entity: { type: 'dossier', id: dossier.id },
-        emailContext: buildEntityMailContext({
-          dossier: mailDossier,
-          resourceType: 'dossier',
-          resource: mailDossier as any,
-        }),
-      });
-    }
-  }
-
   // ── Helpers de rechargement (pattern uniformisé avec DiligenceSubscriber) ──
 
   private load(
@@ -667,23 +538,6 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
       id,
       {
         relations: ['client', 'lawyer', 'collaborators'],
-      },
-      event,
-    );
-  }
-
-  private loadWithConversation(
-    id: number,
-    event?: InsertEvent<Dossier> | UpdateEvent<Dossier>,
-  ): Promise<Dossier | null> {
-    return this.loadEntity<Dossier>(
-      id,
-      {
-        relations: [
-          'collaborators',
-          'conversation',
-          'conversation.participants',
-        ],
       },
       event,
     );

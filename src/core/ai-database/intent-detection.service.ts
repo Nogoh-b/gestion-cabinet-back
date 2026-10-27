@@ -23,6 +23,7 @@ import {
   isUnlikelyDatabaseQuestion,
   summarizeLegalMatches,
 } from './source-signals';
+import { mentionsTemplate, TEMPLATE_SKILLS } from './skills/template-routing';
 
 type IntentClass = 'READ' | 'WRITE' | 'HELP' | 'ADVICE' | 'CHAT';
 
@@ -259,7 +260,12 @@ export class IntentDetectionService {
       return { type: 'CONVERSATIONAL', requiresConfirmation: false, reason: LOCAL_ROUTE_REASONS.CHAT };
     }
 
-    if (localClass === 'READ') {
+    // Demande sur un modèle avec ses compétences en lice : le classifieur tranche
+    // entre elles et la lecture (« cherche dans ce modèle… » n'est pas une requête SQL).
+    const templateSkillOffered =
+      (options.skillCandidates ?? []).some((candidate) => candidate.code === TEMPLATE_SKILLS.produce || candidate.code === TEMPLATE_SKILLS.manage)
+      && mentionsTemplate(question);
+    if (localClass === 'READ' && !templateSkillOffered) {
       return { type: 'READ', requiresConfirmation: false, reason: LOCAL_ROUTE_REASONS.READ };
     }
     const writeReason =
@@ -1212,7 +1218,8 @@ ${candidates.length ? `
 Compétences du chat qui pourraient répondre (actions spécialisées qui préparent un brouillon ou un calcul, toujours validé par l'utilisateur) :
 ${candidates.map((candidate) => `- ${candidate.code} : ${candidate.label} — ${candidate.description}`).join('\n')}
 Si la demande demande de RÉALISER l'une de ces actions (préparer, rédiger, envoyer, calculer, analyser… pour un client, un dossier ou un document du cabinet), réponds SKILL:<code> (ex. SKILL:${candidates[0].code}). Une simple question de connaissance (« quel est le délai d'appel ? ») reste CHAT ; une consultation des données reste READ.
-` : ''}${options.allowComposite ? `
+${candidates.some((candidate) => candidate.code === TEMPLATE_SKILLS.produce || candidate.code === TEMPLATE_SKILLS.manage) ? `⚠️ Une demande qui porte sur un MODÈLE du cabinet (modèle de document, de facture, de mail, gabarit, template, « ce modèle » cité plus tôt dans l'historique) n'est jamais READ : les modèles ne sont pas des données à lister en SQL. Pour produire un document à partir d'un modèle (« rédige un document sur la base de ce modèle facture client »), réponds SKILL:${TEMPLATE_SKILLS.produce} ; pour chercher, lister, lire ou modifier le modèle lui-même, réponds SKILL:${TEMPLATE_SKILLS.manage}.
+` : ''}` : ''}${options.allowComposite ? `
 Si la demande enchaîne EXPLICITEMENT deux demandes de natures différentes (reliées par « et », « puis », « ensuite »), réponds leurs types dans l'ordre, reliés par « + » (ex. HELP+READ${candidates.length ? `, READ+SKILL:${candidates[0].code}` : ''}). Une seule demande, même longue : un seul type.
 ` : ''}
 Demande : "${question.replace(/"/g, "'")}"

@@ -24,6 +24,7 @@ import { DossierWriteHandler } from './dossier-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { DossierSubscriber } from './subscribers/dossier.subscriber';
+import { DossierChatSyncService } from './dossier-chat-sync.service';
 import { Conversation } from '../chat/entities/conversation.entity';
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { PlansModule } from '../plans/plans.module';
@@ -67,10 +68,12 @@ import { DossierBillingProfile } from '../case-workflow/entities/billing.entity'
     DossierVisibilityPatch,
     StepsService,
     DossierWriteHandler,
+    DossierChatSyncService,
     DossierSubscriber,
   ],
   exports: [
     DossiersService,
+    DossierChatSyncService,
     DossierStatsService,
     DossierAccessGrantsService,
     TypeOrmModule,

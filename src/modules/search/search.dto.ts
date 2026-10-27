@@ -82,6 +82,8 @@ export const MENTION_TYPES = [
   'document',
   'fournisseur',
   'apporteur',
+  'modele_document',
+  'modele_mail',
 ] as const;
 export type MentionType = (typeof MENTION_TYPES)[number];
 

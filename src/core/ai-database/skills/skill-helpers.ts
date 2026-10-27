@@ -115,6 +115,52 @@ export function resolveSkillTarget(
   return findTarget(ctx.references, types);
 }
 
+const plainText = (text: unknown): string =>
+  String(text ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * Fiche d'un type citée dans les derniers messages (« remplis ce modèle de
+ * facture » après une lecture des factures du dossier) : celle dont la demande
+ * reprend le libellé (« FAC-2026-0001 »), sinon la seule de ce type dans le
+ * message le plus récent qui en cite. Plusieurs à égalité : aucune, jamais de
+ * choix au hasard (l'utilisateur choisit).
+ */
+export function recordCitedEarlier(
+  history: AiSkillContext['history'] | undefined,
+  type: AiSkillTargetType,
+  question = '',
+  max = 6,
+): SkillTarget | undefined {
+  const asked = ` ${plainText(question)} `;
+  const recent = [...(history ?? [])].reverse().slice(0, max);
+  const ofType = (message: AiSkillContext['history'][number]) => {
+    const seen = new Set<string>();
+    return (message.refs ?? []).filter((ref) => {
+      if (canonicalTargetType(ref.type) !== type && canonicalTargetType(ref.entity) !== type) return false;
+      const key = String(ref.id);
+      if (!recordId(ref.id) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+  const toTarget = (ref: { id: string | number; label?: string }): SkillTarget => {
+    const id = recordId(ref.id)!;
+    return { type, table: SKILL_TARGET_TABLES[type], id, label: ref.label || `#${id}` };
+  };
+  for (const message of recent) {
+    const named = ofType(message).find((ref) => {
+      const label = plainText(ref.label);
+      return label.length >= 3 && asked.includes(` ${label} `);
+    });
+    if (named) return toTarget(named);
+  }
+  for (const message of recent) {
+    const refs = ofType(message);
+    if (refs.length) return refs.length === 1 ? toTarget(refs[0]) : undefined;
+  }
+  return undefined;
+}
+
 /**
  * « État des impayés du cabinet », « … de tout le cabinet », « global » : la
  * demande vise tout le cabinet, la fiche ouverte ne doit pas la restreindre.

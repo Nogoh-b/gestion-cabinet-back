@@ -3,7 +3,10 @@ import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 // seeders/chat-group-conversation.seeder.ts
 import { DataSource, Repository } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
-import { Conversation } from '../entities/conversation.entity';
+import {
+  Conversation,
+  ConversationType,
+} from '../entities/conversation.entity';
 import {
   Employee,
   EmployeeStatus,
@@ -72,6 +75,7 @@ export default class ChatGroupConversationSeeder implements Seeder {
     const groupConversation = conversationRepository.create();
     groupConversation.name = defaultGroupName;
     groupConversation.isGroup = true;
+    groupConversation.type = ConversationType.GLOBAL;
     groupConversation.participants = activeEmployees;
     groupConversation.createdAt = new Date();
     groupConversation.lastMessageAt = new Date();

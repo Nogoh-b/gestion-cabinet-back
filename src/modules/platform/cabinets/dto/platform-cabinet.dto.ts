@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -12,6 +13,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { WorkflowEngine } from 'src/modules/case-workflow/case-workflow.enums';
 
 export class PlatformCabinetQueryDto {
   @IsOptional() @IsString() @MaxLength(100)
@@ -53,6 +55,15 @@ export class SuspendCabinetDto {
   @ApiProperty({ description: 'Motif (visible dans le journal et par le cabinet)' })
   @IsString() @MinLength(3) @MaxLength(500)
   note: string;
+}
+
+export class UpdateCabinetWorkflowDto {
+  @ApiProperty({
+    enum: WorkflowEngine,
+    description: 'Parcours des prochains dossiers (les dossiers existants ne changent pas)',
+  })
+  @IsEnum(WorkflowEngine)
+  new_dossiers_engine: WorkflowEngine;
 }
 
 export class ExtendSubscriptionDto {

@@ -135,4 +135,43 @@ describe('actions recommandées', () => {
     expect(prompt).toContain('[c1]');
     expect(prompt).toContain('Ouvrir WhatsApp');
   });
+
+  // 25/10/2026 : demande sur un modèle lue comme une consultation des factures.
+  it('demande sur un modèle : générer depuis le modèle, voir le modèle, en choisir un autre', () => {
+    const withTemplates = [...catalog, skill('rediger_document', ['dossier', 'client', 'facture']), skill('modeles')];
+    const candidates = buildActionCandidates(ctx({
+      question: 'rediges un document sous la base de ce modèle facture client',
+      answer: 'Facture FAC-2026-0001 — Client : Patrick Talla',
+      records: [{ type: 'facture', id: 7, label: 'FAC-2026-0001' }],
+      catalog: withTemplates,
+    }));
+    expect(candidates.slice(0, 3).map((item) => [item.skill, item.label])).toEqual([
+      ['rediger_document', 'Générer le document depuis le modèle · FAC-2026-0001'],
+      ['modeles', 'Voir le modèle'],
+      ['modeles', 'Choisir un autre modèle'],
+    ]);
+    expect(candidates[0]).toMatchObject({ prompt: 'rediges un document sous la base de ce modèle facture client', skillParams: { target: { type: 'facture', id: 7 } } });
+    expect(candidates[1].skillParams).toEqual({ action: 'read' });
+    expect(candidates[2].skillParams).toEqual({ action: 'list', family: 'pdf' });
+  });
+
+  it('les compétences de modèle ont déjà leurs suites : rien de plus', () => {
+    const withTemplates = [...catalog, skill('rediger_document', ['dossier']), skill('modeles')];
+    const candidates = buildActionCandidates(ctx({ question: 'lis le modèle facture client', skill: 'modeles', catalog: withTemplates }));
+    expect(candidates.some((item) => item.label === 'Voir le modèle')).toBe(false);
+  });
+
+  it('deux suites de la même compétence aux options différentes restent deux boutons', () => {
+    const withTemplates = [...catalog, skill('rediger_document', ['dossier']), skill('modeles')];
+    const candidates = buildActionCandidates(ctx({
+      skill: 'rediger_document',
+      outcome: 'document_draft',
+      catalog: withTemplates,
+      followUps: [
+        { label: 'Choisir un autre modèle', skill: 'rediger_document', question: 'q', params: { chooseTemplate: true } },
+        { label: '✍️ Rédiger sans modèle', skill: 'rediger_document', question: 'q', params: { freeDraft: true } },
+      ],
+    }));
+    expect(candidates.map((item) => item.label)).toEqual(expect.arrayContaining(['Choisir un autre modèle', '✍️ Rédiger sans modèle']));
+  });
 });

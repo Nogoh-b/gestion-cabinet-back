@@ -19,6 +19,9 @@ const FILLER = new Set([
   'document', 'documents', 'bloc', 'blocs', 'entete', 'precision', 'apportee',
   'ajoute', 'ajouter', 'rends', 'rendre', 'plus', 'moins', 'long', 'longue', 'court', 'courte', 'consistante',
   'desactive', 'desactiver', 'reactive', 'reactiver', 'active', 'activer', 'renomme', 'renommer',
+  // Chercher un modèle (« cherche le modèle facture client », « avons-nous un modèle de… »).
+  'cherche', 'chercher', 'recherche', 'rechercher', 'trouve', 'trouver', 'retrouve', 'retrouver', 'consulte', 'consulter',
+  'avons', 'avez', 'existe', 'nous', 'vous', 'deja',
 ]);
 
 const stem = (word: string): string => word.replace(/(?:s|x)$/, '');
@@ -157,6 +160,62 @@ function containedName<T extends SearchableTemplate>(entries: T[], query: string
   return top.length === 1 ? top[0].entry : null;
 }
 
+// ── Modèle cité dans la conversation ────────────────────────────────────────
+
+/**
+ * « ce modèle », « le même modèle », « le modèle ci-dessus », « celui-ci » : la
+ * demande renvoie à un modèle cité plus tôt dans la conversation.
+ */
+const BACK_REFERENCE =
+  /\b(?:ce|cet|cette|le meme|la meme|meme|ledit|ladite)(?: \w+)? (?:modele|gabarit|template|trame)s?\b|\b(?:modele|gabarit|template|trame)s? (?:precedent|ci dessus|du dessus|affiche|cite|mentionne|evoque|choisi)\b|\bcelui (?:ci|la)\b/;
+
+export function refersToEarlierTemplate(question: string): boolean {
+  return BACK_REFERENCE.test(norm(question));
+}
+
+/**
+ * Modèle cité en toutes lettres, par son nom ou son code (« ce modèle facture
+ * client » → facture_client, « Modèle utilisé : Facture — Version client »).
+ * Un nom compris dans un nom plus long cité aussi ne compte pas (« Facture
+ * client » dans « Facture client détaillée »). `cited` dit si au moins un
+ * modèle est cité, même sans vainqueur (plusieurs modèles : une liste).
+ */
+export function templateCitedIn<T extends { name?: string | null; code?: string | null }>(
+  entries: T[],
+  text: string,
+): { entry?: T; cited: boolean } {
+  const haystack = ` ${norm(text)} `;
+  const hits = entries
+    .map((entry) => {
+      const phrase = [norm(entry.name), norm(String(entry.code ?? '').replace(/_/g, ' '))]
+        .filter((candidate) => candidate.split(' ').length >= 2 && haystack.includes(` ${candidate} `))
+        .sort((a, b) => b.length - a.length)[0];
+      return { entry, phrase };
+    })
+    .filter((hit): hit is { entry: T; phrase: string } => !!hit.phrase);
+  if (!hits.length) return { cited: false };
+  const distinct = hits.filter((hit) => !hits.some((other) => other !== hit && other.phrase.length > hit.phrase.length && ` ${other.phrase} `.includes(` ${hit.phrase} `)));
+  return distinct.length === 1 ? { entry: distinct[0].entry, cited: true } : { cited: true };
+}
+
+/**
+ * Modèle désigné par « ce modèle » : le dernier cité dans la conversation (les
+ * `max` derniers messages, du plus récent au plus ancien). Le message le plus
+ * récent qui cite des modèles tranche : s'il en cite plusieurs à égalité (une
+ * liste), aucun n'est choisi au hasard.
+ */
+export function templateCitedEarlier<T extends { name?: string | null; code?: string | null }>(
+  entries: T[],
+  history: Array<{ content: string }>,
+  max = 6,
+): T | undefined {
+  for (const message of [...(history ?? [])].reverse().slice(0, max)) {
+    const { entry, cited } = templateCitedIn(entries, message.content);
+    if (cited) return entry;
+  }
+  return undefined;
+}
+
 // ── Texte lisible ───────────────────────────────────────────────────────────
 
 const VARIABLE_LABELS: Record<string, string> = {
@@ -265,7 +324,7 @@ export function mailUsage(category: unknown, audience: unknown): string {
  * avec « crée un modèle » (création). Motif sur le texte normalisé.
  */
 export const TEMPLATE_EDIT_PATTERN =
-  '/\\b(?:modifi|chang|corrig|personnalis|ameliore|renomm|desactiv|reactiv|actualis|ajout|retir|supprim|enleve|insere|remplac|mets a jour|mettre a jour|met a jour)\\w*\\b(?:(?!\\b(?:a partir|depuis|selon|d apres|en utilisant|utilise)\\b).){0,50}\\b(?:au|du|le|la|l|ce|cet|cette|mon|ma|notre|dans le|dans mon|dans ce|dans notre) (?:modele|gabarit|template)s?\\b/';
+  '/\\b(?:modifi|chang|corrig|personnalis|ameliore|renomm|desactiv|reactiv|actualis|ajout|retir|supprim|enleve|insere|remplac|mets a jour|mettre a jour|met a jour)\\w*\\b(?:(?!\\b(?:a partir|depuis|selon|d apres|en utilisant|utilise|sur la base|sous la base|en suivant|suivant|basant sur|avec)\\b).){0,50}\\b(?:au|du|le|la|l|ce|cet|cette|mon|ma|notre|dans le|dans mon|dans ce|dans notre) (?:modele|gabarit|template)s?\\b/';
 
 const TEMPLATE_EDIT = new RegExp(TEMPLATE_EDIT_PATTERN.slice(1, -1));
 

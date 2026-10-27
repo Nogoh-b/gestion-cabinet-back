@@ -20,6 +20,27 @@ export class CreateCaseWorkflow1782700000000 implements MigrationInterface {
     return rows.length > 0;
   }
 
+  /**
+   * Une FK entre colonnes texte exige le même charset/collation des deux côtés
+   * (errno 150 sinon). Les tables historiques peuvent être en utf8mb4_bin alors
+   * que les nouvelles héritent du défaut de la base.
+   */
+  private async columnCharset(
+    queryRunner: QueryRunner,
+    table: string,
+    column: string,
+  ): Promise<string> {
+    const rows = (await queryRunner.query(
+      `SELECT CHARACTER_SET_NAME AS cs, COLLATION_NAME AS coll
+         FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1`,
+      [table, column],
+    )) as { cs: string | null; coll: string | null }[];
+    const row = rows[0];
+    if (!row?.cs || !row?.coll) return '';
+    return `CHARACTER SET ${row.cs} COLLATE ${row.coll}`;
+  }
+
   public async up(queryRunner: QueryRunner): Promise<void> {
     if (
       !(await this.columnExists(queryRunner, 'dossiers', 'lifecycle_phase'))
@@ -342,11 +363,16 @@ export class CreateCaseWorkflow1782700000000 implements MigrationInterface {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
+    const factureIdCharset = await this.columnCharset(
+      queryRunner,
+      'factures',
+      'id',
+    );
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS invoice_lines (
         id varchar(36) NOT NULL,
         tenant_id int NOT NULL,
-        facture_id varchar(36) NOT NULL,
+        facture_id varchar(36) ${factureIdCharset} NOT NULL,
         dossier_id int NOT NULL,
         billable_item_id varchar(36) NOT NULL,
         display_order int NOT NULL DEFAULT 0,

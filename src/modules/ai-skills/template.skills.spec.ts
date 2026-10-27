@@ -89,7 +89,39 @@ describe('ModelesSkill (modèles mails, PDF et blocs)', () => {
     expect(outcome.markdown).toContain('Facture standard');
     expect(outcome.markdown).toContain('Total [numéro]');
     for (const technical of ['facture_standard', 'pdf_header_defaut', 'Variables', '{{', '```']) expect(outcome.markdown).not.toContain(technical);
-    expect(outcome.followUps?.[0]).toMatchObject({ skill: 'modeles', params: { action: 'update', code: 'facture_standard' } });
+    // Modèle de document : s'en servir d'abord, puis le modifier ou en choisir un autre.
+    expect(outcome.followUps?.map((item) => item.label)).toEqual([
+      'Générer le document depuis ce modèle',
+      'Modifier ce modèle',
+      'Choisir un autre modèle',
+    ]);
+    expect(outcome.followUps?.[0]).toMatchObject({ skill: 'rediger_document', params: { templateId: 1 } });
+    expect(outcome.followUps?.[1]).toMatchObject({ skill: 'modeles', params: { action: 'update', code: 'facture_standard' } });
+  });
+
+  it('un modèle de mail ne propose pas de générer un document', async () => {
+    const outcome = await skillOf(servicesMock()).run(ctx({ question: 'lis le modèle « dossier_created_client »' }));
+    expect(outcome.type).toBe('answer');
+    expect((outcome as any).followUps.map((item: any) => item.skill)).not.toContain('rediger_document');
+  });
+
+  // 25/10/2026 : chercher un modèle, « ce modèle » cité au tour précédent.
+  it('« cherche le modèle Facture standard » : le modèle lu, pas la liste', async () => {
+    const outcome = await skillOf(servicesMock()).run(ctx({ question: 'cherche le modèle Facture standard' }));
+    expect(outcome.type).toBe('answer');
+    expect((outcome as any).markdown).toContain('## Facture standard');
+  });
+
+  it('« montre ce modèle » : le modèle cité plus tôt dans la conversation', async () => {
+    const outcome = await skillOf(servicesMock()).run(ctx({
+      question: 'montre-moi ce modèle',
+      history: [
+        { role: 'user', content: 'quel modèle sert pour les dossiers ?' },
+        { role: 'assistant', content: 'Le modèle Synthèse dossier sert aux dossiers.' },
+      ],
+    }));
+    expect(outcome.type).toBe('answer');
+    expect((outcome as any).markdown).toContain('## Synthèse dossier');
   });
 
   it('propose des choix quand aucun modèle ne correspond à tous les mots', async () => {

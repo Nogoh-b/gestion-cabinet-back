@@ -328,6 +328,10 @@ export class NotificationService {
     const data = userNotifications.map((un) =>
       plainToInstance(NotificationResponseDto, {
         ...un.notification,
+        // Comme le push temps réel (toSocketPayload) : `id` = entrée de la
+        // table pivot, seule clé acceptée par lu / archivé / supprimé.
+        id: un.id,
+        notification_id: un.notification?.id,
         userNotificationId: un.id,
         is_read: un.is_read,
         read_at: un.read_at,
@@ -365,6 +369,10 @@ export class NotificationService {
     return userNotifications.map((un) =>
       plainToInstance(NotificationResponseDto, {
         ...un.notification,
+        // Comme le push temps réel (toSocketPayload) : `id` = entrée de la
+        // table pivot, seule clé acceptée par lu / archivé / supprimé.
+        id: un.id,
+        notification_id: un.notification?.id,
         userNotificationId: un.id,
         is_read: un.is_read,
         read_at: un.read_at,
@@ -558,26 +566,41 @@ export class NotificationService {
   }
 
   // Méthodes spécifiques pour différents types de notifications
-  async sendMessageNotification(message: any, senderId: number): Promise<void> {
-    const recipients = message.conversation.participants
-      .filter((p) => p.id !== senderId)
-      .map((p) => p.id);
-
+  /**
+   * Notification « Nouveau message » pour les destinataires donnés (le chat
+   * ne l'envoie qu'aux participants hors ligne : les autres voient le
+   * compteur du chat en direct).
+   */
+  async sendMessageNotification(
+    message: {
+      id: number;
+      conversationId: number;
+      content?: string;
+      sender_name?: string;
+      attachments?: unknown[];
+    },
+    senderId: number,
+    recipientIds: number[],
+  ): Promise<void> {
+    const recipients = recipientIds.filter((id) => id !== senderId);
     if (recipients.length === 0) return;
 
+    const text =
+      message.content?.trim() ||
+      (message.attachments?.length ? '📎 Pièce jointe' : '');
     await this.createBulk(
       {
         user_ids: recipients,
         type: NotificationType.MESSAGE,
         title: 'Nouveau message',
-        content: `${message.sender_name}: ${message.content.substring(0, 100)}${message.content.length > 100 ? '...' : ''}`,
+        content: `${message.sender_name || 'Un collaborateur'}: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`,
         data: {
-          conversationId: message.conversation_id,
+          conversationId: message.conversationId,
           messageId: message.id,
-          senderId: message.sender_id,
+          senderId,
           senderName: message.sender_name,
         },
-        link: `/chat/${message.conversation_id}`,
+        link: `/chat/${message.conversationId}`,
         priority: 'NORMAL',
       },
       senderId,

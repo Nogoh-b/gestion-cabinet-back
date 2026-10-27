@@ -707,6 +707,48 @@ export class SkillTargetsService {
     return qb.getMany();
   }
 
+  /**
+   * Fiches d'un type rattachées à la cible (factures ou audiences du dossier,
+   * dossiers du client…), la plus récente d'abord : de quoi remplir un modèle
+   * de ce type quand la demande vise le dossier ou le client. Vide sans le droit
+   * de consultation du type.
+   */
+  async recordsFor(
+    type: AiSkillTargetType,
+    info: TargetInfo,
+    user?: any,
+    limit = 8,
+  ): Promise<Array<{ type: AiSkillTargetType; id: number; label: string }>> {
+    const dossierId = info.dossier?.id;
+    const clientId = info.client?.id;
+    const order = { id: 'DESC' } as any;
+    if (type === 'facture' && (dossierId || clientId) && (await this.can(user, 'view_factures'))) {
+      const rows = await this.dataSource.getRepository(Facture)
+        .find({ where: (dossierId ? { dossier_id: dossierId } : { client_id: clientId }) as any, order, take: limit })
+        .catch(() => [] as Facture[]);
+      return rows.map((row: any) => ({ type, id: row.id, label: `Facture ${row.numero ?? `#${row.id}`}` }));
+    }
+    if (type === 'dossier' && clientId && (await this.can(user, 'view_dossiers'))) {
+      const rows = await this.dataSource.getRepository(Dossier)
+        .find({ where: { client_id: clientId } as any, order, take: limit })
+        .catch(() => [] as Dossier[]);
+      return rows.map((row) => ({ type, id: row.id, label: `Dossier ${row.dossier_number}` }));
+    }
+    if (type === 'audience' && dossierId && (await this.can(user, 'view_audiences'))) {
+      const rows = await this.dataSource.getRepository(Audience)
+        .find({ where: { dossier_id: dossierId } as any, order: { audience_date: 'DESC' } as any, take: limit })
+        .catch(() => [] as Audience[]);
+      return rows.map((row: any) => ({ type, id: row.id, label: `Audience du ${dateFr(row.audience_date)}` }));
+    }
+    if (type === 'diligence' && dossierId) {
+      const rows = await this.dataSource.getRepository(Diligence)
+        .find({ where: { dossier_id: dossierId } as any, order, take: limit })
+        .catch(() => [] as Diligence[]);
+      return rows.map((row: any) => ({ type, id: row.id, label: `Diligence « ${row.title} »` }));
+    }
+    return [];
+  }
+
   /** Documents choisis, vérifiés dans le cabinet courant. */
   async documentsByIds(ids: number[]): Promise<DocumentCustomer[]> {
     if (!ids.length) return [];

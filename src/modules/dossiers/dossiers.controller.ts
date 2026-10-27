@@ -62,6 +62,7 @@ import { DossierSearchDto } from './dto/dossier-search.dto';
 import { DossierStatsDto } from './dto/dossier-stats.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { CaseWorkflowService } from '../case-workflow/services/case-workflow.service';
+import { DossierChatSyncService } from './dossier-chat-sync.service';
 
 @ApiTags('dossiers')
 @ApiBearerAuth()
@@ -73,7 +74,19 @@ export class DossiersController {
     private readonly statsService: DossierStatsService,
     private readonly accessGrantsService: DossierAccessGrantsService,
     private readonly caseWorkflowService: CaseWorkflowService,
+    private readonly dossierChatSync: DossierChatSyncService,
   ) {}
+
+  /**
+   * Réaligne le chat de chaque dossier du cabinet sur ses membres (avocat,
+   * collaborateurs, auteur) et crée les chats manquants. Idempotent.
+   */
+  @Post('chat/resync')
+  @RequirePermissions('edit_dossier')
+  @ApiOperation({ summary: 'Resynchroniser les chats de dossier' })
+  resyncDossierChats() {
+    return this.dossierChatSync.syncAll();
+  }
 
   @Get('stats')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)

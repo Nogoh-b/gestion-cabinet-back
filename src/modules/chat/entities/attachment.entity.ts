@@ -55,6 +55,10 @@ export class Attachment extends BaseEntity {
   @Column({ default: false })
   isUploaded: boolean;
 
+  /** Employé ayant téléversé le fichier : lui seul peut le joindre à un message. */
+  @Column({ name: 'uploaded_by_id', type: 'int', nullable: true })
+  uploadedById: number | null;
+
   @ManyToOne(() => Message, (message) => message.attachments, {
     onDelete: 'CASCADE',
   })

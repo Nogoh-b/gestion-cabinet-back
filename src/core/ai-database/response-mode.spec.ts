@@ -218,6 +218,26 @@ describe('compétences et demandes enchaînées (classifieur)', () => {
     expect(prompt).toContain('- mise_en_demeure : Mise en demeure — Lettre de mise en demeure');
     expect(prompt).toContain('SKILL:<code>');
   });
+
+  // 25/10/2026 : une demande sur un modèle partait en lecture brute des factures.
+  it('demande sur un modèle : pas de lecture locale, le classifieur choisit la compétence de modèle', async () => {
+    const question = 'liste les factures du client avec le modèle facture client';
+    expect(service.classifyLocal(question)).toBe('READ');
+    const candidates = [
+      { code: 'rediger_document', label: 'Créer / modifier un document', description: 'Produire un document depuis un modèle' },
+      { code: 'modeles', label: 'Modèles', description: 'Gérer les modèles' },
+    ];
+    const llm = llmAnswering('SKILL:rediger_document');
+    await expect(
+      service.detectIntent(question, llm, '', { signals: neutralSignals, skillCandidates: candidates }),
+    ).resolves.toMatchObject({ type: 'SKILL', skill: 'rediger_document' });
+    const prompt = (llm.invoke.mock.calls[0][0] as any)[0].content as string;
+    expect(prompt).toContain('porte sur un MODÈLE du cabinet');
+    // Sans compétence de modèle en lice, la lecture locale reste immédiate.
+    const plain = llmAnswering('CHAT');
+    await expect(service.detectIntent(question, plain, '', { signals: neutralSignals })).resolves.toMatchObject({ type: 'READ' });
+    expect(plain.invoke).not.toHaveBeenCalled();
+  });
 });
 
 describe('mode d’une compétence et d’une réponse en plusieurs parties', () => {

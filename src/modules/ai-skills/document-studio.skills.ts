@@ -14,7 +14,9 @@ import type {
   StudioDocument,
   StudioLayout,
 } from 'src/core/ai-database/skills/ai-skill.types';
-import { parseLlmJson, resolveSkillTarget, SkillTarget, todayFr } from 'src/core/ai-database/skills/skill-helpers';
+import {
+  findTarget, parseLlmJson, recordCitedEarlier, resolveSkillTarget, SKILL_TARGET_TABLES, SkillTarget, todayFr,
+} from 'src/core/ai-database/skills/skill-helpers';
 import { normalizeSkillText } from 'src/core/ai-database/skills/skill-suggestions';
 import { Permission } from 'src/core/enums/permission.enum';
 import { isRichHtml } from 'src/core/shared/html/sanitize-rich-html';
@@ -34,7 +36,7 @@ import {
 import { pastedText, senderLine, str } from './skill-drafting';
 import { customerName, SkillTargetsService, TargetInfo } from './skill-targets.service';
 import { pdfText } from './skill-templates';
-import { editsTemplate, TEMPLATE_EDIT_PATTERN } from './template-search';
+import { editsTemplate, refersToEarlierTemplate, TEMPLATE_EDIT_PATTERN, templateCitedEarlier, templateCitedIn } from './template-search';
 
 /**
  * Studio de documents du chat, une seule compétence « Créer / modifier un
@@ -392,6 +394,9 @@ const GENERIC_TEMPLATE_WORDS = new Set([
   'diligences', 'general', 'generale', 'genere', 'generer', 'remplis', 'remplir', 'utilise', 'utiliser',
   'partir', 'selon', 'apres', 'cette', 'votre', 'notre', 'redige', 'rediger', 'prepare', 'preparer', 'standard',
   'cree', 'creer', 'creez', 'nouveau', 'nouvelle', 'fais', 'faire', 'type', 'word', 'docx',
+  // « Rédiges un document sous la base de ce modèle », « en suivant le même modèle ».
+  'rediges', 'redigez', 'prepares', 'preparez', 'generes', 'generez', 'sous', 'base', 'basant', 'basee', 'suivant',
+  'inspirant', 'inspire', 'conformement', 'meme', 'celui', 'utilisant', 'remplissez',
 ]);
 
 const templateWords = (text: string) =>
@@ -431,14 +436,47 @@ const CREATE_TEMPLATE_PATTERN =
 /** « Transforme ce document en modèle », « enregistre-le comme modèle ». */
 const CONVERT_TEMPLATE_PATTERN =
   '/\\b(transforme|transformer|convertis|convertir|enregistre|enregistrer|sauvegarde|sauvegarder|garde|garder)\\b.{0,60}\\b(en|comme)( un| une)?( nouveau)? (modele|gabarit|template|trame)\\b/';
-/** « À partir du modèle… », « selon mon modèle », « remplis le modèle… ». */
+/**
+ * « À partir du modèle… », « selon mon modèle », « remplis le modèle… », « sur
+ * (ou « sous », faute courante) la base de ce modèle », « en suivant le modèle ».
+ */
 const FROM_TEMPLATE_PATTERN =
-  '/\\b(a partir|selon|d apres|sur la base|en utilisant|utilise|utiliser|utilisant|depuis|remplis|remplir|remplissez|complete|completer)( de| du| d)?( le| la| l| les| mon| ma| notre| nos| ce| cet| cette| un| une)? (modele|gabarit|template|trame)s?\\b/';
+  '/\\b(a partir|selon|d apres|(?:sur|sous|a) (?:la )?base|en (?:te |vous |se |me |nous )?basant sur|basee?s? sur|en (?:t |vous |s |m )?inspirant|inspiree?s?|en suivant|suivant|conformement|en partant|en utilisant|utilise|utiliser|utilisant|depuis|remplis|remplir|remplissez|complete|completer)( de| du| d| sur| au| a)?( le| la| l| les| mon| ma| notre| nos| ce| cet| cette| un| une)?( meme)? (modele|gabarit|template|trame)s?\\b/';
+/** « Génère la facture avec le modèle facture client », « fais-moi un document sur ce modèle ». */
+const WITH_TEMPLATE_PATTERN =
+  '/\\b(redige|rediger|rediges|redigez|genere|generer|generes|generez|prepare|preparer|prepares|preparez|produis|produire|etablis|etablir|fais|faire|faites|ecris|ecrire|sors|sortir|cree|creer|crees|creez)\\b.{0,80}\\b(avec|sur|comme|via|par) (?:(?:le|la|l|ce|cet|cette|mon|ma|notre|un|une) )?(?:meme )?(modele|gabarit|template|trame)s?\\b/';
 /** « Modifie le contrat », « mets à jour l'attestation », « corrige ce document ». */
 const MODIFY_DOCUMENT_PATTERN =
   '/\\b(modifie|modifier|modifiez|corrige|corriger|corrigez|mets a jour|mettre a jour|mettez a jour|actualise|actualiser|amende|amender|revise|reviser|revisez)( le| la| l| les| ce| cet| cette| mon| ma| notre| nos)? (document|contrat|acte|courrier|lettre|bail|convention|requete|assignation|statuts|protocole|attestation|pv|proces verbal|fichier|word|pdf|piece)s?\\b/';
 
 const matches = (pattern: string, text: string) => new RegExp(pattern.slice(1, -1)).test(normalizeSkillText(text));
+
+/**
+ * Suites d'un document tiré d'un modèle : voir le modèle, en choisir un autre
+ * ou rédiger sans modèle. La cible et la demande d'origine sont gardées.
+ */
+export function templateFollowUps(template: Pick<PdfTemplate, 'code' | 'name'>, target: SkillTarget | undefined, question: string): AiSkillFollowUp[] {
+  const targetParam = target && { target: { type: target.type, id: target.id, label: target.label } };
+  return [
+    {
+      label: `Voir le modèle « ${template.name} »`,
+      skill: 'modeles',
+      question: `Lire le modèle « ${template.name} »`,
+      params: { action: 'read', family: 'pdf', code: template.code },
+      badge: 'document',
+    },
+    { label: 'Choisir un autre modèle', skill: 'rediger_document', question, params: { chooseTemplate: true, ...targetParam } },
+    { label: '✍️ Rédiger sans modèle', skill: 'rediger_document', question, params: { freeDraft: true, ...targetParam } },
+  ];
+}
+
+/** Suites ajoutées à celles de la compétence (sans doublon de libellé). */
+function withFollowUps(outcome: AiSkillOutcome, extra: AiSkillFollowUp[]): AiSkillOutcome {
+  if (outcome.type === 'write' || outcome.type === 'handoff') return outcome;
+  const own = outcome.followUps ?? [];
+  const labels = new Set(own.map((followUp) => followUp.label));
+  return { ...outcome, followUps: [...own, ...extra.filter((followUp) => !labels.has(followUp.label))] };
+}
 const wantsTemplateCreation = (question: string) =>
   matches(CREATE_TEMPLATE_PATTERN, question) || matches(CONVERT_TEMPLATE_PATTERN, question);
 
@@ -511,7 +549,7 @@ export class RedigerDocumentSkill implements AiSkillHandler {
       'document word', 'format word', 'fichier word', 'en word', 'docx',
       'courrier', 'lettre', 'mise en demeure', 'sommation de payer', 'sommation',
       'attestation', 'convocation', 'fiche de synthese', 'ordre de mission',
-      FROM_TEMPLATE_PATTERN, CREATE_TEMPLATE_PATTERN, CONVERT_TEMPLATE_PATTERN, MODIFY_DOCUMENT_PATTERN,
+      FROM_TEMPLATE_PATTERN, WITH_TEMPLATE_PATTERN, CREATE_TEMPLATE_PATTERN, CONVERT_TEMPLATE_PATTERN, MODIFY_DOCUMENT_PATTERN,
     ],
     autoExclude: [
       'auditer', 'audit', 'analyser le', 'clauses risquees', 'clauses abusives', 'controler', 'verifier l acte',
@@ -588,8 +626,18 @@ export class RedigerDocumentSkill implements AiSkillHandler {
       ?? (ctx.params.templateCode ? all.find((item) => item.code === ctx.params.templateCode) : undefined);
     if (chosen) return this.fromTemplate(ctx, chosen, target, info);
     if (ctx.params.freeDraft) return draftStudioDocument(ctx, this.deps, info, null);
+    // « Choisir un autre modèle » (bouton de suite) : tous les modèles adaptés.
+    if (ctx.params.chooseTemplate && all.length) return this.offerChoice(all, ctx, target, 'Changer de modèle');
+
+    // Modèle cité par son nom ou son code (« sur la base de ce modèle facture client »),
+    // sinon, pour « ce modèle » / « le même modèle », le dernier cité dans la conversation.
+    const backReference = refersToEarlierTemplate(ctx.question);
+    const cited = templateCitedIn(all, ctx.question).entry
+      ?? (backReference ? templateCitedEarlier(all, ctx.history) : undefined);
+    if (cited) return this.fromTemplate(ctx, cited, target, info);
 
     if (!describesDocument(ctx.question) && !ctx.documents.length && !ctx.quote && !pastedText(ctx.question)) {
+      if (backReference && all.length) return this.offerChoice(all, ctx, target, 'Je ne retrouve pas le modèle évoqué');
       return this.askWhichDocument(ctx, all, target, info);
     }
     const forTarget = target ? all.filter((item) => item.entity_type === target.type || item.entity_type === 'general') : [];
@@ -686,20 +734,68 @@ export class RedigerDocumentSkill implements AiSkillHandler {
   /** Modèle choisi : rempli avec la fiche et les pièces (ou suivi pour rédiger s'il n'a aucun champ). */
   private async fromTemplate(ctx: AiSkillContext, template: PdfTemplate, target: SkillTarget | undefined, info: TargetInfo | null): Promise<AiSkillOutcome> {
     const entityType = template.entity_type || 'general';
-    const entityId = entityType === 'general' ? undefined : entityIdFor(entityType, info);
+    let entityId = entityType === 'general' ? undefined : entityIdFor(entityType, info);
+    if (entityType !== 'general' && entityId === undefined && STUDIO_TARGETS.includes(entityType as AiSkillTargetType)) {
+      // Fiche du type du modèle : mentionnée, citée plus tôt dans la conversation
+      // (facture lue au tour précédent), ou rattachée au dossier / client visé.
+      const record = await this.recordForTemplate(ctx, template, entityType as AiSkillTargetType, info);
+      if (record?.type === 'clarify') return record;
+      if (record && 'mailEntity' in record) {
+        info = record;
+        target = { type: record.type, table: record.table, id: record.id, label: record.label };
+        entityId = entityIdFor(entityType, info);
+      }
+    }
     if (entityType !== 'general' && entityId === undefined) {
       return {
         type: 'clarify',
         markdown: `❓ Le modèle « ${template.name} » se remplit avec une fiche ${TEMPLATE_TYPES[entityType] ?? entityType} : mentionnez-la avec **@** (ou ouvrez-la), puis renvoyez la demande.`,
+        followUps: templateFollowUps(template, target, ctx.question),
       };
     }
     // Dit clairement dans le déroulé quel modèle sert de base.
     ctx.step?.('template', `📄 Modèle utilisé : ${template.name}`, template.name);
     // Un modèle sans aucun champ (texte type à blancs) : l'IA le complète en le suivant.
-    if (!templateVariableNames(`${template.body_html} ${template.title ?? ''}`).length) {
-      return draftStudioDocument(ctx, this.deps, info, template);
+    const outcome = !templateVariableNames(`${template.body_html} ${template.title ?? ''}`).length
+      ? await draftStudioDocument(ctx, this.deps, info, template)
+      : await fillTemplate(ctx, this.deps, template, info, entityType, entityId);
+    return withFollowUps(outcome, templateFollowUps(template, target, ctx.question));
+  }
+
+  /**
+   * Fiche avec laquelle remplir un modèle d'un autre type que la cible
+   * (modèle de facture demandé sur un dossier) : la mention @ du type, la
+   * fiche citée dans les derniers messages, sinon la seule du dossier / client
+   * visé ; plusieurs : l'utilisateur choisit (un bouton par fiche).
+   */
+  private async recordForTemplate(
+    ctx: AiSkillContext,
+    template: PdfTemplate,
+    type: AiSkillTargetType,
+    info: TargetInfo | null,
+  ): Promise<TargetInfo | AiSkillOutcome | null> {
+    const load = (target: SkillTarget) => this.targets.load(target).catch(() => null);
+    const named = findTarget(ctx.references, [type]) ?? recordCitedEarlier(ctx.history, type, ctx.question);
+    if (named) return load(named);
+    if (!info) return null;
+    const records = await this.targets.recordsFor(type, info, ctx.user).catch(() => []);
+    if (records.length === 1) {
+      return load({ type, table: SKILL_TARGET_TABLES[type], id: records[0].id, label: records[0].label });
     }
-    return fillTemplate(ctx, this.deps, template, info, entityType, entityId);
+    if (!records.length) return null;
+    return {
+      type: 'clarify',
+      markdown: `❓ Le modèle « ${template.name} » se remplit avec une fiche ${TEMPLATE_TYPES[type] ?? type}. Laquelle utiliser pour ${info.label} ?`,
+      followUps: [
+        ...records.map((record): AiSkillFollowUp => ({
+          label: record.label,
+          skill: 'rediger_document',
+          question: ctx.question,
+          params: { templateId: template.id, target: { type: record.type, id: record.id, label: record.label } },
+        })),
+        ...templateFollowUps(template, undefined, ctx.question).filter((followUp) => followUp.params?.chooseTemplate),
+      ],
+    };
   }
 
   /** Plusieurs modèles (ou aucun nommé) : un bouton par modèle, plus « Rédiger sans modèle ». */
