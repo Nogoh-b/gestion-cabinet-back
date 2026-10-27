@@ -217,7 +217,7 @@ describe('CaseBillingService - dépenses refacturables', () => {
       dossier_id: 74,
       status: BillableItemStatus.TO_INVOICE,
       source_event_key: 'EXPENSE:31:APPROVED',
-      calculation_snapshot: { receiptOverride },
+      calculation_snapshot: { receiptOverride } as Record<string, unknown>,
     } as BillableItem;
     const manager = managerFor({ existing });
 

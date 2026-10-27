@@ -117,7 +117,7 @@ describe('AppSettingsService.update - mot de passe SMTP', () => {
       save: jest.fn(async (entity: unknown) => entity),
     };
     return {
-      service: new AppSettingsService(repository as any),
+      service: new AppSettingsService(repository as any, {} as any),
       saved: () => (repository.save.mock.calls[0][0] as any).smtp_config,
     };
   }

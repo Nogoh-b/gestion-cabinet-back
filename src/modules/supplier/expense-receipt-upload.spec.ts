@@ -8,7 +8,9 @@ import { ExpenseLine } from './entities/expense-line.entity';
 import { ExpenseReportStatus } from './entities/expense-report.entity';
 import { ExpenseLinesService } from './expense-lines.service';
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 describe('Ajout de justificatif à une note de frais approuvée', () => {
   it('enregistre le fichier et recalcule le statut facturable', async () => {
