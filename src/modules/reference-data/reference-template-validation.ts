@@ -5,6 +5,7 @@ import { BLOCK_VARS } from '../template-blocks/seeder/template-block.seeder';
 import { MAIL_VARIABLE_GROUPS } from '../mail-template/mail-variables';
 import { AUTH_TEMPLATE_DEFAULTS } from '../mail-template/auth-template.defaults';
 import { buildNotificationTemplates } from '../mail-template/notification-template.defaults';
+import { templateListKeys } from '../mail-template/template-context';
 
 const brand = [
   'cabinetName',
@@ -26,6 +27,7 @@ const mailVariables = new Set([
     JSON.parse(template.variables ?? '[]'),
   ),
   ...brand,
+  ...templateListKeys(),
 ]);
 
 /** Use the same variable catalogues as the renderers and shipped definitions.
@@ -39,7 +41,11 @@ export function validateReferenceTemplate(item: ReferenceItem): string[] {
       : new Set<string>(
           item.kind === 'template_blocks'
             ? JSON.parse(BLOCK_VARS)
-            : (PDF_TEMPLATE_VARIABLES[item.values.entity_type] ?? []),
+            : [
+                ...(PDF_TEMPLATE_VARIABLES[item.values.entity_type] ?? []),
+                // Listes et totaux de la fiche (`{{#each dossier.factures}}`).
+                ...(PDF_TEMPLATE_VARIABLES[item.values.entity_type] ? templateListKeys(item.values.entity_type) : []),
+              ],
         );
   if (
     item.kind === 'pdf_templates' &&

@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as Handlebars from 'handlebars';
@@ -15,6 +16,8 @@ import {
 } from 'src/modules/cabinet/entities/cabinet.entity';
 import { logoFileToUrl } from 'src/modules/cabinet/cabinet-logo.util';
 import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
+import { hoistLoops, TEMPLATE_LIST_REFERENCE } from './template-context';
+import { TemplateContextService } from './template-context.service';
 
 export interface RenderedMail {
   subject: string;
@@ -28,6 +31,7 @@ export class MailTemplateService {
     private readonly repository: Repository<MailTemplate>,
     @InjectRepository(Cabinet)
     private readonly cabinetRepo: Repository<Cabinet>,
+    @Optional() private readonly templateContext?: TemplateContextService,
   ) {}
 
   // ── CRUD ────────────────────────────────────────────────────────────────
@@ -162,10 +166,13 @@ export class MailTemplateService {
   ): Promise<RenderedMail> {
     const cabinet = await this.getCurrentCabinet();
     const brand = this.buildBrandContext(cabinet);
-    const fullContext = { ...brand, ...context };
+    // Listes et totaux (`{{#each dossier.factures}}`…) : chargés seulement si le modèle s'en sert.
+    const usesLists = TEMPLATE_LIST_REFERENCE.test(`${tpl.subject ?? ''} ${tpl.body_html ?? ''}`);
+    const enriched = usesLists && this.templateContext ? await this.templateContext.enrichMailContext(context) : context;
+    const fullContext = { ...brand, ...enriched };
 
     const subject = Handlebars.compile(tpl.subject || '')(fullContext);
-    const bodyHtml = Handlebars.compile(tpl.body_html || '')(fullContext);
+    const bodyHtml = Handlebars.compile(hoistLoops(tpl.body_html || ''))(fullContext);
     const html = this.wrapWithLayout(bodyHtml, brand);
 
     return { subject, html };
