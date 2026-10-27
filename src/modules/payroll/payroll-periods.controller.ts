@@ -102,36 +102,25 @@ export class PayrollPeriodsController {
   @Post(':id/close')
   @RequirePermissions('close_payroll_period')
   @ApiOperation({
-    summary:
-      'Clôturer une période dont tous les bulletins sont validés',
+    summary: 'Clôturer une période dont tous les bulletins sont validés',
   })
-  close(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: any,
-  ) {
+  close(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.close(id, this.actor(user));
   }
 
   @Post(':id/mark-paid')
   @RequirePermissions('pay_payslip')
   @ApiOperation({
-    summary:
-      'Marquer la période payée après paiement de tous les bulletins',
+    summary: 'Marquer la période payée après paiement de tous les bulletins',
   })
-  markPaid(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: any,
-  ) {
+  markPaid(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.markPaid(id, this.actor(user));
   }
 
   @Delete(':id')
   @RequirePermissions('edit_payroll_period')
   @ApiOperation({ summary: 'Supprimer une période brouillon vide' })
-  remove(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: any,
-  ) {
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.remove(id, this.actor(user));
   }
 }

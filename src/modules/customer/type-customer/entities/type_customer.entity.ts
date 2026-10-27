@@ -1,5 +1,8 @@
 // type-customer.entity.ts
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
@@ -14,14 +17,14 @@ import {
 
 import { Customer } from '../../customer/entities/customer.entity';
 
-
 @SharedAcrossTenants()
 @Entity('type_customer')
 @BusinessTable({
-  label: "Types de client",
-  description: "Catégorisation des clients du cabinet (particulier, entreprise, association, etc.). Définit les caractéristiques et documents requis par type de client.",
+  label: 'Types de client',
+  description:
+    'Catégorisation des clients du cabinet (particulier, entreprise, association, etc.). Définit les caractéristiques et documents requis par type de client.',
   icon: '👥',
-  category: 'client'
+  category: 'client',
 })
 export class TypeCustomer extends TenantEntity {
   @PrimaryGeneratedColumn()
@@ -30,17 +33,18 @@ export class TypeCustomer extends TenantEntity {
     description: 'Identifiant unique du type de client',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
   @Column({ length: 45, nullable: true })
   @BusinessColumn({
     label: 'Nom',
-    description: 'Nom du type de client (Particulier, Entreprise, Association, etc.)',
+    description:
+      'Nom du type de client (Particulier, Entreprise, Association, etc.)',
     example: 'Particulier, Entreprise, Association, Collectivité',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   name: string;
 
@@ -50,7 +54,7 @@ export class TypeCustomer extends TenantEntity {
     description: 'Code unique identifiant le type de client (format court)',
     example: 'IND, ENT, ASSO, COL',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   code: string;
 
@@ -62,9 +66,10 @@ export class TypeCustomer extends TenantEntity {
   })
   @BusinessColumn({
     label: 'Documents requis',
-    description: 'Liste des types de documents obligatoires pour ce type de client',
+    description:
+      'Liste des types de documents obligatoires pour ce type de client',
     importance: 'high',
-    group: 'documents'
+    group: 'documents',
   })
   requiredDocuments: DocumentType[];
 
@@ -73,7 +78,7 @@ export class TypeCustomer extends TenantEntity {
     label: 'Clients',
     description: 'Liste des clients appartenant à cette catégorie',
     importance: 'medium',
-    group: 'relation'
+    group: 'relation',
   })
   customers: Customer[];
 
@@ -82,7 +87,7 @@ export class TypeCustomer extends TenantEntity {
     label: 'Statut',
     description: 'BD: 1=Actif, 0=Inactif. En SQL utiliser le nombre.',
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   status: number;
 
@@ -92,7 +97,7 @@ export class TypeCustomer extends TenantEntity {
     label: 'Est actif',
     description: 'True si le type de client est actif',
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   get is_active(): boolean {
     return this.status === 1;
@@ -100,10 +105,10 @@ export class TypeCustomer extends TenantEntity {
 
   @BusinessColumn({
     label: 'Nom complet',
-    description: 'Code et nom combinés pour l\'affichage',
+    description: "Code et nom combinés pour l'affichage",
     example: 'IND - Particulier',
     importance: 'medium',
-    group: 'identification'
+    group: 'identification',
   })
   get display_name(): string {
     return `${this.code || ''}${this.code ? ' - ' : ''}${this.name || ''}`;
@@ -113,17 +118,18 @@ export class TypeCustomer extends TenantEntity {
     label: 'Nombre de clients',
     description: 'Nombre total de clients dans cette catégorie',
     importance: 'medium',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get customer_count(): number {
     return this.customers?.length || 0;
   }
 
   @BusinessColumn({
-    label: "Nombre de documents requis",
-    description: "Nombre de types de documents obligatoires pour cette catégorie",
+    label: 'Nombre de documents requis',
+    description:
+      'Nombre de types de documents obligatoires pour cette catégorie',
     importance: 'low',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get required_documents_count(): number {
     return this.requiredDocuments?.length || 0;
@@ -133,7 +139,7 @@ export class TypeCustomer extends TenantEntity {
     label: 'Statut libellé',
     description: 'Libellé lisible du statut',
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   get status_label(): string {
     return this.status === 1 ? 'Actif' : 'Inactif';

@@ -1,5 +1,8 @@
 import { Expose } from 'class-transformer';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
@@ -8,9 +11,8 @@ import {
   PrimaryGeneratedColumn,
   Column,
   OneToMany,
-  Unique
+  Unique,
 } from 'typeorm';
-
 
 export enum AudienceTypeCategory {
   PRELIMINARY = 'preliminary',
@@ -19,16 +21,17 @@ export enum AudienceTypeCategory {
   CONCILIATION = 'conciliation',
   EXPERTISE = 'expertise',
   APPEAL = 'appeal',
-  CASATION = 'casation'
+  CASATION = 'casation',
 }
 
 @SharedAcrossTenants()
 @Entity('audience_types')
 @BusinessTable({
-  label: 'Types d\'audience',
-  description: 'Référentiel des types d\'audience possibles dans une procédure judiciaire. Définit les caractéristiques de chaque type (durée par défaut, publicité, nécessité d\'un avocat, etc.).',
+  label: "Types d'audience",
+  description:
+    "Référentiel des types d'audience possibles dans une procédure judiciaire. Définit les caractéristiques de chaque type (durée par défaut, publicité, nécessité d'un avocat, etc.).",
   icon: '⚖️',
-  category: 'procedure'
+  category: 'procedure',
 })
 @Unique(['tenant_id', 'code'])
 export class AudienceType extends TenantEntity {
@@ -36,10 +39,10 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Identifiant',
-    description: 'Identifiant unique du type d\'audience',
+    description: "Identifiant unique du type d'audience",
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -47,10 +50,11 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Code',
-    description: 'Code unique identifiant le type d\'audience. Format court pour référence technique.',
+    description:
+      "Code unique identifiant le type d'audience. Format court pour référence technique.",
     example: 'HEAR_CIVIL, JUG_CORR, CONCIL',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   code: string;
 
@@ -58,10 +62,12 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Nom',
-    description: 'Nom lisible du type d\'audience. Exprime la nature de l\'audience.',
-    example: 'Audience de plaidoirie, Audience de jugement, Audience de conciliation',
+    description:
+      "Nom lisible du type d'audience. Exprime la nature de l'audience.",
+    example:
+      'Audience de plaidoirie, Audience de jugement, Audience de conciliation',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   name: string;
 
@@ -69,25 +75,28 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Description',
-    description: 'Description détaillée du type d\'audience, son objet et ses spécificités procédurales.',
-    example: 'Audience au cours de laquelle les avocats présentent leurs arguments oraux devant le juge',
+    description:
+      "Description détaillée du type d'audience, son objet et ses spécificités procédurales.",
+    example:
+      'Audience au cours de laquelle les avocats présentent leurs arguments oraux devant le juge',
     importance: 'high',
-    group: 'contenu'
+    group: 'contenu',
   })
   description: string;
 
   @Column({
     type: 'enum',
     enum: AudienceTypeCategory,
-    default: AudienceTypeCategory.HEARING
+    default: AudienceTypeCategory.HEARING,
   })
   @Expose()
   @BusinessColumn({
     label: 'Catégorie',
-    description: "BD: 'preliminary', 'hearing', 'judgment', 'conciliation', 'expertise', 'appeal', 'casation'.",
+    description:
+      "BD: 'preliminary', 'hearing', 'judgment', 'conciliation', 'expertise', 'appeal', 'casation'.",
     example: 'hearing, judgment, appeal',
     importance: 'critical',
-    group: 'classification'
+    group: 'classification',
   })
   category: AudienceTypeCategory;
 
@@ -95,11 +104,11 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Durée par défaut',
-    description: 'Durée standard prévue pour ce type d\'audience, en minutes',
+    description: "Durée standard prévue pour ce type d'audience, en minutes",
     unit: 'minutes',
     example: '60 = 1 heure, 120 = 2 heures',
     importance: 'high',
-    group: 'planification'
+    group: 'planification',
   })
   default_duration_minutes: number;
 
@@ -107,9 +116,10 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Public',
-    description: 'True = audience publique ouverte au public, False = huis clos / audience à huis clos',
+    description:
+      'True = audience publique ouverte au public, False = huis clos / audience à huis clos',
     importance: 'high',
-    group: 'caractéristiques'
+    group: 'caractéristiques',
   })
   is_public: boolean;
 
@@ -117,9 +127,10 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Nécessite un avocat',
-    description: 'True = la représentation par avocat est obligatoire, False = facultative',
+    description:
+      'True = la représentation par avocat est obligatoire, False = facultative',
     importance: 'high',
-    group: 'caractéristiques'
+    group: 'caractéristiques',
   })
   requires_lawyer: boolean;
 
@@ -127,9 +138,10 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Permet le distanciel',
-    description: 'True = l\'audience peut se tenir à distance (visioconférence), False = présence physique obligatoire',
+    description:
+      "True = l'audience peut se tenir à distance (visioconférence), False = présence physique obligatoire",
     importance: 'medium',
-    group: 'caractéristiques'
+    group: 'caractéristiques',
   })
   allows_remote: boolean;
 
@@ -137,9 +149,10 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Actif',
-    description: 'True = ce type d\'audience peut être utilisé pour de nouvelles audiences, False = désactivé',
+    description:
+      "True = ce type d'audience peut être utilisé pour de nouvelles audiences, False = désactivé",
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   is_active: boolean;
 
@@ -147,10 +160,11 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Métadonnées',
-    description: 'Informations supplémentaires: documents requis, délai de préparation, issues possibles, base légale',
+    description:
+      'Informations supplémentaires: documents requis, délai de préparation, issues possibles, base légale',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   metadata: {
     required_documents?: number[];
@@ -159,7 +173,7 @@ export class AudienceType extends TenantEntity {
     legal_basis?: string;
   };
 
-  @OneToMany(() => Audience, audience => audience.audience_type)
+  @OneToMany(() => Audience, (audience) => audience.audience_type)
   @Expose()
   audiences: Audience[];
 
@@ -168,10 +182,10 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Nom complet',
-    description: 'Code et nom combinés pour l\'affichage',
+    description: "Code et nom combinés pour l'affichage",
     example: 'HEAR_CIVIL - Audience de plaidoirie',
     importance: 'medium',
-    group: 'identification'
+    group: 'identification',
   })
   get full_name(): string {
     return `${this.code} - ${this.name}`;
@@ -182,7 +196,7 @@ export class AudienceType extends TenantEntity {
     label: 'Catégorie libellée',
     description: 'Libellé court de la catégorie',
     importance: 'medium',
-    group: 'classification'
+    group: 'classification',
   })
   get category_label(): string {
     const labels: Record<AudienceTypeCategory, string> = {
@@ -192,7 +206,7 @@ export class AudienceType extends TenantEntity {
       [AudienceTypeCategory.CONCILIATION]: 'Conciliation / Médiation',
       [AudienceTypeCategory.EXPERTISE]: 'Expertise',
       [AudienceTypeCategory.APPEAL]: 'Appel',
-      [AudienceTypeCategory.CASATION]: 'Cassation'
+      [AudienceTypeCategory.CASATION]: 'Cassation',
     };
     return labels[this.category] || this.category;
   }
@@ -203,7 +217,7 @@ export class AudienceType extends TenantEntity {
     description: 'Durée par défaut en heures (arrondie)',
     unit: 'heures',
     importance: 'low',
-    group: 'planification'
+    group: 'planification',
   })
   get default_duration_hours(): number {
     return Math.round(this.default_duration_minutes / 60);
@@ -215,12 +229,14 @@ export class AudienceType extends TenantEntity {
     description: 'Résumé des caractéristiques principales',
     example: 'Public · Sans avocat · En présentiel',
     importance: 'low',
-    group: 'caractéristiques'
+    group: 'caractéristiques',
   })
   get short_summary(): string {
     const parts: string[] = [];
     parts.push(this.is_public ? 'Public' : 'Huis clos');
-    parts.push(this.requires_lawyer ? 'Avocat obligatoire' : 'Avocat facultatif');
+    parts.push(
+      this.requires_lawyer ? 'Avocat obligatoire' : 'Avocat facultatif',
+    );
     parts.push(this.allows_remote ? 'Visio possible' : 'Présentiel');
     return parts.join(' · ');
   }

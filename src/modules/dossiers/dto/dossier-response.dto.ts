@@ -1,60 +1,65 @@
 // src/modules/dossiers/dto/dossier-response.dto.ts
-import { Expose, Transform } from "class-transformer";
-import { DossierStatus } from "src/core/enums/dossier-status.enum";
-import { AudienceStatus } from "src/modules/audiences/entities/audience.entity";
-import { Diligence } from "src/modules/diligence/entities/diligence.entity";
-import { DocumentCustomerStatus } from "src/modules/documents/document-customer/entities/document-customer.entity";
-import { StatutFacture } from "src/modules/facture/dto/create-facture.dto";
-import { FactureResponseDto } from "src/modules/facture/dto/facture-response.dto";
+import { Expose, Transform } from 'class-transformer';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { AudienceStatus } from 'src/modules/audiences/entities/audience.entity';
+import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
+import { DocumentCustomerStatus } from 'src/modules/documents/document-customer/entities/document-customer.entity';
+import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
+import { FactureResponseDto } from 'src/modules/facture/dto/facture-response.dto';
+import { summarizeInvoices } from 'src/modules/facture/invoice-totals';
+import {
+  DossierLifecyclePhase,
+  WorkflowEngine,
+} from 'src/modules/case-workflow/case-workflow.enums';
 
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty } from '@nestjs/swagger';
 
-import { DangerLevel, Dossier } from "../entities/dossier.entity";
-
-
+import { DangerLevel, Dossier } from '../entities/dossier.entity';
 
 export class DossierResponseDto {
   @ApiProperty({ example: 1 })
   @Expose()
   id: number;
 
-  @ApiProperty({ example: "DOS-2025-001" })
+  @ApiProperty({ example: 'DOS-2025-001' })
   @Expose()
   dossier_number: string;
 
-  @ApiProperty({ example: "Litige commercial contre Société X" })
+  @ApiProperty({ example: 'Litige commercial contre Société X' })
   @Expose()
   object: string;
 
-  @ApiProperty({ example: "Tribunal de Commerce de Douala" })
+  @ApiProperty({ example: 'Tribunal de Commerce de Douala' })
   @Expose()
   jurisdiction: string;
 
-  @ApiProperty({ example: "Chambre civile", required: false })
+  @ApiProperty({ example: 'Chambre civile', required: false })
   @Expose()
   court_name?: string;
 
-  @ApiProperty({ example: "RC/12345/2025", required: false })
+  @ApiProperty({ example: 'RC/12345/2025', required: false })
   @Expose()
   case_number?: string;
 
-  @ApiProperty({ example: "Société X", required: false })
+  @ApiProperty({ example: 'Société X', required: false })
   @Expose()
   opposing_party_name?: string;
 
-  @ApiProperty({ example: "Me TCHOUA", required: false })
+  @ApiProperty({ example: 'Me TCHOUA', required: false })
   @Expose()
   opposing_party_lawyer?: string;
 
-  @ApiProperty({ example: "contact@societex.cm", required: false })
+  @ApiProperty({ example: 'contact@societex.cm', required: false })
   @Expose()
   opposing_party_contact?: string;
 
-  @ApiProperty({ example: "Tiers associés au litige", required: false })
+  @ApiProperty({ example: 'Tiers associés au litige', required: false })
   @Expose()
   third_parties?: string;
 
-  @ApiProperty({ example: "Litige sur non-exécution de contrat de prestation." })
+  @ApiProperty({
+    example: 'Litige sur non-exécution de contrat de prestation.',
+  })
   @Expose()
   description?: string;
 
@@ -73,12 +78,22 @@ export class DossierResponseDto {
 
   @Expose()
   financial_terms_confirmed?: boolean;
+  @ApiProperty({ enum: DossierLifecyclePhase })
+  @Expose()
+  lifecycle_phase: DossierLifecyclePhase;
 
-  @ApiProperty({ example: "2025-01-15" })
+  @ApiProperty({ enum: WorkflowEngine })
+  @Expose()
+  workflow_engine: WorkflowEngine;
+
+  @Expose()
+  opening_validated_at?: Date | null;
+
+  @ApiProperty({ example: '2025-01-15' })
   @Expose()
   opening_date: Date;
 
-  @ApiProperty({ example: "2025-09-30", required: false })
+  @ApiProperty({ example: '2025-09-30', required: false })
   @Expose()
   closing_date?: Date;
 
@@ -86,11 +101,18 @@ export class DossierResponseDto {
   @Expose()
   estimated_duration?: number;
 
-  @ApiProperty({ example: "confidentiel" })
+  @ApiProperty({
+    example: false,
+    description: 'Niveau de confidentialité (true si confidentiel)',
+  })
   @Expose()
-  confidentiality_level: string;
+  @Transform(({ obj }) => Boolean(obj.confidentiality_level))
+  confidentiality_level: boolean;
 
-  @ApiProperty({ example: 2, description: "Niveau de priorité (0=normal, 3=urgent)" })
+  @ApiProperty({
+    example: 2,
+    description: 'Niveau de priorité (0=normal, 3=urgent)',
+  })
   @Expose()
   priority_level: number;
 
@@ -106,31 +128,32 @@ export class DossierResponseDto {
   @Expose()
   success_probability?: number;
 
-  @ApiProperty({ example: "Décision favorable au client", required: false })
+  @ApiProperty({ example: 'Décision favorable au client', required: false })
   @Expose()
   final_decision?: string;
 
   // Ajouts prioritaires recommandés
 
-@Expose()
-@ApiProperty({ required: false })
-procedureInstance?: any;
+  @Expose()
+  @ApiProperty({ required: false })
+  procedureInstance?: any;
 
-@Expose()
-@ApiProperty({
-  description: 'Projection procédurale calculée depuis l’instance',
-  nullable: true
-})
-@Transform(({ obj }: { obj: Dossier & { procedure_summary?: unknown } }) =>
-  obj.procedure_summary ?? null,
-)
-procedure_summary: unknown | null;
+  @Expose()
+  @ApiProperty({
+    description: 'Projection procédurale calculée depuis l’instance',
+    nullable: true,
+  })
+  @Transform(
+    ({ obj }: { obj: Dossier & { procedure_summary?: unknown } }) =>
+      obj.procedure_summary ?? null,
+  )
+  procedure_summary: unknown | null;
 
-  @ApiProperty({ example: "2025-01-15T08:00:00Z" })
+  @ApiProperty({ example: '2025-01-15T08:00:00Z' })
   @Expose()
   created_at: Date;
 
-  @ApiProperty({ example: "2025-04-10T10:00:00Z" })
+  @ApiProperty({ example: '2025-04-10T10:00:00Z' })
   @Expose()
   updated_at: Date;
 
@@ -138,18 +161,16 @@ procedure_summary: unknown | null;
   @ApiProperty({
     example: {
       id: 15,
-      full_name: "Société ABC SARL",
-      email: "contact@abc.cm",
-      company_name: "ABC SARL",
-      billing_type: "forfait",
-      professional_phone: "+237 6 99 00 00 00",
+      full_name: 'Société ABC SARL',
+      email: 'contact@abc.cm',
+      company_name: 'ABC SARL',
+      billing_type: 'forfait',
+      professional_phone: '+237 6 99 00 00 00',
     },
   })
-
-  
   @Expose()
-  diligences: Diligence[]
-  
+  diligences: Diligence[];
+
   @Expose()
   @Transform(({ obj }) => {
     if (!obj.client) return undefined;
@@ -180,10 +201,10 @@ procedure_summary: unknown | null;
   @ApiProperty({
     example: {
       id: 2,
-      full_name: "Me Lionel NOGOH",
-      email: "lionel.nogoh@cabinet.cm",
-      specialization: "Droit commercial",
-      bar_association_number: "BA12345",
+      full_name: 'Me Lionel NOGOH',
+      email: 'lionel.nogoh@cabinet.cm',
+      specialization: 'Droit commercial',
+      bar_association_number: 'BA12345',
     },
   })
   @Expose()
@@ -204,20 +225,25 @@ procedure_summary: unknown | null;
     email: string;
     specialization?: string;
     bar_association_number?: string;
-  };
+  } | null;
 
   // ---------------- PROCÉDURE ----------------
   @ApiProperty({
-    example: { id: 1, name: "Procédure Civile", code: "CIV001" },
+    example: { id: 1, name: 'Procédure Civile', code: 'CIV001' },
   })
   @Expose()
-  procedure_type: { id: number; name: string; code: string; description?: string };
+  procedure_type: {
+    id: number;
+    name: string;
+    code: string;
+    description?: string;
+  } | null;
 
   @ApiProperty({
-    example: { id: 2, name: "Contentieux Commercial", code: "CIV-COM" },
+    example: { id: 2, name: 'Contentieux Commercial', code: 'CIV-COM' },
   })
   @Expose()
-  procedure_subtype: { id: number; name: string; code: string };
+  procedure_subtype: { id: number; name: string; code: string } | null;
 
   // ---------------- DOCUMENTS ----------------
   /*@ApiProperty({
@@ -266,9 +292,9 @@ procedure_summary: unknown | null;
     example: [
       {
         id: 12,
-        audience_date: "2025-03-12",
-        audience_time: "09:00",
-        jurisdiction: "TPI Douala-Bonanjo",
+        audience_date: '2025-03-12',
+        audience_time: '09:00',
+        jurisdiction: 'TPI Douala-Bonanjo',
         status: AudienceStatus.SCHEDULED,
         decision: null,
         outcome: null,
@@ -309,10 +335,10 @@ procedure_summary: unknown | null;
     type: [Object],
     example: [
       {
-        id: "FCT-2025-001",
-        invoice_number: "INV-2025-001",
-        invoice_date: "2025-01-25",
-        due_date: "2025-02-25",
+        id: 'FCT-2025-001',
+        invoice_number: 'INV-2025-001',
+        invoice_date: '2025-01-25',
+        due_date: '2025-02-25',
         montantTTC: 150000,
         status: StatutFacture.PAYEE,
         remaining_amount: 0,
@@ -347,16 +373,14 @@ procedure_summary: unknown | null;
   //   is_paid: boolean;
   // }[];
 
-
   @Expose()
-    @Transform(({ obj }) => {
-      if (!obj.conversation) return undefined;
-      return {
-        id: obj.conversation.id,
-        name: obj.conversation.name,
-        isGroup: obj.conversation.isGroup,
-      };
-
+  @Transform(({ obj }) => {
+    if (!obj.conversation) return undefined;
+    return {
+      id: obj.conversation.id,
+      name: obj.conversation.name,
+      isGroup: obj.conversation.isGroup,
+    };
   })
   conversation?: {
     id: number;
@@ -368,7 +392,12 @@ procedure_summary: unknown | null;
   @ApiProperty({
     type: [Object],
     example: [
-      { id: 4, full_name: "Me Sophie ETOA", email: "sophie@cabinet.cm", role: "Secrétaire" },
+      {
+        id: 4,
+        full_name: 'Me Sophie ETOA',
+        email: 'sophie@cabinet.cm',
+        role: 'Secrétaire',
+      },
     ],
   })
   @Expose()
@@ -404,32 +433,37 @@ procedure_summary: unknown | null;
   @ApiProperty({
     example: {
       id: 12,
-      audience_date: "2025-03-12",
-      audience_time: "09:00",
-      jurisdiction: "TPI Douala-Bonanjo",
-      room: "Salle 3",
+      audience_date: '2025-03-12',
+      audience_time: '09:00',
+      jurisdiction: 'TPI Douala-Bonanjo',
+      room: 'Salle 3',
     },
     required: false,
   })
   @Expose()
   @Transform(({ obj }) => {
     if (!obj.audiences || obj.audiences.length === 0) return null;
-    
+
     const upcoming = obj.audiences
-      .filter((audience: any) => 
-        audience.status === AudienceStatus.SCHEDULED && audience.is_upcoming
+      .filter(
+        (audience: any) =>
+          audience.status === AudienceStatus.SCHEDULED && audience.is_upcoming,
       )
-      .sort((a: any, b: any) => 
-        new Date(a.audience_date).getTime() - new Date(b.audience_date).getTime()
+      .sort(
+        (a: any, b: any) =>
+          new Date(a.audience_date).getTime() -
+          new Date(b.audience_date).getTime(),
       );
-    
-    return upcoming.length > 0 ? {
-      id: upcoming[0].id,
-      audience_date: upcoming[0].audience_date,
-      audience_time: upcoming[0].audience_time,
-      jurisdiction: upcoming[0].jurisdiction,
-      room: upcoming[0].room,
-    } : null;
+
+    return upcoming.length > 0
+      ? {
+          id: upcoming[0].id,
+          audience_date: upcoming[0].audience_date,
+          audience_time: upcoming[0].audience_time,
+          jurisdiction: upcoming[0].jurisdiction,
+          room: upcoming[0].room,
+        }
+      : null;
   })
   next_audience?: {
     id: number;
@@ -440,42 +474,32 @@ procedure_summary: unknown | null;
   } | null;
 
   // ---------------- MONTANTS TOTAUX ----------------
+  // Règle commune (invoice-totals) : annulées exclues, brouillons comptés,
+  // encaissé = paiements validés (acomptes compris), pas le statut « payée ».
   @ApiProperty({ example: 300000 })
   @Expose()
-  @Transform(({ obj }) => {
-    if (!obj.factures) return 0;
-    return obj.factures.reduce((total: number, facture: any) => 
-      total + parseFloat(facture.montantTTC?.toString() || '0'), 0);
-  })
+  @Transform(({ obj }) => summarizeInvoices(obj.factures).total)
   total_factures_amount: number;
 
   @ApiProperty({ example: 250000 })
   @Expose()
-  @Transform(({ obj }) => {
-    if (!obj.factures) return 0;
-    return obj.factures
-      .filter((facture: any) => facture.status === StatutFacture.PAYEE)
-      .reduce((total: number, facture: any) => 
-        total + parseFloat(facture.montantTTC?.toString() || '0'), 0);
-  })
+  @Transform(({ obj }) => summarizeInvoices(obj.factures).paid)
   paid_factures_amount: number;
-  
+
   @ApiProperty({ example: 250000 })
   @Expose()
-  @Transform(({ obj }) => {
-    if (!obj.factures) return 0;
-    return obj.factures
-      .filter((facture: any) => facture.montantPaye > 0)
-      .reduce((total: number, facture: any) => 
-        total + parseFloat(facture.montantPaye?.toString() || '0'), 0);
-  })
+  @Transform(({ obj }) => summarizeInvoices(obj.factures).paid)
   paid_amount: number;
 
   // ---------------- ÉTATS LOGIQUES ----------------
   @ApiProperty({ example: true })
   @Expose()
   @Transform(({ obj }) => {
-    const isClosed = obj.status === DossierStatus.CLOSED || obj.status === DossierStatus.ARCHIVED;
+    const isClosed =
+      obj.workflow_engine === WorkflowEngine.ACTIONS_V2
+        ? obj.lifecycle_phase === DossierLifecyclePhase.CLOSED
+        : obj.status === DossierStatus.CLOSED ||
+          obj.status === DossierStatus.ARCHIVED;
     const isArchived = obj.status === DossierStatus.ARCHIVED;
     return !isClosed && !isArchived;
   })
@@ -483,8 +507,11 @@ procedure_summary: unknown | null;
 
   @ApiProperty({ example: false })
   @Expose()
-  @Transform(({ obj }) => 
-    obj.status === DossierStatus.CLOSED || obj.status === DossierStatus.ARCHIVED
+  @Transform(({ obj }) =>
+    obj.workflow_engine === WorkflowEngine.ACTIONS_V2
+      ? obj.lifecycle_phase === DossierLifecyclePhase.CLOSED
+      : obj.status === DossierStatus.CLOSED ||
+        obj.status === DossierStatus.ARCHIVED,
   )
   is_closed: boolean;
 
@@ -496,9 +523,7 @@ procedure_summary: unknown | null;
   @ApiProperty()
   @Expose()
   danger_level: DangerLevel;
-  
 }
-
 
 // src/modules/dossiers/dto/minimal-dossier.dto.ts
 

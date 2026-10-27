@@ -2,10 +2,9 @@ import { BaseEntitySubscriber } from 'src/core/subscribers/base-entity.subscribe
 import { DataSource, InsertEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 
-
 import { Cabinet } from '../entities/cabinet.entity';
 import { TenantSeederService } from '../tenant-seeder.service';
-
+import { applyDefaultCabinetLogo } from '../cabinet-logo.util';
 
 /**
  * CabinetSubscriber
@@ -35,6 +34,10 @@ export class CabinetSubscriber extends BaseEntitySubscriber<Cabinet> {
     return Cabinet;
   }
 
+  protected async onBeforeCreate(entity: Cabinet): Promise<void> {
+    applyDefaultCabinetLogo(entity);
+  }
+
   /**
    * Après insertion d'un cabinet, lance le seeding des données de
    * référence dans le contexte du nouveau tenant.
@@ -44,16 +47,10 @@ export class CabinetSubscriber extends BaseEntitySubscriber<Cabinet> {
    */
   protected async onAfterCreate(
     entity: Cabinet,
-    _event: InsertEvent<Cabinet>,
+    event: InsertEvent<Cabinet>,
   ): Promise<void> {
-    // Ne pas seed le cabinet par défaut (seedé globalement)
-    if (entity.id === 1) {
-      this.logger.log(`Cabinet #1 (défaut) ignoré — seed global déjà effectué`);
-      return;
-    }
-
     this.logger.log(`🚀 Cabinet #${entity.id} créé — lancement du seed…`);
-    await this.tenantSeeder.seedForNewCabinet(entity.id);
+    await this.tenantSeeder.seedForNewCabinet(entity.id, entity.reference_profile_id ?? undefined, event.manager);
     this.logger.log(`✅ Seed terminé pour cabinet #${entity.id}`);
   }
 }

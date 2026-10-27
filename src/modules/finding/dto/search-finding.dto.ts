@@ -1,8 +1,19 @@
 // src/modules/findings/dto/search-finding.dto.ts
 import { Type } from 'class-transformer';
-import { IsDate, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsDate,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { FindingSeverity, FindingStatus, FindingCategory } from '../entities/finding.entity';
+import {
+  FindingSeverity,
+  FindingStatus,
+  FindingCategory,
+} from '../entities/finding.entity';
 
 export class FindingSearchDto {
   @ApiPropertyOptional({ description: 'Filtrer par ID de la diligence' })
@@ -10,17 +21,26 @@ export class FindingSearchDto {
   @IsInt()
   diligence_id?: number;
 
-  @ApiPropertyOptional({ description: 'Filtrer par sévérité', enum: FindingSeverity })
+  @ApiPropertyOptional({
+    description: 'Filtrer par sévérité',
+    enum: FindingSeverity,
+  })
   @IsOptional()
   @IsEnum(FindingSeverity)
   severity?: FindingSeverity;
 
-  @ApiPropertyOptional({ description: 'Filtrer par statut', enum: FindingStatus })
+  @ApiPropertyOptional({
+    description: 'Filtrer par statut',
+    enum: FindingStatus,
+  })
   @IsOptional()
   @IsEnum(FindingStatus)
   status?: FindingStatus;
 
-  @ApiPropertyOptional({ description: 'Filtrer par catégorie', enum: FindingCategory })
+  @ApiPropertyOptional({
+    description: 'Filtrer par catégorie',
+    enum: FindingCategory,
+  })
   @IsOptional()
   @IsEnum(FindingCategory)
   category?: FindingCategory;
@@ -35,7 +55,9 @@ export class FindingSearchDto {
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ description: 'Filtrer les findings critiques uniquement' })
+  @ApiPropertyOptional({
+    description: 'Filtrer les findings critiques uniquement',
+  })
   @IsOptional()
   @IsString()
   critical_only?: boolean;

@@ -7,17 +7,14 @@ export class CreateUserRoleAssignmentDto {
   @IsInt()
   role_id: number;
 
-
-
-  @ApiProperty({ description: 'ID de l\'utilisateur', example: 1 })
+  @ApiProperty({ description: "ID de l'utilisateur", example: 1 })
   @IsInt()
   user_id: number;
 
-  @ApiProperty({ 
-    description: 'Statut de l\'assignation', 
-    example: 1, 
-    required: false 
+  @ApiProperty({
+    description: "Statut de l'assignation",
+    example: 1,
+    required: false,
   })
-
   status?: number;
 }

@@ -6,7 +6,7 @@ import { Repository } from 'typeorm';
 import {
   Injectable,
   NotFoundException,
-  ConflictException
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -16,13 +16,12 @@ import { SearchJurisdictionDto } from './dto/search-jurisdiction.dto';
 import { UpdateJurisdictionDto } from './dto/update-jurisdiction.dto';
 import { Jurisdiction } from './entities/jurisdiction.entity';
 
-
 @Injectable()
 export class JurisdictionService extends BaseServiceV1<Jurisdiction> {
   constructor(
     @InjectRepository(Jurisdiction)
     private jurisdictionRepository: Repository<Jurisdiction>,
-    protected readonly paginationService: PaginationServiceV1
+    protected readonly paginationService: PaginationServiceV1,
   ) {
     super(jurisdictionRepository, paginationService);
   }
@@ -35,18 +34,10 @@ export class JurisdictionService extends BaseServiceV1<Jurisdiction> {
         'description',
         'city',
         'region',
-        'country'
+        'country',
       ],
-      exactMatchFields: [
-        'id',
-        'is_active',
-        'level',
-        'jurisdiction_type'
-      ],
-      relationFields: [
-        'parent_jurisdiction',
-        'audiences'
-      ],
+      exactMatchFields: ['id', 'is_active', 'level', 'jurisdiction_type'],
+      relationFields: ['parent_jurisdiction', 'audiences'],
     };
   }
 
@@ -58,32 +49,34 @@ export class JurisdictionService extends BaseServiceV1<Jurisdiction> {
 
     // Vérifier l'unicité du code
     const existing = await this.jurisdictionRepository.findOne({
-      where: { code: dto.code }
+      where: { code: dto.code },
     });
 
     if (existing) {
-      throw new ConflictException(`Une juridiction avec le code ${dto.code} existe déjà`);
+      throw new ConflictException(
+        `Une juridiction avec le code ${dto.code} existe déjà`,
+      );
     }
 
     const jurisdiction = this.jurisdictionRepository.create(dto);
     const saved = await this.jurisdictionRepository.save(jurisdiction);
-    
+
     return plainToInstance(JurisdictionResponseDto, saved);
   }
 
   async findAll(): Promise<JurisdictionResponseDto[]> {
     const jurisdictions = await this.jurisdictionRepository.find({
       // where: { is_active: true },
-      order: { name: 'ASC' }
+      order: { name: 'ASC' },
     });
-    
+
     return plainToInstance(JurisdictionResponseDto, jurisdictions);
   }
 
   async findOne(id: number): Promise<JurisdictionResponseDto> {
     const jurisdiction = await this.jurisdictionRepository.findOne({
       where: { id },
-      relations: ['parent_jurisdiction', 'audiences']
+      relations: ['parent_jurisdiction', 'audiences'],
     });
 
     if (!jurisdiction) {
@@ -93,16 +86,26 @@ export class JurisdictionService extends BaseServiceV1<Jurisdiction> {
     return plainToInstance(JurisdictionResponseDto, jurisdiction);
   }
 
-  async update(id: number, dto: UpdateJurisdictionDto): Promise<JurisdictionResponseDto> {
+  async update(
+    id: number,
+    dto: UpdateJurisdictionDto,
+  ): Promise<JurisdictionResponseDto> {
     const jurisdiction = await this.findOne(id);
-    
+
     Object.assign(jurisdiction, dto);
     const updated = await this.jurisdictionRepository.save(jurisdiction);
-    
+
     return plainToInstance(JurisdictionResponseDto, updated);
   }
 
-  async searchJuridiction(searchParams: SearchJurisdictionDto, paginationParams?: any) {
-    return this.searchWithTransformer(searchParams, JurisdictionResponseDto, paginationParams);
+  async searchJuridiction(
+    searchParams: SearchJurisdictionDto,
+    paginationParams?: any,
+  ) {
+    return this.searchWithTransformer(
+      searchParams,
+      JurisdictionResponseDto,
+      paginationParams,
+    );
   }
 }

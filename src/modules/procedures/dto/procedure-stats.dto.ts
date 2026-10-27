@@ -4,7 +4,7 @@ export class ProcedureStatsDto {
   mainTypes: number;
   subTypes: number;
   active: number;
-  
+
   byCategory: ProcedureCategoryDto[];
   mostUsed: MostUsedProcedureDto[];
 }

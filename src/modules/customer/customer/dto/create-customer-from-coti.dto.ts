@@ -13,8 +13,6 @@ import {
 } from 'class-validator';
 
 export class CreateCustomerFromCotiDto {
-
-
   @IsString()
   @MaxLength(45)
   @ApiProperty({ example: 'John', description: 'Customer Name' })
@@ -26,8 +24,6 @@ export class CreateCustomerFromCotiDto {
   @ApiProperty({ example: 'Doe', description: 'Customer Last Name' })
   @IsOptional()
   last_name?: string;
-
-
 
   @IsPhoneNumber()
   @ApiProperty({ required: true, example: '+216 55 55 55 55' })
@@ -72,10 +68,8 @@ export class CreateCustomerFromCotiDto {
   @ApiProperty({ example: 1 })
   type_customer_id: number;
 
-
-
   @Type(() => CreateDocumentFromCotiDto) // <- transformation correcte des éléments du tableau
-  @ValidateNested({ each: true })        // <- validation pour chaque élément
+  @ValidateNested({ each: true }) // <- validation pour chaque élément
   @ApiProperty({ type: [CreateDocumentFromCotiDto], required: false })
   @Exclude()
   @IsOptional()

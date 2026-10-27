@@ -30,7 +30,12 @@ export class SingleJurisdictionStatsDto {
       dossierNumber: string;
       client: string;
     };
-    parStatut: Array<{ name: string; value: number; percentage: number; color?: string }>;
+    parStatut: Array<{
+      name: string;
+      value: number;
+      percentage: number;
+      color?: string;
+    }>;
     parMois: Array<{ mois: string; count: number }>;
   };
 
@@ -39,8 +44,17 @@ export class SingleJurisdictionStatsDto {
     total: number;
     actifs: number;
     clos: number;
-    parStatut: Array<{ name: string; value: number; percentage: number; color?: string }>;
-    parTypeProcedure: Array<{ name: string; value: number; percentage: number }>;
+    parStatut: Array<{
+      name: string;
+      value: number;
+      percentage: number;
+      color?: string;
+    }>;
+    parTypeProcedure: Array<{
+      name: string;
+      value: number;
+      percentage: number;
+    }>;
     recents: Array<{
       id: number;
       numero: string;

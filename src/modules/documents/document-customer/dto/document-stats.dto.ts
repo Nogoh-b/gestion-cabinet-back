@@ -1,6 +1,6 @@
 // src/modules/documents/dto/document-stats.dto.ts
 
-import { BaseStatsDto, DistributionItem } from "src/core/types/base-stats.dto";
+import { BaseStatsDto, DistributionItem } from 'src/core/types/base-stats.dto';
 
 export class DocumentStatsDto extends BaseStatsDto {
   // Vue d'ensemble
@@ -10,7 +10,7 @@ export class DocumentStatsDto extends BaseStatsDto {
   validated: number;
   rejected: number;
   expired: number;
-  
+
   // Distributions
   byType: DistributionItem[];
   byCategory: DistributionItem[];
@@ -18,16 +18,16 @@ export class DocumentStatsDto extends BaseStatsDto {
   byMimeType: DistributionItem[];
   byDossier: DistributionItem[];
   byUploader: DistributionItem[];
-  
+
   // Statistiques de stockage
   storageStats: StorageStatsDto;
-  
+
   // Documents récents
   recentDocuments: RecentDocumentDto[];
-  
+
   // Documents à valider
   pendingDocuments: PendingDocumentDto[];
-  
+
   // Tendances
   uploadTrend: UploadTrendDto[];
 }

@@ -17,6 +17,8 @@ import {
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { AuditService } from 'src/core/audit/audit.service';
 import { SupplierEvidenceStorageService } from './supplier-evidence-storage.service';
+import { CaseBillingService } from '../case-workflow/services/case-billing.service';
+import { DossierAction } from '../case-workflow/entities/dossier-action.entity';
 
 export interface ExpenseEvidenceActor {
   userId?: number | null;
@@ -34,6 +36,7 @@ export class ExpenseLinesService {
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
     private readonly evidenceStorage: SupplierEvidenceStorageService,
+    private readonly caseBillingService: CaseBillingService,
   ) {}
 
   async create(dto: CreateExpenseLineDto): Promise<ExpenseLine> {
@@ -43,6 +46,7 @@ export class ExpenseLinesService {
       dto.is_rebillable,
     );
     this.assertAmounts(dto.amount_ht, dto.tax_rate, dto.amount_ttc);
+    await this.assertActionBelongsToDossier(dto.action_id, dossier?.id);
     const entity = this.repository.create();
     Object.assign(entity, {
       ...dto,
@@ -96,6 +100,10 @@ export class ExpenseLinesService {
     const dossier = await this.resolveDossier(
       dto.dossier_id ?? line.dossier_id,
       isRebillable,
+    );
+    await this.assertActionBelongsToDossier(
+      dto.action_id ?? line.action_id,
+      dossier?.id,
     );
     Object.assign(line, {
       ...dto,
@@ -215,6 +223,51 @@ export class ExpenseLinesService {
       mimeType: line.attachment_mime_type,
       sha256: line.attachment_sha256,
     };
+  }
+
+  /**
+   * Autorise exceptionnellement la refacturation d'un débours sans
+   * justificatif (décision tracée par la facturation du dossier).
+   */
+  async approveWithoutReceipt(id: number, actorUserId: number, reason: string) {
+    const tenantId = getCurrentTenantId();
+    return this.dataSource.transaction(async (manager) => {
+      const line = await manager.getRepository(ExpenseLine).findOne({
+        where: { id, tenant_id: tenantId },
+        relations: ['expense_report'],
+      });
+      if (!line) throw new NotFoundException('Ligne de dépense non trouvée');
+      return this.caseBillingService.approveExpenseWithoutReceipt(
+        manager,
+        line,
+        actorUserId,
+        reason,
+      );
+    });
+  }
+
+  private async assertActionBelongsToDossier(
+    actionId: string | null | undefined,
+    dossierId: number | null | undefined,
+  ): Promise<void> {
+    if (!actionId) return;
+    if (!dossierId) {
+      throw new BadRequestException(
+        'Un dossier est obligatoire pour associer une action',
+      );
+    }
+    const action = await this.dataSource.getRepository(DossierAction).findOne({
+      where: {
+        id: actionId,
+        dossier_id: dossierId,
+        tenant_id: getCurrentTenantId(),
+      },
+    });
+    if (!action) {
+      throw new BadRequestException(
+        'L’action associée n’appartient pas au dossier sélectionné',
+      );
+    }
   }
 
   private async findMutableReport(id: number): Promise<ExpenseReport> {

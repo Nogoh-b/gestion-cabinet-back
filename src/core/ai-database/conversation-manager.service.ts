@@ -1,51 +1,346 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 // conversation-manager.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { v4 as uuidv4 } from 'uuid';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationMessage } from './entities/conversation-message.entity';
+import { AiConversationDocument } from './entities/ai-conversation-document.entity';
 import type { ReferencedEntityContext } from './dto/ask-question.dto';
+import { pickConversationResource } from './conversation-resource';
+import { formatCitedLine, mergeCitedReferences, type CitedReference } from './cited-records';
+
+/** Texte lu d'une pièce jointe, gardé avec la conversation. */
+export interface ConversationDocumentInput {
+  name: string;
+  type?: string;
+  size?: number;
+  method?: string;
+  confidence?: number;
+  pages?: number;
+  illegible?: number;
+  content: string;
+  displayContent?: string;
+  /** Mise en forme d'origine (Word lu) : gardée pour la traduction et l'éditeur. */
+  html?: string;
+}
+
+const PENDING_DOCUMENTS = Symbol('pendingDocuments');
+/** Un document plus long (≈ 200 pages) est gardé jusqu'à cette limite. */
+const MAX_STORED_DOCUMENT_CHARS = 400_000;
+/** Pièces lues et documents rédigés gardés pour les questions suivantes (les plus récents). */
+const MAX_CONVERSATION_DOCUMENTS = 20;
+/** Métadonnées d'un message (brouillon de document compris). */
+const MAX_MESSAGE_METADATA_CHARS = 600_000;
+import { addTenantCondition } from '../tenant/tenant-repository.patch';
 
 @Injectable()
 export class ConversationManagerService {
+  // Ce contexte est limité à la requête et isolé entre utilisateurs concurrents.
+  // L'historique visible des questions suivantes est fourni par le navigateur.
+  private readonly temporarySession = new AsyncLocalStorage<{
+    conversation: Conversation | null;
+  }>();
+
+  runTemporary<T>(callback: () => T): T {
+    return this.temporarySession.run({ conversation: null }, callback);
+  }
+
+  /** Pièces jointes et passage cité de la question en cours, gardés avec le message utilisateur. */
+  private readonly userMessageExtras = new AsyncLocalStorage<Record<string, any>>();
+
+  withUserMessageMetadata<T>(metadata: Record<string, any> | undefined, callback: () => T): T {
+    return metadata ? this.userMessageExtras.run(metadata, callback) : callback();
+  }
+
+  /**
+   * Enregistrements cités par la réponse en cours (lectures de la requête),
+   * et mode de réponse retenu (affiché avec la réponse à la réouverture).
+   */
+  private readonly citations = new AsyncLocalStorage<{
+    references: CitedReference[];
+    responseMode?: Record<string, any>;
+    /** Réponse enregistrée (id renvoyé au chat : brouillons, actions, statut des cartes). */
+    messageId?: number;
+  }>();
+
+  /** Ouvre la collecte des enregistrements cités pour une requête du chat. */
+  withCitations<T>(callback: () => T): T {
+    return this.citations.run({ references: [] }, callback);
+  }
+
+  /** Ajoute des enregistrements cités à la réponse en cours (sans effet hors requête). */
+  citeRecords(references: CitedReference[]): void {
+    const store = this.citations.getStore();
+    if (!store || !references.length) return;
+    store.references = mergeCitedReferences(store.references, references);
+  }
+
+  /** Une réponse du chat collecte-t-elle ses enregistrements cités ? */
+  isCollectingCitations(): boolean {
+    return !!this.citations.getStore();
+  }
+
+  /** Enregistrements cités par la réponse en cours. */
+  citedRecords(): CitedReference[] {
+    return this.citations.getStore()?.references ?? [];
+  }
+
+  /** Mode de réponse de la requête en cours (Lire, Aide…), gardé avec la réponse. */
+  noteResponseMode(mode: Record<string, any>): void {
+    const store = this.citations.getStore();
+    if (store) store.responseMode = mode;
+    // Réponse en plusieurs parties : chaque partie garde son mode.
+    this.composition.getStore()?.modes.push(mode);
+  }
+
+  /**
+   * Réponse en plusieurs parties (une demande enchaînant Lire + compétence…) :
+   * pendant `callback`, les messages ne sont pas enregistrés mais gardés,
+   * pour n'enregistrer à la fin qu'une question et une réponse fusionnée.
+   */
+  private readonly composition = new AsyncLocalStorage<{
+    assistant: Array<{ content: string; metadata?: Record<string, any> }>;
+    modes: Array<Record<string, any>>;
+  }>();
+
+  async compose<T>(callback: () => Promise<T>): Promise<{
+    value: T;
+    assistant: Array<{ content: string; metadata?: Record<string, any> }>;
+    modes: Array<Record<string, any>>;
+  }> {
+    const buffer = { assistant: [] as Array<{ content: string; metadata?: Record<string, any> }>, modes: [] as Array<Record<string, any>> };
+    const value = await this.composition.run(buffer, callback);
+    return { value, ...buffer };
+  }
+
+  isComposing(): boolean {
+    return !!this.composition.getStore();
+  }
+
+  responseMode(): Record<string, any> | undefined {
+    return this.citations.getStore()?.responseMode;
+  }
+
+  /** Id de la réponse enregistrée pendant la requête en cours. */
+  savedAssistantMessageId(): number | undefined {
+    return this.citations.getStore()?.messageId;
+  }
+
+  /**
+   * Complète les métadonnées d'un message de la conversation de l'utilisateur
+   * (brouillon modifié d'une carte, statut « envoyé », actions recommandées).
+   * Les clés `null` sont retirées.
+   */
+  async patchMessageMetadata(
+    conversationId: string,
+    messageId: number,
+    userId: string | number,
+    patch: Record<string, any>,
+  ): Promise<Record<string, any> | null> {
+    if (this.temporarySession.getStore()) return null;
+    const conversation = await this.conversationRepo.findOne({ where: { id: conversationId } });
+    if (!conversation || String(conversation.userId) !== String(userId)) return null;
+    const message = await this.messageRepo.findOne({ where: { id: messageId, conversationId } as any });
+    if (!message) return null;
+    const metadata: Record<string, any> = { ...(message.metadata ?? {}) };
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null) delete metadata[key];
+      else metadata[key] = value;
+    }
+    if (JSON.stringify(metadata).length > MAX_MESSAGE_METADATA_CHARS) {
+      throw new Error('Brouillon trop volumineux pour être enregistré.');
+    }
+    // updated_at a ON UPDATE : le réassigner garde la date de la réponse.
+    await this.messageRepo
+      .createQueryBuilder()
+      .update()
+      .set({ metadata, updated_at: () => 'updated_at' } as QueryDeepPartialEntity<ConversationMessage>)
+      .where('id = :id', { id: messageId })
+      .execute();
+    return metadata;
+  }
+
+  /**
+   * Documents lus pour la question en cours : enregistrés avec le message
+   * utilisateur (addUserMessage), quelle que soit la branche qui l'ajoute.
+   * Propriété non énumérable : elle n'entre pas dans les métadonnées du message.
+   */
+  queueUserMessageDocuments(documents: ConversationDocumentInput[]): void {
+    const store = this.userMessageExtras.getStore();
+    if (!store || !documents.length) return;
+    Object.defineProperty(store, PENDING_DOCUMENTS, {
+      value: documents,
+      enumerable: false,
+      configurable: true,
+    });
+  }
+
+  /** Documents lus dans une conversation de l'utilisateur, du plus récent au plus ancien. */
+  async getConversationDocuments(
+    conversationId: string,
+    userId?: string | number,
+  ): Promise<AiConversationDocument[]> {
+    if (this.temporarySession.getStore() || !this.documentRepo) return [];
+    try {
+      const conversation = await this.conversationRepo.findOne({
+        where: { id: conversationId },
+      });
+      if (!conversation) return [];
+      if (userId !== undefined && String(conversation.userId) !== String(userId)) return [];
+      return await this.documentRepo.find({
+        where: { conversationId },
+        order: { id: 'DESC' },
+        take: MAX_CONVERSATION_DOCUMENTS,
+      });
+    } catch (error) {
+      this.logger.warn(`Documents de la conversation indisponibles: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Document rédigé par le chat (courrier, e-mail, WhatsApp, traduction,
+   * document du studio), gardé avec sa réponse comme une pièce lue : les
+   * questions suivantes peuvent le relire. Un seul par réponse (remplacé).
+   */
+  async saveGeneratedDocument(
+    conversationId: string,
+    messageId: number,
+    document: { name: string; content: string; html?: string; type?: string },
+  ): Promise<void> {
+    if (!this.documentRepo || this.temporarySession.getStore() || !document.content.trim()) return;
+    try {
+      const existing = await this.documentRepo.findOne({ where: { conversationId, messageId, origin: 'generated' } as any });
+      await this.documentRepo.save(this.documentRepo.create({
+        ...(existing && { id: existing.id }),
+        conversationId,
+        messageId,
+        origin: 'generated',
+        name: document.name.slice(0, 255),
+        type: document.type?.slice(0, 120) ?? 'text/html',
+        method: 'generated',
+        content: document.content.slice(0, MAX_STORED_DOCUMENT_CHARS),
+        contentHtml: document.html?.slice(0, MAX_STORED_DOCUMENT_CHARS) ?? null,
+      }));
+    } catch (error) {
+      this.logger.warn(`Document rédigé non gardé: ${(error as Error).message}`);
+    }
+  }
+
+  /** Brouillon modifié dans sa carte : le document gardé suit (relu tel que corrigé). */
+  async updateGeneratedDocument(
+    conversationId: string,
+    messageId: number,
+    content: string,
+    html?: string,
+  ): Promise<void> {
+    if (!this.documentRepo || this.temporarySession.getStore() || !content.trim()) return;
+    try {
+      await this.documentRepo
+        .createQueryBuilder()
+        .update()
+        .set({
+          content: content.slice(0, MAX_STORED_DOCUMENT_CHARS),
+          ...(html !== undefined && { contentHtml: html.slice(0, MAX_STORED_DOCUMENT_CHARS) }),
+        } as QueryDeepPartialEntity<AiConversationDocument>)
+        .where('conversation_id = :conversationId AND message_id = :messageId AND origin = :origin', {
+          conversationId,
+          messageId,
+          origin: 'generated',
+        })
+        .execute();
+    } catch (error) {
+      this.logger.warn(`Document rédigé non mis à jour: ${(error as Error).message}`);
+    }
+  }
+
+  private async saveQueuedDocuments(conversationId: string, messageId?: number): Promise<void> {
+    const store = this.userMessageExtras.getStore() as Record<string | symbol, any> | undefined;
+    const documents: ConversationDocumentInput[] | undefined = store?.[PENDING_DOCUMENTS];
+    if (!documents?.length || !this.documentRepo || this.temporarySession.getStore()) return;
+    delete store![PENDING_DOCUMENTS];
+    try {
+      await this.documentRepo.save(
+        documents.map((document) =>
+          this.documentRepo!.create({
+            conversationId,
+            messageId: messageId ?? null,
+            name: document.name.slice(0, 255),
+            type: document.type?.slice(0, 120) ?? null,
+            size: document.size ?? null,
+            method: document.method ?? null,
+            confidence: document.confidence ?? null,
+            pages: document.pages ?? null,
+            illegible: document.illegible ?? null,
+            content: document.content.slice(0, MAX_STORED_DOCUMENT_CHARS),
+            displayContent: document.displayContent?.slice(0, MAX_STORED_DOCUMENT_CHARS) ?? null,
+            contentHtml: document.html?.slice(0, MAX_STORED_DOCUMENT_CHARS) ?? null,
+          }),
+        ),
+      );
+    } catch (error) {
+      // Le chat répond même si le texte ne peut pas être gardé (table absente…).
+      this.logger.warn(`Documents non enregistrés: ${(error as Error).message}`);
+    }
+  }
+
   private readonly logger = new Logger(ConversationManagerService.name);
-  
+
   constructor(
     @InjectRepository(Conversation)
     private conversationRepo: Repository<Conversation>,
     @InjectRepository(ConversationMessage)
     private messageRepo: Repository<ConversationMessage>,
+    @Optional()
+    @InjectRepository(AiConversationDocument)
+    private documentRepo?: Repository<AiConversationDocument>,
   ) {}
 
   /**
    * Crée une nouvelle conversation
    */
-  async createConversation(userId: string, title?: string): Promise<Conversation> {
+  async createConversation(
+    userId: string,
+    title?: string,
+  ): Promise<Conversation> {
+    const temporary = this.temporarySession.getStore();
+    if (temporary) {
+      temporary.conversation ??= Object.assign(new Conversation(), {
+        id: uuidv4(), userId, title: title || 'Nouvelle conversation', status: 'active',
+      });
+      return temporary.conversation;
+    }
     const conversation = this.conversationRepo.create({
       id: uuidv4(),
       userId,
       title: title || 'Nouvelle conversation',
-      status: 'active'
+      status: 'active',
     });
-    
+
     const saved = await this.conversationRepo.save(conversation);
-    this.logger.log(`📝 Nouvelle conversation créée: ${saved.id} pour user ${userId}`);
+    this.logger.log(
+      `📝 Nouvelle conversation créée: ${saved.id} pour user ${userId}`,
+    );
     return saved;
   }
 
   /**
    * Récupère l'historique complet d'une conversation (format LangChain)
    */
-  async getHistory(conversationId: string): Promise<Array<{role: string, content: string}>> {
+  async getHistory(
+    conversationId: string,
+  ): Promise<Array<{ role: string; content: string }>> {
     const messages = await this.messageRepo.find({
       where: { conversationId },
-      order: { created_at: 'ASC' }
+      order: { created_at: 'ASC' },
     });
-    
-    return messages.map(msg => ({
+
+    return messages.map((msg) => ({
       role: msg.role,
-      content: msg.content
+      content: msg.content,
     }));
   }
 
@@ -61,6 +356,9 @@ export class ConversationManagerService {
     references?: ReferencedEntityContext[],
     metadata?: Record<string, any>,
   ): Promise<ConversationMessage> {
+    if (this.temporarySession.getStore()) {
+      return Object.assign(new ConversationMessage(), { conversationId, role, content });
+    }
     const message = this.messageRepo.create({
       conversationId,
       role,
@@ -70,28 +368,36 @@ export class ConversationManagerService {
       references: references?.length ? references : undefined,
       metadata: metadata && Object.keys(metadata).length ? metadata : undefined,
     });
-    
+
     const saved = await this.messageRepo.save(message);
-    
+
     // Mettre à jour updated_at de la conversation
-    await this.conversationRepo.update(conversationId, { updated_at: new Date() });
-    
+    await this.conversationRepo.update(conversationId, {
+      updated_at: new Date(),
+    });
+
     return saved;
   }
 
   /**
    * Initialise le contexte système avec le schéma (une seule fois par conversation)
    */
-  async initializeSystemContext(conversationId: string, schema: string): Promise<void> {
+  async initializeSystemContext(
+    conversationId: string,
+    schema: string,
+  ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
     // Vérifier si le message système existe déjà
     const existing = await this.messageRepo.findOne({
-      where: { conversationId, role: 'system' }
+      where: { conversationId, role: 'system' },
     });
-    
+
     if (!existing) {
       const systemMessage = this.buildSystemPrompt(schema);
       await this.addMessage(conversationId, 'system', systemMessage);
-      this.logger.log(`🎯 Contexte système initialisé pour conv ${conversationId}`);
+      this.logger.log(
+        `🎯 Contexte système initialisé pour conv ${conversationId}`,
+      );
     }
   }
 
@@ -130,38 +436,138 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   }
 
   /**
-   * Liste les conversations d'un utilisateur
+   * Liste les conversations d'un utilisateur : épinglées d'abord, puis les plus
+   * récentes. `search` porte sur le titre et le texte des échanges.
    */
-  async getUserConversations(userId: string): Promise<Conversation[]> {
-    return this.conversationRepo.find({
-      where: { userId, status: 'active' },
-      order: { updated_at: 'DESC' }
-    });
+  async listConversations(
+    userId: string,
+    filters: { search?: string; resourceType?: string; resourceId?: string } = {},
+  ): Promise<Conversation[]> {
+    let qb = this.conversationRepo
+      .createQueryBuilder('c')
+      .where('c.user_id = :userId', { userId })
+      .andWhere("c.status = 'active'");
+    qb = addTenantCondition(qb, 'c');
+
+    const search = String(filters.search ?? '').trim().slice(0, 100);
+    if (search) {
+      const pattern = `%${search.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+      qb = qb.andWhere(
+        new Brackets((where) => {
+          where.where('c.title LIKE :pattern', { pattern }).orWhere(
+            `EXISTS (SELECT 1 FROM conversation_messages m
+                      WHERE m.conversation_id = c.id
+                        AND m.role IN ('user', 'assistant')
+                        AND m.deleted_at IS NULL
+                        AND m.content LIKE :pattern)`,
+            { pattern },
+          );
+        }),
+      );
+    }
+    if (filters.resourceType && filters.resourceId) {
+      qb = qb
+        .andWhere('c.resource_type = :resourceType', { resourceType: filters.resourceType })
+        .andWhere('c.resource_id = :resourceId', { resourceId: String(filters.resourceId) });
+    }
+
+    return qb
+      .orderBy('c.pinned_at IS NULL', 'ASC')
+      .addOrderBy('c.pinned_at', 'DESC')
+      .addOrderBy('c.updated_at', 'DESC')
+      .limit(200)
+      .getMany();
+  }
+
+  /**
+   * Organiser l'historique (renommer, épingler, supprimer, restaurer) ne
+   * change pas la date d'activité : `updated_at = updated_at` neutralise
+   * ON UPDATE CURRENT_TIMESTAMP, la conversation garde sa place et son groupe.
+   */
+  private async updateKeepingActivity(
+    conversationId: string,
+    values: QueryDeepPartialEntity<Conversation>,
+  ): Promise<void> {
+    await this.conversationRepo
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ ...values, updated_at: () => 'updated_at' })
+      .where('id = :conversationId', { conversationId })
+      .execute();
+  }
+
+  /** Renomme une conversation (titre déjà normalisé par l'appelant). */
+  async renameConversation(conversationId: string, title: string): Promise<void> {
+    await this.updateKeepingActivity(conversationId, { title });
+  }
+
+  async setPinned(conversationId: string, pinned: boolean): Promise<void> {
+    await this.updateKeepingActivity(conversationId, { pinnedAt: pinned ? new Date() : null });
+  }
+
+  /** Suppression logique : la conversation peut être restaurée (« Annuler »). */
+  async softDeleteConversation(conversationId: string): Promise<void> {
+    await this.updateKeepingActivity(conversationId, { deleted_at: () => 'CURRENT_TIMESTAMP(6)' });
+  }
+
+  async restoreConversation(conversationId: string): Promise<void> {
+    // Requête directe : un UPDATE TypeORM ajoute « deleted_at IS NULL » et ne
+    // trouverait jamais la conversation supprimée (propriété vérifiée en amont).
+    await this.conversationRepo.query(
+      'UPDATE conversations_bot SET deleted_at = NULL, updated_at = updated_at WHERE id = ?',
+      [conversationId],
+    );
+  }
+
+  /** Rattache la conversation à la première fiche citée, une seule fois. */
+  private async attachConversationResource(
+    conversationId: string,
+    references?: ReferencedEntityContext[],
+  ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
+    const resource = pickConversationResource(references);
+    if (!resource) return;
+    await this.conversationRepo
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({
+        resourceType: resource.type,
+        resourceId: resource.id,
+        resourceLabel: resource.label,
+      })
+      .where('id = :conversationId', { conversationId })
+      .andWhere('resource_type IS NULL')
+      .execute();
   }
 
   /**
    * Nettoie l'historique trop long (garde seulement les X derniers messages)
    * À appeler après chaque ajout si la conversation dépasse un seuil
    */
-  async trimHistory(conversationId: string, maxMessages: number = 20): Promise<void> {
+  async trimHistory(
+    conversationId: string,
+    maxMessages: number = 20,
+  ): Promise<void> {
     const messages = await this.messageRepo.find({
       where: { conversationId },
-      order: { created_at: 'ASC' }
+      order: { created_at: 'ASC' },
     });
-    
+
     if (messages.length > maxMessages) {
       // Garder le message système + les (maxMessages - 1) derniers
-      const systemMsg = messages.find(m => m.role === 'system');
+      const systemMsg = messages.find((m) => m.role === 'system');
       const recent = messages.slice(-(maxMessages - 1));
-      
+
       const toKeep = systemMsg ? [systemMsg, ...recent] : recent;
-      const toDelete = messages.filter(m => !toKeep.includes(m));
-      
+      const toDelete = messages.filter((m) => !toKeep.includes(m));
+
       for (const msg of toDelete) {
         await this.messageRepo.delete(msg.id);
       }
-      
-      this.logger.log(`✂️ Historique tronqué: ${messages.length} → ${toKeep.length} messages`);
+
+      this.logger.log(
+        `✂️ Historique tronqué: ${messages.length} → ${toKeep.length} messages`,
+      );
     }
   }
 
@@ -191,8 +597,14 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     return cleaned.length > 60 ? `${cleaned.slice(0, 60)}...` : cleaned;
   }
 
-  private async updateTitleFromFirstUserMessage(conversationId: string, content: string): Promise<void> {
-    const conversation = await this.conversationRepo.findOne({ where: { id: conversationId } });
+  private async updateTitleFromFirstUserMessage(
+    conversationId: string,
+    content: string,
+  ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
+    const conversation = await this.conversationRepo.findOne({
+      where: { id: conversationId },
+    });
     if (!conversation) return;
     const title = String(conversation.title ?? '').trim();
     if (title && title !== 'Nouvelle conversation') return;
@@ -202,12 +614,13 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     });
   }
 
-   /**
+  /**
    * Vérifie si la conversation a déjà un message système
    */
   async hasSystemMessage(conversationId: string): Promise<boolean> {
+    if (this.temporarySession.getStore()) return false;
     const count = await this.messageRepo.count({
-      where: { conversationId, role: 'system' }
+      where: { conversationId, role: 'system' },
     });
     return count > 0;
   }
@@ -215,7 +628,10 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   /**
    * Ajoute un message système
    */
-  async addSystemMessage(conversationId: string, content: string): Promise<void> {
+  async addSystemMessage(
+    conversationId: string,
+    content: string,
+  ): Promise<void> {
     await this.addMessage(conversationId, 'system', content);
   }
 
@@ -227,8 +643,20 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     content: string,
     references?: ReferencedEntityContext[],
   ): Promise<void> {
-    await this.addMessage(conversationId, 'user', content, undefined, undefined, references);
+    // Partie d'une réponse composée : la question entière est enregistrée à la fin.
+    if (this.composition.getStore()) return;
+    const message = await this.addMessage(
+      conversationId,
+      'user',
+      content,
+      undefined,
+      undefined,
+      references,
+      this.userMessageExtras.getStore(),
+    );
+    await this.saveQueuedDocuments(conversationId, message?.id);
     await this.updateTitleFromFirstUserMessage(conversationId, content);
+    await this.attachConversationResource(conversationId, references);
   }
 
   /**
@@ -240,35 +668,68 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     reasoningContent?: string,
     metadata?: Record<string, any>,
   ): Promise<void> {
-    await this.addMessage(conversationId, 'assistant', content, reasoningContent, undefined, undefined, metadata);
+    const composing = this.composition.getStore();
+    if (composing) {
+      composing.assistant.push({ content, ...(metadata && { metadata }) });
+      return;
+    }
+    // Les enregistrements cités restent avec la réponse : rouverte plus tard,
+    // la conversation garde leurs identifiants pour les demandes suivantes.
+    const cited = this.citedRecords();
+    const responseMode = this.responseMode();
+    const saved = await this.addMessage(
+      conversationId,
+      'assistant',
+      content,
+      reasoningContent,
+      undefined,
+      undefined,
+      cited.length || responseMode
+        ? {
+            ...(metadata ?? {}),
+            ...(cited.length && !metadata?.cited && { cited }),
+            ...(responseMode && !metadata?.responseMode && { responseMode }),
+          }
+        : metadata,
+    );
+    const store = this.citations.getStore();
+    if (store && saved?.id) store.messageId = saved.id;
   }
 
   /**
    * Récupère l'historique complet au format LangChain
    */
-  async getFullHistory(conversationId: string): Promise<Array<{
-    id: number;
-    role: string;
-    content: string;
-    created_at: Date;
-    references?: ReferencedEntityContext[];
-    metadata?: Record<string, any>;
-    sqlQuery?: string;
-    results?: any;
-    rowCount?: number;
-    recommendations?: string[];
-    fileInfo?: any;
-  }>> {
+  async getFullHistory(conversationId: string): Promise<
+    Array<{
+      id: number;
+      role: string;
+      content: string;
+      created_at: Date;
+      references?: ReferencedEntityContext[];
+      metadata?: Record<string, any>;
+      sqlQuery?: string;
+      results?: any;
+      rowCount?: number;
+      recommendations?: string[];
+      fileInfo?: any;
+    }>
+  > {
     const messages = await this.messageRepo.find({
       where: { conversationId },
-      order: { created_at: 'ASC' }
+      order: { created_at: 'ASC' },
     });
-    
+
     // Ne JAMAIS injecter le reasoningContent dans l'historique de conversation :
     // cela double le nombre de tokens et injecte du bruit (raisonnement interne du modèle).
-    return messages.map(msg => {
-      const metadata = this.normalizeJsonValue<Record<string, any>>(msg.metadata, {});
-      const references = this.normalizeJsonValue<ReferencedEntityContext[]>(msg.references, []);
+    return messages.map((msg) => {
+      const metadata = this.normalizeJsonValue<Record<string, any>>(
+        msg.metadata,
+        {},
+      );
+      const references = this.normalizeJsonValue<ReferencedEntityContext[]>(
+        msg.references,
+        [],
+      );
       return {
         id: msg.id,
         role: msg.role,
@@ -285,8 +746,14 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     });
   }
 
-  private formatMessageForPrompt(msg: ConversationMessage): { role: string; content: string } {
-    const metadata = this.normalizeJsonValue<Record<string, any>>(msg.metadata, {});
+  private formatMessageForPrompt(msg: ConversationMessage): {
+    role: string;
+    content: string;
+  } {
+    const metadata = this.normalizeJsonValue<Record<string, any>>(
+      msg.metadata,
+      {},
+    );
     let content = msg.content;
 
     if (msg.role === 'assistant') {
@@ -294,6 +761,9 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       if (context) {
         content = `${content}\n\n${context}`;
       }
+      // Identifiants des enregistrements cités par cette réponse.
+      const cited = Array.isArray(metadata.cited) ? formatCitedLine(metadata.cited) : '';
+      if (cited) content = `${content}\n${cited}`;
     }
 
     return {
@@ -303,16 +773,24 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   }
 
   private buildAssistantResultContext(metadata: Record<string, any>): string {
-    const sqlQuery = typeof metadata.sqlQuery === 'string' ? metadata.sqlQuery.trim() : '';
-    const rowCount = typeof metadata.rowCount === 'number' ? metadata.rowCount : undefined;
-    const rows = Array.isArray(metadata.results) ? metadata.results.slice(0, 3) : [];
+    const sqlQuery =
+      typeof metadata.sqlQuery === 'string' ? metadata.sqlQuery.trim() : '';
+    const rowCount =
+      typeof metadata.rowCount === 'number' ? metadata.rowCount : undefined;
+    const rows = Array.isArray(metadata.results)
+      ? metadata.results.slice(0, 3)
+      : [];
 
     if ((rowCount ?? 0) === 0 && rows.length === 0) return '';
     if (!sqlQuery && rows.length === 0 && rowCount === undefined) return '';
 
-    const lines: string[] = ['[CONTEXTE STRUCTURE POUR LES QUESTIONS DE SUIVI]'];
+    const lines: string[] = [
+      '[CONTEXTE STRUCTURE POUR LES QUESTIONS DE SUIVI]',
+    ];
     if (sqlQuery) {
-      lines.push(`SQL precedent: ${sqlQuery.replace(/\s+/g, ' ').substring(0, 600)}`);
+      lines.push(
+        `SQL precedent: ${sqlQuery.replace(/\s+/g, ' ').substring(0, 600)}`,
+      );
     }
     if (rowCount !== undefined) {
       lines.push(`Nombre de lignes precedent: ${rowCount}`);
@@ -320,7 +798,9 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     if (rows.length > 0) {
       lines.push('Resultats cles precedents:');
       rows.forEach((row, index) => {
-        lines.push(`- ligne ${index + 1}: ${this.formatResultRowForPrompt(row)}`);
+        lines.push(
+          `- ligne ${index + 1}: ${this.formatResultRowForPrompt(row)}`,
+        );
       });
     }
     lines.push(
@@ -376,7 +856,11 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     for (const [key, value] of Object.entries(row)) {
       if (entries.length >= 25) break;
       if (seen.has(key)) continue;
-      if (key.endsWith('_id') || key.endsWith('_number') || key.includes('numero')) {
+      if (
+        key.endsWith('_id') ||
+        key.endsWith('_number') ||
+        key.includes('numero')
+      ) {
         entries.push(`${key}=${this.formatPromptValue(value)}`);
       }
     }
@@ -387,7 +871,8 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   private formatPromptValue(value: unknown): string {
     if (value === null || value === undefined) return 'NULL';
     if (value instanceof Date) return value.toISOString();
-    if (typeof value === 'object') return JSON.stringify(value).substring(0, 120);
+    if (typeof value === 'object')
+      return JSON.stringify(value).substring(0, 120);
     return String(value).replace(/\s+/g, ' ').substring(0, 120);
   }
 
@@ -396,10 +881,25 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
    * Les messages system sont exclus car le service AiDatabase reconstruit un
    * prompt system a jour a chaque appel (schema, tenant, documents).
    */
+  /** Métadonnées du dernier message assistant (ex. réponse fondée sur un document). */
+  async getLastAssistantMetadata(
+    conversationId: string,
+  ): Promise<Record<string, any> | null> {
+    if (this.temporarySession.getStore()) return null;
+    const message = await this.messageRepo.findOne({
+      where: { conversationId, role: 'assistant' },
+      order: { created_at: 'DESC' },
+    });
+    return message
+      ? this.normalizeJsonValue<Record<string, any>>(message.metadata, {})
+      : null;
+  }
+
   async getRecentHistoryForPrompt(
     conversationId: string,
     options: { maxMessages?: number; maxTokens?: number } = {},
-  ): Promise<Array<{role: string, content: string}>> {
+  ): Promise<Array<{ role: string; content: string }>> {
+    if (this.temporarySession.getStore()) return [];
     const maxMessages = options.maxMessages ?? 8;
     const maxTokens = options.maxTokens ?? 8000;
 
@@ -416,14 +916,17 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       if (msg.role === 'system') continue;
       const promptMessage = this.formatMessageForPrompt(msg);
       const messageTokens = this.estimateTokens(promptMessage.content);
-      if (selected.length >= maxMessages || (selected.length > 0 && tokens + messageTokens > maxTokens)) {
+      if (
+        selected.length >= maxMessages ||
+        (selected.length > 0 && tokens + messageTokens > maxTokens)
+      ) {
         break;
       }
       selected.push(msg);
       tokens += messageTokens;
     }
 
-    return selected.reverse().map(msg => this.formatMessageForPrompt(msg));
+    return selected.reverse().map((msg) => this.formatMessageForPrompt(msg));
   }
 
   /**
@@ -434,7 +937,10 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
    *
    * @returns le bloc [CONTEXTE STRUCTURE POUR LES QUESTIONS DE SUIVI] ou null.
    */
-  async getStructuredFollowUpContext(conversationId: string): Promise<string | null> {
+  async getStructuredFollowUpContext(
+    conversationId: string,
+  ): Promise<string | null> {
+    if (this.temporarySession.getStore()) return null;
     const messages = await this.messageRepo.find({
       where: { conversationId },
       order: { created_at: 'DESC' },
@@ -443,7 +949,10 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
 
     for (const msg of messages) {
       if (msg.role !== 'assistant') continue;
-      const metadata = this.normalizeJsonValue<Record<string, any>>(msg.metadata, {});
+      const metadata = this.normalizeJsonValue<Record<string, any>>(
+        msg.metadata,
+        {},
+      );
       const block = this.buildAssistantResultContext(metadata);
       if (block) return block;
     }
@@ -454,8 +963,10 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
    * Récupère une conversation active par son ID
    */
   async getConversation(conversationId: string): Promise<Conversation | null> {
+    const temporary = this.temporarySession.getStore();
+    if (temporary) return temporary.conversation;
     return this.conversationRepo.findOne({
-      where: { id: conversationId, status: 'active' }
+      where: { id: conversationId, status: 'active' },
     });
   }
 
@@ -463,24 +974,39 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
    * Récupère une conversation (tous statuts) — pour la validation d'ownership.
    * Évite de retourner 401 quand la conversation est archivée (→ 404 à la place).
    */
-  async getConversationAny(conversationId: string): Promise<Conversation | null> {
+  async getConversationAny(
+    conversationId: string,
+    options: { withDeleted?: boolean } = {},
+  ): Promise<Conversation | null> {
+    const temporary = this.temporarySession.getStore();
+    if (temporary) return temporary.conversation;
     return this.conversationRepo.findOne({
-      where: { id: conversationId }
+      where: { id: conversationId },
+      withDeleted: options.withDeleted ?? false,
     });
   }
 
   /**
    * Ré-associe une conversation anonyme à l'utilisateur maintenant authentifié.
    */
-  async reassignConversation(conversationId: string, userId: string): Promise<void> {
+  async reassignConversation(
+    conversationId: string,
+    userId: string,
+  ): Promise<void> {
     await this.conversationRepo.update(conversationId, { userId });
-    this.logger.log(`🔄 Conversation ${conversationId} ré-associée à user ${userId}`);
+    this.logger.log(
+      `🔄 Conversation ${conversationId} ré-associée à user ${userId}`,
+    );
   }
 
   /**
    * Met à jour le titre d'une conversation
    */
-  async updateConversationTitle(conversationId: string, title: string): Promise<void> {
+  async updateConversationTitle(
+    conversationId: string,
+    title: string,
+  ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
     await this.conversationRepo.update(conversationId, { title });
     this.logger.log(
       `Titre mis a jour pour la conversation ${conversationId}`,
@@ -490,25 +1016,30 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   /**
    * Nettoie l'historique si trop long
    */
-  async trimHistoryIfNeeded(conversationId: string, maxMessages: number = 20): Promise<void> {
+  async trimHistoryIfNeeded(
+    conversationId: string,
+    maxMessages: number = 20,
+  ): Promise<void> {
     const messages = await this.messageRepo.find({
       where: { conversationId },
-      order: { created_at: 'ASC' }
+      order: { created_at: 'ASC' },
     });
-    
+
     if (messages.length > maxMessages) {
       // Garder le message système + les (maxMessages - 1) derniers
-      const systemMsg = messages.find(m => m.role === 'system');
+      const systemMsg = messages.find((m) => m.role === 'system');
       const recent = messages.slice(-(maxMessages - 1));
-      
+
       const toKeep = systemMsg ? [systemMsg, ...recent] : recent;
-      const toDelete = messages.filter(m => !toKeep.includes(m));
-      
+      const toDelete = messages.filter((m) => !toKeep.includes(m));
+
       for (const msg of toDelete) {
         await this.messageRepo.delete(msg.id);
       }
-      
-      this.logger.log(`✂️ Conversation ${conversationId}: ${messages.length} → ${toKeep.length} messages`);
+
+      this.logger.log(
+        `✂️ Conversation ${conversationId}: ${messages.length} → ${toKeep.length} messages`,
+      );
     }
   }
 }

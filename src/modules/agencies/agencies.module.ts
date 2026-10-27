@@ -1,4 +1,4 @@
-import { forwardRef, Module } from '@nestjs/common';
+import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { GeographyModule } from '../geography/geography.module';
 import { BranchController } from './branch/branch.controller';
@@ -11,16 +11,43 @@ import { EmployeeStatsService } from './employee/employee-stats.service';
 import { BranchStatsService } from './branch/branch-stats.service';
 import { EmployeeSubscriber } from './employee/suscribers/employee.suscribers';
 import { PlansModule } from '../plans/plans.module';
-
+import { UserRole } from '../iam/user-role/entities/user-role.entity';
+import { UserRoleAssignment } from '../iam/user-role-assignment/entities/user-role-assignment.entity';
+import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
+import { EmployeeWriteHandler } from './employee/employee-write.handler';
 
 @Module({
   imports: [
     forwardRef(() => GeographyModule),
-    TypeOrmModule.forFeature([Branch, Employee]),
+    TypeOrmModule.forFeature([Branch, Employee, UserRole, UserRoleAssignment]),
+    AiDatabaseModule,
     PlansModule,
   ],
   controllers: [BranchController, EmployeeController],
-  providers: [BranchService, EmployeeService, EmployeeStatsService, EmployeeSubscriber, BranchStatsService],
-  exports: [BranchService, EmployeeService, EmployeeStatsService, TypeOrmModule, BranchStatsService],
+  providers: [
+    BranchService,
+    EmployeeService,
+    EmployeeStatsService,
+    EmployeeSubscriber,
+    BranchStatsService,
+    EmployeeWriteHandler,
+  ],
+  exports: [
+    BranchService,
+    EmployeeService,
+    EmployeeStatsService,
+    TypeOrmModule,
+    BranchStatsService,
+  ],
 })
-export class AgenciesModule {}
+export class AgenciesModule implements OnModuleInit {
+  constructor(
+    private readonly registry: WriteHandlerRegistry,
+    private readonly handler: EmployeeWriteHandler,
+  ) {}
+
+  onModuleInit() {
+    this.registry.register(this.handler);
+  }
+}

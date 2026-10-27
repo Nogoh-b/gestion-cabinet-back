@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import type { AiPlanPolicy } from 'src/core/ai-database/ai-subscription-policy';
 
 @Entity('plans')
 export class Plan {
@@ -63,7 +64,12 @@ export class Plan {
   @Column({ type: 'tinyint', default: 0, name: 'reporting_enabled' })
   reporting_enabled: boolean;
 
-  @Column({ type: 'varchar', length: 30, default: 'community', name: 'support_level' })
+  @Column({
+    type: 'varchar',
+    length: 30,
+    default: 'community',
+    name: 'support_level',
+  })
   support_level: string;
 
   // ── Intelligence artificielle ─────────────────────────────────────────────
@@ -74,12 +80,31 @@ export class Plan {
   @Column({ type: 'int', nullable: true, name: 'ai_requests_per_month' })
   ai_requests_per_month: number | null;
 
+  /** Crédits IA par mois (1 crédit = `usd_per_credit` USD de coût fournisseur). NULL / -1 = illimité. */
+  @Column({ type: 'int', nullable: true, name: 'ai_credits_per_month' })
+  ai_credits_per_month: number | null;
+
+  @Column({ type: 'json', nullable: true })
+  ai_policy: AiPlanPolicy | null;
+
   // ── Tarification ──────────────────────────────────────────────────────────
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'price_monthly' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+    name: 'price_monthly',
+  })
   price_monthly: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, name: 'price_yearly' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    name: 'price_yearly',
+  })
   price_yearly: number | null;
 
   // ── Fonctionnalités ───────────────────────────────────────────────────────

@@ -1,5 +1,11 @@
 // src/modules/auth/entities/auth-token.entity.ts
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  Index,
+} from 'typeorm';
 
 @Entity('auth_tokens')
 export class AuthToken {

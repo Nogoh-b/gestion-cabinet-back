@@ -7,7 +7,6 @@ import { RolePermission } from 'src/modules/iam/role-permission/entities/role-pe
 import { UserRoleAssignment } from 'src/modules/iam/user-role-assignment/entities/user-role-assignment.entity';
 import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import { SuperAdminSeeder } from './super-admin.seeder';
 import { AgenciesModule } from 'src/modules/agencies/agencies.module';
 
 @Module({
@@ -21,7 +20,9 @@ import { AgenciesModule } from 'src/modules/agencies/agencies.module';
     ]),
     AgenciesModule,
   ],
-  providers: [SuperAdminSeeder],
-  exports: [SuperAdminSeeder],
+  // L'ancien SuperAdminSeeder (identifiants codés en dur) est supprimé :
+  // le premier compte plateforme se crée via `npm run platform:create-owner`.
+  providers: [],
+  exports: [],
 })
 export class SeedersModule {}

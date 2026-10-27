@@ -25,7 +25,10 @@ export class SearchDocumentCategoryDto {
   @Transform(({ value }) => value === 'true' || value === true)
   is_system?: boolean;
 
-  @ApiPropertyOptional({ example: 'public', description: 'Niveau de confidentialité' })
+  @ApiPropertyOptional({
+    example: 'public',
+    description: 'Niveau de confidentialité',
+  })
   @IsOptional()
   @IsString()
   confidentiality_level?: string;

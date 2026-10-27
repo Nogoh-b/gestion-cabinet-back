@@ -3,11 +3,8 @@ import { Expose, Type } from 'class-transformer';
 import { EmployeeResponseDto } from 'src/modules/agencies/employee/dto/response-employee.dto';
 import { ApiProperty } from '@nestjs/swagger';
 
-
 import { Conversation } from '../entities/conversation.entity';
 import { ChatReferenceDto } from './create-conversation.dto';
-
-
 
 export class MessageResponseDto {
   @ApiProperty()

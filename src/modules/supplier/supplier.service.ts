@@ -2,7 +2,10 @@ import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 import { Supplier } from './entities/supplier.entity';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
@@ -19,6 +22,21 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
     private branchRepo: Repository<Branch>,
   ) {
     super(repository, paginationService);
+  }
+
+  /** Sans cela, la recherche visait `name` (absent de l'entité) et répondait 500. */
+  protected getDefaultSearchOptions(): SearchOptions {
+    return {
+      searchFields: [
+        'company_name',
+        'contact_name',
+        'email',
+        'phone',
+        'supplier_code',
+      ],
+      exactMatchFields: ['id', 'status', 'category'],
+      dateRangeFields: ['created_at', 'updated_at'],
+    };
   }
 
   async create(dto: CreateSupplierDto): Promise<Supplier> {
@@ -105,7 +123,9 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
     );
   }
 
-  private async saveWithUniqueSupplierCode(entity: Supplier): Promise<Supplier> {
+  private async saveWithUniqueSupplierCode(
+    entity: Supplier,
+  ): Promise<Supplier> {
     let attempt = 0;
     while (attempt++ < 5) {
       try {

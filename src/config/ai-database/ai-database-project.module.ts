@@ -16,7 +16,11 @@ import {
 } from './cabinet-juridique-prompt';
 import { NEVER_AUTO_CREATE_ENTITIES } from './never-auto-create.config';
 import { FIELD_LABELS } from './field-labels.config';
-import { DATABASE_TABLES_CONFIG, DOMAIN_KEYWORDS, DOMAIN_ENTITIES } from './database-tables.config';
+import {
+  DATABASE_TABLES_CONFIG,
+  DOMAIN_KEYWORDS,
+  DOMAIN_ENTITIES,
+} from './database-tables.config';
 
 /**
  * Module de configuration projet pour AiDatabaseModule.

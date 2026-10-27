@@ -27,8 +27,8 @@ export class RoleResponseDto {
   @ApiProperty({ type: [Permission] })
   @Transform(({ value }) => value.map((item: any) => item.permission))
   permissions: Permission[];
-  
-/*@Expose()
+
+  /*@Expose()
 @ApiProperty({ type: [Permission] })
 @Transform(({ value }) => 
   value?.map(rp => ({

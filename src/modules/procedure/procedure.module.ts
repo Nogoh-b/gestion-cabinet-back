@@ -30,7 +30,8 @@ import { StageVisit } from './entities/stage-visit.entity';
 import { SubStageVisit } from './entities/sub-stage-visit.entity';
 import { ProcedureRequirementService } from './services/procedure-requirement.service';
 import { ProcedureTaskSubscriber } from './subscribers/procedure-task.subscriber';
-
+import { Dossier } from '../dossiers/entities/dossier.entity';
+import { LegacyWorkflowMutationGuard } from './services/legacy-workflow-mutation.guard';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { ProcedureTaskSubscriber } from './subscribers/procedure-task.subscriber
       HistoryEntry,
       SubStageVisit,
       Task,
+      Dossier,
     ]),
   ],
   controllers: [
@@ -63,6 +65,7 @@ import { ProcedureTaskSubscriber } from './subscribers/procedure-task.subscriber
     InstanceMapperService,
     ProcedureRequirementService,
     ProcedureTaskSubscriber,
+    LegacyWorkflowMutationGuard,
   ],
   exports: [
     ProcedureTemplateService,
@@ -71,7 +74,7 @@ import { ProcedureTaskSubscriber } from './subscribers/procedure-task.subscriber
     TaskService,
     HistoryService,
     ProcedureRequirementService,
-    TypeOrmModule
+    TypeOrmModule,
   ],
 })
 export class ProcedureModule {}

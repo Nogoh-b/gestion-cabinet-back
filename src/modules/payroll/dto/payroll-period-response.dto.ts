@@ -19,15 +19,23 @@ export class PayrollPeriodResponseDto {
   @Expose()
   end_date: Date;
 
-  @ApiProperty({ enum: PayrollPeriodStatus, example: PayrollPeriodStatus.VALIDATED })
+  @ApiProperty({
+    enum: PayrollPeriodStatus,
+    example: PayrollPeriodStatus.VALIDATED,
+  })
   @Expose()
   status: PayrollPeriodStatus;
 
   // Relations
-  @ApiProperty({ example: { id: 2, name: 'Cabinet Principal', code: 'BR-001' }, required: false })
+  @ApiProperty({
+    example: { id: 2, name: 'Cabinet Principal', code: 'BR-001' },
+    required: false,
+  })
   @Expose()
   @Transform(({ obj }) =>
-    obj.branch ? { id: obj.branch.id, name: obj.branch.name, code: obj.branch.code } : null,
+    obj.branch
+      ? { id: obj.branch.id, name: obj.branch.name, code: obj.branch.code }
+      : null,
   )
   branch: { id: number; name: string; code: string } | null;
 
@@ -39,8 +47,12 @@ export class PayrollPeriodResponseDto {
 
   @ApiProperty({ example: 54000.0 })
   @Expose()
-  @Transform(({ obj }) =>
-    obj.payslips?.reduce((sum: number, p: any) => sum + Number(p.net_amount), 0) || 0,
+  @Transform(
+    ({ obj }) =>
+      obj.payslips?.reduce(
+        (sum: number, p: any) => sum + Number(p.net_amount),
+        0,
+      ) || 0,
   )
   total_net_amount: number;
 

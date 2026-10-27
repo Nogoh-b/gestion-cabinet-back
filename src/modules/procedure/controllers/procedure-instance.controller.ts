@@ -17,6 +17,7 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { InstanceStatus } from '../entities/enums/instance-status.enum';
 import { ResourcePolicyService } from 'src/core/resource-policy.service';
+import { LegacyWorkflowMutationGuard } from '../services/legacy-workflow-mutation.guard';
 
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -25,6 +26,7 @@ export class ProcedureInstanceController {
   constructor(
     private readonly instanceService: ProcedureInstanceService,
     private readonly resourcePolicy: ResourcePolicyService,
+    private readonly legacyMutationGuard: LegacyWorkflowMutationGuard,
   ) {}
 
     // Récupérer l'utilisateur connecté (à adapter selon votre auth)
@@ -105,6 +107,7 @@ export class ProcedureInstanceController {
     @Body() body: { notes?: string; metadata?: Record<string, any> },
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     await this.resourcePolicy.assertProcedureInstanceAccess(
       id,
       req.user,
@@ -130,6 +133,7 @@ export class ProcedureInstanceController {
     @Param('subStageId') subStageId: string,
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     await this.resourcePolicy.assertProcedureInstanceAccess(
       id,
       req.user,
@@ -151,6 +155,7 @@ export class ProcedureInstanceController {
     @Body('comment') comment: string | undefined,
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     await this.resourcePolicy.assertProcedureInstanceAccess(
       id,
       req.user,
@@ -175,6 +180,7 @@ export class ProcedureInstanceController {
     @Body() dto: ApplyTransitionDto,
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     // Gérer les fichiers uploadés
       // Uploader les fichiers et récupérer leurs IDs
       // fileIds = await this.uploadService.uploadFiles(files);
@@ -202,6 +208,7 @@ export class ProcedureInstanceController {
     @Param('cycleId') cycleId: string,
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     await this.resourcePolicy.assertProcedureInstanceAccess(
       id,
       req.user,
@@ -215,6 +222,7 @@ export class ProcedureInstanceController {
   @Post(':id/complete')
   @RequirePermissions('apply_procedure_transition')
   async completeInstance(@Param('id') id: string, @Request() req: any) {
+    await this.legacyMutationGuard.assertMutable(id);
     await this.resourcePolicy.assertProcedureInstanceAccess(
       id,
       req.user,
@@ -231,6 +239,7 @@ export class ProcedureInstanceController {
     @Body('reason') reason: string,
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     await this.resourcePolicy.assertProcedureInstanceAccess(
       id,
       req.user,

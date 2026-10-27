@@ -1,20 +1,46 @@
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
+import { getCurrentRequestUser } from 'src/core/security/request-user.context';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
-import { Audience, AudienceStatus } from 'src/modules/audiences/entities/audience.entity';
+import {
+  Audience,
+  AudienceStatus,
+} from 'src/modules/audiences/entities/audience.entity';
 import { Conversation } from 'src/modules/chat/entities/conversation.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
+import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
+import { summarizeInvoices } from 'src/modules/facture/invoice-totals';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne, AfterLoad, Unique } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+  ManyToMany,
+  JoinTable,
+  OneToOne,
+  AfterLoad,
+  BeforeInsert,
+  Unique,
+  Index,
+} from 'typeorm';
 
 import { DossierMember } from './dossier-member.entity';
-
+import {
+  DossierLifecyclePhase,
+  WorkflowEngine,
+} from 'src/modules/case-workflow/case-workflow.enums';
 
 export enum DangerLevel {
   Faible = 0,
@@ -28,7 +54,7 @@ export enum ClientSatisfaction {
   SATISFIED = 'satisfied',
   NEUTRAL = 'neutral',
   DISSATISFIED = 'dissatisfied',
-  VERY_DISSATISFIED = 'very_dissatisfied'
+  VERY_DISSATISFIED = 'very_dissatisfied',
 }
 
 export enum DossierOutcome {
@@ -36,7 +62,7 @@ export enum DossierOutcome {
   LOST = 'lost',
   UNKNOWN = 'unknown',
   SETTLED = 'settled',
-  ABANDONED = 'abandoned'
+  ABANDONED = 'abandoned',
 }
 
 export enum ConflictCheckStatus {
@@ -50,10 +76,11 @@ export enum ConflictCheckStatus {
 @Unique(['tenant_id', 'dossier_number'])
 @BusinessTable({
   label: 'Dossiers contentieux',
-  description: 'Gestion des dossiers juridiques. Le statut décrit uniquement le cycle de vie administratif ; le déroulement procédural provient de l’instance.',
+  description:
+    'Gestion des dossiers juridiques. Le statut décrit uniquement le cycle de vie administratif ; le déroulement procédural provient de l’instance.',
   icon: '⚖️',
   category: 'dossier',
-  ignored : false
+  ignored: false,
 })
 export class Dossier extends BaseEntity {
   /**
@@ -70,66 +97,77 @@ export class Dossier extends BaseEntity {
     description: 'Numéro unique généré automatiquement par le système',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
   @Column({ name: 'dossier_number', length: 50, nullable: false })
   @BusinessColumn({
     label: 'Numéro de dossier',
-    description: 'Numéro unique d\'identification du dossier (format: ANN/XXX/YY).L\'identifiant unique d\'un dossier est "dossier_number" (jamais "id" pour la recherche). Il doit etre utiliser pour la recherche ( par le bot ) pas id',
+    description:
+      'Numéro unique d\'identification du dossier (format: ANN/XXX/YY).L\'identifiant unique d\'un dossier est "dossier_number" (jamais "id" pour la recherche). Il doit etre utiliser pour la recherche ( par le bot ) pas id',
     example: '2025/001/01',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   dossier_number: string;
 
-  @Column({ type: 'text', nullable: false })
+  // Facultatif : le formulaire d'ouverture déduit cet intitulé du client et
+  // de l'adversaire. Un dossier peut donc être créé sans objet.
+  @Column({ type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Objet du litige',
-    description: 'Description synthétique de l\'affaire et de son contexte',
-    example: 'Litige commercial fournisseur X pour non-paiement de factures d\'un montant de 50 000€',
+    description: "Description synthétique de l'affaire et de son contexte",
+    example:
+      "Litige commercial fournisseur X pour non-paiement de factures d'un montant de 50 000€",
     importance: 'critical',
-    group: 'contenu'
+    group: 'contenu',
   })
-  object: string;
+  object: string | null;
 
   @Column({ type: 'int', nullable: true, default: 1 })
   @BusinessColumn({
     label: 'Juridiction',
     description: 'Identifiant de la juridiction saisie (tribunal compétent)',
     importance: 'high',
-    group: 'localisation'
+    group: 'localisation',
   })
   jurisdiction_id?: number | null;
 
-  @Column({ name: 'danger_level', type: 'enum', enum: DangerLevel, default: DangerLevel.Normal })
+  @Column({
+    name: 'danger_level',
+    type: 'enum',
+    enum: DangerLevel,
+    default: DangerLevel.Normal,
+  })
   @BusinessColumn({
     label: "Niveau d'urgence",
-    description: 'BD: 0=Faible, 1=Normal, 2=Eleve, 3=Critique. En SQL utiliser le nombre.',
+    description:
+      'BD: 0=Faible, 1=Normal, 2=Élevé, 3=Critique. En SQL utiliser le nombre.',
     example: '2 = Élevé',
     importance: 'high',
-    group: 'priorité'
+    group: 'priorité',
   })
   danger_level: DangerLevel;
 
   @Column({ name: 'court_name', length: 255, nullable: true })
   @BusinessColumn({
-    label: 'Nom du tribunal',
-    description: 'Nom officiel du tribunal saisi',
-    example: 'Tribunal judiciaire de Paris',
+    label: "Nature de l'affaire",
+    description:
+      "Nature de l'affaire en texte libre (ex: 'Recouvrement de créance', 'Divorce', 'Licenciement abusif'). Ce n'est PAS le nom du tribunal : la juridiction saisie utilise jurisdiction_id/jurisdiction. Peut aussi être fourni via l'alias \"nature\".",
+    example: 'Recouvrement de créance',
     importance: 'high',
-    group: 'localisation'
+    group: 'contenu',
   })
   court_name: string;
 
   @Column({ name: 'case_number', length: 100, nullable: true })
   @BusinessColumn({
     label: 'Numéro de rôle / RG',
-    description: 'Numéro d\'enregistrement officiel auprès du tribunal',
+    description: "Numéro d'enregistrement officiel auprès du tribunal",
     example: 'RG 25/00123',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   case_number: string;
 
@@ -139,17 +177,17 @@ export class Dossier extends BaseEntity {
     description: 'Nom de la personne ou entité adverse dans le litige',
     example: 'SARL Dupont et Fils',
     importance: 'critical',
-    group: 'parties'
+    group: 'parties',
   })
   opposing_party_name: string;
 
   @Column({ name: 'opposing_party_lawyer', length: 255, nullable: true })
   @BusinessColumn({
     label: 'Avocat adverse',
-    description: 'Cabinet d\'avocats représentant la partie adverse',
+    description: "Cabinet d'avocats représentant la partie adverse",
     example: 'Cabinet Martin & Associés',
     importance: 'high',
-    group: 'parties'
+    group: 'parties',
   })
   opposing_party_lawyer: string;
 
@@ -159,7 +197,7 @@ export class Dossier extends BaseEntity {
     description: 'Coordonnées du représentant de la partie adverse',
     importance: 'medium',
     group: 'parties',
-    sensitive: true
+    sensitive: true,
   })
   opposing_party_contact: string;
 
@@ -168,31 +206,33 @@ export class Dossier extends BaseEntity {
     label: 'Tiers impliqués',
     description: 'Autres parties ou intervenants dans le litige',
     importance: 'medium',
-    group: 'parties'
+    group: 'parties',
   })
   third_parties: string;
 
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Description détaillée',
-    description: 'Description complète du contexte, des enjeux et des antécédents',
+    description:
+      'Description complète du contexte, des enjeux et des antécédents',
     importance: 'high',
-    group: 'contenu'
+    group: 'contenu',
   })
   description: string;
 
   @Column({ name: 'initial_request', type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Demande initiale',
-    description: 'Prétentions et demandes formulées par le client à l\'ouverture',
+    description:
+      "Prétentions et demandes formulées par le client à l'ouverture",
     importance: 'high',
-    group: 'contenu'
+    group: 'contenu',
   })
   initial_request: string;
 
-  @Column({ 
-    type: 'enum', 
-    enum: DossierStatus, 
+  @Column({
+    type: 'enum',
+    enum: DossierStatus,
     default: DossierStatus.DRAFT,
   })
   @BusinessColumn({
@@ -200,7 +240,7 @@ export class Dossier extends BaseEntity {
     description: 'Cycle administratif : DRAFT, ACTIVE, CLOSED ou ARCHIVED.',
     example: 'ACTIVE',
     importance: 'critical',
-    group: 'état'
+    group: 'état',
   })
   status: DossierStatus;
 
@@ -218,16 +258,50 @@ export class Dossier extends BaseEntity {
   @Column({ name: 'engagement_document_id', type: 'int', nullable: true })
   engagement_document_id?: number | null;
 
-  @Column({ name: 'financial_terms_confirmed', type: 'boolean', default: false })
+  @Column({
+    name: 'financial_terms_confirmed',
+    type: 'boolean',
+    default: false,
+  })
   financial_terms_confirmed: boolean;
+  /**
+   * Phase opérationnelle du dossier. Elle est volontairement indépendante du
+   * statut juridique ci-dessus afin que le workflow ne déduise plus son état
+   * depuis un statut métier ambigu.
+   */
+  @Column({
+    name: 'lifecycle_phase',
+    type: 'enum',
+    enum: DossierLifecyclePhase,
+    default: DossierLifecyclePhase.OPENING,
+  })
+  lifecycle_phase: DossierLifecyclePhase;
+
+  /** Sélecteur de coexistence dossier par dossier pendant la migration. */
+  @Column({
+    name: 'workflow_engine',
+    type: 'enum',
+    enum: WorkflowEngine,
+    default: WorkflowEngine.LEGACY,
+  })
+  workflow_engine: WorkflowEngine;
+
+  @Column({ name: 'legacy_workflow_locked', type: 'boolean', default: false })
+  legacy_workflow_locked: boolean;
+
+  @Column({ name: 'opening_validated_at', type: 'datetime', nullable: true })
+  opening_validated_at: Date | null;
+
+  @Column({ name: 'opening_validated_by', type: 'int', nullable: true })
+  opening_validated_by: number | null;
 
   @Column({ name: 'opening_date', type: 'date', nullable: false })
   @BusinessColumn({
-    label: "Date d'ouverture",
+    label: 'Date d\u2019ouverture',
     description: 'Date de création/ouverture officielle du dossier',
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   opening_date: Date;
 
@@ -237,7 +311,7 @@ export class Dossier extends BaseEntity {
     description: 'Date de clôture définitive du dossier',
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   closing_date: Date | null;
 
@@ -247,7 +321,7 @@ export class Dossier extends BaseEntity {
     description: 'Durée prévisionnelle du traitement en jours',
     unit: 'jours',
     importance: 'medium',
-    group: 'planification'
+    group: 'planification',
   })
   estimated_duration: number;
 
@@ -256,7 +330,7 @@ export class Dossier extends BaseEntity {
     label: 'Niveau de confidentialité',
     description: 'True = dossier confidentiel (accès restreint)',
     importance: 'high',
-    group: 'sécurité'
+    group: 'sécurité',
   })
   confidentiality_level: boolean;
 
@@ -265,20 +339,44 @@ export class Dossier extends BaseEntity {
     label: 'Niveau de priorité',
     description: '0=Normale, 1=Haute, 2=Prioritaire, 3=Urgent absolu',
     importance: 'high',
-    group: 'priorité'
+    group: 'priorité',
   })
   priority_level: number;
 
-  @Column({ name: 'budget_estimate', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({
+    name: 'budget_estimate',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
   @BusinessColumn({
     label: 'Budget estimé',
     description: 'Montant estimé des honoraires pour le dossier',
     unit: '€',
     format: 'currency',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   budget_estimate: number;
+
+  @Column({
+    name: 'procedure_costs',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+  })
+  @BusinessColumn({
+    label: 'Frais d\u2019ouverture (montant spécifique au dossier)',
+    description:
+      'Surcharge du montant configuré du cabinet pour la facture d\u2019ouverture. Vide = montant configuré.',
+    unit: '€',
+    format: 'currency',
+    importance: 'high',
+    group: 'financier',
+  })
+  procedure_costs?: number | null;
 
   // @Column({ name: 'actual_costs', type: 'decimal', precision: 10, scale: 2, default: 0 })
   // @BusinessColumn({
@@ -298,7 +396,7 @@ export class Dossier extends BaseEntity {
     unit: '%',
     format: 'percentage',
     importance: 'high',
-    group: 'analyse'
+    group: 'analyse',
   })
   success_probability: number;
 
@@ -307,54 +405,58 @@ export class Dossier extends BaseEntity {
     label: 'Conversation associée',
     description: 'Identifiant de la conversation de suivi',
     importance: 'low',
-    group: 'communication'
+    group: 'communication',
   })
   conversation_id?: number;
+
+  /** Employé ayant ouvert le dossier : membre de droit de son chat. */
+  @Column({ name: 'created_by_id', type: 'int', nullable: true })
+  created_by_id?: number | null;
 
   @Column({ name: 'final_decision', type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Décision finale',
     description: 'Décision rendue par la juridiction',
     importance: 'critical',
-    group: 'résultat'
+    group: 'résultat',
   })
   final_decision: string | null;
 
-    @Column({ name: 'client_id', type: 'int', nullable: false })
+  @Column({ name: 'client_id', type: 'int', nullable: false })
   @BusinessColumn({
     label: 'Client',
     description: 'Identifiant du client propriétaire du dossier',
     importance: 'critical',
-    group: 'parties'
+    group: 'parties',
   })
   client_id: number;
 
-    @Column({ name: 'lawyer_id', type: 'int', nullable: false })
+  @Column({ name: 'lawyer_id', type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Avocat référent',
-    description: 'Identifiant de l\'avocat en charge',
+    description: "Identifiant de l'avocat en charge",
     importance: 'critical',
-    group: 'parties'
+    group: 'parties',
   })
   lawyer_id: number;
 
-    @Column({ name: 'procedure_type_id', type: 'int', nullable: false })
+  @Column({ name: 'procedure_type_id', type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Type de procédure',
     description: 'Identifiant du type de procédure',
     importance: 'high',
-    group: 'procédure'
+    group: 'procédure',
   })
-  procedure_type_id: number;
+  procedure_type_id: number | null;
 
-  @Column({ name: 'procedure_subtype_id', type: 'int', nullable: false })
+  @Column({ name: 'procedure_subtype_id', type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Sous-type de procédure',
     description: 'Identifiant du sous-type de procédure',
     importance: 'medium',
-    group: 'procédure'
+    group: 'procédure',
   })
-  procedure_subtype_id: number;
+  procedure_subtype_id: number | null;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
   @BusinessColumn({
@@ -363,80 +465,82 @@ export class Dossier extends BaseEntity {
     unit: '€',
     format: 'currency',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   settlement_amount?: number | null;
 
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Termes de la transaction',
-    description: 'Conditions détaillées de l\'accord transactionnel',
+    description: "Conditions détaillées de l'accord transactionnel",
     importance: 'high',
-    group: 'résultat'
+    group: 'résultat',
   })
   settlement_terms?: string | null;
 
-  @Column({ 
-    name: 'client_satisfaction', 
-    type: 'enum', 
-    enum: ClientSatisfaction, 
-    default: ClientSatisfaction.NEUTRAL 
+  @Column({
+    name: 'client_satisfaction',
+    type: 'enum',
+    enum: ClientSatisfaction,
+    default: ClientSatisfaction.NEUTRAL,
   })
   @BusinessColumn({
     label: 'Satisfaction client',
-    description: "BD: 'very_satisfied', 'satisfied', 'neutral', 'dissatisfied', 'very_dissatisfied'.",
+    description:
+      "BD: 'very_satisfied', 'satisfied', 'neutral', 'dissatisfied', 'very_dissatisfied'.",
     importance: 'high',
-    group: 'relation client'
+    group: 'relation client',
   })
   client_satisfaction: ClientSatisfaction;
 
-  @Column({ 
-    name: 'outcome', 
-    type: 'enum', 
-    enum: DossierOutcome, 
-    default: DossierOutcome.UNKNOWN 
+  @Column({
+    name: 'outcome',
+    type: 'enum',
+    enum: DossierOutcome,
+    default: DossierOutcome.UNKNOWN,
   })
   @BusinessColumn({
     label: 'Issue du dossier',
-    description: "'won'=Gagné, 'lost'=Perdu, 'unknown'=Inconnu, 'settled'=Transaction, 'abandoned'=Abandonné",
+    description:
+      "'won'=Gagné, 'lost'=Perdu, 'unknown'=Inconnu, 'settled'=Transaction, 'abandoned'=Abandonné",
     importance: 'critical',
-    group: 'résultat'
+    group: 'résultat',
   })
   outcome: DossierOutcome;
 
-  @Column({ 
-    name: 'outcome_date', 
-    type: 'date', 
-    nullable: true 
+  @Column({
+    name: 'outcome_date',
+    type: 'date',
+    nullable: true,
   })
   @BusinessColumn({
     label: "Date de l'issue",
     description: 'Date de la décision finale ou de la transaction',
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   outcome_date: Date;
 
-  @Column({ 
-    name: 'outcome_notes', 
-    type: 'text', 
-    nullable: true 
+  @Column({
+    name: 'outcome_notes',
+    type: 'text',
+    nullable: true,
   })
   @BusinessColumn({
     label: "Notes sur l'issue",
     description: 'Commentaires sur le résultat du dossier',
     importance: 'medium',
-    group: 'résultat'
+    group: 'résultat',
   })
   outcome_notes: string;
 
-  @Column({ 
-    name: 'damages_awarded', 
-    type: 'decimal', 
-    precision: 12, 
-    scale: 2, 
-    nullable: true 
+  @Column({
+    name: 'damages_awarded',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
   })
   @BusinessColumn({
     label: 'Dommages et intérêts',
@@ -444,16 +548,16 @@ export class Dossier extends BaseEntity {
     unit: '€',
     format: 'currency',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   damages_awarded: number;
 
-  @Column({ 
-    name: 'costs_awarded', 
-    type: 'decimal', 
-    precision: 12, 
-    scale: 2, 
-    nullable: true 
+  @Column({
+    name: 'costs_awarded',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
   })
   @BusinessColumn({
     label: 'Dépens accordés',
@@ -461,7 +565,7 @@ export class Dossier extends BaseEntity {
     unit: '€',
     format: 'currency',
     importance: 'medium',
-    group: 'financier'
+    group: 'financier',
   })
   costs_awarded: number;
 
@@ -471,21 +575,21 @@ export class Dossier extends BaseEntity {
   @JoinColumn({ name: 'client_id' })
   client: Customer;
 
-  @ManyToOne(() => Employee, { nullable: false })
+  @ManyToOne(() => Employee, { nullable: true })
   @JoinColumn({ name: 'lawyer_id' })
-  lawyer: Employee;
+  lawyer: Employee | null;
 
-  @ManyToOne(() => ProcedureType, { nullable: false })
+  @ManyToOne(() => ProcedureType, { nullable: true })
   @JoinColumn({ name: 'procedure_type_id' })
-  procedure_type: ProcedureType;
+  procedure_type: ProcedureType | null;
 
   @ManyToOne(() => Jurisdiction, { nullable: true })
   @JoinColumn({ name: 'jurisdiction_id' })
   jurisdiction?: Jurisdiction | null;
 
-  @ManyToOne(() => ProcedureType, { nullable: false })
+  @ManyToOne(() => ProcedureType, { nullable: true })
   @JoinColumn({ name: 'procedure_subtype_id' })
-  procedure_subtype: ProcedureType;
+  procedure_subtype: ProcedureType | null;
 
   @OneToMany(() => Diligence, (diligence) => diligence.dossier)
   diligences: Diligence[];
@@ -499,15 +603,15 @@ export class Dossier extends BaseEntity {
   @OneToMany(() => Facture, (facture) => facture.dossier)
   factures: Facture[];
 
-  @OneToOne(() => Conversation, conversation => conversation.dossier)
+  @OneToOne(() => Conversation, (conversation) => conversation.dossier)
   @JoinColumn({ name: 'conversation_id' })
   conversation: Conversation;
 
-  @ManyToMany(() => Employee, user => user.collaborating_dossiers)
+  @ManyToMany(() => Employee, (user) => user.collaborating_dossiers)
   @JoinTable({
     name: 'dossier_collaborators',
     joinColumn: { name: 'dossier_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' }
+    inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' },
   })
   collaborators: Employee[];
 
@@ -519,13 +623,25 @@ export class Dossier extends BaseEntity {
   procedureInstance: ProcedureInstance;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
+  @BusinessColumn({
+    label: 'Ancienne instance de procédure',
+    description:
+      'Lien conservé uniquement pour la compatibilité avec l’ancien workflow.',
+    ignored: true,
+  })
   procedureInstanceId: string | null;
 
   // ==================== GETTERS MÉTIER ====================
 
   // Getters
   get is_closed(): boolean {
-    return this.status === DossierStatus.CLOSED || this.status === DossierStatus.ARCHIVED;
+    if (this.workflow_engine === WorkflowEngine.ACTIONS_V2) {
+      return this.lifecycle_phase === DossierLifecyclePhase.CLOSED;
+    }
+    return (
+      this.status === DossierStatus.CLOSED ||
+      this.status === DossierStatus.ARCHIVED
+    );
   }
 
   // get is_archived(): boolean {
@@ -537,7 +653,7 @@ export class Dossier extends BaseEntity {
   }
 
   get procedure_hierarchy(): string {
-    return `${this.procedure_type.name} > ${this.procedure_subtype.name}`;
+    return `${this.procedure_type?.name || 'Type à définir'} > ${this.procedure_subtype?.name || 'Sous-type à définir'}`;
   }
 
   get full_name(): string {
@@ -549,18 +665,12 @@ export class Dossier extends BaseEntity {
   }
 
   get total_factures_amount(): number {
-    if (!this.factures) return 0;
-    return this.factures.reduce((total, facture) => total + parseFloat(facture.montantTTC.toString()), 0);
+    return summarizeInvoices(this.factures).total;
   }
 
   get paid_factures_amount(): number {
-    if (!this.factures) return 0;
-    return this.factures
-      // .filter(facture => facture.status === StatutFacture.PAYEE)
-      .reduce((total, facture) => total + parseFloat(facture.montantTTC.toString()), 0);
+    return summarizeInvoices(this.factures).paid;
   }
-
-
 
   get document_count(): number {
     return this.documents?.length || 0;
@@ -572,6 +682,15 @@ export class Dossier extends BaseEntity {
 
   // Transition du seul cycle de vie administratif.
   change_status(new_status: DossierStatus): void {
+    if (
+      this.workflow_engine === WorkflowEngine.ACTIONS_V2 &&
+      (new_status === DossierStatus.CLOSED ||
+        new_status === DossierStatus.ARCHIVED)
+    ) {
+      throw new Error(
+        'La clôture et l’archivage V2 modifient la phase de vie, pas le statut métier',
+      );
+    }
     const allowed_transitions: Record<DossierStatus, DossierStatus[]> = {
       [DossierStatus.DRAFT]: [DossierStatus.ACTIVE],
       [DossierStatus.ACTIVE]: [DossierStatus.CLOSED],
@@ -579,70 +698,83 @@ export class Dossier extends BaseEntity {
       [DossierStatus.ARCHIVED]: [],
     };
 
-    const current_transitions: DossierStatus[] = allowed_transitions[this.status] || [];
-    
+    const current_transitions: DossierStatus[] =
+      allowed_transitions[this.status] || [];
+
     if (!current_transitions.includes(new_status)) {
-      throw new Error(`Transition non autorisée de ${this.status} vers ${new_status}`);
+      throw new Error(
+        `Transition non autorisée de ${this.status} vers ${new_status}`,
+      );
     }
 
     this.status = new_status;
 
-    if (new_status === DossierStatus.CLOSED || new_status === DossierStatus.ARCHIVED) {
+    if (
+      new_status === DossierStatus.CLOSED ||
+      new_status === DossierStatus.ARCHIVED
+    ) {
       this.closing_date = new Date();
     }
   }
 
   get next_audience(): Audience | null {
     if (!this.audiences || this.audiences.length === 0) return null;
-    
+
     const upcoming = this.audiences
-      .filter(audience => audience.status === AudienceStatus.SCHEDULED && audience.is_upcoming)
+      .filter(
+        (audience) =>
+          audience.status === AudienceStatus.SCHEDULED && audience.is_upcoming,
+      )
       .sort((a, b) => a.full_datetime.getTime() - b.full_datetime.getTime());
-    
+
     return upcoming.length > 0 ? upcoming[0] : null;
   }
 
   get past_audiences(): Audience[] {
     if (!this.audiences || this.audiences.length === 0) return [];
-    
+
     return this.audiences
-      .filter(audience => audience.is_past || audience.status === AudienceStatus.HELD)
+      .filter(
+        (audience) =>
+          audience.is_past || audience.status === AudienceStatus.HELD,
+      )
       .sort((a, b) => b.full_datetime.getTime() - a.full_datetime.getTime());
   }
 
   get scheduled_audiences(): Audience[] {
     if (!this.audiences || this.audiences.length === 0) return [];
-    
+
     return this.audiences
-      .filter(audience => audience.status === AudienceStatus.SCHEDULED)
+      .filter((audience) => audience.status === AudienceStatus.SCHEDULED)
       .sort((a, b) => a.full_datetime.getTime() - b.full_datetime.getTime());
   }
 
   // Dans class Dossier
 
-// Dans la classe Dossier
-get is_won(): boolean {
-  return this.outcome === DossierOutcome.WON;
-}
+  // Dans la classe Dossier
+  get is_won(): boolean {
+    return this.outcome === DossierOutcome.WON;
+  }
 
-get is_lost(): boolean {
-  return this.outcome === DossierOutcome.LOST;
-}
+  get is_lost(): boolean {
+    return this.outcome === DossierOutcome.LOST;
+  }
 
-get has_outcome(): boolean {
-  return this.outcome !== DossierOutcome.UNKNOWN && 
-         this.outcome !== undefined;
-}
+  get has_outcome(): boolean {
+    return (
+      this.outcome !== DossierOutcome.UNKNOWN && this.outcome !== undefined
+    );
+  }
 
-// Méthode pour définir le résultat
-setOutcome(outcome: DossierOutcome, notes?: string, damages?: number): void {
-  this.outcome = outcome;
-  this.outcome_date = new Date();
-  if (notes) this.outcome_notes = notes;
-  if (damages) this.damages_awarded = damages;
-  
-  // La clôture reste une commande explicite, soumise aux préconditions métier.
-}
+  // Méthode pour définir le résultat
+  setOutcome(outcome: DossierOutcome, notes?: string, damages?: number): void {
+    this.outcome = outcome;
+    this.outcome_date = new Date();
+    if (notes) this.outcome_notes = notes;
+    if (damages) this.damages_awarded = damages;
+
+    // La clôture reste une commande explicite, soumise aux préconditions métier.
+  }
 
   /**
    * Recompute actual_costs from loaded factures.
@@ -652,11 +784,16 @@ setOutcome(outcome: DossierOutcome, notes?: string, damages?: number): void {
   @AfterLoad()
   computeActualCosts(): void {
     if (Array.isArray(this.factures) && this.factures.length > 0) {
-      this.actual_costs = this.factures.reduce(
-        (sum, f) => sum + Number(f.montantTTC ?? 0),
-        0,
-      );
+      this.actual_costs = this.factures
+        .filter((f) => Number(f.status) !== StatutFacture.ANNULEE)
+        .reduce((sum, f) => sum + Number(f.montantTTC ?? 0), 0);
     }
   }
 
+  @BeforeInsert()
+  beforeCreate() {
+    // Renseigné pour toutes les voies de création (formulaire, assistant IA).
+    this.created_by_id =
+      this.created_by_id ?? getCurrentRequestUser()?.userId ?? null;
+  }
 }

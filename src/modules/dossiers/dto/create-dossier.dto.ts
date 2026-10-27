@@ -2,7 +2,8 @@
 import {
   IsNotEmpty,
   IsString,
-  IsUUID, IsOptional,
+  IsUUID,
+  IsOptional,
   IsDateString,
   IsNumber,
   IsInt,
@@ -12,16 +13,103 @@ import {
   IsBoolean,
   ValidateIf,
   IsEnum,
-  Allow
+  Allow,
+  MaxLength,
+  ValidateNested,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ConflictCheckStatus } from '../entities/dossier.entity';
+import { Type } from 'class-transformer';
 import { PriorityLevel } from 'src/core/enums/dossier-status.enum';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
+import { BillingMode } from 'src/modules/case-workflow/case-workflow.enums';
 
 import { DangerLevel } from '../entities/dossier.entity';
 
+export class InitialDossierBillingProfileDto {
+  @ApiPropertyOptional({ example: 'XAF', default: 'XAF' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  currency?: string;
+
+  @ApiPropertyOptional({ enum: BillingMode, example: BillingMode.FIXED })
+  @IsOptional()
+  @IsEnum(BillingMode)
+  mode?: BillingMode;
+
+  @ApiPropertyOptional({ example: 19.25, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  vat_rate?: number;
+
+  @ApiPropertyOptional({ example: 500000, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fixed_fee?: number;
+
+  @ApiPropertyOptional({ example: 50000, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hourly_rate?: number;
+
+  @ApiPropertyOptional({ example: 25000, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  opening_fee?: number;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  opening_fee_enabled?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  opening_fee_included_in_fixed_fee?: boolean;
+
+  @ApiPropertyOptional({ example: 75000, minimum: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  default_vacation_rate?: number;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  result_fee_enabled?: boolean;
+
+  @ApiPropertyOptional({ example: 10, minimum: 0, maximum: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  result_fee_rate?: number;
+
+  @ApiPropertyOptional({ example: true, default: true })
+  @IsOptional()
+  @IsBoolean()
+  rebill_expenses?: boolean;
+
+  @ApiPropertyOptional({ example: true, default: true })
+  @IsOptional()
+  @IsBoolean()
+  rebill_disbursements?: boolean;
+
+  @ApiPropertyOptional({ example: true, default: true })
+  @IsOptional()
+  @IsBoolean()
+  require_disbursement_receipt?: boolean;
+
+  @ApiPropertyOptional({ example: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  is_confirmed?: boolean;
+}
 
 export class LinkDocumentsToSubStageDto {
   @ApiProperty({
@@ -77,31 +165,46 @@ export class UploadDocumentToSubStageDto {
   @IsOptional()
   is_confidential?: boolean;
 
-  @ApiPropertyOptional({ description: 'ID UUID de la visite de sous-étape à laquelle lier le document' })
+  @ApiPropertyOptional({
+    description:
+      'ID UUID de la visite de sous-étape à laquelle lier le document',
+  })
   @IsUUID()
   @IsOptional()
   sub_stage_visit_id?: string;
 
-  @ApiPropertyOptional({ description: 'ID UUID de la visite d\'étape à laquelle lier le document' })
+  @ApiPropertyOptional({
+    description: "ID UUID de la visite d'étape à laquelle lier le document",
+  })
   @IsUUID()
   @IsOptional()
   stage_visit_id?: string;
 }
 
-
-
 export class CreateDossierDto {
-  @ApiProperty({
-    description: 'Objet du dossier',
-    example: 'Litige contractuel avec fournisseur XYZ',
-    maxLength: 500
+  @ApiPropertyOptional({
+    type: InitialDossierBillingProfileDto,
+    description:
+      'Configuration initiale facultative. Son absence ou son caractère incomplet ne bloque jamais l’ouverture du dossier.',
   })
-  @IsNotEmpty()
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => InitialDossierBillingProfileDto)
+  billing_profile?: InitialDossierBillingProfileDto;
+
+  @ApiPropertyOptional({
+    description:
+      "Nom de l'affaire / objet du dossier, affiché comme titre. Déduit par le client (formulaire d'ouverture) ; absent = sans intitulé.",
+    example: 'Litige contractuel avec fournisseur XYZ',
+    maxLength: 500,
+  })
+  @IsOptional()
   @IsString()
-  object: string;
+  object?: string;
 
   @ApiProperty({
-    description: 'ID de la juridiction compétente (legacy, utiliser jurisdiction_id)',
+    description:
+      'ID de la juridiction compétente (legacy, utiliser jurisdiction_id)',
     example: 3,
     required: false,
   })
@@ -113,10 +216,13 @@ export class CreateDossierDto {
     description: 'Niveau de danger',
     example: 1,
     enum: ['Faible', 'Normal', 'Eleve', 'Critique'],
-    default: 'Normal'
+    default: 'Normal',
   })
   @IsOptional()
-  @IsEnum(DangerLevel, { message: 'danger_level doit être une des valeurs : Faible, Normal, Eleve, Critique' })
+  @IsEnum(DangerLevel, {
+    message:
+      'danger_level doit être une des valeurs : Faible, Normal, Eleve, Critique',
+  })
   danger_level?: DangerLevel;
 
   @ApiProperty({
@@ -130,49 +236,49 @@ export class CreateDossierDto {
 
   @ApiProperty({
     description: 'ID du client',
-    example: 5
+    example: 5,
   })
   @IsNotEmpty()
   @IsNumber()
   client_id: number;
 
   @ApiProperty({
-    description: 'ID de l\'avocat responsable',
-    example: 2
+    description: "ID de l'avocat responsable",
+    example: 2,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsNumber()
-  lawyer_id: number;
+  lawyer_id?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'ID du type de procédure',
-    example: 11
+    example: 11,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsNumber()
-  procedure_type_id: number;
+  procedure_type_id?: number | null;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'ID du sous-type de procédure',
-    example: 2
+    example: 2,
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsNumber()
-  procedure_subtype_id: number;
+  procedure_subtype_id?: number | null;
 
   @ApiPropertyOptional({
     description: 'Nom du tribunal',
     example: 'Tribunal de Grande Instance de Paris',
-    maxLength: 255
+    maxLength: 255,
   })
   @IsOptional()
   @IsString()
   court_name?: string;
 
   @ApiPropertyOptional({
-    description: 'Numéro d\'affaire au tribunal',
-    example: 'RG-2024-12345',
-    maxLength: 100
+    description: 'Code du dossier. Généré automatiquement si non renseigné.',
+    example: 'DOS-2024-0001',
+    maxLength: 50,
   })
   @IsOptional()
   @IsString()
@@ -181,7 +287,7 @@ export class CreateDossierDto {
   @ApiPropertyOptional({
     description: 'Nom de la partie adverse',
     example: 'SARL Fournisseur XYZ',
-    maxLength: 255
+    maxLength: 255,
   })
   @IsOptional()
   @IsString()
@@ -190,7 +296,7 @@ export class CreateDossierDto {
   @ApiPropertyOptional({
     description: 'Avocat de la partie adverse',
     example: 'Maître Dupont',
-    maxLength: 255
+    maxLength: 255,
   })
   @IsOptional()
   @IsString()
@@ -198,15 +304,15 @@ export class CreateDossierDto {
 
   @ApiPropertyOptional({
     description: 'Coordonnées de la partie adverse',
-    example: 'contact@fournisseur-xyz.com - 01 23 45 67 89'
+    example: 'contact@fournisseur-xyz.com - 01 23 45 67 89',
   })
   @IsOptional()
   @IsString()
   opposing_party_contact?: string;
 
   @ApiPropertyOptional({
-    description: 'Tiers impliqués dans l\'affaire',
-    example: 'Expert comptable, Huissier de justice'
+    description: "Tiers impliqués dans l'affaire",
+    example: 'Expert comptable, Huissier de justice',
   })
   @IsOptional()
   @IsString()
@@ -214,7 +320,8 @@ export class CreateDossierDto {
 
   @ApiPropertyOptional({
     description: 'Description détaillée du dossier',
-    example: 'Litige portant sur la non-conformité des marchandises livrées dans le cadre du contrat signé le 15/01/2024.'
+    example:
+      'Litige portant sur la non-conformité des marchandises livrées dans le cadre du contrat signé le 15/01/2024.',
   })
   @IsOptional()
   @IsString()
@@ -222,15 +329,15 @@ export class CreateDossierDto {
 
   @ApiPropertyOptional({
     description: 'Demande initiale du client',
-    example: 'Indemnisation de 50 000 € pour préjudice commercial'
+    example: 'Indemnisation de 50 000 € pour préjudice commercial',
   })
   @IsOptional()
   @IsString()
   initial_request?: string;
 
   @ApiPropertyOptional({
-    description: 'Date d\'ouverture du dossier (format YYYY-MM-DD)',
-    example: '2024-01-15'
+    description: "Date d'ouverture du dossier (format YYYY-MM-DD)",
+    example: '2024-01-15',
   })
   @IsOptional()
   @IsDateString()
@@ -238,16 +345,16 @@ export class CreateDossierDto {
 
   @ApiPropertyOptional({
     // description: 'Date d\'ouverture du dossier (format YYYY-MM-DD)',
-    example: 'AEDDDD'
+    example: 'AEDDDD',
   })
   @IsOptional()
   @IsString()
-  case_number?: string; 
+  case_number?: string;
 
   @ApiPropertyOptional({
     description: 'Durée estimée en jours',
     example: 180,
-    minimum: 1
+    minimum: 1,
   })
   @IsOptional()
   @IsNumber()
@@ -257,20 +364,23 @@ export class CreateDossierDto {
   @ApiPropertyOptional({
     description: 'Niveau de confidentialité',
     example: false,
-    default: false
+    default: false,
   })
   @IsOptional()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsBoolean()
   confidentiality_level?: boolean;
 
   @IsOptional()
-  @IsEnum(PriorityLevel, { message: 'priority_level doit être une des valeurs : low, medium, high, urgent' })
+  @IsEnum(PriorityLevel, {
+    message:
+      'priority_level doit être une des valeurs : low, medium, high, urgent',
+  })
   priority_level?: PriorityLevel;
   @ApiPropertyOptional({
     description: 'Budget estimé en euros',
-    example: 15000.00,
-    minimum: 0
+    example: 15000.0,
+    minimum: 0,
   })
   @IsOptional()
   @IsNumber()
@@ -281,7 +391,7 @@ export class CreateDossierDto {
     description: 'Probabilité de succès en pourcentage',
     example: 75,
     minimum: 0,
-    maximum: 100
+    maximum: 100,
   })
   @IsOptional()
   @IsNumber()
@@ -291,11 +401,11 @@ export class CreateDossierDto {
 
   @ApiPropertyOptional({
     description: 'IDs des collaborateurs supplémentaires',
-    example: [4,5,6],
-    type: [Number]
+    example: [4, 5, 6],
+    type: [Number],
   })
   @IsOptional()
-  @Transform(({ value }) => Array.isArray(value) ? value : undefined)
+  @Transform(({ value }) => (Array.isArray(value) ? value : undefined))
   @IsArray()
   @IsInt({ each: true })
   collaborator_ids: number[];
@@ -311,8 +421,8 @@ export class CreateDossierDto {
 
   @ApiPropertyOptional({
     description: 'Frais de procédure estimés',
-    example: 2000.00,
-    minimum: 0
+    example: 2000.0,
+    minimum: 0,
   })
   @IsOptional()
   @IsNumber()
@@ -320,9 +430,9 @@ export class CreateDossierDto {
   procedure_costs?: number;
 
   @ApiPropertyOptional({
-    description: 'Montant de l\'avance sur honoraires',
-    example: 5000.00,
-    minimum: 0
+    description: "Montant de l'avance sur honoraires",
+    example: 5000.0,
+    minimum: 0,
   })
   @IsOptional()
   @IsNumber()
@@ -333,15 +443,15 @@ export class CreateDossierDto {
     description: 'Type de facturation',
     example: 'hourly',
     enum: ['fixed', 'hourly', 'mixed', 'contingency'],
-    default: 'hourly'
+    default: 'hourly',
   })
   @IsOptional()
   @IsString()
   billing_type?: string;
 
   @ApiPropertyOptional({
-    description: 'Date de l\'événement litigieux',
-    example: '2023-12-01'
+    description: "Date de l'événement litigieux",
+    example: '2023-12-01',
   })
   @IsOptional()
   @IsDateString()
@@ -349,8 +459,8 @@ export class CreateDossierDto {
 
   @ApiPropertyOptional({
     description: 'Montant du litige en euros',
-    example: 50000.00,
-    minimum: 0
+    example: 50000.0,
+    minimum: 0,
   })
   @IsOptional()
   @IsNumber()
@@ -359,15 +469,15 @@ export class CreateDossierDto {
 
   @ApiPropertyOptional({
     description: 'Délai de prescription',
-    example: '2026-12-01'
+    example: '2026-12-01',
   })
   @IsOptional()
   @IsDateString()
   statute_of_limitations?: string;
 
   @ApiPropertyOptional({
-    description: 'Documents requis pour l\'ouverture',
-    example: ['contrat', 'factures', 'correspondance']
+    description: "Documents requis pour l'ouverture",
+    example: ['contrat', 'factures', 'correspondance'],
   })
   @IsOptional()
   @IsArray()
@@ -376,7 +486,7 @@ export class CreateDossierDto {
 
   @ApiPropertyOptional({
     description: 'Mots-clés pour la recherche',
-    example: ['litige commercial', 'contrat', 'fournisseur']
+    example: ['litige commercial', 'contrat', 'fournisseur'],
   })
   @IsOptional()
   @IsArray()
@@ -386,7 +496,7 @@ export class CreateDossierDto {
   @ApiPropertyOptional({
     description: 'Validation automatique du dossier',
     example: false,
-    default: false
+    default: false,
   })
   @IsOptional()
   @IsBoolean()
@@ -416,7 +526,9 @@ export class CreateDossierDto {
   @IsString()
   conflict_check_notes?: string;
 
-  @ApiPropertyOptional({ description: 'Identifiant du mandat ou de la lettre d’engagement' })
+  @ApiPropertyOptional({
+    description: 'Identifiant du mandat ou de la lettre d’engagement',
+  })
   @IsOptional()
   @IsNumber()
   engagement_document_id?: number;
@@ -427,21 +539,21 @@ export class CreateDossierDto {
   financial_terms_confirmed?: boolean;
 
   // Validation conditionnelle
-  @ValidateIf(o => o.billing_type === 'hourly' || o.billing_type === 'mixed')
+  @ValidateIf((o) => o.billing_type === 'hourly' || o.billing_type === 'mixed')
   @IsNumber()
   @Min(0)
   @ApiPropertyOptional({
     description: 'Taux horaire (requis si billing_type = hourly ou mixed)',
-    example: 150.00
+    example: 150.0,
   })
   hourly_rate?: number;
 
-  @ValidateIf(o => o.billing_type === 'fixed')
+  @ValidateIf((o) => o.billing_type === 'fixed')
   @IsNumber()
   @Min(0)
   @ApiPropertyOptional({
     description: 'Forfait (requis si billing_type = fixed)',
-    example: 10000.00
+    example: 10000.0,
   })
   fixed_fee?: number;
 }

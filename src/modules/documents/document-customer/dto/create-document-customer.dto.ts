@@ -8,25 +8,17 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  IsIn,
 } from 'class-validator';
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-
-
-
-
-
-
-
-
-
 export class CreateDocumentCustomerDto {
-  @ApiProperty({ description: 'ID du type de document' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ description: 'ID du type de document' })
+  @IsOptional()
   @IsNumber()
   @Transform(({ value }) => parseInt(value))
-  document_type_id: number;
+  document_type_id?: number;
 
   @ApiProperty({ description: 'ID du dossier' })
   @IsNotEmpty()
@@ -37,7 +29,7 @@ export class CreateDocumentCustomerDto {
   @ApiPropertyOptional({ description: 'ID du prêt associé' })
   @IsOptional()
   @IsNumber()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   loan_id?: number;
 
   @ApiPropertyOptional({ description: 'Description du document' })
@@ -50,12 +42,12 @@ export class CreateDocumentCustomerDto {
   @IsString()
   name?: string;
 
-  @ApiPropertyOptional({ 
-    description: 'Catégorie du document' 
+  @ApiPropertyOptional({
+    description: 'Catégorie du document',
   })
   @IsOptional()
   @IsNumber()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   category_id?: number;
 
   @ApiPropertyOptional({ description: 'Document requis pour une audience' })
@@ -63,6 +55,24 @@ export class CreateDocumentCustomerDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   required_for_hearing?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Audience que le document sert à préparer : il y est rattaché (audience_documents) et marqué requis pour l'audience",
+  })
+  @IsOptional()
+  @IsNumber()
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
+  audience_id?: number;
+
+  @ApiPropertyOptional({
+    enum: ['preparation', 'after'],
+    description:
+      "Moment du document par rapport à l'audience (avec audience_id) : « preparation » (avant, marqué requis pour l'audience) ou « after » (après l'audience)",
+  })
+  @IsOptional()
+  @IsIn(['preparation', 'after'])
+  audience_phase?: 'preparation' | 'after';
 
   @ApiPropertyOptional({ description: 'Document confidentiel' })
   @IsOptional()
@@ -75,7 +85,9 @@ export class CreateDocumentCustomerDto {
   @IsJSON()
   metadata?: string;
 
-  @ApiPropertyOptional({ description: 'ID de la sous-étape de visite associée' })
+  @ApiPropertyOptional({
+    description: 'ID de la sous-étape de visite associée',
+  })
   @IsOptional()
   @IsUUID()
   sub_stage_visit_id?: string;
@@ -103,7 +115,11 @@ export class CreateDocumentCustomerDto {
   @Transform(({ value }) => value === 'true' || value === true)
   strict?: boolean = true;
 
-  @ApiProperty({ type: 'string', format: 'binary', description: 'Fichier à uploader' })
+  @ApiProperty({
+    type: 'string',
+    format: 'binary',
+    description: 'Fichier à uploader',
+  })
   // Le fichier est extrait par Multer via @UploadedFile(). Ce décorateur sert
   // uniquement à rendre la propriété compatible avec le whitelist strict du
   // DTO généré pour le multipart ; l'absence réelle est contrôlée au service.

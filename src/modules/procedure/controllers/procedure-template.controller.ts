@@ -1,22 +1,27 @@
 // controllers/procedure-template.controller.ts
 import {
+  Body,
   Controller,
+  Delete,
   Get,
+  Param,
+  Patch,
   Post,
   Put,
-  Delete,
-  Body,
-  Param,
   Query,
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
-import { ProcedureTemplateService } from '../services/procedure-template.service';
-import { CreateProcedureTemplateDto } from '../dto/create-procedure-template.dto';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 
+import { CreateProcedureTemplateDto } from '../dto/create-procedure-template.dto';
+import { ProcedureTemplateService } from '../services/procedure-template.service';
+
+@ApiBearerAuth()
+@ApiTags('procedure-templates')
 @Controller('procedure-templates')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @RequirePermissions('manage_procedure_templates')
@@ -24,19 +29,26 @@ export class ProcedureTemplateController {
   constructor(private readonly templateService: ProcedureTemplateService) {}
 
   @Post()
+  @RequirePermissions('manage_settings')
   async create(@Body() dto: CreateProcedureTemplateDto) {
     return this.templateService.create(dto);
   }
 
   @Get()
+  @RequirePermissions('view_dossiers')
   async findAll(
     @Query('activeOnly') activeOnly?: string,
     @Query('procedure_type_id') procedureTypeId?: string,
   ) {
     if (procedureTypeId !== undefined) {
       const parsedProcedureTypeId = Number(procedureTypeId);
-      if (!Number.isInteger(parsedProcedureTypeId) || parsedProcedureTypeId < 1) {
-        throw new BadRequestException('procedure_type_id doit être un entier positif');
+      if (
+        !Number.isInteger(parsedProcedureTypeId) ||
+        parsedProcedureTypeId < 1
+      ) {
+        throw new BadRequestException(
+          'procedure_type_id doit être un entier positif',
+        );
       }
       return this.templateService.findByProcedureTypeId(parsedProcedureTypeId);
     }
@@ -46,20 +58,23 @@ export class ProcedureTemplateController {
   }
 
   @Get(':id')
+  @RequirePermissions('view_dossiers')
   async findOne(@Param('id') id: string) {
     return this.templateService.findOne(id);
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() dto: Partial<CreateProcedureTemplateDto>) {
+  @RequirePermissions('manage_settings')
+  async update(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateProcedureTemplateDto>,
+  ) {
     return this.templateService.update(id, dto);
   }
 
   @Post(':id/duplicate')
-  async duplicate(
-    @Param('id') id: string,
-    @Body('name') name: string,
-  ) {
+  @RequirePermissions('manage_settings')
+  async duplicate(@Param('id') id: string, @Body('name') name: string) {
     return this.templateService.duplicate(id, name);
   }
 
@@ -74,6 +89,7 @@ export class ProcedureTemplateController {
   }
 
   @Delete(':id')
+  @RequirePermissions('manage_settings')
   async remove(@Param('id') id: string) {
     return this.templateService.remove(id);
   }

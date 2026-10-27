@@ -27,6 +27,11 @@ export class EntityIdRequiredException extends Error {
      * Initialement -1, rempli par GenericWriteService au catch.
      */
     public operationIndex: number = -1,
+    /**
+     * Message déjà lisible pour l'utilisateur (ex: « 2 périodes correspondent… »).
+     * Absent : le message générique « indiquez un nom, un numéro ou une date » s'applique.
+     */
+    public readonly detail?: string,
   ) {
     super(`ID requis pour UPDATE sur ${entity}`);
   }

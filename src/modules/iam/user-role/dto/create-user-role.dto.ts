@@ -1,13 +1,18 @@
 // user-role.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
-import { IsString, IsNotEmpty, IsBoolean, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsBoolean, IsOptional, IsIn, MaxLength } from 'class-validator';
 
 export class CreateUserRoleDto {
   @ApiProperty({ example: 'ADMIN', description: 'Code rôle unique' })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(64)
   code: string;
+
+  @IsOptional()
+  @IsIn(['avocat','collaborateur','comptable','secretaire','stagiaire','huissier','support','apporteur_affaire'])
+  base_role?: string;
 
   @ApiProperty({ example: 'Administrateur', description: 'Nom du rôle' })
   @IsString()

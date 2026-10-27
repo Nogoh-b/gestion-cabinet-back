@@ -22,6 +22,9 @@ import { ReimburseExpenseReportDto } from './dto/reimburse-expense-report.dto';
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { User } from '../iam/user/entities/user.entity';
 import { PlanQuotaService } from '../plans/plan-quota.service';
+import { CaseBillingService } from '../case-workflow/services/case-billing.service';
+import { ExpenseLine } from './entities/expense-line.entity';
+import { BillableItem } from '../case-workflow/entities/billing.entity';
 
 export interface ExpenseReportActor {
   userId?: number | null;
@@ -42,6 +45,7 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
     private readonly dataSource: DataSource,
     private readonly outboxService: OutboxService,
     private readonly auditService: AuditService,
+    private readonly caseBillingService: CaseBillingService,
   ) {
     super(repository, paginationService);
   }
@@ -126,6 +130,33 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
       ],
     });
     if (!report) throw new NotFoundException('Note de frais non trouvée');
+    Object.assign(report, {
+      total_rebillable: (report.lines ?? [])
+        .filter((line) => line.is_rebillable && line.dossier_id)
+        .reduce((total, line) => total + Number(line.amount_ttc || 0), 0),
+    });
+    const lineIds = (report.lines ?? []).map((line) => line.id);
+    if (lineIds.length) {
+      const items = await this.dataSource
+        .getRepository(BillableItem)
+        .createQueryBuilder('item')
+        .where('item.tenant_id = :tenantId', { tenantId: getCurrentTenantId() })
+        .andWhere('item.source_event_key IN (:...keys)', {
+          keys: lineIds.map((lineId) => `EXPENSE:${lineId}:APPROVED`),
+        })
+        .getMany();
+      const bySource = new Map(
+        items.map((item) => [item.source_event_key, item]),
+      );
+      for (const line of report.lines ?? []) {
+        const item = bySource.get(`EXPENSE:${line.id}:APPROVED`);
+        Object.assign(line, {
+          billing_status: item?.status ?? null,
+          billing_review_reason: item?.review_reason ?? null,
+          receipt_override: item?.calculation_snapshot?.receiptOverride ?? null,
+        });
+      }
+    }
     return report;
   }
 
@@ -226,6 +257,7 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
       report.approved_by = user.employee;
       report.approved_at = new Date();
       const saved = await manager.getRepository(ExpenseReport).save(report);
+      await this.syncLinesBilling(manager, saved, user.id, true);
       await this.auditService.append(manager, {
         actorId: user.id,
         action: 'expense_report.approved',
@@ -277,6 +309,7 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
       report.rejected_at = new Date();
       report.rejection_reason = reason;
       const saved = await manager.getRepository(ExpenseReport).save(report);
+      await this.syncLinesBilling(manager, saved, user.id, false);
       await this.auditService.append(manager, {
         actorId: user.id,
         action: 'expense_report.rejected',
@@ -457,5 +490,30 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
 
   private fromMinorUnits(value: number): number {
     return value / 100;
+  }
+
+  /**
+   * Lignes refacturables : élément facturable du dossier créé à l'approbation,
+   * neutralisé au rejet (cf. CaseBillingService).
+   */
+  private async syncLinesBilling(
+    manager: EntityManager,
+    report: ExpenseReport,
+    actorUserId: number,
+    allowBilling: boolean,
+  ): Promise<void> {
+    const lines = await manager.getRepository(ExpenseLine).find({
+      where: { expense_report_id: report.id, tenant_id: getCurrentTenantId() },
+      relations: ['dossier'],
+    });
+    for (const line of lines) {
+      line.expense_report = report;
+      await this.caseBillingService.syncExpenseLineToBillableItem(
+        manager,
+        line,
+        actorUserId,
+        allowBilling,
+      );
+    }
   }
 }

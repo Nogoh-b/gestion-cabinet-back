@@ -23,7 +23,11 @@ import { FactureResponseDto } from './dto/facture-response.dto';
 import { SearchFactureDto } from './dto/search-facture.dto';
 import { UpdateFactureDto } from './dto/update-facture.dto';
 import { Facture } from './entities/facture.entity';
-import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
+import {
+  InvoiceType,
+  InvoiceTypeCategory,
+} from '../invoice-type/entities/invoice-type.entity';
+import { DossierBillingProfile } from '../case-workflow/entities/billing.entity';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { MailService } from 'src/core/shared/emails/emails.service';
@@ -61,13 +65,15 @@ export class FactureService extends BaseServiceV1<Facture> {
     private readonly dataSource: DataSource,
     private readonly outboxService: OutboxService,
     private readonly auditService: AuditService,
+    @InjectRepository(InvoiceType)
+    private readonly invoiceTypeRepo: Repository<InvoiceType>,
   ) {
     super(repository, paginationService);
   }
 
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      searchFields: ['numero', 'description', 'notesInternes'],
+      searchFields: ['numero', 'libelle', 'description', 'notesInternes'],
       exactMatchFields: ['id', 'dossier_id', 'client_id', 'status', 'type', 'numero'],
       dateRangeFields: ['dateFacture', 'dateEcheance', 'created_at', 'updated_at'],
       relationFields: ['paiements', 'client', 'dossier','invoice_type','subStage']
@@ -100,6 +106,19 @@ export class FactureService extends BaseServiceV1<Facture> {
         'Un avoir se crée uniquement depuis la commande dédiée de la facture d’origine',
       );
     }
+    // TVA : valeur saisie prioritaire, sinon config du dossier
+    // (profil de facturation), sinon défaut du cabinet.
+    if (
+      createDto.tauxTVA === undefined ||
+      createDto.tauxTVA === null ||
+      (typeof createDto.tauxTVA !== 'number' &&
+        String(createDto.tauxTVA).trim() === '')
+    ) {
+      createDto.tauxTVA = await this.resolveDefaultTvaRate(
+        Number((options.dossier as any)?.id ?? createDto.dossierId),
+        options.manager,
+      );
+    }
     // Calcul automatique des montants si nécessaire
     if (!createDto.montantTVA) {
       createDto.montantTVA = Number(createDto.montantHT) * (Number(createDto.tauxTVA) / 100);
@@ -114,6 +133,8 @@ export class FactureService extends BaseServiceV1<Facture> {
       numero: providedNumero,
       statut,
       nature,
+      libelle: providedLibelle,
+      original_facture_id,
       ...rest
     } = createDto as CreateFactureDto & { status?: StatutFacture };
     const dossier_ = options.dossier ?? await (
@@ -191,13 +212,27 @@ export class FactureService extends BaseServiceV1<Facture> {
     // Lire la devise courante du cabinet pour la figer sur la facture
     const cabinet = await this.cabinetRepo.findOne({ where: { id: getCurrentTenantId() } });
     const currency = cabinet?.currency ?? 'XAF';
+    const invoiceType = await this.resolveInvoiceType(
+      createDto.type,
+      options.manager,
+    );
 
     const facture = this.repository.create({
       ...rest,
       dossier,
       numero,
+      // Libellé : valeur saisie prioritaire, sinon numéro de la facture.
+      libelle:
+        providedLibelle !== undefined &&
+        providedLibelle !== null &&
+        String(providedLibelle).trim() !== ''
+          ? String(providedLibelle).trim()
+          : numero,
       client,
-      invoice_type: { id: createDto.type } as InvoiceType,
+      // La relation est nullable : un cabinet dont le catalogue n'est pas
+      // encore seedé peut créer la facture sans fabriquer une fausse FK.
+      invoice_type: invoiceType ?? undefined,
+      original_facture_id: original_facture_id ?? null,
       client_id,
       currency,
       montantPaye: 0,
@@ -300,6 +335,12 @@ export class FactureService extends BaseServiceV1<Facture> {
       updateDto.montantTVA = montantHT * (tauxTVA / 100);
       updateDto.montantTTC = montantHT + updateDto.montantTVA;
       // updateDto.resteAPayer = updateDto.montantTTC - facture.montantPaye;
+    }
+
+    // Libellé : chaîne vide = repli sur le numéro (jamais de libellé vide).
+    if ((updateDto as any).libelle !== undefined) {
+      const trimmed = String((updateDto as any).libelle ?? '').trim();
+      (updateDto as any).libelle = trimmed !== '' ? trimmed : facture.numero;
     }
 
     const editableFields = { ...updateDto };
@@ -1490,4 +1531,260 @@ export class FactureService extends BaseServiceV1<Facture> {
     ].includes(status);
   }
 
+  /** Encode une valeur métier avant de l'insérer dans le corps HTML d'un e-mail. */
+  private escapeHtml(value: unknown): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  /**
+   * Facture et destinataire d'un envoi par e-mail, sans rien envoyer :
+   * vérification et aperçu avant un envoi demandé depuis le chat. Mêmes
+   * refus que `sendFactureByEmail`.
+   */
+  async previewFactureEmail(
+    id: string,
+    recipientOverride?: string,
+  ): Promise<{ facture: Facture; to: string }> {
+    const facture = await this.findOneV1(id, ['client', 'dossier']);
+    if (!facture) {
+      throw new NotFoundException(`Facture avec l'ID ${id} non trouvée`);
+    }
+    const to = (recipientOverride || (facture.client as any)?.email || '').trim();
+    if (!to) {
+      throw new BadRequestException(
+        "Aucune adresse e-mail n'est renseignée pour le client de cette facture.",
+      );
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      throw new BadRequestException(`Adresse e-mail invalide : « ${to} ».`);
+    }
+    return { facture, to };
+  }
+
+  /**
+   * Ce que la relance d'un dossier enverrait, sans rien envoyer (vérification
+   * et aperçu avant une relance demandée depuis le chat). Refuse comme le
+   * bouton ne pourrait pas envoyer : aucune facture impayée, client sans e-mail.
+   */
+  async previewRelanceForDossier(
+    dossierId: string,
+  ): Promise<{ count: number; to: string; totalReste: number }> {
+    const unpaid = await this.unpaidFacturesOfDossier(dossierId);
+    if (unpaid.length === 0) {
+      throw new BadRequestException('Aucune facture impayée pour ce dossier.');
+    }
+    const to = (unpaid[0].client as any)?.email;
+    if (!to) {
+      throw new BadRequestException(
+        "Le client n'a pas d'adresse email enregistrée.",
+      );
+    }
+    const totalReste = unpaid.reduce(
+      (sum, f) => sum + Number(f.montantTTC ?? 0) - this.computePaid(f),
+      0,
+    );
+    return { count: unpaid.length, to, totalReste };
+  }
+
+  /**
+   * TVA par défaut d'une facture : profil de facturation du dossier
+   * (`dossier_billing_profiles.vat_rate`), repli sur le défaut du cabinet
+   * (`cabinets.default_tva_rate`), sinon 0. La valeur saisie reste prioritaire.
+   */
+  private async resolveDefaultTvaRate(
+    dossierId: number,
+    manager?: EntityManager,
+  ): Promise<number> {
+    const tenantId = getCurrentTenantId();
+    try {
+      const profileRepo =
+        manager?.getRepository(DossierBillingProfile) ??
+        this.repository.manager.getRepository(DossierBillingProfile);
+      const profile = await profileRepo.findOne({
+        where: { tenant_id: tenantId, dossier_id: dossierId } as any,
+      });
+      if (profile?.vat_rate !== undefined && profile?.vat_rate !== null) {
+        return Number(profile.vat_rate);
+      }
+    } catch {
+      // Profil indisponible : repli sur le défaut du cabinet.
+    }
+    const cabinet = await this.cabinetRepo.findOne({
+      where: { id: tenantId },
+    });
+    return Number(cabinet?.default_tva_rate ?? 0);
+  }
+
+  /**
+   * `Facture.type` est une classification historique (0..3), pas la clé
+   * primaire de `invoice_types`. L'ancienne implémentation utilisait pourtant
+   * cette valeur comme ID de relation, ce qui produisait une violation de FK
+   * dès que les IDs du catalogue ne correspondaient pas à 0..3.
+   */
+  private async resolveInvoiceType(
+    type: CreateFactureDto['type'],
+    manager?: EntityManager,
+  ): Promise<InvoiceType | null> {
+    const repository =
+      manager?.getRepository(InvoiceType) ?? this.invoiceTypeRepo;
+    const tenantId = getCurrentTenantId();
+    const preferredCode = {
+      0: 'HON_PROCEDURE',
+      1: 'FRAIS_DOSSIER',
+      2: 'HON_PROCEDURE',
+      3: 'AUTRES_FRAIS',
+      4: 'AVOIR',
+    }[Number(type)];
+
+    if (preferredCode) {
+      const preferred = await repository
+        .createQueryBuilder('invoiceType')
+        .where('invoiceType.code = :preferredCode', { preferredCode })
+        .andWhere('invoiceType.is_active = :active', { active: true })
+        .andWhere(
+          '(invoiceType.tenant_id = :tenantId OR invoiceType.tenant_id = 1)',
+          { tenantId },
+        )
+        .orderBy(
+          'CASE WHEN invoiceType.tenant_id = :tenantId THEN 0 ELSE 1 END',
+          'ASC',
+        )
+        .setParameter('tenantId', tenantId)
+        .getOne();
+      if (preferred) return preferred;
+    }
+
+    const category =
+      Number(type) === 1
+        ? InvoiceTypeCategory.EXPENSES
+        : [3, 4].includes(Number(type))
+          ? InvoiceTypeCategory.OTHER
+          : InvoiceTypeCategory.LEGAL_FEES;
+    return repository
+      .createQueryBuilder('invoiceType')
+      .where('invoiceType.category = :category', { category })
+      .andWhere('invoiceType.is_active = :active', { active: true })
+      .andWhere(
+        '(invoiceType.tenant_id = :tenantId OR invoiceType.tenant_id = 1)',
+        { tenantId },
+      )
+      .orderBy(
+        'CASE WHEN invoiceType.tenant_id = :tenantId THEN 0 ELSE 1 END',
+        'ASC',
+      )
+      .addOrderBy('invoiceType.id', 'ASC')
+      .setParameter('tenantId', tenantId)
+      .getOne();
+  }
+
+  /**
+   * Envoie une facture au client, puis la marque comme envoyée si elle était
+   * encore au brouillon. Le statut n'est modifié qu'après le succès SMTP.
+   */
+  async sendFactureByEmail(
+    id: string,
+    recipientOverride?: string,
+  ): Promise<{ sent: true; to: string; message: string }> {
+    const facture = await this.findOneV1(id, [
+      'paiements',
+      'client',
+      'dossier',
+    ]);
+    if (!facture) {
+      throw new NotFoundException(`Facture avec l'ID ${id} non trouvée`);
+    }
+
+    const client = facture.client as any;
+    const to = (recipientOverride || client?.email || '').trim();
+    if (!to) {
+      throw new BadRequestException(
+        "Aucune adresse e-mail n'est renseignée pour le client de cette facture.",
+      );
+    }
+
+    const cabinet = await this.cabinetRepo.findOne({
+      where: { id: getCurrentTenantId() },
+    });
+    const currency =
+      facture.currency && facture.currency !== cabinet?.currency
+        ? facture.currency
+        : (cabinet?.currency_symbol ??
+          facture.currency ??
+          cabinet?.currency ??
+          'XAF');
+    const decimals = cabinet?.currency_decimals ?? 0;
+    const fmtMoney = (value: unknown): string =>
+      `${Number(value ?? 0).toLocaleString('fr-FR', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      })} ${currency}`;
+    const fmtDate = (value: unknown): string =>
+      value
+        ? new Date(value as string | number | Date).toLocaleDateString('fr-FR')
+        : '';
+
+    const paid = this.computePaid(facture);
+    const remaining = Math.max(0, Number(facture.montantTTC ?? 0) - paid);
+    const clientName = this.escapeHtml(
+      this.clientLabel(client) || 'Madame, Monsieur',
+    );
+    const dossierRef = this.escapeHtml(
+      (facture.dossier as any)?.dossier_number ?? `#${facture.dossier_id}`,
+    );
+    const cabinetName = this.escapeHtml(cabinet?.name ?? 'Votre cabinet');
+
+    const html =
+      `<h2 style="margin-top:0;">Facture ${this.escapeHtml(facture.numero)}</h2>` +
+      `<p>Bonjour ${clientName},</p>` +
+      `<p>Veuillez trouver ci-dessous les informations de votre facture ` +
+      `relative au dossier <strong>${dossierRef}</strong>.</p>` +
+      `<table style="border-collapse:collapse;font-size:14px;">` +
+      `<tbody>` +
+      `<tr><td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;">Numéro</td>` +
+      `<td style="padding:6px 10px;border:1px solid #e5e7eb;">${this.escapeHtml(facture.numero)}</td></tr>` +
+      `<tr><td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;">Date</td>` +
+      `<td style="padding:6px 10px;border:1px solid #e5e7eb;">${fmtDate(facture.dateFacture)}</td></tr>` +
+      `<tr><td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;">Échéance</td>` +
+      `<td style="padding:6px 10px;border:1px solid #e5e7eb;">${fmtDate(facture.dateEcheance)}</td></tr>` +
+      `<tr><td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;">Montant TTC</td>` +
+      `<td style="padding:6px 10px;border:1px solid #e5e7eb;">${fmtMoney(facture.montantTTC)}</td></tr>` +
+      `<tr><td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;">Reste à payer</td>` +
+      `<td style="padding:6px 10px;border:1px solid #e5e7eb;">${fmtMoney(remaining)}</td></tr>` +
+      `</tbody></table>` +
+      `<p>Pour toute question, vous pouvez contacter ${cabinetName}.</p>`;
+
+    await this.mailService.sendDirect({
+      to,
+      subject: `Facture ${facture.numero} — ${cabinet?.name ?? 'Votre cabinet'}`,
+      html,
+    });
+
+    if (Number(facture.status) === StatutFacture.BROUILLON) {
+      await this.issueInvoice(facture.id);
+    }
+
+    return {
+      sent: true,
+      to,
+      message: `Facture ${facture.numero} envoyée à ${to}.`,
+    };
+  }
+
+  /** Factures non soldées (hors annulées) d'un dossier, celles que vise la relance. */
+  private async unpaidFacturesOfDossier(dossierId: string): Promise<Facture[]> {
+    const factures = await this.findAllV1(
+      { dossier_id: dossierId },
+      undefined,
+      ['paiements', 'client', 'dossier'],
+    );
+    return factures.filter((f) => {
+      const reste = Number(f.montantTTC ?? 0) - this.computePaid(f);
+      return reste > 0.009 && f.status !== StatutFacture.ANNULEE;
+    });
+  }
 }

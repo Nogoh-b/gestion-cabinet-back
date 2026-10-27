@@ -2,6 +2,8 @@
 import {
   Controller,
   Get,
+  Patch,
+  Body,
   Param,
   Query,
   Request,
@@ -36,6 +38,8 @@ export class ActivitiesUserController {
     @Query('userId') userId?: string,
     @Query('action') action?: string,
     @Query('resource') resource?: string,
+    @Query('authorizationResult') authorizationResult?: string,
+    @Query('riskLevel') riskLevel?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('page') page?: string,
@@ -46,11 +50,46 @@ export class ActivitiesUserController {
       userId: userId ? Number(userId) : undefined,
       action,
       resource,
+      authorizationResult,
+      riskLevel,
       from,
       to,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
+  }
+
+  @Get('supervision')
+  @ApiOperation({ summary: 'Centre de supervision du cabinet (admin)' })
+  supervision(@Request() req: any, @Query('limit') limit?: string) {
+    this.assertAdmin(req);
+    return this.activitiesService.getSupervision(limit ? Number(limit) : 40);
+  }
+
+  @Patch('members/:userId/block')
+  @ApiOperation({ summary: 'Bloquer immédiatement un membre du cabinet' })
+  blockMember(
+    @Request() req: any,
+    @Param('userId') userId: string,
+    @Body() _body: { reason?: string },
+  ) {
+    this.assertAdmin(req);
+    return this.activitiesService.setMemberBlocked(
+      Number(userId),
+      true,
+      req.user.userId ?? req.user.id,
+    );
+  }
+
+  @Patch('members/:userId/unblock')
+  @ApiOperation({ summary: 'Réactiver un membre du cabinet' })
+  unblockMember(@Request() req: any, @Param('userId') userId: string) {
+    this.assertAdmin(req);
+    return this.activitiesService.setMemberBlocked(
+      Number(userId),
+      false,
+      req.user.userId ?? req.user.id,
+    );
   }
 
   @Get(':userId')

@@ -21,7 +21,7 @@ import { setSessionCookies } from 'src/core/auth/session-cookie.util';
  */
 @ApiTags('Onboarding')
 @Controller('onboarding')
-@Public()   // ← classe entière publique
+@Public() // ← classe entière publique
 export class OnboardingController {
   constructor(private readonly service: OnboardingService) {}
 
@@ -57,7 +57,7 @@ export class OnboardingController {
    * GET /plans/active qui exige un token).
    */
   @Get('plans')
-  @ApiOperation({ summary: 'Plans actifs proposés à l\'inscription (public)' })
+  @ApiOperation({ summary: "Plans actifs proposés à l'inscription (public)" })
   listPlans() {
     return this.service.listActivePlans();
   }

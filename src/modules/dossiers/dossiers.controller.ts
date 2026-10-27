@@ -2,7 +2,10 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/core/auth/guards/roles.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { AllowClient } from 'src/core/decorators/allow-client.decorator';
+import { isClientUser, toClientDossierView } from 'src/core/auth/client-access';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { stripRestrictedInput } from 'src/core/security/restricted-fields';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { Roles } from 'src/core/decorators/roles.decorator';
 import { UserRole } from 'src/core/enums/user-role.enum';
@@ -22,55 +25,65 @@ import {
   ParseIntPipe,
   UseInterceptors,
   UploadedFile,
-  Request
+  Request,
+  ForbiddenException,
+  Headers,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 
-
-
-
-
-
-
-
-
-
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam, ApiBody, ApiConsumes } from '@nestjs/swagger';
-
-
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiParam,
+  ApiBody,
+  ApiConsumes,
+} from '@nestjs/swagger';
 
 import { User } from '../iam/user/entities/user.entity';
+import { DossierAccessGrantsService } from './dossier-access-grants.service';
 import { DossierStatsService } from './dossier-stats.service';
 import { DossiersService } from './dossiers.service';
 import { CloseDossierDto } from './dto/close-dossier.dto';
-import { CreateDossierDto, UploadDocumentToSubStageDto } from './dto/create-dossier.dto';
+import {
+  CreateDossierDto,
+  UploadDocumentToSubStageDto,
+} from './dto/create-dossier.dto';
 import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { DossierStatsDto } from './dto/dossier-stats.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { CaseWorkflowService } from '../case-workflow/services/case-workflow.service';
+import { DossierChatSyncService } from './dossier-chat-sync.service';
 
 @ApiTags('dossiers')
 @ApiBearerAuth()
 @Controller('dossiers')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class DossiersController {
-  constructor(private readonly dossiersService: DossiersService,
-  private readonly statsService: DossierStatsService) {}
+  constructor(
+    private readonly dossiersService: DossiersService,
+    private readonly statsService: DossierStatsService,
+    private readonly accessGrantsService: DossierAccessGrantsService,
+    private readonly caseWorkflowService: CaseWorkflowService,
+    private readonly dossierChatSync: DossierChatSyncService,
+  ) {}
 
-    @Get('stats')
+  /**
+   * Réaligne le chat de chaque dossier du cabinet sur ses membres (avocat,
+   * collaborateurs, auteur) et crée les chats manquants. Idempotent.
+   */
+  @Post('chat/resync')
+  @RequirePermissions('edit_dossier')
+  @ApiOperation({ summary: 'Resynchroniser les chats de dossier' })
+  resyncDossierChats() {
+    return this.dossierChatSync.syncAll();
+  }
+
+  @Get('stats')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Obtenir les statistiques des dossiers' })
@@ -80,12 +93,20 @@ export class DossiersController {
   @ApiQuery({ name: 'lawyerId', required: false, type: Number })
   @ApiQuery({ name: 'procedureTypeId', required: false, type: Number })
   @ApiQuery({ name: 'doosierId', required: false, type: Number })
+  @ApiQuery({
+    name: 'includeConfidential',
+    required: false,
+    type: Boolean,
+    description:
+      "Inclure les dossiers confidentiels dans les agrégats. Sans effet pour les utilisateurs qui n'y ont pas accès.",
+  })
   async getStats(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('lawyerId') lawyerId?: number,
     @Query('procedureTypeId') procedureTypeId?: number,
     @Query('doosierId') doosierId?: number,
+    @Query('includeConfidential') includeConfidential?: string,
   ): Promise<any> {
     return this.statsService.getStats({
       startDate: startDate ? new Date(startDate) : undefined,
@@ -93,21 +114,23 @@ export class DossiersController {
       lawyerId: lawyerId ? +lawyerId : undefined,
       procedureTypeId: procedureTypeId ? +procedureTypeId : undefined,
       doosierId: doosierId ? +doosierId : undefined,
-      fieldToUseForDate : 'opening_date'
+      // Simple préférence d'affichage : la sécurité est tranchée côté service
+      // (un non-habilité n'agrège jamais de dossier confidentiel).
+      includeConfidential: includeConfidential === 'true',
+      fieldToUseForDate: 'opening_date',
     });
   }
 
   @Get('stats/:id')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   @RequirePermissions('view_dossiers')
-  @ApiOperation({ summary: 'Obtenir les statistiques d\'un dossier spécifique' })
+  @ApiOperation({ summary: "Obtenir les statistiques d'un dossier spécifique" })
   @ApiParam({ name: 'id', description: 'ID du dossier' })
   async getStatsForDossier(
     @Param('id', ParseIntPipe) id: number,
   ): Promise<any> {
     return this.statsService.getStats({ dossierId: id });
   }
-
 
   // @Get('summary')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
@@ -125,18 +148,24 @@ export class DossiersController {
     return (stats as any).urgentDossiers;
   }
 
-
   @Post()
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT, UserRole.SECRETAIRE)
   @RequirePermissions('create_dossier')
   @ApiOperation({ summary: 'Créer un nouveau dossier' })
-  @ApiResponse({ status: 201, description: 'Dossier créé avec succès', type: DossierResponseDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Dossier créé avec succès',
+    type: DossierResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Données invalides' })
-  @ApiResponse({ status: 404, description: 'Client, avocat ou type de procédure non trouvé' })
+  @ApiResponse({
+    status: 404,
+    description: 'Client, avocat ou type de procédure non trouvé',
+  })
   create(
     @Body() createDossierDto: CreateDossierDto,
-    @CurrentUser() user: User
-  )/*: Promise<DossierResponseDto | any>*/ {
+    @CurrentUser() user: User,
+  ) /*: Promise<DossierResponseDto | any>*/ {
     // return user;
     return this.dossiersService.create(createDossierDto, user);
   }
@@ -150,41 +179,56 @@ export class DossiersController {
   @Get('search')
   @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Recherche texte avec relations' })
-  @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [DossierResponseDto]  })
+  @ApiResponse({
+    status: 200,
+    description: 'Résultats de recherche',
+    type: [DossierResponseDto],
+  })
   async search(
-
+    @CurrentUser() user: User,
     @Query() searchParams?: DossierSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.dossiersService.searchWithTransformer(searchParams as SearchCriteria, DossierResponseDto , paginationParams);
+    return this.dossiersService.searchForUser(
+      searchParams as SearchCriteria,
+      paginationParams,
+      user,
+    );
   }
 
   @Get()
   @RequirePermissions('view_dossiers')
+  @AllowClient() // portail client : bornée à ses dossiers (buildRoleScope)
   @ApiOperation({ summary: 'Lister tous les dossiers (avec filtres)' })
-  @ApiResponse({ status: 200, description: 'Liste des dossiers', type: [DossierResponseDto] })
-  findAll(
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des dossiers',
+    type: [DossierResponseDto],
+  })
+  async findAll(
     @Query() searchDto: DossierSearchDto,
-    @CurrentUser() user: User
+    @CurrentUser() user: User,
   ): Promise<any[]> {
-    return this.dossiersService.findAll(searchDto, user);
+    const dossiers = await this.dossiersService.findAll(searchDto, user);
+    // Client : seulement les champs de CLIENT_DOSSIER_VIEW (liste blanche).
+    return isClientUser(user) ? dossiers.map(toClientDossierView) : dossiers;
   }
 
   @Get('paginated')
   @RequirePermissions('view_dossiers')
   @ApiOperation({
     summary: 'Lister les dossiers avec pagination',
-    description: 'Retourne les dossiers avec des métadonnées de pagination'
+    description: 'Retourne les dossiers avec des métadonnées de pagination',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Liste paginée des dossiers',
     schema: {
       type: 'object',
       properties: {
         data: {
           type: 'array',
-          items: { $ref: '#/components/schemas/DossierResponseDto' }
+          items: { $ref: '#/components/schemas/DossierResponseDto' },
         },
         meta: {
           type: 'object',
@@ -194,18 +238,22 @@ export class DossiersController {
             total: { type: 'number', example: 150 },
             total_pages: { type: 'number', example: 15 },
             has_previous: { type: 'boolean', example: false },
-            has_next: { type: 'boolean', example: true }
-          }
-        }
-      }
-    }
+            has_next: { type: 'boolean', example: true },
+          },
+        },
+      },
+    },
   })
   async findAllPaginated(
     @Query() paginationParams: PaginationParamsDto,
     @Query() searchDto: DossierSearchDto,
-    @CurrentUser() user: User
+    @CurrentUser() user: User,
   ) {
-    return this.dossiersService.findAllPaginated(paginationParams, searchDto, user);
+    return this.dossiersService.findAllPaginated(
+      paginationParams,
+      searchDto,
+      user,
+    );
   }
 
   @Get('statistics')
@@ -218,46 +266,69 @@ export class DossiersController {
 
   @Get(':id')
   @RequirePermissions('view_dossiers')
+  @AllowClient() // portail client : 403 hors de ses dossiers (checkDossierAccess)
   @ApiOperation({ summary: 'Obtenir un dossier par son ID' })
-  @ApiResponse({ status: 200, description: 'Dossier trouvé', type: DossierResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Dossier trouvé',
+    type: DossierResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Dossier non trouvé' })
-  findOne(
+  async findOne(
     @Param('id', ParseIntPipe) id: string,
-    @CurrentUser() user: User
+    @CurrentUser() user: User,
   ): Promise<DossierResponseDto> {
-    return this.dossiersService.findOne(+id, user);
+    const dossier = await this.dossiersService.findOne(+id, user);
+    // Client : seulement les champs de CLIENT_DOSSIER_VIEW (liste blanche) ;
+    // documents et factures passent par /client-portal.
+    return isClientUser(user) ? toClientDossierView(dossier) : dossier;
   }
 
   @Patch(':id')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT, UserRole.SECRETAIRE)
   @RequirePermissions('edit_dossier')
   @ApiOperation({ summary: 'Mettre à jour un dossier' })
-  @ApiResponse({ status: 200, description: 'Dossier mis à jour', type: DossierResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Dossier mis à jour',
+    type: DossierResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Dossier non trouvé' })
   update(
     @Param('id', ParseIntPipe) id: string,
     @Body() updateDossierDto: UpdateDossierDto,
-    @CurrentUser() user: User
+    @CurrentUser() user: User,
   ): Promise<DossierResponseDto | any> {
-    return this.dossiersService.update(+id, updateDossierDto, user);
+    // Budget et frais : non modifiables par qui ne peut pas les voir.
+    return this.dossiersService.update(
+      +id,
+      stripRestrictedInput('dossiers', updateDossierDto, user as any),
+      user,
+    );
   }
 
   @Post(':id/archive')
   @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   @RequirePermissions('edit_dossier')
   @ApiOperation({ summary: 'Archiver un dossier' })
-  @ApiResponse({ status: 200, description: 'Dossier archivé', type: DossierResponseDto })
-  @ApiResponse({ status: 400, description: 'Impossible d\'archiver le dossier' })
+  @ApiResponse({
+    status: 200,
+    description: 'Dossier archivé',
+    type: DossierResponseDto,
+  })
+  @ApiResponse({ status: 400, description: "Impossible d'archiver le dossier" })
   archive(
     @Param('id', ParseIntPipe) id: string,
-    @CurrentUser() user: User
+    @CurrentUser() user: User,
   ): Promise<DossierResponseDto> {
     return this.dossiersService.archive(+id, user);
   }
 
   @Post(':id/activate')
   @RequirePermissions('edit_dossier')
-  @ApiOperation({ summary: 'Activer un dossier et créer son instance procédurale' })
+  @ApiOperation({
+    summary: 'Activer un dossier et créer son instance procédurale',
+  })
   activate(
     @Param('id', ParseIntPipe) id: string,
     @CurrentUser() user: User,
@@ -274,17 +345,60 @@ export class DossiersController {
   ): Promise<DossierResponseDto> {
     return this.dossiersService.reopen(+id, user);
   }
-  
+
+  // ── Autorisations d'accès aux dossiers confidentiels ─────────────────────
+  // Réservées à l'administration : ce sont elles, et elles seules, qui
+  // ouvrent un dossier confidentiel à un collaborateur.
+
+  @Get(':id/access-grants')
+  @RequirePermissions('view_dossier_confidential')
+  @ApiOperation({
+    summary: 'Collaborateurs autorisés sur un dossier confidentiel',
+  })
+  listAccessGrants(@Param('id', ParseIntPipe) id: string) {
+    return this.accessGrantsService.listForDossier(+id);
+  }
+
+  @Post(':id/access-grants')
+  @RequirePermissions('view_dossier_confidential')
+  @ApiOperation({
+    summary: 'Autoriser un collaborateur sur un dossier confidentiel',
+  })
+  grantAccess(
+    @Param('id', ParseIntPipe) id: string,
+    @Body() body: { employee_id: number; reason?: string },
+    @CurrentUser() user: User,
+  ) {
+    return this.accessGrantsService.grant(
+      +id,
+      Number(body?.employee_id),
+      Number(user?.id),
+      body?.reason,
+    );
+  }
+
+  @Delete(':id/access-grants/:employeeId')
+  @RequirePermissions('view_dossier_confidential')
+  @ApiOperation({ summary: "Révoquer l'autorisation d'un collaborateur" })
+  revokeAccess(
+    @Param('id', ParseIntPipe) id: string,
+    @Param('employeeId', ParseIntPipe) employeeId: string,
+  ) {
+    return this.accessGrantsService.revoke(+id, +employeeId);
+  }
 
   @Delete(':id')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   @RequirePermissions('delete_dossier')
   @ApiOperation({ summary: 'Supprimer un dossier' })
   @ApiResponse({ status: 200, description: 'Dossier supprimé' })
-  @ApiResponse({ status: 400, description: 'Impossible de supprimer le dossier' })
+  @ApiResponse({
+    status: 400,
+    description: 'Impossible de supprimer le dossier',
+  })
   remove(
     @Param('id', ParseIntPipe) id: string,
-    @CurrentUser() user: User
+    @CurrentUser() user: User,
   ): Promise<void> {
     return this.dossiersService.remove(+id, user);
   }
@@ -293,38 +407,55 @@ export class DossiersController {
   @RequirePermissions('view_dossiers')
   async getDossiersByCollaborator(
     @Param('collaboratorId') collaboratorId: number,
-    @Query() paginationParams: PaginationParamsDto
+    @Query() paginationParams: PaginationParamsDto,
   ) {
-    return this.dossiersService.getCollaboratorDossiers(collaboratorId, paginationParams);
+    return this.dossiersService.getCollaboratorDossiers(
+      collaboratorId,
+      paginationParams,
+    );
   }
 
   // Endpoints spécifiques pour les relations
   @Get(':id/documents')
   @RequirePermissions('view_dossiers')
-  @ApiOperation({ summary: 'Obtenir les documents d\'un dossier' })
-  getDocuments(@Param('id', ParseIntPipe) id: string, @CurrentUser() user: User) {
+  @ApiOperation({ summary: "Obtenir les documents d'un dossier" })
+  getDocuments(
+    @Param('id', ParseIntPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
     // Implémentation dans le service Documents
-    return this.dossiersService.findOne(+id, user).then(dossier => dossier.documents);
+    return this.dossiersService
+      .findOne(+id, user)
+      .then((dossier) => dossier.documents);
   }
 
   @Get(':id/audiences')
   @RequirePermissions('view_dossiers')
-  @ApiOperation({ summary: 'Obtenir les audiences d\'un dossier' })
-  getAudiences(@Param('id', ParseIntPipe) id: string, @CurrentUser() user: User) {
+  @ApiOperation({ summary: "Obtenir les audiences d'un dossier" })
+  getAudiences(
+    @Param('id', ParseIntPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
     // Implémentation dans le service Audiences
-    return this.dossiersService.findOne(+id, user).then(dossier => dossier.audiences);
+    return this.dossiersService
+      .findOne(+id, user)
+      .then((dossier) => dossier.audiences);
   }
 
   @Get(':id/factures')
   @RequirePermissions('view_dossiers')
-  @ApiOperation({ summary: 'Obtenir les factures d\'un dossier' })
-  getFactures(@Param('id', ParseIntPipe) id: string, @CurrentUser() user: User) {
+  @ApiOperation({ summary: "Obtenir les factures d'un dossier" })
+  getFactures(
+    @Param('id', ParseIntPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
     // Implémentation dans le service Finances
-    return this.dossiersService.findOne(+id, user).then(dossier => dossier.factures);
+    return this.dossiersService
+      .findOne(+id, user)
+      .then((dossier) => dossier.factures);
   }
 
-
-    /**
+  /**
    * Lier des documents existants à une sous-étape de procédure
    */
   @ApiOperation({ summary: 'Lier des documents à une sous-étape de procédure' })
@@ -337,8 +468,15 @@ export class DossiersController {
   @Post(':id/collaborators')
   @RequirePermissions('edit_dossier')
   @ApiOperation({ summary: 'Ajouter un collaborateur au dossier' })
-  @ApiResponse({ status: 201, description: 'Collaborateur ajouté avec succès', type: DossierResponseDto })
-  @ApiResponse({ status: 404, description: 'Dossier ou collaborateur non trouvé' })
+  @ApiResponse({
+    status: 201,
+    description: 'Collaborateur ajouté avec succès',
+    type: DossierResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Dossier ou collaborateur non trouvé',
+  })
   @ApiParam({ name: 'id', description: 'ID du dossier' })
   async addCollaborator(
     @Param('id', ParseIntPipe) id: number,
@@ -354,9 +492,16 @@ export class DossiersController {
   @Delete(':id/collaborators/:employeeId')
   @RequirePermissions('edit_dossier')
   @ApiOperation({ summary: 'Retirer un collaborateur du dossier' })
-  @ApiResponse({ status: 200, description: 'Collaborateur retiré avec succès', type: DossierResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Collaborateur retiré avec succès',
+    type: DossierResponseDto,
+  })
   @ApiParam({ name: 'id', description: 'ID du dossier' })
-  @ApiParam({ name: 'employeeId', description: 'ID du collaborateur à retirer' })
+  @ApiParam({
+    name: 'employeeId',
+    description: 'ID du collaborateur à retirer',
+  })
   async removeCollaborator(
     @Param('id', ParseIntPipe) id: number,
     @Param('employeeId', ParseIntPipe) employeeId: number,
@@ -371,20 +516,27 @@ export class DossiersController {
   @Put(':id/collaborators')
   @RequirePermissions('edit_dossier')
   @ApiOperation({ summary: 'Synchroniser les collaborateurs du dossier' })
-  @ApiResponse({ status: 200, description: 'Collaborateurs synchronisés', type: DossierResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Collaborateurs synchronisés',
+    type: DossierResponseDto,
+  })
   @ApiParam({ name: 'id', description: 'ID du dossier' })
   async syncCollaborators(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { employee_ids: number[] },
     @CurrentUser() user: User,
   ) {
-    return this.dossiersService.syncCollaborators(id, body?.employee_ids ?? [], user);
+    return this.dossiersService.syncCollaborators(
+      id,
+      body?.employee_ids ?? [],
+      user,
+    );
   }
 
-      // Gérer les fichiers uploadés
-        // Uploader les fichiers et récupérer leurs IDs
-        // fileIds = await this.uploadService.uploadFiles(files);
-
+  // Gérer les fichiers uploadés
+  // Uploader les fichiers et récupérer leurs IDs
+  // fileIds = await this.uploadService.uploadFiles(files);
 
   // Dans dossiers.controller.ts
   @Post(':id/close')
@@ -393,18 +545,60 @@ export class DossiersController {
   async closeDossier(
     @Param('id') id: string,
     @Body() closeDto: CloseDossierDto,
-    @CurrentUser() user: User
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @CurrentUser() user: User,
   ) {
+    if (await this.caseWorkflowService.isV2(+id)) {
+      const authUser = user as any;
+      const permissions: string[] = Array.isArray(authUser.permissions)
+        ? authUser.permissions
+        : [];
+      if (
+        authUser.role !== UserRole.ADMIN &&
+        !permissions.includes('close_dossier')
+      ) {
+        throw new ForbiddenException(
+          'Permission close_dossier requise pour clôturer un dossier V2',
+        );
+      }
+      if (!idempotencyKey?.trim()) {
+        throw new BadRequestException(
+          'L’en-tête Idempotency-Key est obligatoire pour clôturer un dossier V2',
+        );
+      }
+      return this.caseWorkflowService.close(
+        +id,
+        closeDto,
+        user,
+        idempotencyKey.trim(),
+      );
+    }
     return this.dossiersService.closeDossier(+id, user, closeDto);
+  }
+
+  @Get(':id/closure-recap')
+  @RequirePermissions('view_dossiers')
+  @ApiOperation({ summary: 'Récapitulatif de clôture du dossier' })
+  async closureRecap(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: User,
+  ) {
+    return this.caseWorkflowService.closureRecap(+id, user);
   }
 
   @Get(':dossierId/stage-visits')
   @RequirePermissions('view_dossiers')
   @ApiOperation({
-    summary: 'Obtenir l\'historique des visites de stage',
-    description: 'Retourne l\'historique complet des visites de stage pour un dossier donné, avec les sous-étapes, documents, diligences, audiences et factures associés à chaque visite.'
+    summary: "Obtenir l'historique des visites de stage",
+    description:
+      "Retourne l'historique complet des visites de stage pour un dossier donné, avec les sous-étapes, documents, diligences, audiences et factures associés à chaque visite.",
   })
-  @ApiParam({ name: 'dossierId', description: 'ID du dossier', type: Number, example: 1 })
+  @ApiParam({
+    name: 'dossierId',
+    description: 'ID du dossier',
+    type: Number,
+    example: 1,
+  })
   async getStageVisits(@Param('dossierId', ParseIntPipe) dossierId: number) {
     return this.dossiersService.getStageVisits(dossierId);
   }
@@ -415,9 +609,13 @@ export class DossiersController {
    */
   @Get(':dossierId/stage-visits/select')
   @RequirePermissions('view_dossiers')
-  @ApiOperation({ summary: 'Liste des visites d\'étape pour select (formulaires)' })
+  @ApiOperation({
+    summary: "Liste des visites d'étape pour select (formulaires)",
+  })
   @ApiParam({ name: 'dossierId', description: 'ID du dossier', type: Number })
-  async getStageVisitsSelect(@Param('dossierId', ParseIntPipe) dossierId: number) {
+  async getStageVisitsSelect(
+    @Param('dossierId', ParseIntPipe) dossierId: number,
+  ) {
     return this.dossiersService.getStageVisitsForSelect(dossierId);
   }
 
@@ -427,18 +625,24 @@ export class DossiersController {
    */
   @Get(':dossierId/stage-visits/:stageVisitId/sub-stage-visits')
   @RequirePermissions('view_dossiers')
-  @ApiOperation({ summary: 'Liste des visites de sous-étape pour select (formulaires)' })
+  @ApiOperation({
+    summary: 'Liste des visites de sous-étape pour select (formulaires)',
+  })
   @ApiParam({ name: 'dossierId', description: 'ID du dossier', type: Number })
-  @ApiParam({ name: 'stageVisitId', description: 'ID UUID de la visite d\'étape', type: String })
+  @ApiParam({
+    name: 'stageVisitId',
+    description: "ID UUID de la visite d'étape",
+    type: String,
+  })
   async getSubStageVisitsSelect(
     @Param('dossierId', ParseIntPipe) dossierId: number,
     @Param('stageVisitId') stageVisitId: string,
   ) {
-    return this.dossiersService.getSubStageVisitsForSelect(dossierId, stageVisitId);
+    return this.dossiersService.getSubStageVisitsForSelect(
+      dossierId,
+      stageVisitId,
+    );
   }
-
-
-
 
   /**
    * Uploader un document et le lier directement à une visite de sous-étape de procédure.
@@ -453,22 +657,40 @@ export class DossiersController {
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({
     summary: 'Uploader un document lié à une sous-étape de procédure',
-    description: 'Crée un document et le lie automatiquement à la visite de sous-étape spécifiée (ou courante)',
+    description:
+      'Crée un document et le lie automatiquement à la visite de sous-étape spécifiée (ou courante)',
   })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, description: 'Document créé et lié avec succès' })
-  @ApiResponse({ status: 404, description: 'Dossier ou type de document introuvable' })
+  @ApiResponse({
+    status: 404,
+    description: 'Dossier ou type de document introuvable',
+  })
+  @Post(':id/closure-document')
+  @RequirePermissions('close_dossier')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Archiver le document de clôture PDF du dossier' })
+  @ApiResponse({ status: 201, description: 'Document archivé avec succès' })
+  async archiveClosureDocument(
+    @Param('id', ParseIntPipe) dossierId: number,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: User,
+  ) {
+    return this.dossiersService.archiveClosureDocument(dossierId, file, user);
+  }
+
   async uploadDocumentToSubStage(
     @Param('id', ParseIntPipe) dossierId: number,
     @Body() dto: UploadDocumentToSubStageDto,
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: User,
   ) {
-    return this.dossiersService.uploadDocumentToSubStage(dossierId, dto, file, user);
+    return this.dossiersService.uploadDocumentToSubStage(
+      dossierId,
+      dto,
+      file,
+      user,
+    );
   }
-
-
-
-
-
 }

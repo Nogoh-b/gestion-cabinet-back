@@ -36,10 +36,15 @@ export class SupplierResponseDto {
   status: boolean;
 
   // Relations
-  @ApiProperty({ example: { id: 2, name: 'Cabinet Principal', code: 'BR-001' }, required: false })
+  @ApiProperty({
+    example: { id: 2, name: 'Cabinet Principal', code: 'BR-001' },
+    required: false,
+  })
   @Expose()
   @Transform(({ obj }) =>
-    obj.branch ? { id: obj.branch.id, name: obj.branch.name, code: obj.branch.code } : null,
+    obj.branch
+      ? { id: obj.branch.id, name: obj.branch.name, code: obj.branch.code }
+      : null,
   )
   branch: { id: number; name: string; code: string } | null;
 
@@ -51,8 +56,12 @@ export class SupplierResponseDto {
 
   @ApiProperty({ example: 4500.0 })
   @Expose()
-  @Transform(({ obj }) =>
-    obj.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.amount_ttc), 0) || 0,
+  @Transform(
+    ({ obj }) =>
+      obj.invoices?.reduce(
+        (sum: number, inv: any) => sum + Number(inv.amount_ttc),
+        0,
+      ) || 0,
   )
   total_amount_ttc: number;
 

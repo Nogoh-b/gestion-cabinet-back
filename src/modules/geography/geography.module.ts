@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-
 import { CountriesController } from './country/country.controller';
 import { CountriesService } from './country/country.service';
 import { Country } from './country/entities/country.entity';
@@ -18,13 +17,17 @@ import { Region } from './region/entities/region.entity';
 import { RegionController } from './region/region.controller';
 import { RegionsService } from './region/region.service';
 
-
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Region,LocationCity,District,Division,Country]),
+    TypeOrmModule.forFeature([
+      Region,
+      LocationCity,
+      District,
+      Division,
+      Country,
+    ]),
     // IamModule,
-    // forwardRef(() => AgenciesModule), 
-
+    // forwardRef(() => AgenciesModule),
   ],
   controllers: [
     RegionController,
@@ -39,7 +42,6 @@ import { RegionsService } from './region/region.service';
     DistrictsService,
     LocationCitiesService,
     CountriesService,
-  
   ],
   exports: [
     RegionsService,
@@ -47,7 +49,7 @@ import { RegionsService } from './region/region.service';
     DistrictsService,
     LocationCitiesService,
     CountriesService,
-    TypeOrmModule
+    TypeOrmModule,
   ],
 })
 export class GeographyModule {}

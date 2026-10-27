@@ -6,9 +6,12 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
+  AiCabinetConfig,
   Cabinet,
   serializeCabinet,
 } from 'src/modules/cabinet/entities/cabinet.entity';
+import { ReferenceDataService } from '../../reference-data/reference-data.service';
+import { APPEARANCE_FALLBACK } from '../appearance.constants';
 import { applyLogoInput, deleteLogoFile } from 'src/modules/cabinet/cabinet-logo.util';
 import { AppSettingsDto, SmtpConfigDto } from '../dto/app-settings.dto';
 import {
@@ -32,11 +35,23 @@ export interface SmtpConfigView {
  * désormais directement sur l'entité `Cabinet` (source de configuration UNIQUE).
  * Le nom de classe est conservé pour limiter le churn d'imports.
  */
+/** Taille maximale du dictionnaire d'un cabinet. */
+export const DICTIONARY_LIMIT = 5000;
+
+/** Mot du dictionnaire : lettres, apostrophes et traits d'union, 1 à 60 caractères. */
+export function normalizeDictionaryWord(word: unknown): string | null {
+  const value = String(word ?? '')
+    .trim()
+    .replace(/’/g, "'");
+  return /^[p{L}][p{L}'-]{0,59}$/u.test(value) ? value : null;
+}
+
 @Injectable()
 export class AppSettingsService {
   constructor(
     @InjectRepository(Cabinet)
     private readonly cabinetRepository: Repository<Cabinet>,
+    private readonly references: ReferenceDataService,
   ) {}
 
   /** Champs réinitialisables par `reset()` (les valeurs par défaut métier). */
@@ -45,10 +60,12 @@ export class AppSettingsService {
     logo_mime: null,
     logo_file: null,
     slogan: null,
-    theme_name: 'ocean',
-    font_ui: 'inter',
-    font_heading: 'inter',
-    font_mono: 'jetbrains_mono',
+    theme_name: APPEARANCE_FALLBACK.theme_name,
+    font_ui: APPEARANCE_FALLBACK.font_ui,
+    font_heading: APPEARANCE_FALLBACK.font_heading,
+    font_mono: APPEARANCE_FALLBACK.font_mono,
+    default_font_size: APPEARANCE_FALLBACK.font_size,
+    default_sidebar_style: APPEARANCE_FALLBACK.sidebar_style,
     rccm: null,
     nina: null,
     bank_account: null,
@@ -58,7 +75,9 @@ export class AppSettingsService {
     invoice_prefix: 'FAC-',
     invoice_padding: 4,
     invoice_numbering_strategy: 'yearly',
+    invoice_number_format: '{PREFIX}{YYYY}-{NNNN}',
     dossier_prefix: 'DOS-',
+    dossier_number_format: '{PREFIX}{YYYY}-{NNNN}',
     working_hours_start: '08:00',
     working_hours_end: '17:00',
     notification_email: true,
@@ -85,11 +104,57 @@ export class AppSettingsService {
     return cabinet;
   }
 
+  /** Mots ajoutés au correcteur d'orthographe des éditeurs par le cabinet. */
+  async dictionary(cabinetId: number): Promise<string[]> {
+    const cabinet = await this.findByCabinet(cabinetId);
+    return Array.isArray(cabinet.custom_dictionary)
+      ? cabinet.custom_dictionary
+      : [];
+  }
+
+  /**
+   * Ajoute des mots au dictionnaire du cabinet (sans doublon, 5 000 mots au
+   * plus) ; écriture ciblée de la seule colonne (pas de `save` du cabinet).
+   */
+  async addDictionaryWords(
+    cabinetId: number,
+    words: string[],
+  ): Promise<string[]> {
+    const current = await this.dictionary(cabinetId);
+    const known = new Set(current);
+    const added = words
+      .map(normalizeDictionaryWord)
+      .filter((word): word is string => !!word && !known.has(word));
+    if (!added.length) return current;
+    const next = [...current, ...new Set(added)].slice(-DICTIONARY_LIMIT);
+    await this.cabinetRepository.update(
+      { id: cabinetId },
+      { custom_dictionary: next },
+    );
+    return next;
+  }
+
+  /** Exception IA posée par la plateforme pour ce cabinet (lecture seule ici). */
+  async getAiConfig(cabinetId: number): Promise<AiCabinetConfig | null> {
+    const cabinet = await this.findByCabinet(cabinetId);
+    return cabinet.ai_config
+      ? JSON.parse(JSON.stringify(cabinet.ai_config))
+      : null;
+  }
+
   async update(cabinetId: number, dto: AppSettingsDto): Promise<Cabinet> {
     const cabinet = await this.findByCabinet(cabinetId);
     // `logo_url` est un champ de transport (data-URI) → décodé en blob + fichier statique.
-    const { logo_url, smtp_config, ...rest } = dto as AppSettingsDto & {
+    // `ai_config` n'est plus modifiable par le cabinet : le moteur IA est géré par
+    // la console plateforme (module « Intelligence artificielle »).
+    const {
+      logo_url,
+      smtp_config,
+      ai_config: _ignored,
+      ...rest
+    } = dto as AppSettingsDto & {
       logo_url?: string | null;
+      ai_config?: unknown;
     };
     Object.assign(cabinet, rest);
     applyLogoInput(cabinet, logo_url);
@@ -115,7 +180,11 @@ export class AppSettingsService {
     const cabinet = await this.findByCabinet(cabinetId);
     // Supprime le fichier logo existant avant de remettre les valeurs par défaut.
     deleteLogoFile(cabinet.logo_file);
-    Object.assign(cabinet, AppSettingsService.RESETTABLE_DEFAULTS);
+    Object.assign(
+      cabinet,
+      AppSettingsService.RESETTABLE_DEFAULTS,
+      await this.references.initialSettings(cabinetId),
+    );
     return this.cabinetRepository.save(cabinet);
   }
 

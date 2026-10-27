@@ -1,6 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddCommissionModeToDossierReferral1781600000000 implements MigrationInterface {
+export class AddCommissionModeToDossierReferral1781600000000
+  implements MigrationInterface
+{
   public async up(queryRunner: QueryRunner): Promise<void> {
     if (!(await queryRunner.hasColumn('dossier_referral', 'commission_mode'))) {
       await queryRunner.query(`
@@ -19,9 +21,7 @@ export class AddCommissionModeToDossierReferral1781600000000 implements Migratio
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    if (
-      await queryRunner.hasColumn('dossier_referral', 'commission_amount')
-    ) {
+    if (await queryRunner.hasColumn('dossier_referral', 'commission_amount')) {
       await queryRunner.query(
         'ALTER TABLE dossier_referral DROP COLUMN commission_amount',
       );

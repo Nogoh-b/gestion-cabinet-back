@@ -10,7 +10,11 @@
  * Injecté via AiDatabaseProjectConfig.analysisSystemPrompt.
  */
 export const CABINET_JURIDIQUE_ANALYSIS_PROMPT = `Tu es un expert métier spécialisé dans la gestion \
-de dossiers juridiques, contentieux civils, procédures administratives et recouvrement.`;
+de dossiers juridiques, contentieux civils, procédures administratives et recouvrement.
+Pour la facturation, presente en priorite les montants deja calcules, la quantite, le tarif et la devise fournis. Distingue ces montants de la configuration tarifaire actuelle du dossier et signale les calculs a verifier.
+L'absence d'un tarif dans les resultats presentes ne prouve pas une absence de configuration. Ne conclus pas qu'un bareme doit etre demande au responsable si le profil tarifaire et les regles du dossier n'ont pas ete consultes.
+Ne presente pas une information inaccessible ou non consultee comme un parametre non renseigne.
+Les FAITS du cabinet (dossiers, parties, dates, montants, statuts) viennent uniquement des resultats fournis. Pour les expliquer et les situer, appuie-toi en revanche sur tes connaissances juridiques (droit camerounais et OHADA par defaut) : etape de la procedure, prochaines etapes usuelles, delais indicatifs, points de vigilance. Presente ces apports comme des reperes generaux a verifier, distincts des donnees.`;
 
 export const CABINET_JURIDIQUE_READ_RULES = `
 ### Chiffre d'affaires / CA
@@ -24,9 +28,34 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 
 ### Chiffre d'affaires encaisse
 - Si la question mentionne "encaisse", "recu", "paye", "regle" ou "paiements recus", calculer les encaissements avec paiements p.
-- Utiliser p.status = 1 pour les paiements valides.
+- Utiliser p.status = '1' pour les paiements valides.
 - Joindre factures f ON p.facture_id = f.id pour exclure les factures annulees avec f.status <> 5.
 - Pour une periode sur l'encaisse, filtrer p.date_paiement. Pour une periode sur le CA facture, filtrer f.date_facture.
+
+### Factures impayees, reste a payer, retard
+- "impayee", "non payee", "non reglee", "non soldee", "partiellement payee", "reste a payer", "restant du", "creance", "encours" : une facture est due tant que son RESTE A PAYER est > 0. Le calculer avec les montants, jamais avec le seul statut (status '4' IMPAYEE est rarement pose) :
+  reste a payer = f.montant_ttc - COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id AND p.status = '1'), 0).
+- "partiellement payee" = deja paye > 0 et reste a payer > 0. "impayee" sans autre precision couvre aussi les partiellement payees.
+- Exclure seulement les factures annulees (f.status <> '5'). Garder les brouillons (status '0') en affichant leur statut : l'utilisateur les distingue.
+- Toujours afficher : numero, date_facture, date_echeance, montant_ttc, montant paye, reste a payer, statut lisible, jours de retard = GREATEST(DATEDIFF(CURDATE(), f.date_echeance), 0).
+- Le retard est une COLONNE. Ne filtrer f.date_echeance < CURDATE() que si la question restreint aux factures "en retard", "echues", "depassees" ou "de plus de N jours".
+- Statut lisible : CASE f.status WHEN '0' THEN 'Brouillon' WHEN '1' THEN 'Envoyee' WHEN '2' THEN 'Partiellement payee' WHEN '3' THEN 'Payee' WHEN '4' THEN 'Impayee' WHEN '5' THEN 'Annulee' END.
+- Exemple (factures non soldees d'un dossier, avec le retard) :
+  SELECT f.numero, f.date_facture, f.date_echeance, f.montant_ttc,
+         COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id AND p.status = '1'), 0) AS montant_paye,
+         f.montant_ttc - COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id AND p.status = '1'), 0) AS reste_a_payer,
+         GREATEST(DATEDIFF(CURDATE(), f.date_echeance), 0) AS jours_retard,
+         CASE f.status WHEN '0' THEN 'Brouillon' WHEN '1' THEN 'Envoyee' WHEN '2' THEN 'Partiellement payee' WHEN '3' THEN 'Payee' WHEN '4' THEN 'Impayee' WHEN '5' THEN 'Annulee' END AS statut,
+         f.id AS ref__factures
+  FROM factures f JOIN dossiers d ON d.id = f.dossier_id
+  WHERE d.dossier_number = 'DOS-2026-0038' AND f.status <> '5'
+  HAVING reste_a_payer > 0
+  ORDER BY f.date_echeance LIMIT 50
+
+### Liste ou total des factures (d'un dossier, d'un client)
+- "liste les factures", "factures du dossier", "combien a-t-on facture" : garder TOUTES les factures (annulees comprises, pour les signaler), avec numero, date_facture, date_echeance, montant_ttc, montant paye (paiements p.status = '1'), reste a payer et le statut lisible (CASE ci-dessus) AS statut.
+- Dans la reponse : une facture annulee (status '5') est citee avec la mention « annulee » et sort de TOUS les totaux ; les brouillons (status '0') comptent dans le total facture mais sont signales (« dont X en brouillon ») ; l'encaisse = somme des paiements valides (acomptes compris), jamais le TTC des seules factures payees.
+- Avoir (f.type = '4') : montant TTC negatif, vient en deduction du total.
 
 ### Chiffre d'affaires par client
 - Si l'utilisateur demande le chiffre d'affaires d'un client, joindre customer c ON f.client_id = c.id et filtrer le client par ses champs reels.
@@ -36,6 +65,42 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 - Un numero de facture (ex: FAC2-202606-0001) filtre factures.numero, jamais factures.id.
 - Un numero de dossier (ex: DOS1-202606-0001) filtre dossiers.dossier_number, jamais dossiers.id.
 - La colonne id (numerique/UUID) ne doit etre comparee qu'a des valeurs purement numeriques ou UUID, jamais a un identifiant contenant des lettres ou des tirets.
+
+### Actions et facturation
+- Une action terminee (dossier_actions.status = 'COMPLETED') n'est PAS automatiquement facturable.
+- BILLABLE, HOURLY et VACATION sont des decisions de traitement facturable (honoraires, horaire et vacation). Pour une action effectivement prete a facturer, verifier aussi billable_items.status = 'TO_INVOICE'.
+- NON_BILLABLE signifie non facturable, INCLUDED_IN_PACKAGE signifie inclus au forfait du dossier, NOT_DECIDED signifie qu'aucune decision n'a ete prise et NEEDS_REVIEW signifie que la decision doit etre verifiee. Ne jamais presenter ces valeurs comme un supplement a facturer.
+- case_action_definitions.billable_by_default est seulement une valeur de configuration proposee a la creation. Elle ne remplace jamais la decision portee par dossier_actions.billing_decision.
+- La source de verite pour preparer une facture est billable_items : source_type = 'ACTION' et source_id = dossier_actions.id.
+- billable_items.status = 'TO_INVOICE' signifie pret a facturer. NEEDS_REVIEW signifie tarif/calcul a verifier; RESERVED signifie deja reserve; INVOICED signifie deja facture; WAIVED signifie abandonne.
+- Pour lister les actions effectivement pretes a facturer, joindre billable_items bi ON bi.source_type = 'ACTION' AND bi.source_id = dossier_actions.id et filtrer bi.status = 'TO_INVOICE'.
+- Ne recommande jamais de facturer toutes les actions terminees. Si une seule action satisfait le filtre, retourne uniquement celle-ci.
+
+### Montants et configuration de facturation du dossier
+- Pour toute question sur le montant, le tarif, les vacations ou les honoraires d'une action, consulter billable_items ET le profil dossier_billing_profiles (jointure sur dossier_id), les regles dossier_billing_rules et, si necessaire, case_action_definitions. Ne pas se limiter au libelle de billing_decision ou au statut de l'element.
+- Si un element facturable existe, selectionner sa quantity, unit_label, unit_price, net_amount, tax_rate, tax_amount, gross_amount, currency, calculation_snapshot et review_reason. Presenter le montant HT, la TVA et le TTC avec la devise et le detail quantite x tarif. Un montant enregistre, meme nul, n'est pas une information absente; si le statut est NEEDS_REVIEW, expliquer le motif au lieu de le presenter comme valide.
+- Les montants et le calculation_snapshot de l'element facturable sont la source de verite du calcul deja effectue. Un changement de configuration ne recalcule pas implicitement un element existant : distinguer le montant enregistre du tarif actuellement configure.
+- Le profil du dossier contient mode, fixed_fee, hourly_rate, percentage_rate, percentage_base, default_vacation_rate, vat_rate, currency et is_confirmed. Pour VACATION, le tarif suit la priorite du moteur : regle applicable.rate, puis definition.default_rate, puis profil.default_vacation_rate. Ne jamais affirmer que le bareme est inconnu sans avoir consulte ces sources autorisees.
+- Une regle applicable appartient au meme dossier, est active, a le bon trigger (ACTION_COMPLETED pour une action terminee) et cible action_definition_code = dossier_actions.definition_code ou une valeur NULL pour la regle generale. Preferer la regle specifique a la regle generale, puis la version la plus recente. Ne pas appliquer indistinctement toutes les regles du dossier ni additionner leurs tarifs.
+- Sans element calcule, distinguer le tarif configure d'un montant final et ne pas inventer de quantite, de duree ou de validation. Ne demander au responsable que les donnees effectivement manquantes apres consultation. Une absence de droit ou de resultat signifie information inaccessible ou non trouvee, pas preuve d'absence de configuration.
+
+### Pieces d'une audience / preparer une audience
+- Les documents rattaches a une audience sont dans la table de jointure audience_documents (audience_id, document_id -> document_customer.id, phase = 'preparation' avant l'audience ou 'after' apres). document_customer.required_for_hearing = 1 marque une piece a preparer (phase 'preparation' ajoutee depuis l'audience ou la page Nouveau document). Les pieces du compte rendu et de la decision sont dans audience_report_documents et audience_decision_documents (document_id -> document_customer.id).
+- "Pieces de l'audience X", "documents a preparer pour l'audience", "que reste-t-il a preparer" : partir de audiences, LEFT JOIN audience_documents puis document_customer (nom, statut, date, required_for_hearing), en gardant l'audience meme sans piece ; completer avec les documents du dossier ou required_for_hearing = 1 qui ne sont rattaches a aucune audience, et les actions encore ouvertes du dossier.
+- Ne conclus jamais "aucune piece" sans avoir consulte audience_documents ET required_for_hearing.
+
+### Point / synthese / etat d'un dossier
+- Pour "fais le point", "synthese", "resume", "etat" ou "bilan" d'un dossier (ou d'une reference dossier de la page), ne te limite jamais a la table dossiers : la facturation fait partie du point.
+- Retourne UNE requete qui couvre : identite (dossier_number, client, juridiction, avocat referent, dates), statut lisible, facturation, activite (actions par statut, prochaine audience).
+- Statut : dossiers.status est un code numerique, 0=Ouvert, 1=Analyse preliminaire, 2=Amiable, 3=Contentieux, 4=Jugement, 5=Appel, 6=Cassation, 7=Execution, 8=Cloture, 9=Archive, 10=Abandonne. Affiche toujours le libelle (CASE sur d.status), jamais le code seul ni "libelle non disponible".
+- Facturation : joindre en LEFT JOIN dossier_billing_profiles (mode, fixed_fee, hourly_rate, opening_fee, default_vacation_rate, percentage_rate, vat_rate, currency, is_confirmed) et agreger billable_items du dossier par statut avec des sous-requetes correlees (COUNT, SUM(net_amount), SUM(gross_amount)) plutot que des JOIN qui multiplient les lignes.
+- Sans profil ni element facturable retournes par cette requete, dis qu'aucune configuration de facturation n'a ete trouvee ; ne la declare jamais absente si la requete ne l'a pas consultee.
+
+### Présentation des résultats à l'utilisateur
+- Les colonnes techniques id, uuid, tenant_id et celles terminant par _id servent uniquement aux jointures et aux filtres. Ne les sélectionne jamais comme informations à afficher (seule exception : la clé primaire sous l'alias ref__<table>, retirée avant affichage).
+- Retourne des numéros métier, noms, libellés et titres : dossier_number, numero, reference, title, label, first_name et last_name.
+- Pour une action de dossier, utilise dossier_actions.title ou dossier_actions.definition_label. N'affiche jamais definition_id ni l'UUID de l'action.
+- Pour afficher le responsable d'une action, fais un LEFT JOIN avec user u ON u.id = dossier_actions.responsible_user_id et sélectionne CONCAT(u.first_name, ' ', u.last_name) AS responsable. Ne sélectionne jamais responsible_user_id seul.
 `;
 
 export const CABINET_JURIDIQUE_READ_CLARIFICATION_PRESETS = [
@@ -58,35 +123,41 @@ export const CABINET_JURIDIQUE_READ_CLARIFICATION_PRESETS = [
       'marge',
       'situation financiere',
     ],
-    reason: 'La demande parle de chiffre d\'affaires, mais il faut choisir l\'angle de calcul.',
+    reason:
+      "La demande parle de chiffre d'affaires, mais il faut choisir l'angle de calcul.",
     question: 'Quel chiffre veux-tu consulter ?',
     options: [
       {
         id: 'factures_payees',
         label: 'Factures payees',
         description: 'Compter uniquement les factures marquees comme payees.',
-        followUpQuestion: 'Combien de factures payees composent le chiffre d\'affaires de mon cabinet ?',
+        followUpQuestion:
+          "Combien de factures payees composent le chiffre d'affaires de mon cabinet ?",
         specificTables: ['factures'],
       },
       {
         id: 'paiements_recus',
         label: 'Paiements recus',
         description: 'Additionner les paiements valides reellement encaisses.',
-        followUpQuestion: 'Quel montant mon cabinet a-t-il encaisse via les paiements recus valides ?',
+        followUpQuestion:
+          'Quel montant mon cabinet a-t-il encaisse via les paiements recus valides ?',
         specificTables: ['paiements', 'factures'],
       },
       {
         id: 'ca_facture_ht',
         label: 'CA facture HT',
-        description: 'Somme HT des factures emises non annulees, sans tenir compte des encaissements.',
-        followUpQuestion: 'Quel est le chiffre d\'affaires facture HT de mon cabinet ?',
+        description:
+          'Somme HT des factures emises non annulees, sans tenir compte des encaissements.',
+        followUpQuestion:
+          "Quel est le chiffre d'affaires facture HT de mon cabinet ?",
         specificTables: ['factures'],
       },
       {
         id: 'ca_apres_salaires',
         label: 'Inclure salaires',
-        description: 'Comparer le chiffre d\'affaires avec la masse salariale.',
-        followUpQuestion: 'Quel est le chiffre d\'affaires de mon cabinet apres deduction des salaires ?',
+        description: "Comparer le chiffre d'affaires avec la masse salariale.",
+        followUpQuestion:
+          "Quel est le chiffre d'affaires de mon cabinet apres deduction des salaires ?",
         specificTables: ['factures', 'paiements', 'payslip', 'payslip_line'],
       },
     ],
@@ -94,149 +165,401 @@ export const CABINET_JURIDIQUE_READ_CLARIFICATION_PRESETS = [
   {
     id: 'factures',
     keywords: [
-      'facture impayee', 'factures impayees', 'facture en retard', 'factures en retard',
-      'facture en attente', 'factures en attente', 'relance facture', 'impayes',
-      'creance', 'creances', 'solde client', 'encours client',
+      'facture impayee',
+      'factures impayees',
+      'facture en retard',
+      'factures en retard',
+      'facture en attente',
+      'factures en attente',
+      'relance facture',
+      'impayes',
+      'creance',
+      'creances',
+      'solde client',
+      'encours client',
     ],
     reason: 'Les factures peuvent etre consultees selon plusieurs criteres.',
     question: 'Quel aspect des factures souhaitez-vous consulter ?',
     options: [
-      { id: 'factures_impayees', label: 'Factures impayees', description: 'Liste des factures non reglees avec leur anciennete.', followUpQuestion: 'Liste les factures dont le statut est impaye avec le client, le montant et la date d\'emission', specificTables: ['factures', 'customer'] },
-      { id: 'total_impayes', label: 'Total des impayes', description: 'Montant total des factures en attente de reglement.', followUpQuestion: 'Quel est le montant total des factures impayees ?', specificTables: ['factures'] },
-      { id: 'factures_par_client', label: 'Par client', description: 'Repartition des factures par client.', followUpQuestion: 'Quel est le montant total des factures par client ?', specificTables: ['factures', 'customer'] },
+      {
+        id: 'factures_impayees',
+        label: 'Factures impayees',
+        description: 'Liste des factures non reglees avec leur anciennete.',
+        followUpQuestion:
+          "Liste les factures non soldees (reste a payer superieur a zero, hors annulees) avec le client, le montant TTC, le montant paye, le reste a payer, la date d'echeance et le nombre de jours de retard",
+        specificTables: ['factures', 'paiements', 'customer'],
+      },
+      {
+        id: 'total_impayes',
+        label: 'Total des impayes',
+        description: 'Montant total des factures en attente de reglement.',
+        followUpQuestion:
+          'Quel est le montant total restant a payer sur les factures non soldees (hors annulees) ?',
+        specificTables: ['factures', 'paiements'],
+      },
+      {
+        id: 'factures_par_client',
+        label: 'Par client',
+        description: 'Repartition des factures par client.',
+        followUpQuestion: 'Quel est le montant total des factures par client ?',
+        specificTables: ['factures', 'customer'],
+      },
     ],
   },
   {
     id: 'paiements',
     keywords: [
-      'paiement recu', 'paiements recus', 'reglement', 'reglements',
-      'encaissement', 'encaissements', 'tresorerie',
+      'paiement recu',
+      'paiements recus',
+      'reglement',
+      'reglements',
+      'encaissement',
+      'encaissements',
+      'tresorerie',
     ],
     reason: 'Les paiements peuvent etre consultes de differentes manieres.',
     question: 'Que souhaitez-vous savoir sur les paiements ?',
     options: [
-      { id: 'paiements_recents', label: 'Paiements recents', description: 'Liste des derniers paiements recus.', followUpQuestion: 'Liste les 20 derniers paiements recus avec le client, le montant et la date', specificTables: ['paiements', 'customer'] },
-      { id: 'total_paiements', label: 'Total encaisse', description: 'Montant total des paiements recus.', followUpQuestion: 'Quel est le montant total des paiements recus cette annee ?', specificTables: ['paiements'] },
-      { id: 'paiements_mois', label: 'Par mois', description: 'Evolution des paiements par mois.', followUpQuestion: 'Donne le total des paiements recus par mois pour l\'annee en cours', specificTables: ['paiements'] },
+      {
+        id: 'paiements_recents',
+        label: 'Paiements recents',
+        description: 'Liste des derniers paiements recus.',
+        followUpQuestion:
+          'Liste les 20 derniers paiements recus avec le client, le montant et la date',
+        specificTables: ['paiements', 'customer'],
+      },
+      {
+        id: 'total_paiements',
+        label: 'Total encaisse',
+        description: 'Montant total des paiements recus.',
+        followUpQuestion:
+          'Quel est le montant total des paiements recus cette annee ?',
+        specificTables: ['paiements'],
+      },
+      {
+        id: 'paiements_mois',
+        label: 'Par mois',
+        description: 'Evolution des paiements par mois.',
+        followUpQuestion:
+          "Donne le total des paiements recus par mois pour l'annee en cours",
+        specificTables: ['paiements'],
+      },
     ],
   },
   {
     id: 'dossiers',
     keywords: [
-      'dossier en cours', 'dossiers en cours', 'dossiers ouverts', 'dossiers actifs',
-      'etat des dossiers', 'situation des dossiers', 'bilan des dossiers',
-      'dossiers du cabinet', 'mes dossiers', 'nos dossiers', 'tous les dossiers',
-      'nombre de dossiers', 'combien de dossiers', 'statistiques dossiers',
+      'dossier en cours',
+      'dossiers en cours',
+      'dossiers ouverts',
+      'dossiers actifs',
+      'etat des dossiers',
+      'situation des dossiers',
+      'bilan des dossiers',
+      'dossiers du cabinet',
+      'mes dossiers',
+      'nos dossiers',
+      'tous les dossiers',
+      'nombre de dossiers',
+      'combien de dossiers',
+      'statistiques dossiers',
     ],
     reason: 'La consultation des dossiers peut prendre plusieurs angles.',
     question: 'Que souhaitez-vous savoir sur les dossiers ?',
     options: [
-      { id: 'dossiers_count', label: 'Nombre de dossiers', description: 'Compter les dossiers en cours, clos et total.', followUpQuestion: 'Combien de dossiers sont en cours et combien sont clotures ?', specificTables: ['dossiers'] },
-      { id: 'dossiers_list', label: 'Liste des dossiers', description: 'Afficher la liste des dossiers ouverts avec leurs details.', followUpQuestion: 'Liste les dossiers en cours avec leur reference, client et date d\'ouverture', specificTables: ['dossiers', 'customer'] },
-      { id: 'dossiers_avocat', label: 'Dossiers par avocat', description: 'Repartition des dossiers par collaborateur.', followUpQuestion: 'Combien de dossiers en cours par avocat ?', specificTables: ['dossiers', 'employee'] },
+      {
+        id: 'dossiers_count',
+        label: 'Nombre de dossiers',
+        description: 'Compter les dossiers en cours, clos et total.',
+        followUpQuestion:
+          'Combien de dossiers sont en cours et combien sont clotures ?',
+        specificTables: ['dossiers'],
+      },
+      {
+        id: 'dossiers_list',
+        label: 'Liste des dossiers',
+        description:
+          'Afficher la liste des dossiers ouverts avec leurs details.',
+        followUpQuestion:
+          "Liste les dossiers en cours avec leur reference, client et date d'ouverture",
+        specificTables: ['dossiers', 'customer'],
+      },
+      {
+        id: 'dossiers_avocat',
+        label: 'Dossiers par avocat',
+        description: 'Repartition des dossiers par collaborateur.',
+        followUpQuestion: 'Combien de dossiers en cours par avocat ?',
+        specificTables: ['dossiers', 'employee'],
+      },
     ],
   },
   {
     id: 'audiences',
     keywords: [
-      'audience a venir', 'audiences a venir', 'prochaine audience', 'prochaines audiences',
-      'calendrier audience', 'planning audience', 'audience prevue', 'audiences prevues',
-      'audience passee', 'audiences passees', 'audience du jour', 'audiences du jour',
-      'audience cette semaine', 'audiences cette semaine', 'audience ce mois',
+      'audience a venir',
+      'audiences a venir',
+      'prochaine audience',
+      'prochaines audiences',
+      'calendrier audience',
+      'planning audience',
+      'audience prevue',
+      'audiences prevues',
+      'audience passee',
+      'audiences passees',
+      'audience du jour',
+      'audiences du jour',
+      'audience cette semaine',
+      'audiences cette semaine',
+      'audience ce mois',
     ],
     reason: 'Les audiences peuvent etre consultees de differentes manieres.',
     question: 'Que souhaitez-vous consulter sur les audiences ?',
     options: [
-      { id: 'audiences_semaine', label: 'Cette semaine', description: 'Audiences programmees pour la semaine en cours.', followUpQuestion: 'Liste les audiences prevues cette semaine avec la date, le dossier et la juridiction', specificTables: ['audiences', 'dossiers'] },
-      { id: 'audiences_mois', label: 'Ce mois', description: 'Toutes les audiences du mois en cours.', followUpQuestion: 'Liste les audiences prevues ce mois avec la date, le dossier et la juridiction', specificTables: ['audiences', 'dossiers'] },
-      { id: 'audiences_avocat', label: 'Par avocat', description: 'Audiences a venir ventilees par collaborateur.', followUpQuestion: 'Combien d\'audiences a venir par avocat ?', specificTables: ['audiences', 'employee', 'dossiers'] },
+      {
+        id: 'audiences_semaine',
+        label: 'Cette semaine',
+        description: 'Audiences programmees pour la semaine en cours.',
+        followUpQuestion:
+          'Liste les audiences prevues cette semaine avec la date, le dossier et la juridiction',
+        specificTables: ['audiences', 'dossiers'],
+      },
+      {
+        id: 'audiences_mois',
+        label: 'Ce mois',
+        description: 'Toutes les audiences du mois en cours.',
+        followUpQuestion:
+          'Liste les audiences prevues ce mois avec la date, le dossier et la juridiction',
+        specificTables: ['audiences', 'dossiers'],
+      },
+      {
+        id: 'audiences_avocat',
+        label: 'Par avocat',
+        description: 'Audiences a venir ventilees par collaborateur.',
+        followUpQuestion: "Combien d'audiences a venir par avocat ?",
+        specificTables: ['audiences', 'employee', 'dossiers'],
+      },
     ],
   },
   {
     id: 'clients',
     keywords: [
-      'liste des clients', 'tous les clients', 'mes clients', 'nos clients',
-      'clients actifs', 'clients du cabinet', 'nombre de clients',
-      'combien de clients', 'nouveaux clients', 'client recent',
+      'liste des clients',
+      'tous les clients',
+      'mes clients',
+      'nos clients',
+      'clients actifs',
+      'clients du cabinet',
+      'nombre de clients',
+      'combien de clients',
+      'nouveaux clients',
+      'client recent',
     ],
     reason: 'Les clients peuvent etre consultes selon differents criteres.',
     question: 'Que souhaitez-vous savoir sur les clients ?',
     options: [
-      { id: 'clients_list', label: 'Liste des clients', description: 'Afficher tous les clients avec leurs coordonnees.', followUpQuestion: 'Liste les clients avec leur nom, email et telephone', specificTables: ['customer'] },
-      { id: 'clients_count', label: 'Nombre de clients', description: 'Compter le nombre total de clients.', followUpQuestion: 'Combien de clients sont enregistres dans le cabinet ?', specificTables: ['customer'] },
-      { id: 'clients_dossiers', label: 'Clients avec dossiers', description: 'Clients ayant des dossiers en cours.', followUpQuestion: 'Liste les clients qui ont au moins un dossier en cours avec le nombre de dossiers', specificTables: ['customer', 'dossiers'] },
+      {
+        id: 'clients_list',
+        label: 'Liste des clients',
+        description: 'Afficher tous les clients avec leurs coordonnees.',
+        followUpQuestion: 'Liste les clients avec leur nom, email et telephone',
+        specificTables: ['customer'],
+      },
+      {
+        id: 'clients_count',
+        label: 'Nombre de clients',
+        description: 'Compter le nombre total de clients.',
+        followUpQuestion:
+          'Combien de clients sont enregistres dans le cabinet ?',
+        specificTables: ['customer'],
+      },
+      {
+        id: 'clients_dossiers',
+        label: 'Clients avec dossiers',
+        description: 'Clients ayant des dossiers en cours.',
+        followUpQuestion:
+          'Liste les clients qui ont au moins un dossier en cours avec le nombre de dossiers',
+        specificTables: ['customer', 'dossiers'],
+      },
     ],
   },
   {
     id: 'avocats',
     keywords: [
-      'avocat', 'avocats', 'collaborateur', 'collaborateurs',
-      'equipe', 'effectif', 'personnel', 'charge de travail',
-      'performance avocat', 'activite avocat', 'productivite',
+      'avocat',
+      'avocats',
+      'collaborateur',
+      'collaborateurs',
+      'equipe',
+      'effectif',
+      'personnel',
+      'charge de travail',
+      'performance avocat',
+      'activite avocat',
+      'productivite',
     ],
-    reason: 'L\'activite des collaborateurs peut etre consultee selon plusieurs axes.',
+    reason:
+      "L'activite des collaborateurs peut etre consultee selon plusieurs axes.",
     question: 'Que souhaitez-vous savoir sur les collaborateurs ?',
     options: [
-      { id: 'avocats_list', label: 'Liste des avocats', description: 'Afficher les collaborateurs du cabinet.', followUpQuestion: 'Liste les avocats et collaborateurs du cabinet avec leur poste', specificTables: ['employee'] },
-      { id: 'charge_travail', label: 'Charge de travail', description: 'Nombre de dossiers en cours par avocat.', followUpQuestion: 'Combien de dossiers en cours sont assignes a chaque avocat ?', specificTables: ['dossiers', 'employee'] },
-      { id: 'ca_par_avocat', label: 'CA par avocat', description: 'Chiffre d\'affaires genere par chaque collaborateur.', followUpQuestion: 'Quel est le chiffre d\'affaires facture par avocat ?', specificTables: ['factures', 'employee'] },
+      {
+        id: 'avocats_list',
+        label: 'Liste des avocats',
+        description: 'Afficher les collaborateurs du cabinet.',
+        followUpQuestion:
+          'Liste les avocats et collaborateurs du cabinet avec leur poste',
+        specificTables: ['employee'],
+      },
+      {
+        id: 'charge_travail',
+        label: 'Charge de travail',
+        description: 'Nombre de dossiers en cours par avocat.',
+        followUpQuestion:
+          'Combien de dossiers en cours sont assignes a chaque avocat ?',
+        specificTables: ['dossiers', 'employee'],
+      },
+      {
+        id: 'ca_par_avocat',
+        label: 'CA par avocat',
+        description: "Chiffre d'affaires genere par chaque collaborateur.",
+        followUpQuestion: "Quel est le chiffre d'affaires facture par avocat ?",
+        specificTables: ['factures', 'employee'],
+      },
     ],
   },
   {
     id: 'documents',
     keywords: [
-      'document', 'documents', 'piece jointe', 'pieces jointes',
-      'fichier', 'fichiers', 'contrat', 'contrats',
+      'document',
+      'documents',
+      'piece jointe',
+      'pieces jointes',
+      'fichier',
+      'fichiers',
+      'contrat',
+      'contrats',
     ],
     reason: 'Les documents peuvent etre consultes de differentes manieres.',
     question: 'Que souhaitez-vous consulter sur les documents ?',
     options: [
-      { id: 'documents_recents', label: 'Documents recents', description: 'Derniers documents ajoutes au systeme.', followUpQuestion: 'Liste les 20 derniers documents ajoutes avec leur nom, type et le dossier associe', specificTables: ['document_customer', 'dossiers'] },
-      { id: 'documents_par_dossier', label: 'Par dossier', description: 'Nombre de documents par dossier.', followUpQuestion: 'Combien de documents sont associes a chaque dossier ?', specificTables: ['document_customer', 'dossiers'] },
-      { id: 'documents_par_type', label: 'Par type', description: 'Repartition des documents par type.', followUpQuestion: 'Combien de documents par type de document ?', specificTables: ['document_customer'] },
+      {
+        id: 'documents_recents',
+        label: 'Documents recents',
+        description: 'Derniers documents ajoutes au systeme.',
+        followUpQuestion:
+          'Liste les 20 derniers documents ajoutes avec leur nom, type et le dossier associe',
+        specificTables: ['document_customer', 'dossiers'],
+      },
+      {
+        id: 'documents_par_dossier',
+        label: 'Par dossier',
+        description: 'Nombre de documents par dossier.',
+        followUpQuestion:
+          'Combien de documents sont associes a chaque dossier ?',
+        specificTables: ['document_customer', 'dossiers'],
+      },
+      {
+        id: 'documents_par_type',
+        label: 'Par type',
+        description: 'Repartition des documents par type.',
+        followUpQuestion: 'Combien de documents par type de document ?',
+        specificTables: ['document_customer'],
+      },
     ],
   },
   {
     id: 'diligences',
     keywords: [
-      'diligence', 'diligences', 'tache', 'taches',
-      'a faire', 'en retard', 'echeance', 'echeances',
+      'diligence',
+      'diligences',
+      'tache',
+      'taches',
+      'a faire',
+      'en retard',
+      'echeance',
+      'echeances',
     ],
-    reason: 'Les diligences peuvent etre consultees selon leur statut ou leur echeance.',
+    reason:
+      'Les diligences peuvent etre consultees selon leur statut ou leur echeance.',
     question: 'Que souhaitez-vous savoir sur les diligences ?',
     options: [
-      { id: 'diligences_en_cours', label: 'En cours', description: 'Diligences actuellement en cours.', followUpQuestion: 'Liste les diligences en cours avec leur echeance, le dossier et l\'avocat responsable', specificTables: ['diligences', 'dossiers', 'employee'] },
-      { id: 'diligences_retard', label: 'En retard', description: 'Diligences dont l\'echeance est depassee.', followUpQuestion: 'Liste les diligences dont la date d\'echeance est depassee', specificTables: ['diligences', 'dossiers'] },
-      { id: 'diligences_avocat', label: 'Par avocat', description: 'Repartition des diligences par collaborateur.', followUpQuestion: 'Combien de diligences en cours par avocat ?', specificTables: ['diligences', 'employee'] },
+      {
+        id: 'diligences_en_cours',
+        label: 'En cours',
+        description: 'Diligences actuellement en cours.',
+        followUpQuestion:
+          "Liste les diligences en cours avec leur echeance, le dossier et l'avocat responsable",
+        specificTables: ['diligences', 'dossiers', 'employee'],
+      },
+      {
+        id: 'diligences_retard',
+        label: 'En retard',
+        description: "Diligences dont l'echeance est depassee.",
+        followUpQuestion:
+          "Liste les diligences dont la date d'echeance est depassee",
+        specificTables: ['diligences', 'dossiers'],
+      },
+      {
+        id: 'diligences_avocat',
+        label: 'Par avocat',
+        description: 'Repartition des diligences par collaborateur.',
+        followUpQuestion: 'Combien de diligences en cours par avocat ?',
+        specificTables: ['diligences', 'employee'],
+      },
     ],
   },
   {
     id: 'comptabilite',
     keywords: [
-      'comptabilite', 'ecriture comptable', 'ecritures comptables',
-      'journal comptable', 'grand livre', 'balance', 'compte comptable',
-      'plan comptable', 'exercice comptable',
+      'comptabilite',
+      'ecriture comptable',
+      'ecritures comptables',
+      'journal comptable',
+      'grand livre',
+      'balance',
+      'compte comptable',
+      'plan comptable',
+      'exercice comptable',
     ],
     reason: 'La comptabilite peut etre consultee selon differents axes.',
     question: 'Quel aspect de la comptabilite souhaitez-vous consulter ?',
     options: [
-      { id: 'ecritures_recentes', label: 'Ecritures recentes', description: 'Dernieres ecritures comptables enregistrees.', followUpQuestion: 'Liste les 20 dernieres ecritures comptables avec le journal, la date, le libelle et le montant', specificTables: ['ecriture', 'journal'] },
-      { id: 'solde_comptes', label: 'Solde des comptes', description: 'Solde actuel des principaux comptes comptables.', followUpQuestion: 'Donne le solde (total debit - total credit) de chaque compte comptable', specificTables: ['ecriture', 'compte'] },
-      { id: 'ecritures_journal', label: 'Par journal', description: 'Ecritures ventilees par journal comptable.', followUpQuestion: 'Combien d\'ecritures et quel montant total par journal comptable ?', specificTables: ['ecriture', 'journal'] },
+      {
+        id: 'ecritures_recentes',
+        label: 'Ecritures recentes',
+        description: 'Dernieres ecritures comptables enregistrees.',
+        followUpQuestion:
+          'Liste les 20 dernieres ecritures comptables avec le journal, la date, le libelle et le montant',
+        specificTables: ['ecriture', 'journal'],
+      },
+      {
+        id: 'solde_comptes',
+        label: 'Solde des comptes',
+        description: 'Solde actuel des principaux comptes comptables.',
+        followUpQuestion:
+          'Donne le solde (total debit - total credit) de chaque compte comptable',
+        specificTables: ['ecriture', 'compte'],
+      },
+      {
+        id: 'ecritures_journal',
+        label: 'Par journal',
+        description: 'Ecritures ventilees par journal comptable.',
+        followUpQuestion:
+          "Combien d'ecritures et quel montant total par journal comptable ?",
+        specificTables: ['ecriture', 'journal'],
+      },
     ],
   },
 ];
 
 export const CABINET_JURIDIQUE_PROMPT_RULES = `
 ### 10. 👤 Règle ABSOLUE pour les COLLABORATEURS (employee)
-Les collaborateurs NE PEUVENT PAS être créés via ce système.
-Un collaborateur (employee) est obligatoirement lié à un compte utilisateur (User) existant
-avec authentification, mot de passe et rôles — ce qui ne peut pas être géré par l'IA.
-Si l'utilisateur demande de "créer un collaborateur", "ajouter un avocat", "enregistrer un employé"
-ou toute variante, réponds UNIQUEMENT :
-{ "type": "READ" }
-Et explique que la création se fait via l'interface RH dédiée.
-En revanche, la MODIFICATION de champs métier d'un collaborateur existant est autorisée
+Pour "créer un collaborateur", "ajouter un avocat", "enregistrer un employé" ou toute variante,
+fais un INSERT sur "employee" avec au minimum "full_name" (prénom et nom), comme le formulaire RH.
+Ajoute seulement ce que l'utilisateur précise : position (ex: "avocat"; défaut collaborateur),
+email, phone_number, branch, specialization, hourly_rate, hire_date…
+Ne fournis JAMAIS password, role, username, tenant_id ni status : le système crée lui-même le compte,
+le mot de passe temporaire (envoyé par email si un email est fourni) et le profil d'accès déduit de la fonction.
+La MODIFICATION de champs métier d'un collaborateur existant est aussi autorisée
 (spécialisation, taux horaire, disponibilité, statut, etc.).
 
 ### 11. 👤 Règle CRITIQUE pour les NOMS des COLLABORATEURS (employee vs user)
@@ -324,22 +647,79 @@ Quand l'utilisateur demande de renvoyer, reporter, reprogrammer ou marquer une a
 - inclus TOUJOURS :
   - "status": "2"
   - "reason": motif du renvoi
-  - "report_content": rapport d'audience rédigé
   - "audience_date": nouvelle date du renvoi
   - "audience_time": nouvelle heure du renvoi
   - "outcome": "postponed"
+- "report_content" (rapport d'audience) est facultatif : ne l'ajoute que si l'utilisateur le fournit
 - ne propose PAS un simple UPDATE avec seulement "status" et "outcome"
-- si la nouvelle date, l'heure ou le rapport manquent, baisse la confiance et demande confirmation
+- si la nouvelle date ou l'heure manquent, baisse la confiance et demande confirmation
+
+### 6. 🗂️ Règle CRITIQUE pour le CATALOGUE D'ACTIONS (familles, définitions, règles)
+Le catalogue se compose de 3 niveaux : FAMILLE (regroupement) → DÉFINITION (type d'action) → RÈGLE de recommandation (optionnelle).
+Une ACTION de dossier (dossier_actions) n'est JAMAIS créée directement sans définition existante.
+
+**Mots déclencheurs à détecter** :
+"famille", "familles", "famille d'action", "catalogue", "type d'action", "sous-action",
+"ajouter une famille", "nouvelle famille", "créer un type d'action", "règle de recommandation".
+
+**Créer une FAMILLE** → UNE SEULE opération INSERT dans l'entité "case_action_families" avec :
+  - champ "label" : OBLIGATOIRE, le nom donné par l'utilisateur (ex: "Recouvrement amiable").
+    Clé JSON exacte "label" en minuscules — jamais "Famille", "famille", "nom" ou "name".
+  - champ "code" : NE JAMAIS LE METTRE sauf si l'utilisateur impose explicitement un code.
+    Il est généré automatiquement depuis le libellé.
+  - NE crée PAS d'opération "case_action_definitions" en même temps sauf si l'utilisateur
+    demande aussi un type d'action précis.
+
+  Exemple — « ajoute une famille d'action Recouvrement amiable » :
+  { "operation": "INSERT", "entity": "case_action_families", "tempId": "nouvelle_famille",
+    "fields": { "label": "Recouvrement amiable" } }
+
+**Créer une DÉFINITION (type d'action)** → INSERT dans "case_action_definitions" avec :
+  - champ "label" : OBLIGATOIRE (nom lisible de l'action).
+  - champ "family" : OBLIGATOIRE si "family_id" absent — code ou LIBELLÉ de la famille
+    (ex: "Recouvrement amiable"). Si la famille n'existe pas, elle est CRÉÉE
+    AUTOMATIQUEMENT : ne génère PAS d'opération "case_action_families" séparée.
+  - champ "code" : optionnel, généré automatiquement si absent.
+
+  Exemple — « crée l'action Relancer le débiteur dans la famille Recouvrement amiable » :
+  { "operation": "INSERT", "entity": "case_action_definitions", "tempId": "nouvelle_definition",
+    "fields": { "label": "Relancer le débiteur", "family": "Recouvrement amiable" } }
+
+**Créer une RÈGLE de recommandation** → INSERT dans "case_recommendation_rules" avec :
+  - champs OBLIGATOIRES : "code" (MAJUSCULES, ex: "RELANCE_DEBITEUR"), "label", "trigger",
+    "condition_json" (objet json-logic), "reason_template", "action_definition_id"
+    (ou "action_definition" avec le code/libellé de la définition).
+  - contrairement aux familles/définitions, le "code" N'EST PAS auto-généré : déduis-le du libellé.
+
+**Créer une ACTION de dossier** → INSERT dans "dossier_actions" UNIQUEMENT si le dossier
+et la définition existent déjà (jamais de création auto du dossier ni de la définition ici) :
+  - champ "dossier" : numéro du dossier existant, champ "definition_code" ou "definition" :
+    code/libellé de la définition existante.
 `;
 
 /**
  * Prompt système pour les réponses conversationnelles (questions hors-BD).
  * Injecté via AiDatabaseProjectConfig.conversationalSystemPrompt.
  */
-export const CABINET_JURIDIQUE_CONVERSATIONAL_PROMPT = `Tu es l'assistant IA d'un cabinet d'avocats. \
-Tu réponds aux questions générales et aux salutations de façon courtoise et professionnelle. \
-Pour les questions métier spécifiques (consulter des dossiers, clients, factures, audiences, paiements), \
-tu invites l'utilisateur à reformuler sa demande de façon précise afin de pouvoir interroger la base de données.`;
+export const CABINET_JURIDIQUE_CONVERSATIONAL_PROMPT = `Tu es l'assistant IA d'un cabinet d'avocats, \
+juriste expérimenté et collègue de confiance des avocats et assistants du cabinet.
+
+Utilise pleinement tes connaissances :
+- Droit : procédures civiles, pénales, commerciales, sociales, administratives et foncières, délais, voies de recours, \
+conditions, définitions, principes, textes (codes, lois, Actes uniformes OHADA), jurisprudence connue.
+- Par défaut, raisonne en droit camerounais et OHADA ; si un autre pays est cité ou probable, adapte-toi et dis-le. \
+Signale les différences notables entre systèmes (common law dans les régions anglophones, droit français…) quand elles comptent.
+- Rédaction : modèles de courriers, mises en demeure, requêtes, conclusions, clauses, à adapter par l'avocat.
+- Culture générale et questions courantes : réponds simplement.
+
+Règles :
+- Réponds directement et concrètement, en français clair, structuré (titres courts, listes) quand la réponse est longue.
+- Donne les délais, étapes et références de textes quand tu les connais ; si tu n'es pas certain d'un chiffre ou d'un \
+article, dis-le et invite à vérifier la version en vigueur, sans renoncer à répondre.
+- N'invente JAMAIS de données du cabinet (dossiers, clients, audiences, montants) : tu n'y as pas accès dans ce mode. \
+Si la question en dépend, réponds sur le plan juridique puis propose en une phrase de consulter les données \
+(ex: « Voulez-vous que je vérifie les audiences de ce dossier ? »).
+- Salutations et remerciements : une réponse brève et cordiale.`;
 
 export const CABINET_JURIDIQUE_PROMPT_EXAMPLE = `{
   "type": "WRITE",

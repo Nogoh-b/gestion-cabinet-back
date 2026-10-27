@@ -24,6 +24,7 @@ import {
   SalaryAdvanceStatus,
 } from './entities/salary-advance.entity';
 import type { PayrollActor } from './payslips.service';
+import { HrNotificationsService } from './services/hr-notifications.service';
 
 @Injectable()
 export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
@@ -38,6 +39,7 @@ export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
     private readonly dataSource: DataSource,
     private readonly outboxService: OutboxService,
     private readonly auditService: AuditService,
+    private readonly hrNotifications: HrNotificationsService,
   ) {
     super(repository, paginationService);
   }
@@ -107,7 +109,9 @@ export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
         },
       }),
     );
-    return this.findOne(saved.id);
+    const created = await this.findOne(saved.id);
+    await this.notifyHr(() => this.hrNotifications.advanceRequested(created));
+    return created;
   }
 
   findAll(): Promise<SalaryAdvance[]> {
@@ -205,7 +209,7 @@ export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
     id: number,
     actor: PayrollActor,
   ): Promise<SalaryAdvance> {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const advance = await this.lockAdvance(manager, id);
       if (advance.status !== SalaryAdvanceStatus.PENDING) {
         throw new BadRequestException(
@@ -238,6 +242,10 @@ export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
       });
       return saved;
     });
+    await this.notifyHr(() =>
+      this.hrNotifications.advanceApproved(result, Number(actor?.userId) || undefined),
+    );
+    return result;
   }
 
   async pay(
@@ -254,7 +262,7 @@ export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
     ) {
       throw new BadRequestException('Date de versement invalide');
     }
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const advance = await this.lockAdvance(manager, id);
       if (advance.status !== SalaryAdvanceStatus.APPROVED) {
         throw new BadRequestException(
@@ -306,6 +314,10 @@ export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
       });
       return saved;
     });
+    await this.notifyHr(() =>
+      this.hrNotifications.advancePaid(result, Number(actor?.userId) || undefined),
+    );
+    return result;
   }
 
   async cancel(
@@ -313,7 +325,7 @@ export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
     reason: string,
     actor: PayrollActor,
   ): Promise<SalaryAdvance> {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const advance = await this.lockAdvance(manager, id);
       if (
         ![
@@ -349,6 +361,10 @@ export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
       });
       return saved;
     });
+    await this.notifyHr(() =>
+      this.hrNotifications.advanceCancelled(result, Number(actor?.userId) || undefined),
+    );
+    return result;
   }
 
   async update(
@@ -494,5 +510,14 @@ export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
 
   private fromMinorUnits(value: number): number {
     return value / 100;
+  }
+
+  /** Les notifications RH ne doivent jamais faire échouer l'opération validée. */
+  private async notifyHr(send: () => Promise<unknown>): Promise<void> {
+    try {
+      await send();
+    } catch {
+      // Notification best-effort : l'opération métier est déjà commitée.
+    }
   }
 }

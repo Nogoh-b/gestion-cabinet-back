@@ -1,12 +1,13 @@
 // src/modules/dossiers/dto/dossier-stats.dto.ts
-import { BaseStatsDto, DistributionItem } from "src/core/types/base-stats.dto";
+import { BaseStatsDto, DistributionItem } from 'src/core/types/base-stats.dto';
 
 export class DossierStatsDto extends BaseStatsDto {
   // Vue d'ensemble
   activeDossiers: number;
   closedDossiers: number;
+  closureRate: number;
   archivedDossiers: number;
-  
+
   // Distributions
   byStatus: DistributionItem[];
   byDangerLevel: DistributionItem[];
@@ -14,13 +15,13 @@ export class DossierStatsDto extends BaseStatsDto {
   byProcedureType: DistributionItem[];
   byJurisdiction: DistributionItem[];
   byLawyer?: DistributionItem[];
-  
+
   // Métriques financières
   financialStats: FinancialStatsDto;
-  
+
   // Métriques temporelles
   timelineStats: TimelineStatsDto;
-  
+
   // Listes
   recentDossiers: RecentDossierDto[];
   urgentDossiers: UrgentDossierDto[];
@@ -83,8 +84,3 @@ export class UrgentDossierDto {
   nextAudience?: Date;
   daysUntilDeadline?: number;
 }
-
-
-
-
-

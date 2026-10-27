@@ -8,13 +8,14 @@ export interface PaginationMeta {
   page: number;
   limit: number;
   totalPages: number;
+  /** Champ optionnel propre aux notifications (nombre de non-lues). */
+  unread_count?: number;
 }
 
 export interface PaginatedResult<T> {
   data: T[];
   meta: PaginationMeta;
 }
-
 
 export interface SearchOptions {
   /** Terme à rechercher */

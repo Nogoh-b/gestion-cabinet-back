@@ -1,4 +1,8 @@
-import { MailTemplate, MailTemplateAudience, MailTemplateCategory } from './entities/mail-template.entity';
+import {
+  MailTemplate,
+  MailTemplateAudience,
+  MailTemplateCategory,
+} from './entities/mail-template.entity';
 
 export type NotificationTemplateAudience = 'client' | 'employee';
 
@@ -79,8 +83,19 @@ const PAIEMENT_VARIABLES = [
   'paiement.statut',
 ];
 
+const ACTION_VARIABLES = [
+  'action.titre',
+  'action.statut',
+  'action.priorite',
+  'action.echeance',
+  'action.responsable',
+  'action.nb_reports',
+  'action.dernier_motif_report',
+];
+
 const DILIGENCE_VARIABLES = [
   ...DOSSIER_VARIABLES,
+  ...ACTION_VARIABLES,
   'diligence.titre',
   'diligence.description',
   'diligence.type',
@@ -107,8 +122,10 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     kind: 'dossier',
     clientSubject: 'Ouverture du dossier {{dossier.numero}}',
     employeeSubject: 'Nouveau dossier {{dossier.numero}}',
-    clientIntro: 'Votre dossier est maintenant ouvert. Les informations principales sont reprises ci-dessous pour faciliter le suivi.',
-    employeeIntro: 'Un dossier vient d etre cree. Verifiez les affectations, les pieces initiales et les prochaines actions.',
+    clientIntro:
+      'Votre dossier est maintenant ouvert. Les informations principales sont reprises ci-dessous pour faciliter le suivi.',
+    employeeIntro:
+      'Un dossier vient d etre cree. Verifiez les affectations, les pieces initiales et les prochaines actions.',
     actionLabel: 'Ouvrir le dossier',
   },
   {
@@ -118,8 +135,10 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     kind: 'dossier',
     clientSubject: 'Mise a jour du dossier {{dossier.numero}}',
     employeeSubject: 'Dossier {{dossier.numero}} mis a jour',
-    clientIntro: 'Une information de votre dossier a ete mise a jour par le cabinet.',
-    employeeIntro: 'Un dossier suivi par le cabinet a ete modifie. Controlez les impacts sur les actions en cours.',
+    clientIntro:
+      'Une information de votre dossier a ete mise a jour par le cabinet.',
+    employeeIntro:
+      'Un dossier suivi par le cabinet a ete modifie. Controlez les impacts sur les actions en cours.',
     actionLabel: 'Consulter le dossier',
   },
   {
@@ -129,8 +148,10 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     kind: 'dossier',
     clientSubject: 'Avancement du dossier {{dossier.numero}}',
     employeeSubject: 'Changement de statut - dossier {{dossier.numero}}',
-    clientIntro: 'Le statut de votre dossier a evolue. Le statut actuel est indique dans le recapitulatif.',
-    employeeIntro: 'Le statut d un dossier a change. Verifiez les prochaines etapes et les delais associes.',
+    clientIntro:
+      'Le statut de votre dossier a evolue. Le statut actuel est indique dans le recapitulatif.',
+    employeeIntro:
+      'Le statut d un dossier a change. Verifiez les prochaines etapes et les delais associes.',
     actionLabel: 'Voir le statut',
   },
   {
@@ -140,8 +161,10 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     kind: 'dossier',
     clientSubject: 'Cloture du dossier {{dossier.numero}}',
     employeeSubject: 'Dossier {{dossier.numero}} cloture',
-    clientIntro: 'Votre dossier est indique comme cloture. Le recapitulatif ci-dessous reprend les informations de reference.',
-    employeeIntro: 'Un dossier vient d etre cloture. Controlez les pieces finales, la facturation et l archivage.',
+    clientIntro:
+      'Votre dossier est indique comme cloture. Le recapitulatif ci-dessous reprend les informations de reference.',
+    employeeIntro:
+      'Un dossier vient d etre cloture. Controlez les pieces finales, la facturation et l archivage.',
     actionLabel: 'Voir le dossier',
   },
   {
@@ -152,7 +175,8 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     clientSubject: 'Equipe chargee du dossier {{dossier.numero}}',
     employeeSubject: 'Nouvelle affectation - dossier {{dossier.numero}}',
     clientIntro: 'L equipe chargee de votre dossier a ete mise a jour.',
-    employeeIntro: 'Vous ou un collaborateur avez ete ajoute au suivi du dossier. Prenez connaissance du contexte.',
+    employeeIntro:
+      'Vous ou un collaborateur avez ete ajoute au suivi du dossier. Prenez connaissance du contexte.',
     actionLabel: 'Ouvrir le dossier',
   },
   {
@@ -162,8 +186,10 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     kind: 'dossier',
     clientSubject: 'Mise a jour de l equipe - dossier {{dossier.numero}}',
     employeeSubject: 'Affectation modifiee - dossier {{dossier.numero}}',
-    clientIntro: 'La composition de l equipe chargee de votre dossier a ete mise a jour.',
-    employeeIntro: 'Un collaborateur a ete retire du suivi du dossier. Verifiez la repartition des taches restantes.',
+    clientIntro:
+      'La composition de l equipe chargee de votre dossier a ete mise a jour.',
+    employeeIntro:
+      'Un collaborateur a ete retire du suivi du dossier. Verifiez la repartition des taches restantes.',
     actionLabel: 'Voir les affectations',
   },
   {
@@ -172,9 +198,12 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     category: 'audience',
     kind: 'audience',
     clientSubject: 'Audience du {{audience.date}} - dossier {{dossier.numero}}',
-    employeeSubject: 'Nouvelle audience {{audience.date}} - dossier {{dossier.numero}}',
-    clientIntro: 'Une audience a ete planifiee dans votre dossier. Merci de prendre connaissance des informations pratiques.',
-    employeeIntro: 'Une audience vient d etre ajoutee. Controlez la juridiction, l heure et la preparation requise.',
+    employeeSubject:
+      'Nouvelle audience {{audience.date}} - dossier {{dossier.numero}}',
+    clientIntro:
+      'Une audience a ete planifiee dans votre dossier. Merci de prendre connaissance des informations pratiques.',
+    employeeIntro:
+      'Une audience vient d etre ajoutee. Controlez la juridiction, l heure et la preparation requise.',
     actionLabel: 'Voir l audience',
   },
   {
@@ -182,10 +211,13 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     label: 'Audience modifiee',
     category: 'audience',
     kind: 'audience',
-    clientSubject: 'Modification audience {{audience.date}} - dossier {{dossier.numero}}',
+    clientSubject:
+      'Modification audience {{audience.date}} - dossier {{dossier.numero}}',
     employeeSubject: 'Audience modifiee - dossier {{dossier.numero}}',
-    clientIntro: 'Les informations d une audience de votre dossier ont ete modifiees.',
-    employeeIntro: 'Une audience a ete modifiee. Verifiez si les parties et les pieces doivent etre mises a jour.',
+    clientIntro:
+      'Les informations d une audience de votre dossier ont ete modifiees.',
+    employeeIntro:
+      'Une audience a ete modifiee. Verifiez si les parties et les pieces doivent etre mises a jour.',
     actionLabel: 'Voir l audience',
   },
   {
@@ -193,10 +225,13 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     label: 'Rappel audience',
     category: 'audience',
     kind: 'audience',
-    clientSubject: 'Rappel audience {{audience.date}} - dossier {{dossier.numero}}',
-    employeeSubject: 'Rappel audience {{audience.date}} - dossier {{dossier.numero}}',
+    clientSubject:
+      'Rappel audience {{audience.date}} - dossier {{dossier.numero}}',
+    employeeSubject:
+      'Rappel audience {{audience.date}} - dossier {{dossier.numero}}',
     clientIntro: 'Nous vous rappelons l audience prevue dans votre dossier.',
-    employeeIntro: 'Une audience approche. Controlez les pieces, consignes et responsabilites.',
+    employeeIntro:
+      'Une audience approche. Controlez les pieces, consignes et responsabilites.',
     actionLabel: 'Ouvrir l audience',
   },
   {
@@ -207,8 +242,22 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     clientSubject: 'Audience tenue - dossier {{dossier.numero}}',
     employeeSubject: 'Audience tenue - dossier {{dossier.numero}}',
     clientIntro: 'Une audience liee a votre dossier a ete marquee comme tenue.',
-    employeeIntro: 'Une audience a ete marquee comme tenue. Completez le compte rendu et les suites a donner.',
+    employeeIntro:
+      'Une audience a ete marquee comme tenue. Completez le compte rendu et les suites a donner.',
     actionLabel: 'Voir le compte rendu',
+  },
+  {
+    code: 'audience_cancelled',
+    label: 'Audience annulee',
+    category: 'audience',
+    kind: 'audience',
+    clientSubject: 'Audience annulee - dossier {{dossier.numero}}',
+    employeeSubject: 'Audience annulee - dossier {{dossier.numero}}',
+    clientIntro:
+      'Une audience liee a votre dossier a ete annulee. Les informations disponibles sont reprises ci-dessous.',
+    employeeIntro:
+      'Une audience a ete annulee. Verifiez les impacts sur le dossier, les pieces et les prochaines actions.',
+    actionLabel: 'Voir l audience',
   },
   {
     code: 'facture_created',
@@ -218,7 +267,8 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     clientSubject: 'Facture {{facture.numero}} - {{cabinet.nom}}',
     employeeSubject: 'Facture {{facture.numero}} creee',
     clientIntro: 'Une nouvelle facture est disponible pour votre dossier.',
-    employeeIntro: 'Une facture vient d etre creee. Verifiez le montant, l echeance et le dossier rattache.',
+    employeeIntro:
+      'Une facture vient d etre creee. Verifiez le montant, l echeance et le dossier rattache.',
     actionLabel: 'Voir la facture',
   },
   {
@@ -229,7 +279,8 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     clientSubject: 'Facture emise {{facture.numero}}',
     employeeSubject: 'Facture emise {{facture.numero}}',
     clientIntro: 'Une facture a ete emise et mise a disposition.',
-    employeeIntro: 'Une facture a ete emise. Suivez son envoi et son reglement.',
+    employeeIntro:
+      'Une facture a ete emise. Suivez son envoi et son reglement.',
     actionLabel: 'Voir la facture',
   },
   {
@@ -240,7 +291,8 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     clientSubject: 'Paiement confirme - facture {{facture.numero}}',
     employeeSubject: 'Facture {{facture.numero}} reglee',
     clientIntro: 'Le reglement de votre facture a ete confirme.',
-    employeeIntro: 'Une facture est marquee comme payee. Controlez le rapprochement comptable si necessaire.',
+    employeeIntro:
+      'Une facture est marquee comme payee. Controlez le rapprochement comptable si necessaire.',
     actionLabel: 'Voir la facture',
   },
   {
@@ -250,8 +302,10 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     kind: 'billing',
     clientSubject: 'Facture {{facture.numero}} en attente de reglement',
     employeeSubject: 'Facture {{facture.numero}} en retard',
-    clientIntro: 'Une facture reste en attente de reglement. Les informations utiles sont reprises ci-dessous.',
-    employeeIntro: 'Une facture est en retard. Verifiez le dossier et les actions de relance.',
+    clientIntro:
+      'Une facture reste en attente de reglement. Les informations utiles sont reprises ci-dessous.',
+    employeeIntro:
+      'Une facture est en retard. Verifiez le dossier et les actions de relance.',
     actionLabel: 'Voir la facture',
   },
   {
@@ -262,7 +316,8 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     clientSubject: 'Paiement enregistre - facture {{facture.numero}}',
     employeeSubject: 'Paiement recu - facture {{facture.numero}}',
     clientIntro: 'Votre paiement a ete enregistre par le cabinet.',
-    employeeIntro: 'Un paiement vient d etre enregistre. Controlez le rapprochement avec la facture.',
+    employeeIntro:
+      'Un paiement vient d etre enregistre. Controlez le rapprochement avec la facture.',
     actionLabel: 'Voir le paiement',
   },
   {
@@ -273,7 +328,8 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     clientSubject: 'Document disponible - {{document.nom}}',
     employeeSubject: 'Document ajoute - dossier {{dossier.numero}}',
     clientIntro: 'Un document a ete ajoute a votre espace ou a votre dossier.',
-    employeeIntro: 'Un document a ete ajoute. Verifiez son classement et son acces.',
+    employeeIntro:
+      'Un document a ete ajoute. Verifiez son classement et son acces.',
     actionLabel: 'Voir le document',
   },
   {
@@ -284,7 +340,8 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     clientSubject: 'Document partage - {{document.nom}}',
     employeeSubject: 'Document partage - dossier {{dossier.numero}}',
     clientIntro: 'Un document vient d etre partage avec vous.',
-    employeeIntro: 'Un document a ete partage. Controlez les destinataires et les droits d acces.',
+    employeeIntro:
+      'Un document a ete partage. Controlez les destinataires et les droits d acces.',
     actionLabel: 'Ouvrir le document',
   },
   {
@@ -293,9 +350,11 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     category: 'dossier',
     kind: 'diligence',
     clientSubject: 'Action ouverte - dossier {{dossier.numero}}',
-    employeeSubject: 'Diligence {{diligence.titre}} - dossier {{dossier.numero}}',
+    employeeSubject:
+      'Diligence {{diligence.titre}} - dossier {{dossier.numero}}',
     clientIntro: 'Une diligence a ete ouverte dans le cadre de votre dossier.',
-    employeeIntro: 'Une diligence vous concerne. Consultez le delai, la priorite et les consignes.',
+    employeeIntro:
+      'Une diligence vous concerne. Consultez le delai, la priorite et les consignes.',
     actionLabel: 'Voir la diligence',
   },
   {
@@ -305,8 +364,10 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     kind: 'diligence',
     clientSubject: 'Action terminee - dossier {{dossier.numero}}',
     employeeSubject: 'Diligence terminee - {{diligence.titre}}',
-    clientIntro: 'Une diligence liee a votre dossier a ete marquee comme terminee.',
-    employeeIntro: 'Une diligence est terminee. Verifiez les suites a donner au dossier.',
+    clientIntro:
+      'Une diligence liee a votre dossier a ete marquee comme terminee.',
+    employeeIntro:
+      'Une diligence est terminee. Verifiez les suites a donner au dossier.',
     actionLabel: 'Voir la diligence',
   },
   {
@@ -317,7 +378,8 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     clientSubject: 'Nouvelle etape - dossier {{dossier.numero}}',
     employeeSubject: 'Etape modifiee - dossier {{dossier.numero}}',
     clientIntro: 'Votre dossier a avance vers une nouvelle etape de procedure.',
-    employeeIntro: 'Une etape de procedure a change. Verifiez les prochaines actions et echeances.',
+    employeeIntro:
+      'Une etape de procedure a change. Verifiez les prochaines actions et echeances.',
     actionLabel: 'Voir la procedure',
   },
 ];
@@ -336,10 +398,15 @@ export function buildNotificationTemplateByCode(
   if (!match) return null;
 
   const [, baseCode, audience] = match;
-  const config = NOTIFICATION_TEMPLATE_CONFIGS.find((item) => item.code === baseCode);
+  const config = NOTIFICATION_TEMPLATE_CONFIGS.find(
+    (item) => item.code === baseCode,
+  );
   if (!config) return null;
 
-  return buildNotificationTemplate(config, audience as NotificationTemplateAudience);
+  return buildNotificationTemplate(
+    config,
+    audience as NotificationTemplateAudience,
+  );
 }
 
 function buildNotificationTemplate(
@@ -356,8 +423,12 @@ function buildNotificationTemplate(
     category: config.category,
     audience,
     description: `Modele systeme modifiable pour les notifications ${nameAudience}.`,
-    subject: isClient ? config.clientSubject : `[Interne] ${config.employeeSubject}`,
-    body_html: isClient ? buildClientNotificationBody(config) : buildEmployeeNotificationBody(config),
+    subject: isClient
+      ? config.clientSubject
+      : `[Interne] ${config.employeeSubject}`,
+    body_html: isClient
+      ? buildClientNotificationBody(config)
+      : buildEmployeeNotificationBody(config),
     variables: JSON.stringify(variablesFor(config.kind)),
     is_system: true,
     is_active: true,
@@ -377,7 +448,9 @@ function variablesFor(kind: NotificationTemplateKind): string[] {
   return [...new Set([...COMMON_VARIABLES, ...specific])];
 }
 
-function buildClientNotificationBody(config: NotificationTemplateConfig): string {
+function buildClientNotificationBody(
+  config: NotificationTemplateConfig,
+): string {
   return `
 <h2 style="margin:0 0 12px;color:#111827;">${config.clientSubject}</h2>
 <p>Bonjour{{#if client.nom}} {{client.nom}}{{/if}},</p>
@@ -392,7 +465,9 @@ ${detailsTable(config.kind)}
 <p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`;
 }
 
-function buildEmployeeNotificationBody(config: NotificationTemplateConfig): string {
+function buildEmployeeNotificationBody(
+  config: NotificationTemplateConfig,
+): string {
   return `
 <h2 style="margin:0 0 12px;color:#111827;">${config.employeeSubject}</h2>
 <p>${config.employeeIntro}</p>
@@ -475,6 +550,11 @@ function rowsFor(kind: NotificationTemplateKind): string[] {
       row('Date debut', 'diligence.date_debut'),
       row('Date limite', 'diligence.date_limite'),
       row('Avocat assigne', 'diligence.avocat'),
+      row('Action liee', 'action.titre'),
+      row('Statut action', 'action.statut'),
+      row('Echeance action', 'action.echeance'),
+      row("Reports d'echeance", 'action.nb_reports'),
+      row('Motif dernier report', 'action.dernier_motif_report'),
       ...commonRows,
     ];
   }

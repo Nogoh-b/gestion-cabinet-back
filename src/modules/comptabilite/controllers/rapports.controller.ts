@@ -1,9 +1,22 @@
-import { Controller, Get, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-import { RapportsService } from '../services/rapports.service';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+
+import { RapportsService } from '../services/rapports.service';
 
 @ApiTags('comptabilite-rapports')
 @ApiBearerAuth()
@@ -14,7 +27,9 @@ export class RapportsController {
 
   @Get('balance')
   @RequirePermissions('view_accounting_reports')
-  @ApiOperation({ summary: 'Balance des comptes (soldes débit/crédit par compte)' })
+  @ApiOperation({
+    summary: 'Balance des comptes (soldes débit/crédit par compte)',
+  })
   @ApiQuery({ name: 'exerciceId', required: false })
   getBalance(@Query('exerciceId') exerciceId?: number) {
     return this.service.getBalance(exerciceId ? +exerciceId : undefined);
@@ -28,7 +43,10 @@ export class RapportsController {
     @Param('compteId', ParseIntPipe) compteId: number,
     @Query('exerciceId') exerciceId?: number,
   ) {
-    return this.service.getGrandLivre(compteId, exerciceId ? +exerciceId : undefined);
+    return this.service.getGrandLivre(
+      compteId,
+      exerciceId ? +exerciceId : undefined,
+    );
   }
 
   @Get('resultat')

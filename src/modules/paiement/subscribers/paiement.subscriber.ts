@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, InsertEvent, Repository } from 'typeorm';
+import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
 
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
@@ -35,10 +35,35 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
   }
 
   protected async onAfterCreate(
-    _entity: Paiement,
-    _event: InsertEvent<Paiement>,
+    entity: Paiement,
+    event: InsertEvent<Paiement>,
   ): Promise<void> {
-    // Intentionnellement vide : payment.validated est l'unique déclencheur.
+    // Le reçu part uniquement de payment.validated (outbox). Seul un paiement
+    // déclaré par le client depuis son espace prévient le cabinet ici.
+    if (
+      entity.declared_by_client &&
+      Number(entity.status) === StatutPaiement.EN_ATTENTE
+    ) {
+      await this.notifyDeclaredPayment(entity.id as any, event);
+    }
+  }
+
+  protected async onAfterUpdate(
+    entity: Partial<Paiement>,
+    event: UpdateEvent<Paiement>,
+  ): Promise<void> {
+    if (!this.hasColumnChanged(event, 'status')) return;
+    const change = this.getFieldChanges(event, ['status']).find(
+      (c) => c.field === 'status',
+    );
+    if (
+      change &&
+      Number(change.oldValue) === StatutPaiement.EN_ATTENTE &&
+      Number(change.newValue) === StatutPaiement.REJETE
+    ) {
+      const rejectedId = entity.id ?? event.databaseEntity?.id;
+      if (rejectedId) await this.notifyRejectedPayment(rejectedId, event);
+    }
   }
 
   @OnEvent('outbox.payment.validated', { async: true })
@@ -80,6 +105,75 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
         resource: paiement as any,
       }),
     });
+  }
+
+  /** Le client déclare un paiement : l'avocat du dossier et les admins l'approuvent. */
+  private async notifyDeclaredPayment(
+    id: string | number,
+    event: InsertEvent<Paiement>,
+  ): Promise<void> {
+    const paiement = await this.load(id, event);
+    if (!paiement?.facture) return;
+    const facture: any = paiement.facture;
+    const currencySymbol = await this.getCurrencySymbol();
+    const who =
+      facture.client?.company_name?.trim() ||
+      `${facture.client?.first_name ?? ''} ${facture.client?.last_name ?? ''}`.trim() ||
+      'Un client';
+
+    await this.notify({
+      event: NotifiableEvent.CLIENT_PAYMENT_DECLARED,
+      title: `Paiement déclaré — facture ${facture.numero}`,
+      content:
+        `${who} déclare avoir payé ${formatMoney(paiement.montant, currencySymbol)} ` +
+        `(${formatDate(paiement.datePaiement)}). À vérifier et valider.`,
+      link: `/facturation/factures/${facture.id}`,
+      audience: { lawyer_id: facture.dossier?.lawyer_id ?? null },
+      entity: { type: 'paiement', id: paiement.id as any },
+    });
+  }
+
+  /** Le cabinet rejette un paiement déclaré par le client : le client est informé. */
+  private async notifyRejectedPayment(
+    id: string | number,
+    event: UpdateEvent<Paiement>,
+  ): Promise<void> {
+    const paiement = await this.load(id, event);
+    if (!paiement?.facture || !paiement.declared_by_client) return;
+    const facture: any = paiement.facture;
+    const currencySymbol = await this.getCurrencySymbol();
+
+    await this.notify({
+      event: NotifiableEvent.PAIEMENT_REJECTED,
+      title: `Paiement non validé — facture ${facture.numero}`,
+      content:
+        `Le paiement de ${formatMoney(paiement.montant, currencySymbol)} que vous avez déclaré n'a pas pu être validé.` +
+        (paiement.notes
+          ? ` Motif : ${String(paiement.notes).split(/\r?\n/)[0]}`
+          : ''),
+      link: `/espace-client/factures/${facture.id}`,
+      audience: {
+        client: {
+          customer_id: facture.client?.id,
+          email: facture.client?.email,
+          notify: true,
+        },
+        lawyer_id: null,
+        admin_ids_override: [],
+      },
+      entity: { type: 'paiement', id: paiement.id as any },
+    });
+  }
+
+  private load(
+    id: string | number,
+    event?: InsertEvent<Paiement> | UpdateEvent<Paiement>,
+  ): Promise<Paiement | null> {
+    return this.loadEntity<Paiement>(
+      id,
+      { relations: ['facture', 'facture.client', 'facture.dossier'] },
+      event,
+    );
   }
 
   private async getCurrencySymbol(): Promise<string> {

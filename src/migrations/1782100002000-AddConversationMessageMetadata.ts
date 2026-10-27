@@ -1,8 +1,13 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddConversationMessageMetadata1782100002000 implements MigrationInterface {
+export class AddConversationMessageMetadata1782100002000
+  implements MigrationInterface
+{
   public async up(queryRunner: QueryRunner): Promise<void> {
-    const hasMetadata = await queryRunner.hasColumn('conversation_messages', 'metadata');
+    const hasMetadata = await queryRunner.hasColumn(
+      'conversation_messages',
+      'metadata',
+    );
     if (!hasMetadata) {
       await queryRunner.query(`
         ALTER TABLE conversation_messages
@@ -12,7 +17,10 @@ export class AddConversationMessageMetadata1782100002000 implements MigrationInt
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    const hasMetadata = await queryRunner.hasColumn('conversation_messages', 'metadata');
+    const hasMetadata = await queryRunner.hasColumn(
+      'conversation_messages',
+      'metadata',
+    );
     if (hasMetadata) {
       await queryRunner.query(`
         ALTER TABLE conversation_messages

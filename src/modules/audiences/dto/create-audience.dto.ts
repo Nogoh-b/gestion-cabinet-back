@@ -1,16 +1,24 @@
 // src/modules/audiences/dto/create-audience.dto.ts
-import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches, Min } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Min,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-
-
-
-
 
 export class CreateAudienceDto {
   @ApiProperty({
     example: 12,
-    description: "Identifiant du dossier lié à cette audience",
+    description: 'Identifiant du dossier lié à cette audience',
   })
   @IsInt()
   @IsNotEmpty()
@@ -24,11 +32,12 @@ export class CreateAudienceDto {
   @IsOptional()
   audience_date?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: '09:00:00',
-    description: "Heure prévue pour l'audience",
+    description: "Heure prévue pour l'audience (09:00 par défaut)",
   })
-  @Matches(/^\d{2}:\d{2}(?::\d{2})?$/)
+  @IsString()
+  @Matches(/^\d{1,2}:\d{2}(?::\d{2})?$/)
   @IsOptional()
   audience_time?: string;
 
@@ -57,13 +66,14 @@ export class CreateAudienceDto {
   @IsOptional()
   late_scheduling_reason?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 60,
     description: "Durée prévue pour l'audience en minutes",
   })
   @IsInt()
+  @IsOptional()
   @Min(1)
-  duration_minutes: number;
+  duration_minutes?: number;
 
   @ApiProperty({
     example: 'Tribunal de première instance de Yaoundé',
@@ -96,14 +106,30 @@ export class CreateAudienceDto {
   @IsString()
   @IsOptional()
   type: any;
-  
+
   @ApiProperty({
     example: 'Audience Type',
     required: false,
   })
   @IsNumber()
   @IsOptional()
-  audience_type_id: number;
+  audience_type_id?: number;
+
+  @ApiPropertyOptional({
+    description: "Audience d'origine lorsqu'il s'agit d'un renvoi",
+    example: 42,
+  })
+  @IsInt()
+  @IsOptional()
+  parent_audience_id?: number;
+
+  @ApiPropertyOptional({
+    description: 'Motif du renvoi',
+    example: 'Renvoi pour communication de pièces',
+  })
+  @IsString()
+  @IsOptional()
+  reason?: string;
 
   @ApiProperty({
     example: 'Affaire reportée faute de partie adverse',
@@ -120,13 +146,14 @@ export class CreateAudienceDto {
   @Transform(({ value }) => {
     if (value === '' || value == null) return undefined;
     if (Array.isArray(value)) return value.map(Number);
-    return String(value).split(',').map((item) => Number(item.trim()));
+    return String(value)
+      .split(',')
+      .map((item) => Number(item.trim()));
   })
   @IsArray()
   @IsOptional()
   @IsInt({ each: true })
   document_ids?: number[]; // Liste des destinataires principaux
-
 
   @ApiProperty({
     example: '2025-11-05T09:00:00Z',
@@ -136,12 +163,20 @@ export class CreateAudienceDto {
   @IsOptional()
   postponed_to?: string;
 
-  @ApiProperty({ required: false, description: 'ID UUID de la visite d\'étape courante (optionnel — priorité sur la détection automatique)' })
+  @ApiProperty({
+    required: false,
+    description:
+      "ID UUID de la visite d'étape courante (optionnel — priorité sur la détection automatique)",
+  })
   @IsUUID()
   @IsOptional()
   stage_visit_id?: string;
 
-  @ApiProperty({ required: false, description: 'ID UUID de la visite de sous-étape courante (optionnel — priorité sur la détection automatique)' })
+  @ApiProperty({
+    required: false,
+    description:
+      'ID UUID de la visite de sous-étape courante (optionnel — priorité sur la détection automatique)',
+  })
   @IsUUID()
   @IsOptional()
   sub_stage_visit_id?: string;

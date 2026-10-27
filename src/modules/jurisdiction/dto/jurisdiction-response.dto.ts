@@ -1,8 +1,10 @@
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { JurisdictionLevel, JurisdictionType } from '../entities/jurisdiction.entity';
-
+import {
+  JurisdictionLevel,
+  JurisdictionType,
+} from '../entities/jurisdiction.entity';
 
 export class JurisdictionResponseDto {
   @ApiProperty()
@@ -64,11 +66,15 @@ export class JurisdictionResponseDto {
 
   @ApiPropertyOptional()
   @Expose()
-  @Transform(({ obj }) => obj.parent_jurisdiction ? {
-    id: obj.parent_jurisdiction.id,
-    code: obj.parent_jurisdiction.code,
-    name: obj.parent_jurisdiction.name
-  } : undefined)
+  @Transform(({ obj }) =>
+    obj.parent_jurisdiction
+      ? {
+          id: obj.parent_jurisdiction.id,
+          code: obj.parent_jurisdiction.code,
+          name: obj.parent_jurisdiction.name,
+        }
+      : undefined,
+  )
   parent_jurisdiction?: {
     id: number;
     code: string;
@@ -106,7 +112,7 @@ export class JurisdictionResponseDto {
       [JurisdictionType.ADMINISTRATIVE]: 'Administratif',
       [JurisdictionType.PENAL]: 'Pénal',
       [JurisdictionType.LABOR]: 'Travail',
-      [JurisdictionType.FAMILY]: 'Famille'
+      [JurisdictionType.FAMILY]: 'Famille',
     };
     return typeLabels[obj.jurisdiction_type] || 'Inconnu';
   })
@@ -119,7 +125,7 @@ export class JurisdictionResponseDto {
       [JurisdictionLevel.MUNICIPAL]: 'Municipal',
       [JurisdictionLevel.REGIONAL]: 'Régional',
       [JurisdictionLevel.NATIONAL]: 'National',
-      [JurisdictionLevel.INTERNATIONAL]: 'International'
+      [JurisdictionLevel.INTERNATIONAL]: 'International',
     };
     return levelLabels[obj.level] || 'Inconnu';
   })

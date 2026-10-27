@@ -1,6 +1,13 @@
 // src/chat/dto/create-conversation.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsNotEmpty, IsOptional, IsBoolean, IsString, IsNumber } from 'class-validator';
+import {
+  IsArray,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  IsString,
+  IsNumber,
+} from 'class-validator';
 
 export class CreateConversationDto {
   @ApiProperty({
@@ -20,7 +27,7 @@ export class CreateConversationDto {
   name?: string;
 
   @ApiPropertyOptional({
-    description: 'Indique si c\'est une conversation de groupe',
+    description: "Indique si c'est une conversation de groupe",
     example: false,
     default: false,
   })
@@ -28,7 +35,6 @@ export class CreateConversationDto {
   @IsBoolean()
   isGroup?: boolean;
 }
-
 
 // src/chat/dto/send-message.dto.ts
 
@@ -66,6 +72,20 @@ export class SendMessageDto {
   @IsArray()
   references?: ChatReferenceDto[];
 
+  @ApiPropertyOptional({
+    description:
+      "Identifiant provisoire du message côté client, renvoyé tel quel pour remplacer l'affichage optimiste",
+  })
+  @IsOptional()
+  @IsString()
+  clientTempId?: string;
+}
+
+export class CreateDirectConversationDto {
+  @ApiProperty({ description: 'Collaborateur avec qui discuter', example: 4 })
+  @IsNumber()
+  @IsNotEmpty()
+  employeeId: number;
 }
 
 export interface ChatReferenceDto {
@@ -81,8 +101,6 @@ export interface ChatReferenceDto {
     date?: string;
   };
 }
-
-
 
 // src/chat/dto/create-group.dto.ts
 

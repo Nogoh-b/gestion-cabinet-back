@@ -1,12 +1,6 @@
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
-
-
-
-
-
-
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @SharedAcrossTenants()
 @Entity()
@@ -21,8 +15,8 @@ export class RessourceType extends TenantEntity {
   name: string;
 
   @Column()
-  amount: number; 
-   
+  amount: number;
+
   @Column()
   quantity: number;
 

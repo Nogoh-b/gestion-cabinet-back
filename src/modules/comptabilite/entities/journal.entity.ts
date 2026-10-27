@@ -8,7 +8,10 @@ import {
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { TypeJournal } from '../enums/comptabilite.enums';
 import { Ecriture } from './ecriture.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('journaux_comptables')
 @Index('UQ_journals_tenant_code', ['tenant_id', 'code'], {
@@ -19,7 +22,8 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
 })
 @BusinessTable({
   label: 'Journaux comptables',
-  description: 'Journaux dans lesquels sont enregistrées les écritures comptables (ventes, achats, caisse, banque, opérations diverses).',
+  description:
+    'Journaux dans lesquels sont enregistrées les écritures comptables (ventes, achats, caisse, banque, opérations diverses).',
   icon: '📔',
   category: 'finance',
 })
@@ -72,6 +76,6 @@ export class JournalComptable extends TenantEntity {
   })
   actif: boolean;
 
-  @OneToMany(() => Ecriture, e => e.journal)
+  @OneToMany(() => Ecriture, (e) => e.journal)
   ecritures: Ecriture[];
 }

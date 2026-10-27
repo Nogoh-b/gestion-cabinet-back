@@ -1,0 +1,488 @@
+{
+  "generatedAt": "2026-07-05T04:20:07.275Z",
+  "total": 253,
+  "protectedCount": 173,
+  "unprotectedCount": 80,
+  "unprotected": [
+    {
+      "file": "app.controller.ts",
+      "line": 69,
+      "text": "await this.dataSource.query('SELECT * FROM table_inexistante');",
+      "protectedByHelper": false
+    },
+    {
+      "file": "config\\ai-database\\resolvers\\employee-ai-resolver.ts",
+      "line": 81,
+      "text": ".createQueryBuilder('e')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\ai-database.service.ts",
+      "line": 2270,
+      "text": "const rows: any[] = await this.dataSource.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\ai-database.service.ts",
+      "line": 2663,
+      "text": "const rows: Array<{ id: number }> = await this.dataSource.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\ai-database.service.ts",
+      "line": 3877,
+      "text": "const foreignKeys = await this.dataSource.query(`",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\ai-database.service.ts",
+      "line": 4847,
+      "text": "const columns = await this.dataSource.query(`",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\ai-database.service.ts",
+      "line": 4884,
+      "text": "const countResult = await this.dataSource.query(`SELECT COUNT(*) as count FROM ${table}`);",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\ai-database.service.ts",
+      "line": 4992,
+      "text": "const columns = await this.dataSource.query(`",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\ai-database.service.ts",
+      "line": 5018,
+      "text": "const countResult = await this.dataSource.query(`SELECT COUNT(*) as count FROM ${table}`);",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\ai-database.service.ts",
+      "line": 5713,
+      "text": "const results = await this.dataSource.query(execQuery);",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\ai-database.service.ts",
+      "line": 5763,
+      "text": "await this.dataSource.query(`EXPLAIN ${preparedQuery}`);",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\ai-database.service.ts",
+      "line": 5794,
+      "text": "const result = await this.dataSource.query(`SELECT COUNT(*) as count FROM ${table}`);",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\schema-metadata.service.ts",
+      "line": 244,
+      "text": "return this.dataSource.query(`",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\sql-validator.service.ts",
+      "line": 17,
+      "text": "const columns = await this.dataSource.query(`",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\ai-database\\write\\base-write-handler.ts",
+      "line": 812,
+      "text": "const rows = await this.dataSource.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\shared\\emails\\emails.service.ts",
+      "line": 315,
+      "text": ".createQueryBuilder('mail')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\shared\\emails\\emails.service.ts",
+      "line": 348,
+      "text": "const rawRows: Array<{ id: number }> = await this.dossierRepository.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\shared\\emails\\emails.service.ts",
+      "line": 360,
+      "text": "const sample: Array<{ client_id: number; cnt: string }> = await this.dossierRepository.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "core\\shared\\emails\\emails.service.ts",
+      "line": 380,
+      "text": ".createQueryBuilder('mail')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\agencies\\branch\\branch.service.ts",
+      "line": 222,
+      "text": ".createQueryBuilder('b')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\agencies\\employee\\employee-stats.service.ts",
+      "line": 758,
+      "text": ".createQueryBuilder('employee')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\agencies\\employee\\employee-stats.service.ts",
+      "line": 1006,
+      "text": ".createQueryBuilder('employee')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\agencies\\employee\\employee.service.ts",
+      "line": 480,
+      "text": ".createQueryBuilder('user')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\audiences\\audience-write.handler.ts",
+      "line": 148,
+      "text": ".createQueryBuilder('d')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\audiences\\audience-write.handler.ts",
+      "line": 164,
+      "text": ".createQueryBuilder('j')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\backup\\backup.service.ts",
+      "line": 123,
+      "text": "const rows: Array<{ t: string }> = await this.dataSource.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\chat\\services\\chat\\chat.service.ts",
+      "line": 676,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\chat\\services\\chat\\chat.service.ts",
+      "line": 725,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\chat\\services\\chat\\chat.service.ts",
+      "line": 753,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\comptabilite\\services\\ecritures.service.ts",
+      "line": 130,
+      "text": ".createQueryBuilder('e')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\comptabilite\\services\\ecritures.service.ts",
+      "line": 151,
+      "text": ".createQueryBuilder('e')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\comptabilite\\services\\ecritures.service.ts",
+      "line": 178,
+      "text": ".createQueryBuilder('e')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\comptabilite\\write\\ecriture-write.handler.ts",
+      "line": 236,
+      "text": ".createQueryBuilder('c')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\customer\\customer\\customer-stats.service.ts",
+      "line": 648,
+      "text": ".createQueryBuilder('customer')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\customer\\customer\\customer-stats.service.ts",
+      "line": 709,
+      "text": ".createQueryBuilder('customer')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\customer\\type-customer\\type-customer-stats.service.ts",
+      "line": 238,
+      "text": ".createQueryBuilder('type')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\diligence\\diligence-stats.service.ts",
+      "line": 531,
+      "text": ".createQueryBuilder('diligence')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\documents\\document-customer\\document-customer.service.ts",
+      "line": 643,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\documents\\document-customer\\document-stats.service.ts",
+      "line": 670,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\documents\\document-type\\document-type-stats.service.ts",
+      "line": 242,
+      "text": ".createQueryBuilder('dt')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\documents\\document-type\\document-type-stats.service.ts",
+      "line": 397,
+      "text": ".createQueryBuilder('dt')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\documents\\document-type\\document-type.service.ts",
+      "line": 238,
+      "text": ".createQueryBuilder('document_type')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\dossiers\\subscribers\\dossier.subscriber.ts",
+      "line": 321,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\dossiers\\subscribers\\dossier.subscriber.ts",
+      "line": 379,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\facture\\facture-write.handler.ts",
+      "line": 75,
+      "text": "const rows = await this.dataSource.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\facture\\facture-write.handler.ts",
+      "line": 93,
+      "text": "const rows = await this.dataSource.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\facture\\facture-write.handler.ts",
+      "line": 301,
+      "text": ".createQueryBuilder('f')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\facture\\subscribers\\facture.subscriber.ts",
+      "line": 196,
+      "text": "await (event?.manager ?? this.dataSource.manager).query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\iam\\role-permission\\role-permission.service.ts",
+      "line": 63,
+      "text": ".createQueryBuilder('rp')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\iam\\user\\user.service.ts",
+      "line": 91,
+      "text": ".createQueryBuilder('user')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\iam\\user\\user.service.ts",
+      "line": 152,
+      "text": ".createQueryBuilder('user')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\iam\\user\\user.service.ts",
+      "line": 220,
+      "text": ".createQueryBuilder('user')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\iam\\user-role\\user-role.service.ts",
+      "line": 68,
+      "text": ".createQueryBuilder('role')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\iam\\user-role\\user-role.service.ts",
+      "line": 100,
+      "text": ".createQueryBuilder('role')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\invoice-type\\invoice-type-stats.service.ts",
+      "line": 533,
+      "text": ".createQueryBuilder('it')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\jurisdiction\\jurisdiction-stats.service.ts",
+      "line": 374,
+      "text": ".createQueryBuilder('j')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\partner\\partner.service.ts",
+      "line": 70,
+      "text": "const qb = this.partnerRepository.createQueryBuilder('partnr')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\plans\\plans.service.ts",
+      "line": 87,
+      "text": "this.cabinetRepo.manager.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\plans\\plans.service.ts",
+      "line": 91,
+      "text": "this.cabinetRepo.manager.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\plans\\plans.service.ts",
+      "line": 95,
+      "text": "this.cabinetRepo.manager.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\plans\\plans.service.ts",
+      "line": 99,
+      "text": "this.cabinetRepo.manager.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\procedure\\services\\procedure-instance.service.ts",
+      "line": 318,
+      "text": ".createQueryBuilder(ProcedureInstance, 'instance')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\procedure\\services\\procedure-instance.service.ts",
+      "line": 376,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\procedure\\services\\procedure-instance.service.ts",
+      "line": 437,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\procedure\\services\\procedure-instance.service.ts",
+      "line": 1466,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\procedure\\services\\procedure-instance.service.ts",
+      "line": 1550,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\procedure\\services\\procedure-instance.service.ts",
+      "line": 1557,
+      "text": ".createQueryBuilder()",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\procedure\\write\\procedure-instance-write.handler.ts",
+      "line": 70,
+      "text": ".createQueryBuilder('s')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\procedure\\write\\stage-write.handler.ts",
+      "line": 84,
+      "text": ".createQueryBuilder('s')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\procedure\\write\\sub-stage-write.handler.ts",
+      "line": 84,
+      "text": ".createQueryBuilder('ss')",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\subscriptions\\subscriptions.service.ts",
+      "line": 572,
+      "text": "const rows: Array<{ t: string }> = await this.dataSource.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\subscriptions\\subscriptions.service.ts",
+      "line": 588,
+      "text": "const emps: Array<{ id: number }> = await m.query(",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\subscriptions\\subscriptions.service.ts",
+      "line": 596,
+      "text": "await m.query('SET FOREIGN_KEY_CHECKS=0');",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\subscriptions\\subscriptions.service.ts",
+      "line": 599,
+      "text": "await m.query(`DELETE FROM \\`${t}\\` WHERE tenant_id = ?`, [cabinetId]);",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\subscriptions\\subscriptions.service.ts",
+      "line": 602,
+      "text": "await m.query('DELETE FROM `user` WHERE id IN (?)', [empIds]);",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\subscriptions\\subscriptions.service.ts",
+      "line": 604,
+      "text": "await m.query('DELETE FROM subscription_payments WHERE cabinet_id = ?', [cabinetId]);",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\subscriptions\\subscriptions.service.ts",
+      "line": 605,
+      "text": "await m.query('DELETE FROM subscriptions WHERE cabinet_id = ?', [cabinetId]);",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\subscriptions\\subscriptions.service.ts",
+      "line": 606,
+      "text": "await m.query('DELETE FROM cabinets WHERE id = ?', [cabinetId]);",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\subscriptions\\subscriptions.service.ts",
+      "line": 608,
+      "text": "await m.query('SET FOREIGN_KEY_CHECKS=1');",
+      "protectedByHelper": false
+    },
+    {
+      "file": "modules\\supplier\\supplier.service.ts",
+      "line": 67,
+      "text": ".createQueryBuilder('supplier')",
+      "protectedByHelper": false
+    }
+  ]
+}

@@ -2,11 +2,11 @@ import {
   BaseEntity as TypeORMBaseEntity,
   CreateDateColumn,
   UpdateDateColumn,
-  DeleteDateColumn
+  DeleteDateColumn,
 } from 'typeorm';
 import { BusinessColumn } from '../decorators/business-metadata.decorator';
 
-export abstract class BaseEntity  extends TypeORMBaseEntity{
+export abstract class BaseEntity extends TypeORMBaseEntity {
   // @PrimaryGeneratedColumn()
   // @BusinessColumn({
   //   label: 'Identifiant',
@@ -19,13 +19,12 @@ export abstract class BaseEntity  extends TypeORMBaseEntity{
   @CreateDateColumn({ name: 'created_at' })
   @BusinessColumn({
     label: 'Date de création',
-    description: 'Date et heure de création de l\'enregistrement',
+    description: "Date et heure de création de l'enregistrement",
     format: 'date',
     importance: 'medium',
-    group: 'audit'
+    group: 'audit',
   })
   created_at: Date;
-
 
   @UpdateDateColumn({ name: 'updated_at' })
   @BusinessColumn({
@@ -33,20 +32,19 @@ export abstract class BaseEntity  extends TypeORMBaseEntity{
     description: 'Date et heure de la dernière modification',
     format: 'date',
     importance: 'low',
-    group: 'audit'
+    group: 'audit',
   })
   updated_at: Date;
-
 
   @DeleteDateColumn({ name: 'deleted_at', nullable: true })
   @BusinessColumn({
     label: 'Date de suppression',
-    description: 'Date de suppression logique (null = actif, non null = supprimé)',
+    description:
+      'Date de suppression logique (null = actif, non null = supprimé)',
     format: 'date',
     importance: 'medium',
     group: 'audit',
-    ignored: true 
+    ignored: true,
   })
   deleted_at: Date | null = null;
-
 }

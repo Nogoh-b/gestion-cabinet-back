@@ -14,12 +14,17 @@ export class PayslipSearchDto {
   @IsInt()
   period_id?: number;
 
-  @ApiPropertyOptional({ enum: PayslipStatus, description: 'Filtrer par statut' })
+  @ApiPropertyOptional({
+    enum: PayslipStatus,
+    description: 'Filtrer par statut',
+  })
   @IsOptional()
   @IsEnum(PayslipStatus)
   status?: PayslipStatus;
 
-  @ApiPropertyOptional({ description: 'Recherche texte (nom employé, libellé période)' })
+  @ApiPropertyOptional({
+    description: 'Recherche texte (nom employé, libellé période)',
+  })
   @IsOptional()
   @IsString()
   search?: string;

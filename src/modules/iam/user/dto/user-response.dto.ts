@@ -1,11 +1,8 @@
-// 
+//
 import { Exclude, Expose, Transform } from 'class-transformer';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { ApiProperty } from '@nestjs/swagger';
-
-
-
 
 export class UserResponseDto {
   @Expose()
@@ -18,7 +15,7 @@ export class UserResponseDto {
 
   @Expose()
   @ApiProperty()
-  status: number; 
+  status: number;
 
   @Expose()
   @ApiProperty()
@@ -58,12 +55,22 @@ export class UserResponseDto {
   // @Transform(({ obj }) =>
   //   obj.roleAssignments?.find(a => a.role?.status === 1)?.role?.code || null
   // )
-  role: string; 
+  role: string;
+
+  @Expose()
+  @Transform(({ obj }) => obj.base_role || obj.roleAssignments?.find(a => a.status === 1)?.role?.base_role || obj.role)
+  base_role: string;
+
+  @Expose()
+  @Transform(({ obj }) => obj.roleAssignments?.find(a => a.status === 1)?.role?.name || obj.role)
+  role_name: string;
 
   @Expose()
   @ApiProperty()
-  @Transform(({ obj }) =>
-    obj.roleAssignments?.find(a => a.role?.status === 1)?.role?.description || null
+  @Transform(
+    ({ obj }) =>
+      obj.roleAssignments?.find((a) => a.role?.status === 1)?.role
+        ?.description || null,
   )
   roleDescription: string;
 
@@ -72,10 +79,10 @@ export class UserResponseDto {
   create_at: Date;
 
   @Exclude()
-  roleAssignments: any; 
+  roleAssignments: any;
 
   @Exclude()
-  password: string; 
+  password: string;
 
   @Expose({ name: 'updated_at' })
   @ApiProperty()

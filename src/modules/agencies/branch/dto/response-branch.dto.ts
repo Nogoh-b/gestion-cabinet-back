@@ -38,28 +38,32 @@ export class BranchResponseDto {
 
   @ApiProperty({ example: 'Littoral', description: 'Nom de la région' })
   @Expose()
-  @Transform(({ obj }) => obj.location_city?.district?.division?.region?.name || null)
+  @Transform(
+    ({ obj }) => obj.location_city?.district?.division?.region?.name || null,
+  )
   region_name: string;
 
   @ApiProperty({ example: 'Cameroun', description: 'Nom du pays' })
   @Expose()
-  @Transform(({ obj }) => obj.location_city?.district?.division?.region?.country?.name || null)
+  @Transform(
+    ({ obj }) =>
+      obj.location_city?.district?.division?.region?.country?.name || null,
+  )
   country_name: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     example: 'Douala, Wouri, Littoral, Cameroun',
-    description: 'Adresse complète formatée' 
+    description: 'Adresse complète formatée',
   })
   @Expose()
   @Transform(({ obj }) => obj.location_city?.full_address || '')
   full_address: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     example: 'Douala, Littoral, Cameroun',
-    description: 'Résumé de localisation' 
+    description: 'Résumé de localisation',
   })
   @Expose()
-
   location_summary: string;
 
   /* ------------------ HORAIRES ------------------ */
@@ -67,25 +71,37 @@ export class BranchResponseDto {
   @Expose()
   creation_date: Date;
 
-  @ApiProperty({ example: "08:00", description: "Heure d'ouverture (format HH:MM)" })
+  @ApiProperty({
+    example: '08:00',
+    description: "Heure d'ouverture (format HH:MM)",
+  })
   @Expose()
-  opening_hour: string;  // ← CORRIGÉ : string au lieu de number
+  opening_hour: string; // ← CORRIGÉ : string au lieu de number
 
-  @ApiProperty({ example: "17:00", description: "Heure de fermeture (format HH:MM)" })
+  @ApiProperty({
+    example: '17:00',
+    description: 'Heure de fermeture (format HH:MM)',
+  })
   @Expose()
-  closing_hour: string;  // ← CORRIGÉ : string au lieu de number
+  closing_hour: string; // ← CORRIGÉ : string au lieu de number
 
   @ApiProperty({ example: '08:00 - 17:00', description: 'Horaires formatés' })
   @Expose()
   @Transform(({ obj }) => `${obj.opening_hour} - ${obj.closing_hour}`)
   operating_hours_formatted: string;
 
-  @ApiProperty({ example: '08:00 - 17:00', description: 'Horaires formatés (alternative)' })
+  @ApiProperty({
+    example: '08:00 - 17:00',
+    description: 'Horaires formatés (alternative)',
+  })
   @Expose()
   @Transform(({ obj }) => `${obj.opening_hour}:00 - ${obj.closing_hour}:00`)
   operating_hours: string;
 
-  @ApiProperty({ example: true, description: "Est-ce que l'agence est ouverte maintenant" })
+  @ApiProperty({
+    example: true,
+    description: "Est-ce que l'agence est ouverte maintenant",
+  })
   @Expose()
   is_open_now: boolean;
 
@@ -97,17 +113,25 @@ export class BranchResponseDto {
 
   @ApiProperty({ example: 3, description: "Nombre d'employés actifs" })
   @Expose()
-  @Transform(({ obj }) => obj.employees?.filter(emp => emp.status === 1).length || 0)
+  @Transform(
+    ({ obj }) => obj.employees?.filter((emp) => emp.status === 1).length || 0,
+  )
   active_employee_count: number;
 
   @ApiProperty({ example: 2, description: "Nombre d'avocats" })
   @Expose()
-  @Transform(({ obj }) => obj.employees?.filter(emp => emp.position === 'avocat').length || 0)
+  @Transform(
+    ({ obj }) =>
+      obj.employees?.filter((emp) => emp.position === 'avocat').length || 0,
+  )
   avocat_count: number;
 
-  @ApiProperty({ example: 1, description: "Nombre de secrétaires" })
+  @ApiProperty({ example: 1, description: 'Nombre de secrétaires' })
   @Expose()
-  @Transform(({ obj }) => obj.employees?.filter(emp => emp.position === 'secretaire').length || 0)
+  @Transform(
+    ({ obj }) =>
+      obj.employees?.filter((emp) => emp.position === 'secretaire').length || 0,
+  )
   secretaire_count: number;
 
   @ApiProperty({ example: 120, description: 'Nombre de clients' })
@@ -115,17 +139,26 @@ export class BranchResponseDto {
   @Transform(({ obj }) => obj.customers?.length || 0)
   customer_count: number;
 
-  @ApiProperty({ type: () => [Employee], description: "Liste des avocats" })
+  @ApiProperty({ type: () => [Employee], description: 'Liste des avocats' })
   @Expose()
-  @Transform(({ obj }) => obj.employees?.filter(emp => emp.position === 'avocat') || [])
+  @Transform(
+    ({ obj }) =>
+      obj.employees?.filter((emp) => emp.position === 'avocat') || [],
+  )
   avocats: Employee[];
 
-  @ApiProperty({ type: () => [Employee], description: "Liste des secrétaires" })
+  @ApiProperty({ type: () => [Employee], description: 'Liste des secrétaires' })
   @Expose()
-  @Transform(({ obj }) => obj.employees?.filter(emp => emp.position === 'secretaire') || [])
+  @Transform(
+    ({ obj }) =>
+      obj.employees?.filter((emp) => emp.position === 'secretaire') || [],
+  )
   secretaires: Employee[];
 
-  @ApiProperty({ example: 'BR-001 - Agence Principale', description: 'Nom formaté' })
+  @ApiProperty({
+    example: 'BR-001 - Agence Principale',
+    description: 'Nom formaté',
+  })
   @Expose()
   @Transform(({ obj }) => `${obj.code} - ${obj.name}`)
   display_name: string;

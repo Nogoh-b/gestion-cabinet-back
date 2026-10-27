@@ -5,9 +5,7 @@ import { DocumentCategory } from '../entities/document-category.entity';
 import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 export default class DocumentCategorySeeder implements Seeder {
-  public async run(
-    dataSource: DataSource
-  ): Promise<any> {
+  public async run(dataSource: DataSource): Promise<any> {
     const repository = dataSource.getRepository(DocumentCategory);
 
     const categories = [
@@ -15,7 +13,8 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'CONTRACT_BASIC',
         name: 'Contrats standards',
-        description: 'Contrats de vente, location, prestation de services standards',
+        description:
+          'Contrats de vente, location, prestation de services standards',
         icon: 'file-contract',
         color: '#2563EB',
         sort_order: 1,
@@ -35,7 +34,8 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'CONTRACT_COMPLEX',
         name: 'Contrats complexes',
-        description: 'Contrats d\'affaires, joint-ventures, accords de partenariat',
+        description:
+          "Contrats d'affaires, joint-ventures, accords de partenariat",
         icon: 'file-signature',
         color: '#1D4ED8',
         sort_order: 2,
@@ -73,7 +73,8 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'CONTRACT_INTERNATIONAL',
         name: 'Contrats internationaux',
-        description: 'Contrats avec des parties étrangères, accords transfrontaliers',
+        description:
+          'Contrats avec des parties étrangères, accords transfrontaliers',
         icon: 'globe',
         color: '#1E40AF',
         sort_order: 4,
@@ -167,7 +168,7 @@ export default class DocumentCategorySeeder implements Seeder {
       },
       {
         code: 'APPEALS',
-        name: 'Procédures d\'appel',
+        name: "Procédures d'appel",
         description: 'Appels, pourvois, recours',
         icon: 'arrows-rotate',
         color: '#F87171',
@@ -188,7 +189,8 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'EVIDENCE_DOCUMENTARY',
         name: 'Preuves documentaires',
-        description: 'Documents originaux, copies certifiées, pièces justificatives',
+        description:
+          'Documents originaux, copies certifiées, pièces justificatives',
         icon: 'file-certificate',
         color: '#059669',
         sort_order: 10,
@@ -207,7 +209,7 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'EVIDENCE_DIGITAL',
         name: 'Preuves numériques',
-        description: 'Emails, captures d\'écran, logs, métadonnées',
+        description: "Emails, captures d'écran, logs, métadonnées",
         icon: 'microchip',
         color: '#10B981',
         sort_order: 11,
@@ -225,8 +227,8 @@ export default class DocumentCategorySeeder implements Seeder {
       },
       {
         code: 'EVIDENCE_EXPERT',
-        name: 'Rapports d\'expertise',
-        description: 'Rapports d\'experts judiciaires, contre-expertises',
+        name: "Rapports d'expertise",
+        description: "Rapports d'experts judiciaires, contre-expertises",
         icon: 'user-tie',
         color: '#047857',
         sort_order: 12,
@@ -245,7 +247,7 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'EVIDENCE_TESTIMONIAL',
         name: 'Témoignages et dépositions',
-        description: 'Déclarations sous serment, procès-verbaux d\'audition',
+        description: "Déclarations sous serment, procès-verbaux d'audition",
         icon: 'comment-dots',
         color: '#065F46',
         sort_order: 13,
@@ -302,7 +304,7 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'LICENSES_PERMITS',
         name: 'Licences et permis',
-        description: 'Licences d\'exploitation, permis de construire, agréments',
+        description: "Licences d'exploitation, permis de construire, agréments",
         icon: 'id-card',
         color: '#A78BFA',
         sort_order: 16,
@@ -310,7 +312,7 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
-          legal_retention_period_2026: 'Jusqu\'à expiration + 5 ans',
+          legal_retention_period_2026: "Jusqu'à expiration + 5 ans",
           confidentiality_level: 'confidential',
           expiration_dates: true,
           renewal_required: true,
@@ -322,7 +324,8 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'FINANCIAL_INVOICES',
         name: 'Factures et reçus',
-        description: 'Factures clients, factures fournisseurs, reçus de paiement',
+        description:
+          'Factures clients, factures fournisseurs, reçus de paiement',
         icon: 'receipt',
         color: '#F59E0B',
         sort_order: 17,
@@ -359,8 +362,8 @@ export default class DocumentCategorySeeder implements Seeder {
       },
       {
         code: 'FINANCIAL_AUDIT',
-        name: 'Documents d\'audit',
-        description: 'Rapports d\'audit, lettres de mission, comptes annuels',
+        name: "Documents d'audit",
+        description: "Rapports d'audit, lettres de mission, comptes annuels",
         icon: 'magnifying-glass-chart',
         color: '#B45309',
         sort_order: 19,
@@ -378,7 +381,7 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'FINANCIAL_TAX',
         name: 'Documents fiscaux',
-        description: 'Déclarations fiscales, avis d\'imposition, justificatifs',
+        description: "Déclarations fiscales, avis d'imposition, justificatifs",
         icon: 'scale-unbalanced',
         color: '#92400E',
         sort_order: 20,
@@ -386,7 +389,7 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
-          legal_retention_period_2026: '6 à 10 ans (jusqu\'à 10 en fraude)',
+          legal_retention_period_2026: "6 à 10 ans (jusqu'à 10 en fraude)",
           confidentiality_level: 'strictly_confidential',
           tax_authority: true,
           statute_of_limitations: true,
@@ -417,7 +420,7 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'CORRESPONDENCE_LEGAL',
         name: 'Correspondance juridique',
-        description: 'Lettres d\'avocats, mises en demeure, notifications',
+        description: "Lettres d'avocats, mises en demeure, notifications",
         icon: 'envelope-open-text',
         color: '#0EA5E9',
         sort_order: 22,
@@ -473,7 +476,7 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'HR_CONTRACTS',
         name: 'Contrats de travail',
-        description: 'CDI, CDD, contrats d\'intérim, annexes',
+        description: "CDI, CDD, contrats d'intérim, annexes",
         icon: 'file-signature',
         color: '#9333EA',
         sort_order: 25,
@@ -481,7 +484,8 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
-          legal_retention_period_2026: '5 ans après fin de contrat (employeur) / À vie (salarié)',
+          legal_retention_period_2026:
+            '5 ans après fin de contrat (employeur) / À vie (salarié)',
           confidentiality_level: 'strictly_confidential',
           employee_consent: true,
           social_laws: true,
@@ -569,7 +573,7 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'TECHNICAL_PATENTS',
         name: 'Brevets et propriété intellectuelle',
-        description: 'Dépôts de brevet, droits d\'auteur, marques',
+        description: "Dépôts de brevet, droits d'auteur, marques",
         icon: 'copyright',
         color: '#475569',
         sort_order: 30,
@@ -605,7 +609,7 @@ export default class DocumentCategorySeeder implements Seeder {
       },
       {
         code: 'TECHNICAL_INSPECTION',
-        name: 'Rapports d\'inspection',
+        name: "Rapports d'inspection",
         description: 'Contrôles qualité, audits techniques, vérifications',
         icon: 'magnifying-glass',
         color: '#1E293B',
@@ -626,7 +630,7 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'GOVERNANCE_BOARD',
         name: 'Documents de gouvernance',
-        description: 'Procès-verbaux d\'AG, décisions du conseil',
+        description: "Procès-verbaux d'AG, décisions du conseil",
         icon: 'users-gear',
         color: '#6366F1',
         sort_order: 33,
@@ -703,7 +707,7 @@ export default class DocumentCategorySeeder implements Seeder {
       {
         code: 'ASSETS_INVENTORY',
         name: 'Inventaires de biens',
-        description: 'Listes d\'actifs, fiches d\'inventaire, amortissements',
+        description: "Listes d'actifs, fiches d'inventaire, amortissements",
         icon: 'clipboard-list',
         color: '#EA580C',
         sort_order: 37,
@@ -880,11 +884,15 @@ export default class DocumentCategorySeeder implements Seeder {
     ];
 
     for (const categoryData of categories) {
-      const existing = await findOneForTenant(repository, 'code', categoryData.code);
+      const existing = await findOneForTenant(
+        repository,
+        'code',
+        categoryData.code,
+      );
 
       if (!existing) {
         const category = repository.create(
-          categoryData as Partial<DocumentCategory>
+          categoryData as Partial<DocumentCategory>,
         );
         category.created_at = new Date();
         category.updated_at = new Date();
@@ -895,6 +903,8 @@ export default class DocumentCategorySeeder implements Seeder {
       }
     }
 
-    console.log(`\n📊 Résumé: ${categories.length} catégories de documents traitées`);
+    console.log(
+      `\n📊 Résumé: ${categories.length} catégories de documents traitées`,
+    );
   }
 }

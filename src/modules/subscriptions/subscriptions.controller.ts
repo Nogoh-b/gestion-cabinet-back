@@ -4,38 +4,49 @@ import {
   Post,
   Patch,
   Body,
+  Param,
+  ParseIntPipe,
   Request,
+  Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
   BadRequestException,
-  Headers,
-  UnauthorizedException,
 } from '@nestjs/common';
-import { createHmac, timingSafeEqual } from 'crypto';
-import { Public } from 'src/core/decorators/public.decorator';
-import { AllowSuspendedCabinet } from 'src/core/decorators/allow-suspended-cabinet.decorator';
-import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
+import { AllowSuspended } from 'src/core/decorators/allow-suspended.decorator';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { SubscriptionsService } from './subscriptions.service';
 import { ChangeSubscriptionDto } from './dto/change-subscription.dto';
+import { cabinetUserActor } from './subscription-events.service';
+import { PaymentMethodsService } from './payment/payment-methods.service';
+import { ReceiptService } from './billing/receipt.service';
+import { AiCreditsService } from '../plans/ai-credits/ai-credits.service';
 
 @ApiTags('Subscriptions')
 @Controller('subscriptions')
 @ApiBearerAuth()
+@AllowSuspended()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SubscriptionsController {
-  constructor(private readonly service: SubscriptionsService) {}
+  constructor(
+    private readonly service: SubscriptionsService,
+    private readonly methods: PaymentMethodsService,
+    private readonly receipts: ReceiptService,
+    private readonly aiCredits: AiCreditsService,
+  ) {}
 
   /**
    * Résout le cabinet courant.
    *
-   * ⚠️ Ces routes sont `@Public()` (pour rester accessibles à un cabinet
-   * suspendu), donc `JwtAuthGuard` ne peuple PAS `req.user`. On retombe alors
-   * sur `req.resolvedTenantId` posé par le TenantResolverMiddleware à partir du
-   * header `x-tenant-code`. Sans ce fallback, `req.user?.tenantId` est
-   * `undefined` et le service opère sur le mauvais cabinet (ex. renew qui ne
-   * réactive jamais le cabinet).
+   * Ces routes restent authentifiées afin que `req.user.tenantId` soit
+   * disponible même lorsque le header `x-tenant-code` n'est pas encore présent
+   * lors de la première connexion. `@AllowSuspended()` permet néanmoins à un
+   * cabinet suspendu de consulter et renouveler son abonnement.
    */
   private tenantOf(req: any): number {
     const tenantId = req.user?.tenantId ?? req.resolvedTenantId;
@@ -50,8 +61,6 @@ export class SubscriptionsController {
   }
 
   /** Abonnement courant du cabinet + décompte (jours restants). */
-  @AllowSuspendedCabinet()
-  @RequirePermissions('manage_subscription')
   @Get('/current')
   @ApiOperation({ summary: 'Abonnement courant du cabinet (avec décompte)' })
   getCurrent(@Request() req: any) {
@@ -59,8 +68,6 @@ export class SubscriptionsController {
   }
 
   /** Historique de facturation (échéances + paiements). */
-  @AllowSuspendedCabinet()
-  @RequirePermissions('manage_subscription')
   @Get('/payments')
   @ApiOperation({ summary: 'Historique de facturation du cabinet' })
   listPayments(@Request() req: any) {
@@ -68,137 +75,204 @@ export class SubscriptionsController {
   }
 
   /** Change le plan et/ou le cycle (mensuel ↔ annuel). */
-  @AllowSuspendedCabinet()
-  @RequirePermissions('manage_subscription')
   @Patch('/change')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: 'Changer de plan et/ou de cycle de facturation' })
   change(@Request() req: any, @Body() dto: ChangeSubscriptionDto) {
-    return this.service.changePlanOrCycle(this.tenantOf(req), {
-      planId: dto.plan_id,
-      cycle: dto.cycle,
-    });
+    return this.service.changePlanOrCycle(
+      this.tenantOf(req),
+      { planId: dto.plan_id, cycle: dto.cycle, couponCode: dto.coupon_code },
+      cabinetUserActor(req.user),
+    );
   }
 
   /** Renouvelle l'abonnement échu et réactive le cabinet. */
-  @AllowSuspendedCabinet()
-  @RequirePermissions('manage_subscription')
   @Patch('/renew')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: "Renouveler l'abonnement (réactive le cabinet)" })
   renew(@Request() req: any, @Body() dto: ChangeSubscriptionDto) {
-    return this.service.renewForCabinet(this.tenantOf(req), dto?.cycle);
+    return this.service.renewForCabinet(
+      this.tenantOf(req),
+      dto?.cycle,
+      cabinetUserActor(req.user),
+      dto?.coupon_code,
+    );
   }
 
-  // ── Paiement (passerelle) ───────────────────────────────────────────────────
+  // ── Paiement ────────────────────────────────────────────────────────────────
 
-  /** Initie une session de paiement pour l'échéance en attente (retourne l'URL). */
-  @AllowSuspendedCabinet()
-  @RequirePermissions('manage_subscription')
-  @Post('/pay')
-  @ApiOperation({ summary: "Initier le paiement de l'échéance en attente" })
-  pay(@Request() req: any) {
-    return this.service.initiatePaymentForCurrent(this.tenantOf(req));
+  /** Moyens de paiement proposés (aucune donnée secrète). */
+  @Get('/payment-methods')
+  @ApiOperation({ summary: 'Moyens de paiement disponibles' })
+  async paymentMethods(@Request() req: any) {
+    const current = await this.service.getCurrent(this.tenantOf(req));
+    return this.methods.listActiveForCabinet(
+      current.pending_payment?.currency ?? current.subscription?.currency ?? 'XAF',
+    );
   }
 
   /**
-   * Webhook de la passerelle : confirme/échoue un paiement via sa référence.
-   * Public et SANS tenant (la passerelle rappelle ce endpoint, identifie par
-   * référence). À sécuriser par signature quand une vraie passerelle est branchée.
+   * Démarre le paiement de l'échéance due avec le moyen choisi : URL de la
+   * passerelle (en ligne) ou instructions (moyen manuel).
    */
-  @Public()
-  @Post('/payments/webhook')
-  @ApiOperation({ summary: 'Webhook passerelle (confirmation de paiement)' })
-  webhook(
-    @Body() dto: { reference?: string; status?: 'paid' | 'failed' },
-    @Headers('x-webhook-id') eventId?: string,
-    @Headers('x-webhook-timestamp') timestamp?: string,
-    @Headers('x-webhook-signature') signature?: string,
+  @Post('/pay')
+  @RequirePermissions('manage_subscription')
+  @ApiOperation({ summary: "Payer l'échéance due avec un moyen de paiement" })
+  pay(@Request() req: any, @Body() dto: { method_code?: string }) {
+    return this.service.initiatePaymentForCurrent(this.tenantOf(req), {
+      methodCode: dto?.method_code,
+      customer: { email: req.user?.email ?? null },
+    });
+  }
+
+  // ── Crédits IA ──────────────────────────────────────────────────────────────
+
+  /** Packs de crédits proposés : nom, prix, « ≈ +N % du forfait » (jamais de crédits). */
+  @Get('/ai-credits/packs')
+  @ApiOperation({ summary: 'Packs de crédits IA disponibles à l’achat' })
+  aiCreditPacks(@Request() req: any) {
+    return this.aiCredits.packsForCabinet(this.tenantOf(req));
+  }
+
+  /** Achat d'un pack : même flux de paiement que l'abonnement (passerelle ou manuel). */
+  @Post('/ai-credits/purchase')
+  @RequirePermissions('manage_subscription')
+  @ApiOperation({ summary: 'Acheter un pack de crédits IA' })
+  purchaseAiCredits(@Request() req: any, @Body() dto: { pack_id?: number; method_code?: string }) {
+    const packId = Number(dto?.pack_id);
+    if (!Number.isInteger(packId) || packId < 1) throw new BadRequestException('Pack invalide.');
+    return this.service.purchaseAiCredits(this.tenantOf(req), {
+      packId,
+      methodCode: dto?.method_code,
+      customer: { email: req.user?.email ?? null },
+    });
+  }
+
+  /** Historique des achats de crédits du cabinet. */
+  @Get('/ai-credits/purchases')
+  @RequirePermissions('manage_subscription')
+  @ApiOperation({ summary: 'Historique des achats de crédits IA du cabinet' })
+  aiCreditPurchases(@Request() req: any) {
+    return this.service.listAiPurchases(this.tenantOf(req));
+  }
+
+  /** Applique un code promo à l'échéance due (avant paiement). */
+  @Post('/coupons/apply')
+  @RequirePermissions('manage_subscription')
+  @ApiOperation({ summary: "Appliquer un code promo à l'échéance due" })
+  applyCoupon(@Request() req: any, @Body() dto: { code?: string }) {
+    return this.service.applyCouponToDuePayment(
+      this.tenantOf(req),
+      String(dto?.code ?? ''),
+      cabinetUserActor(req.user),
+    );
+  }
+
+  /** Statut à jour d'une transaction (retour de la passerelle). */
+  @Get('/payments/status/:reference')
+  @ApiOperation({ summary: "Statut d'une transaction (vérifié auprès de la passerelle)" })
+  paymentStatus(@Request() req: any, @Param('reference') reference: string) {
+    return this.service.paymentStatusForCabinet(this.tenantOf(req), reference);
+  }
+
+  /** Déclaration d'un paiement manuel (référence + justificatif facultatif). */
+  @Post('/payments/:id/declare')
+  @RequirePermissions('manage_subscription')
+  @UseInterceptors(FileInterceptor('proof', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Déclarer un paiement manuel (virement, Mobile Money…)' })
+  declare(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: { method_code?: string; reference?: string; note?: string },
+    @UploadedFile() proof?: Express.Multer.File,
   ) {
-    const reference = dto?.reference ?? '';
-    const status = dto?.status ?? 'paid';
-    this.verifyWebhookSignature(reference, status, eventId, timestamp, signature);
-    return this.service.handleWebhook(reference, eventId!, status);
+    return this.service.declareManualPayment(
+      this.tenantOf(req),
+      id,
+      {
+        methodCode: String(dto?.method_code ?? ''),
+        reference: String(dto?.reference ?? ''),
+        note: dto?.note,
+      },
+      proof,
+      cabinetUserActor(req.user),
+    );
+  }
+
+  /** Reçu PDF d'un paiement encaissé du cabinet. */
+  @Get('/payments/:id/receipt')
+  @ApiOperation({ summary: 'Télécharger le reçu (PDF)' })
+  async receipt(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.receipts.pdf(id, this.tenantOf(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  /** Justificatif déposé par le cabinet (lecture par le cabinet lui-même). */
+  @Get('/payments/:id/proof')
+  @ApiOperation({ summary: 'Télécharger le justificatif déposé' })
+  async proof(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    const file = await this.service.proofFileForCabinet(this.tenantOf(req), id);
+    res.setHeader('Content-Type', file.mime);
+    res.setHeader('Content-Disposition', 'inline; filename="justificatif"');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.sendFile(file.path);
   }
 
   /** [TEST] Simule un encaissement réussi (passerelle de test uniquement). */
-  @AllowSuspendedCabinet()
-  @RequirePermissions('manage_subscription')
   @Post('/payments/simulate')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: '[TEST] Simuler un paiement réussi' })
   simulate(@Request() req: any, @Body() dto: { payment_id?: number }) {
     return this.service.simulatePayment(this.tenantOf(req), dto?.payment_id);
   }
 
   // ── Outils DEV (403 en production) ─────────────────────────────────────────
-  // Tous @Public() : un cabinet suspendu doit pouvoir piloter ces outils
-  // (sinon le panneau dev se verrouille). La protection prod est faite par
-  // assertDev() côté service.
+  // Ces outils restent authentifiés mais sont autorisés pour un cabinet
+  // suspendu. La protection prod est faite par assertDev() côté service.
 
   /** [DEV] Force la date de fin à now + days (négatif = passé). */
-  @AllowSuspendedCabinet()
-  @RequirePermissions('manage_subscription')
   @Patch('/dev/set-ends-in')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: '[DEV] Définir la date de fin à N jours' })
   devSetEndsIn(@Request() req: any, @Body() dto: { days?: number }) {
-    return this.service.devSetEndsIn(this.tenantOf(req), Number(dto?.days ?? 0));
+    return this.service.devSetEndsIn(
+      this.tenantOf(req),
+      Number(dto?.days ?? 0),
+    );
   }
 
   /** [DEV] Termine l'essai en cours → bascule en période payante. */
-  @AllowSuspendedCabinet()
-  @RequirePermissions('manage_subscription')
   @Patch('/dev/end-trial-now')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: "[DEV] Terminer l'essai (passage en payant)" })
   devEndTrialNow(@Request() req: any) {
     return this.service.devEndTrialNow(this.tenantOf(req));
   }
 
   /** [DEV] Expire immédiatement l'abonnement (suspend le cabinet). */
-  @AllowSuspendedCabinet()
-  @RequirePermissions('manage_subscription')
   @Patch('/dev/expire-now')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: '[DEV] Expirer immédiatement' })
   devExpireNow(@Request() req: any) {
     return this.service.devExpireNow(this.tenantOf(req));
   }
 
   /** [DEV] Recrée un essai neuf pour le plan courant. */
-  @AllowSuspendedCabinet()
-  @RequirePermissions('manage_subscription')
   @Patch('/dev/reset-trial')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: '[DEV] Réinitialiser un essai' })
   devResetTrial(@Request() req: any) {
     return this.service.devResetTrial(this.tenantOf(req));
-  }
-
-  private verifyWebhookSignature(
-    reference: string,
-    status: 'paid' | 'failed',
-    eventId?: string,
-    timestamp?: string,
-    signature?: string,
-  ): void {
-    const secret = process.env.SUBSCRIPTION_WEBHOOK_SECRET;
-    if (!secret || !eventId || !timestamp || !signature) {
-      throw new UnauthorizedException('Signature du webhook manquante');
-    }
-
-    const timestampSeconds = Number(timestamp);
-    if (
-      !Number.isFinite(timestampSeconds) ||
-      Math.abs(Date.now() / 1000 - timestampSeconds) > 300
-    ) {
-      throw new UnauthorizedException('Webhook expiré');
-    }
-
-    const normalizedSignature = signature.replace(/^sha256=/i, '');
-    if (!/^[a-f0-9]{64}$/i.test(normalizedSignature)) {
-      throw new UnauthorizedException('Signature du webhook invalide');
-    }
-
-    const payload = `${timestamp}.${eventId}.${reference}.${status}`;
-    const expected = createHmac('sha256', secret).update(payload).digest();
-    const received = Buffer.from(normalizedSignature, 'hex');
-    if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
-      throw new UnauthorizedException('Signature du webhook invalide');
-    }
   }
 }

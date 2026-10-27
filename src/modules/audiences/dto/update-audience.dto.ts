@@ -1,24 +1,31 @@
 // update-audience.dto.ts
 import { PartialType, ApiProperty } from '@nestjs/swagger';
 import { CreateAudienceDto } from './create-audience.dto';
-import { IsArray, IsOptional, IsInt, IsDateString, IsString, IsNumber } from 'class-validator';
+import {
+  IsArray,
+  IsOptional,
+  IsInt,
+  IsDateString,
+  IsString,
+  IsNumber,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 import { AudienceStatus } from '../entities/audience.entity';
 
 export class UpdateAudienceDto extends PartialType(CreateAudienceDto) {
   @ApiProperty({
     example: 1,
-    description: "Identifiant de la juridiction",
+    description: 'Identifiant de la juridiction',
     required: false,
   })
   @IsOptional()
   @IsInt()
-  @Transform(({ value }) => value === null ? undefined : value) // Transformer null en undefined
+  @Transform(({ value }) => (value === null ? undefined : value)) // Transformer null en undefined
   jurisdiction_id?: number;
 
   @ApiProperty({
     example: [1, 2, 3],
-    description: "Identifiants des documents",
+    description: 'Identifiants des documents',
     required: false,
   })
   @IsOptional()
@@ -26,14 +33,16 @@ export class UpdateAudienceDto extends PartialType(CreateAudienceDto) {
   @Transform(({ value }) => {
     if (value === '' || value == null) return undefined;
     if (Array.isArray(value)) return value.map(Number);
-    return String(value).split(',').map((item) => Number(item.trim()));
+    return String(value)
+      .split(',')
+      .map((item) => Number(item.trim()));
   })
   @IsInt({ each: true })
   document_ids?: number[];
 
   @ApiProperty({
     example: 12,
-    description: "Identifiant du dossier",
+    description: 'Identifiant du dossier',
     required: false,
   })
   @IsOptional()
@@ -98,7 +107,7 @@ export class UpdateAudienceDto extends PartialType(CreateAudienceDto) {
   @IsOptional()
   @IsString()
   type?: string;
-  
+
   @ApiProperty({
     example: 1,
     required: false,
@@ -123,13 +132,13 @@ export class UpdateAudienceDto extends PartialType(CreateAudienceDto) {
   @IsDateString()
   postponed_to?: string;
 
-
   @IsOptional()
   status?: AudienceStatus;
 
   // ── Rapport d'audience (obligatoire avant un report) ─────────────────────
   @ApiProperty({
-    description: "Rapport d'audience (procès-verbal). Requis avant report si absent.",
+    description:
+      "Rapport d'audience (procès-verbal). Requis avant report si absent.",
     required: false,
   })
   @IsOptional()

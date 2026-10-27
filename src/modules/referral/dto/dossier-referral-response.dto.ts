@@ -1,7 +1,10 @@
 // dossier-referral-response.dto.ts
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { CommissionBasis, CommissionMode } from '../entities/dossier-referral.entity';
+import {
+  CommissionBasis,
+  CommissionMode,
+} from '../entities/dossier-referral.entity';
 
 export class DossierReferralResponseDto {
   @ApiProperty({ example: 1 })
@@ -33,7 +36,9 @@ export class DossierReferralResponseDto {
   referral_date: Date;
 
   // Relations
-  @ApiProperty({ example: { id: 15, dossier_number: 'DOS-2026-015', object: 'Litige ABC' } })
+  @ApiProperty({
+    example: { id: 15, dossier_number: 'DOS-2026-015', object: 'Litige ABC' },
+  })
   @Expose()
   @Transform(({ obj }) => ({
     id: obj.dossier?.id,
@@ -42,7 +47,13 @@ export class DossierReferralResponseDto {
   }))
   dossier: { id: number; dossier_number: string; object: string };
 
-  @ApiProperty({ example: { id: 3, company_name: 'Cabinet Dupont', referrer_code: 'REF-003' } })
+  @ApiProperty({
+    example: {
+      id: 3,
+      company_name: 'Cabinet Dupont',
+      referrer_code: 'REF-003',
+    },
+  })
   @Expose()
   @Transform(({ obj }) => ({
     id: obj.referrer?.id,
@@ -54,19 +65,21 @@ export class DossierReferralResponseDto {
   // Computed
   @ApiProperty({ example: 2500.0 })
   @Expose()
-  @Transform(({ obj }) =>
-    obj.commissions
-      ?.filter((c) => c.status === 'paid')
-      .reduce((sum, c) => sum + Number(c.amount), 0) || 0,
+  @Transform(
+    ({ obj }) =>
+      obj.commissions
+        ?.filter((c) => c.status === 'paid')
+        .reduce((sum, c) => sum + Number(c.amount), 0) || 0,
   )
   total_paid_commissions: number;
 
   @ApiProperty({ example: 1500.0 })
   @Expose()
-  @Transform(({ obj }) =>
-    obj.commissions
-      ?.filter((c) => c.status === 'calculated' || c.status === 'approved')
-      .reduce((sum, c) => sum + Number(c.amount), 0) || 0,
+  @Transform(
+    ({ obj }) =>
+      obj.commissions
+        ?.filter((c) => c.status === 'calculated' || c.status === 'approved')
+        .reduce((sum, c) => sum + Number(c.amount), 0) || 0,
   )
   total_pending_commissions: number;
 }

@@ -1,12 +1,7 @@
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-
-
 import { AudienceTypeCategory } from '../entities/audience-type.entity';
-
-
-
 
 export class AudienceTypeResponseDto {
   @ApiProperty()
@@ -77,11 +72,11 @@ export class AudienceTypeResponseDto {
   @Transform(({ obj }) => {
     const hours = Math.floor(obj.default_duration_minutes / 60);
     const minutes = obj.default_duration_minutes % 60;
-    
+
     const parts: string[] = [];
     if (hours > 0) parts.push(`${hours}h`);
     if (minutes > 0) parts.push(`${minutes}min`);
-    
+
     return parts.join(' ') || '0min';
   })
   duration_formatted: string;
@@ -96,7 +91,7 @@ export class AudienceTypeResponseDto {
       [AudienceTypeCategory.CONCILIATION]: 'Conciliation',
       [AudienceTypeCategory.EXPERTISE]: 'Expertise',
       [AudienceTypeCategory.APPEAL]: 'Appel',
-      [AudienceTypeCategory.CASATION]: 'Cassation'
+      [AudienceTypeCategory.CASATION]: 'Cassation',
     };
     return categoryLabels[obj.category] || 'Inconnu';
   })
@@ -112,7 +107,7 @@ export class AudienceTypeResponseDto {
       [AudienceTypeCategory.CONCILIATION]: 'yellow',
       [AudienceTypeCategory.EXPERTISE]: 'purple',
       [AudienceTypeCategory.APPEAL]: 'orange',
-      [AudienceTypeCategory.CASATION]: 'pink'
+      [AudienceTypeCategory.CASATION]: 'pink',
     };
     return colors[obj.category] || 'gray';
   })
@@ -120,11 +115,13 @@ export class AudienceTypeResponseDto {
 
   @ApiProperty()
   @Expose()
-  @Transform(({ obj }) => obj.requires_lawyer ? 'Obligatoire' : 'Facultatif')
+  @Transform(({ obj }) => (obj.requires_lawyer ? 'Obligatoire' : 'Facultatif'))
   lawyer_requirement_label: string;
 
   @ApiProperty()
   @Expose()
-  @Transform(({ obj }) => obj.allows_remote ? 'Distanciel autorisé' : 'Présentiel uniquement')
+  @Transform(({ obj }) =>
+    obj.allows_remote ? 'Distanciel autorisé' : 'Présentiel uniquement',
+  )
   remote_status_label: string;
 }

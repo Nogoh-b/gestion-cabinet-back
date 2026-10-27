@@ -16,22 +16,26 @@ import { SubStage } from './sub-stage.entity';
 import { Transition } from './transition.entity';
 import { StageConfig } from './stage-config.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('stages')
 @BusinessTable({
   label: 'Étapes',
-  description: 'Étapes d\'un modèle de procédure. Chaque étape peut contenir des sous-étapes et des transitions vers d\'autres étapes.',
+  description:
+    "Étapes d'un modèle de procédure. Chaque étape peut contenir des sous-étapes et des transitions vers d'autres étapes.",
   icon: '📌',
   category: 'procedure',
-  ignored: false,
+  ignored: true,
 })
 export class Stage extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
     label: 'Identifiant',
-    description: 'Identifiant unique de l\'étape (format UUID)',
+    description: "Identifiant unique de l'étape (format UUID)",
     importance: 'low',
     group: 'technique',
     ignored: false,
@@ -58,7 +62,7 @@ export class Stage extends BaseEntity {
   @Column()
   @BusinessColumn({
     label: 'Ordre',
-    description: 'Position de l\'étape dans le déroulement de la procédure',
+    description: "Position de l'étape dans le déroulement de la procédure",
     example: '1',
     importance: 'high',
     group: 'organisation',
@@ -68,7 +72,7 @@ export class Stage extends BaseEntity {
   @Column()
   @BusinessColumn({
     label: 'Nom',
-    description: 'Nom de l\'étape',
+    description: "Nom de l'étape",
     example: 'Mise en état',
     importance: 'critical',
     group: 'identification',
@@ -78,8 +82,8 @@ export class Stage extends BaseEntity {
   @Column({ nullable: true, type: 'text' })
   @BusinessColumn({
     label: 'Description',
-    description: 'Description détaillée de l\'étape',
-    example: 'Phase de mise en état du dossier avant l\'audience',
+    description: "Description détaillée de l'étape",
+    example: "Phase de mise en état du dossier avant l'audience",
     importance: 'high',
     group: 'identification',
   })
@@ -97,11 +101,22 @@ export class Stage extends BaseEntity {
   @Column({ default: true })
   @BusinessColumn({
     label: 'Réentrable',
-    description: 'Indique si on peut revenir à cette étape après l\'avoir quittée',
+    description:
+      "Indique si on peut revenir à cette étape après l'avoir quittée",
     importance: 'medium',
     group: 'règles',
   })
   canBeReentered: boolean;
+
+  @Column({ default: false })
+  @BusinessColumn({
+    label: 'Étape système',
+    description:
+      "Étape technique gérée par le système (ex: Ouverture runtime) — exclue des workflows, des templates et de l'affichage",
+    importance: 'low',
+    group: 'technique',
+  })
+  isSystem: boolean;
 
   @OneToMany(() => Transition, (transition) => transition.fromStage)
   outgoingTransitions: Transition[];

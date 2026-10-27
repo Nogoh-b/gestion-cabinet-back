@@ -6,7 +6,10 @@ import {
   JoinColumn,
   OneToMany,
 } from 'typeorm';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
@@ -31,7 +34,7 @@ export enum ReferrerPaymentMethod {
 
 @Entity('referrer')
 @BusinessTable({
-  label: 'Apporteurs d\'affaires',
+  label: "Apporteurs d'affaires",
   description:
     'Personnes physiques ou morales qui apportent des clients/dossiers au cabinet. Peut être externe (confrère, expert-comptable, agence) ou interne (employé du cabinet).',
   icon: '🤝',
@@ -41,7 +44,7 @@ export class Referrer extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
-    description: 'Identifiant unique de l\'apporteur',
+    description: "Identifiant unique de l'apporteur",
     importance: 'low',
     group: 'technique',
     ignored: true,
@@ -60,8 +63,9 @@ export class Referrer extends TenantEntity {
 
   @Column({ type: 'enum', enum: ReferrerType, name: 'referrer_type' })
   @BusinessColumn({
-    label: 'Type d\'apporteur',
-    description: "BD: 'lawyer'=Confrère, 'accountant'=Expert-comptable, 'agency'=Agence, 'client', 'employee', 'individual', 'other'.",
+    label: "Type d'apporteur",
+    description:
+      "BD: 'lawyer'=Confrère, 'accountant'=Expert-comptable, 'agency'=Agence, 'client', 'employee', 'individual', 'other'.",
     importance: 'high',
     group: 'identification',
   })
@@ -79,7 +83,7 @@ export class Referrer extends TenantEntity {
   @Column({ type: 'int', nullable: true, name: 'employee_id' })
   @BusinessColumn({
     label: 'Employé (si interne)',
-    description: 'Identifiant du collaborateur si l\'apporteur est interne',
+    description: "Identifiant du collaborateur si l'apporteur est interne",
     importance: 'medium',
     group: 'relation',
     ignored: true,
@@ -94,12 +98,12 @@ export class Referrer extends TenantEntity {
     importance: 'medium',
     group: 'relation',
   })
-  employee: Employee | null;  // Ajouter | null
+  employee: Employee | null; // Ajouter | null
 
   @Column({ type: 'int', nullable: true, name: 'customer_id' })
   @BusinessColumn({
     label: 'Client (si apporteur)',
-    description: 'Identifiant du client s\'il est lui-même apporteur',
+    description: "Identifiant du client s'il est lui-même apporteur",
     importance: 'low',
     group: 'relation',
     ignored: true,
@@ -114,19 +118,29 @@ export class Referrer extends TenantEntity {
     importance: 'low',
     group: 'relation',
   })
-  customer: Customer | null;  // Ajouter | null
+  customer: Customer | null; // Ajouter | null
 
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'company_name' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'company_name',
+  })
   @BusinessColumn({
     label: 'Raison sociale / Nom',
-    description: 'Nom de l\'entreprise ou nom complet',
+    description: "Nom de l'entreprise ou nom complet",
     example: 'Cabinet Dupont & Associés',
     importance: 'high',
     group: 'identification',
   })
   company_name: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'contact_name' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'contact_name',
+  })
   @BusinessColumn({
     label: 'Nom du contact',
     description: 'Personne à contacter',
@@ -139,7 +153,7 @@ export class Referrer extends TenantEntity {
   @Column({ type: 'varchar', length: 100, nullable: true })
   @BusinessColumn({
     label: 'Email',
-    description: 'Adresse email de l\'apporteur',
+    description: "Adresse email de l'apporteur",
     example: 'contact@cabinet-dupont.fr',
     importance: 'high',
     group: 'contact',
@@ -165,7 +179,13 @@ export class Referrer extends TenantEntity {
   })
   address: string;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true, name: 'default_commission_rate' })
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    name: 'default_commission_rate',
+  })
   @BusinessColumn({
     label: 'Taux de commission par défaut (%)',
     description: 'Pourcentage appliqué par défaut aux dossiers apportés',
@@ -176,7 +196,12 @@ export class Referrer extends TenantEntity {
   })
   default_commission_rate: number;
 
-  @Column({ type: 'enum', enum: ReferrerPaymentMethod, nullable: true, name: 'payment_method' })
+  @Column({
+    type: 'enum',
+    enum: ReferrerPaymentMethod,
+    nullable: true,
+    name: 'payment_method',
+  })
   @BusinessColumn({
     label: 'Mode de paiement privilégié',
     description: "BD: 'VIREMENT', 'CHEQUE', 'ESPECES', 'MOBILE_MONEY'.",
@@ -194,7 +219,12 @@ export class Referrer extends TenantEntity {
   })
   bank_name: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'bank_account_holder' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'bank_account_holder',
+  })
   @BusinessColumn({
     label: 'Titulaire du compte',
     description: 'Nom du titulaire du compte bancaire',
@@ -232,5 +262,4 @@ export class Referrer extends TenantEntity {
 
   @OneToMany(() => DossierReferral, (referral) => referral.referrer)
   dossier_referrals: DossierReferral[];
-
 }

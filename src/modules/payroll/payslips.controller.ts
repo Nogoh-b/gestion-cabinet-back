@@ -64,10 +64,7 @@ export class PayslipsController {
   @Post()
   @RequirePermissions('generate_payslip')
   @ApiOperation({ summary: 'Préparer un bulletin en brouillon' })
-  async create(
-    @Body() dto: CreatePayslipDto,
-    @CurrentUser() user: any,
-  ) {
+  async create(@Body() dto: CreatePayslipDto, @CurrentUser() user: any) {
     return this.detail(await this.service.create(dto, this.actor(user)));
   }
 
@@ -85,9 +82,7 @@ export class PayslipsController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: any,
   ) {
-    return this.detail(
-      await this.service.findOwnOne(id, this.actor(user)),
-    );
+    return this.detail(await this.service.findOwnOne(id, this.actor(user)));
   }
 
   @Get('/search')
@@ -122,18 +117,14 @@ export class PayslipsController {
   @Get('/period/:periodId')
   @RequirePermissions('view_payslips')
   @ApiOperation({ summary: 'Bulletins d’une période' })
-  async findByPeriod(
-    @Param('periodId', ParseIntPipe) periodId: number,
-  ) {
+  async findByPeriod(@Param('periodId', ParseIntPipe) periodId: number) {
     return this.list(await this.service.findByPeriod(periodId));
   }
 
   @Get('/employee/:employeeId')
   @RequirePermissions('view_payslips')
   @ApiOperation({ summary: 'Bulletins d’un collaborateur (administration RH)' })
-  async findByEmployee(
-    @Param('employeeId', ParseIntPipe) employeeId: number,
-  ) {
+  async findByEmployee(@Param('employeeId', ParseIntPipe) employeeId: number) {
     return this.list(await this.service.findByEmployee(employeeId));
   }
 
@@ -168,9 +159,7 @@ export class PayslipsController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: any,
   ) {
-    return this.detail(
-      await this.service.validate(id, this.actor(user)),
-    );
+    return this.detail(await this.service.validate(id, this.actor(user)));
   }
 
   @Post(':id/pay')
@@ -181,9 +170,7 @@ export class PayslipsController {
     @Body() dto: PayPayslipDto,
     @CurrentUser() user: any,
   ) {
-    return this.detail(
-      await this.service.pay(id, dto, this.actor(user)),
-    );
+    return this.detail(await this.service.pay(id, dto, this.actor(user)));
   }
 
   @Post(':id/revert')
@@ -195,11 +182,7 @@ export class PayslipsController {
     @CurrentUser() user: any,
   ) {
     return this.detail(
-      await this.service.revertToDraft(
-        id,
-        dto.reason,
-        this.actor(user),
-      ),
+      await this.service.revertToDraft(id, dto.reason, this.actor(user)),
     );
   }
 
@@ -216,10 +199,7 @@ export class PayslipsController {
   @Delete(':id')
   @RequirePermissions('edit_payslip')
   @ApiOperation({ summary: 'Supprimer un bulletin brouillon' })
-  remove(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: any,
-  ) {
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.remove(id, this.actor(user));
   }
 }

@@ -13,7 +13,6 @@ import { Reflector } from '@nestjs/core';
 import { ApiResponse } from '../interfaces/api-response.interface';
 import { ResponseFormatter } from '../utils/response.formatter';
 
-
 @Injectable()
 export class TransformInterceptor<T>
   implements NestInterceptor<T | { data: any; meta: any }, ApiResponse<any>>
@@ -31,11 +30,14 @@ export class TransformInterceptor<T>
     // that Observable object as data — nothing useful reaches the client.
     // switchMap flattens: outer Observable emits inner → subscribe to inner,
     // forwarding actual MessageEvent emissions to NestJS's SSE machinery.
-    const isSse = this.reflector.get<boolean>(SSE_METADATA, context.getHandler());
+    const isSse = this.reflector.get<boolean>(
+      SSE_METADATA,
+      context.getHandler(),
+    );
     if (isSse) {
-      return next.handle().pipe(
-        switchMap(value => (isObservable(value) ? value : of(value))),
-      );
+      return next
+        .handle()
+        .pipe(switchMap((value) => (isObservable(value) ? value : of(value))));
     }
 
     const httpCtx = context.switchToHttp();

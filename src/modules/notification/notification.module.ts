@@ -16,6 +16,6 @@ import { UserNotification } from './entities/user-notification.entity';
   ],
   controllers: [NotificationController],
   providers: [NotificationService],
-  exports: [NotificationService]
+  exports: [NotificationService],
 })
 export class NotificationModule {}

@@ -6,12 +6,22 @@ import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 import { DateUtils } from 'src/core/shared/utils/date.util.';
 import { DataSource, EntityManager, MoreThan, Repository } from 'typeorm';
-import { BadRequestException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-
 
 import { EmployeeService } from '../agencies/employee/employee.service';
 import { AudienceTypeService } from '../audience-type/audience-type.service';
@@ -22,26 +32,29 @@ import { Dossier } from '../dossiers/entities/dossier.entity';
 import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
 import { JurisdictionService } from '../jurisdiction/jurisdiction.service';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
-import { AudienceStatsDto, UpcomingAudienceDto } from './dto/audience-stats.dto';
+import {
+  AudienceStatsDto,
+  UpcomingAudienceDto,
+} from './dto/audience-stats.dto';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
-import { Audience, AudienceRecordStatus, AudienceStatus, AudienceType1, } from './entities/audience.entity';
+import {
+  Audience,
+  AudienceRecordStatus,
+  AudienceStatus,
+  AudienceType1,
+} from './entities/audience.entity';
 import { PlanQuotaService } from '../plans/plan-quota.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import {
   ResourceActor,
   ResourcePolicyService,
 } from 'src/core/resource-policy.service';
 import { OutboxService } from 'src/core/outbox/outbox.service';
 import { AuditService } from 'src/core/audit/audit.service';
-import {
-  normalizeAudienceSchedule,
-} from './audience-schedule.util';
-
-
-
-
+import { normalizeAudienceSchedule } from './audience-schedule.util';
 
 @Injectable()
 export class AudiencesService extends BaseServiceV1<Audience> {
@@ -72,16 +85,37 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    */
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      searchFields: ['jurisdiction', 'judge_name', 'room', 'outcome', 'notes', 'dossier', 'dossier.client','audience_type'],
-      exactMatchFields: ['status', 'type', 'jurisdiction_id' , 'dossier_id', 'audience_type_id'],
+      searchFields: [
+        'jurisdiction',
+        'judge_name',
+        'room',
+        'outcome',
+        'notes',
+        'dossier',
+        'dossier.client',
+        'audience_type',
+      ],
+      exactMatchFields: [
+        'status',
+        'type',
+        'jurisdiction_id',
+        'dossier_id',
+        'audience_type_id',
+      ],
       dateRangeFields: ['audience_date', 'postponed_to', 'created_at'],
       relationFields: [
-        'dossier', 'dossier.client', 'dossier.collaborators',
-        'jurisdiction','audience_type',
-        'documents', 'documents.document_type', 'documents.category',
+        'dossier',
+        'dossier.client',
+        'dossier.collaborators',
+        'jurisdiction',
+        'audience_type',
+        'documents',
+        'documents.document_type',
+        'documents.category',
         'subStage',
         // Filiation report : parent + enfants (audiences de remplacement)
-        'parent_audience', 'children_audiences',
+        'parent_audience',
+        'children_audiences',
       ],
     };
   }
@@ -97,7 +131,11 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     const tenantId = getCurrentTenantId();
     if (tenantId) {
       const currentCount = await this.repository.count();
-      await this.planQuotaService.checkLimit(tenantId, 'audiences', currentCount);
+      await this.planQuotaService.checkLimit(
+        tenantId,
+        'audiences',
+        currentCount,
+      );
     }
 
     await this.resourcePolicy.assertDossierAccess(
@@ -107,14 +145,38 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       'create_audience',
     );
     const dossier = await this.dossierService.findOne(dto.dossier_id);
-    const audience_type = await this.audienceTypeService.findOne(dto.audience_type_id);
+    const audience_type = dto.audience_type_id
+      ? await this.audienceTypeService.findOne(dto.audience_type_id)
+      : null;
 
     if (!dossier) {
       throw new NotFoundException('Dossier non trouvé');
     }
-    if (!audience_type) {
-      throw new NotFoundException('Type d\'audience non trouvé');
+    if (dto.audience_type_id && !audience_type) {
+      throw new NotFoundException("Type d'audience non trouvé");
     }
+
+    const reason = dto.reason?.trim();
+    const parentAudience = dto.parent_audience_id
+      ? await this.repository.findOne({
+          where: {
+            id: dto.parent_audience_id,
+            dossier_id: String(dto.dossier_id),
+          },
+        })
+      : null;
+    if (dto.parent_audience_id && !parentAudience) {
+      throw new NotFoundException(
+        "L'audience renvoyée est introuvable dans ce dossier",
+      );
+    }
+    // Audience d'origine et motif restent facultatifs : un renvoi peut être
+    // saisi sans l'un ou l'autre et complété plus tard.
+    const postponementNote = parentAudience
+      ? `Audience issue du renvoi de #${parentAudience.id}.${reason ? ` Motif : ${reason}` : ''}`
+      : reason
+        ? `Audience issue d'un renvoi. Motif : ${reason}`
+        : null;
 
     // ✅ VÉRIFICATION DU STATUT DU DOSSIER
     // Vérifier si l'audience est compatible avec le statut actuel
@@ -138,7 +200,8 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     let stageVisitId: string | undefined = dto.stage_visit_id;
 
     if (!subStageVisitId && procedureInstance?.currentVisit) {
-      subStageVisitId = procedureInstance.currentVisit.currentSubStageVisitId ?? undefined;
+      subStageVisitId =
+        procedureInstance.currentVisit.currentSubStageVisitId ?? undefined;
     }
     if (!stageVisitId && procedureInstance?.currentVisit) {
       stageVisitId = procedureInstance.currentVisit.id ?? undefined;
@@ -149,12 +212,12 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     // retombe sur celle du dossier si elle n'est pas fournie.
     const resolvedJurisdictionId =
       dto.jurisdiction_id ??
-      (dossier as any).jurisdiction_id ??
-      (dossier as any).jurisdiction?.id ??
+      dossier.jurisdiction_id ??
+      dossier.jurisdiction?.id ??
       null;
     if (!resolvedJurisdictionId) {
       throw new NotFoundException(
-        "Aucune juridiction n'est rattachée au dossier. Renseignez la juridiction sur le dossier."
+        "Aucune juridiction n'est rattachée au dossier. Renseignez la juridiction sur le dossier.",
       );
     }
 
@@ -168,9 +231,12 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       room: dto.room,
       duration_minutes: dto.duration_minutes,
       judge_name: dto.judge_name,
-      notes: dto.notes,
+      notes: postponementNote
+        ? [dto.notes, postponementNote].filter(Boolean).join('\n')
+        : dto.notes,
       postponed_to: dto.postponed_to,
-      audience_type,
+      ...(audience_type ? { audience_type } : {}),
+      ...(parentAudience ? { parent_audience: parentAudience } : {}),
       type: AudienceType1.HEARING,
       dossier,
       status: AudienceStatus.SCHEDULED,
@@ -182,7 +248,9 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     (audience as any).notify_client = !!dto.notify_client;
 
     if (dto?.document_ids) {
-      const documents = await this.documentCustomerService.findByIds(dto?.document_ids);
+      const documents = await this.documentCustomerService.findByIds(
+        dto?.document_ids,
+      );
       this.assertDocumentsBelongToDossier(documents, Number(dossier.id));
       audience.documents = documents;
     }
@@ -285,18 +353,21 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     }
   }
 
-/**
- * Le dossier ne porte aucune phase procédurale. Le type d'audience est
- * contrôlé par les exigences du template ; ici seul le cycle administratif
- * peut interdire la création.
- */
-private validateAudienceForDossierStatus(dossier: Dossier, _audienceType: AudienceType1): void {
-  if (dossier.status !== DossierStatus.ACTIVE) {
-    throw new BadRequestException(
-      `Une audience ne peut être créée que sur un dossier actif. Cycle actuel : ${dossier.status}`,
-    );
+  /**
+   * Le dossier ne porte aucune phase procédurale. Le type d'audience est
+   * contrôlé par les exigences du template ; ici seul le cycle administratif
+   * peut interdire la création.
+   */
+  private validateAudienceForDossierStatus(
+    dossier: Dossier,
+    _audienceType: AudienceType1,
+  ): void {
+    if (dossier.status !== DossierStatus.ACTIVE) {
+      throw new BadRequestException(
+        `Une audience ne peut être créée que sur un dossier actif. Cycle actuel : ${dossier.status}`,
+      );
+    }
   }
-}
   /**
    * 📄 Récupération de toutes les audiences (avec relations)
    */
@@ -322,7 +393,7 @@ private validateAudienceForDossierStatus(dossier: Dossier, _audienceType: Audien
     }
 
     // return audience;
-    return plainToInstance(AudienceResponseDto,audience);
+    return plainToInstance(AudienceResponseDto, audience);
   }
 
   async getAudienceDossierId(id: number): Promise<number> {
@@ -340,189 +411,202 @@ private validateAudienceForDossierStatus(dossier: Dossier, _audienceType: Audien
    * ✏️ Mise à jour d'une audience
    */
   // Dans votre service
-async update(
-  id: number,
-  dto: UpdateAudienceDto,
-  actor: ResourceActor,
-): Promise<Audience | AudienceResponseDto | any> {
-  const audience = await this.findOneV1(id, this.getDefaultSearchOptions().relationFields, Audience);
-  let rescheduledAt: Date | null = null;
+  async update(
+    id: number,
+    dto: UpdateAudienceDto,
+    actor: ResourceActor,
+  ): Promise<Audience | AudienceResponseDto | any> {
+    const audience = await this.findOneV1(
+      id,
+      this.getDefaultSearchOptions().relationFields,
+      Audience,
+    );
+    let rescheduledAt: Date | null = null;
 
-  if (!audience) {
-    return null;
-  }
+    if (!audience) {
+      return null;
+    }
 
-  // ✅ VERROU : une audience reportée est figée — toute modification est refusée
-  // (sauf consultation et ajout/édition du rapport via les endpoints dédiés).
-  if (audience.status === AudienceStatus.POSTPONED) {
-    throw new BadRequestException(
-      `Cette audience a été reportée et ne peut plus être modifiée. ` +
-      `Consultez l'audience de remplacement.`
-    );
-  }
-
-  if (dto.status !== undefined) {
-    throw new BadRequestException(
-      "Le statut d'une audience ne peut pas être modifié par le PATCH générique",
-    );
-  }
-  if (
-    dto.dossier_id !== undefined ||
-    dto.stage_visit_id !== undefined ||
-    dto.sub_stage_visit_id !== undefined
-  ) {
-    throw new BadRequestException(
-      "Le dossier et les visites procédurales d'une audience sont immuables",
-    );
-  }
-  if (dto.postponed_to !== undefined) {
-    throw new BadRequestException(
-      "Utilisez la commande dédiée de report d'audience",
-    );
-  }
-  if (dto.report_content !== undefined) {
-    throw new BadRequestException(
-      "Utilisez les commandes dédiées au cycle du rapport d'audience",
-    );
-  }
-
-  if (
-    dto.starts_at_utc !== undefined ||
-    dto.audience_date !== undefined ||
-    dto.audience_time !== undefined ||
-    dto.timezone !== undefined
-  ) {
-    const schedule = normalizeAudienceSchedule({
-      starts_at_utc: dto.starts_at_utc ?? audience.starts_at_utc,
-      timezone: dto.timezone ?? audience.timezone,
-      audience_date: dto.audience_date ?? audience.audience_date,
-      audience_time: dto.audience_time ?? audience.audience_time,
-    });
-    this.assertAudienceScheduleAllowed(
-      schedule.startsAtUtc,
-      actor,
-      dto.late_scheduling_reason,
-    );
-    audience.starts_at_utc = schedule.startsAtUtc;
-    audience.timezone = schedule.timezone;
-    audience.audience_date = schedule.legacyDate as unknown as Date;
-    audience.audience_time = schedule.legacyTime;
-    audience.reminder_sent = false;
-    audience.reminder_sent_at = null;
-    rescheduledAt = schedule.startsAtUtc;
-  }
-
-  // ✅ VÉRIFICATION: Si on tente de marquer l'audience comme tenue (HELD)
-  if (dto.status !== undefined && dto.status === AudienceStatus.HELD) {
-    const now = new Date();
-    const audienceDateTime = new Date(`${audience.audience_date}T${audience.audience_time}`);
-    
-    // Vérifier si la date de l'audience n'est pas encore passée
-    if (audienceDateTime > now) {
+    // ✅ VERROU : une audience reportée est figée — toute modification est refusée
+    // (sauf consultation et ajout/édition du rapport via les endpoints dédiés).
+    if (audience.status === AudienceStatus.POSTPONED) {
       throw new BadRequestException(
-        `Impossible de marquer l'audience comme tenue car elle n'a pas encore eu lieu. ` +
-        `Date de l'audience: ${audience.audience_date} à ${audience.audience_time}`
+        `Cette audience a été reportée et ne peut plus être modifiée. ` +
+          `Consultez l'audience de remplacement.`,
       );
     }
-  }
-  
-  // Gestion pour jurisdiction_id - ignorer si null
-  if (dto.jurisdiction_id !== undefined && dto.jurisdiction_id !== null) {
-    audience.jurisdiction = plainToInstance(Jurisdiction, await this.jurisdictionService.findOne(dto.jurisdiction_id));
-  }
-  
-  if (dto.audience_type_id !== undefined && dto.audience_type_id !== null) {
-    audience.audience_type = plainToInstance(AudienceType, await this.audienceTypeService.findOne(dto.audience_type_id));
-  }
-  
-  // Gestion spéciale pour document_ids
-  if (dto.document_ids !== undefined && dto.document_ids !== null) {
-    const documents = await this.documentCustomerService.findByIds(dto.document_ids);
-    this.assertDocumentsBelongToDossier(
-      documents,
-      Number(audience.dossier_id),
-    );
-    audience.documents = documents;
-  }
-  
-  // Pour les autres champs, exclure document_ids et jurisdiction_id déjà traités
-  const otherFields = { ...dto };
-  delete otherFields.document_ids;
-  delete otherFields.jurisdiction_id;
-  delete otherFields.audience_type_id;
-  delete otherFields.status;
-  delete otherFields.starts_at_utc;
-  delete otherFields.timezone;
-  delete otherFields.audience_date;
-  delete otherFields.audience_time;
-  delete otherFields.late_scheduling_reason;
-  delete otherFields.dossier_id;
-  delete otherFields.stage_visit_id;
-  delete otherFields.sub_stage_visit_id;
-  delete otherFields.postponed_to;
-  delete otherFields.report_content;
-  
-  // 🔥 IMPORTANT: Assigner les autres champs
-  Object.assign(audience, otherFields);
-  if (dto.notify_client !== undefined) {
-    (audience as any).notify_client = !!dto.notify_client;
-  }
-  
-  await this.dataSource.transaction(async (manager) => {
-    await manager.save(audience);
-    if (rescheduledAt) {
+
+    if (dto.status !== undefined) {
+      throw new BadRequestException(
+        "Le statut d'une audience ne peut pas être modifié par le PATCH générique",
+      );
+    }
+    if (
+      dto.dossier_id !== undefined ||
+      dto.stage_visit_id !== undefined ||
+      dto.sub_stage_visit_id !== undefined
+    ) {
+      throw new BadRequestException(
+        "Le dossier et les visites procédurales d'une audience sont immuables",
+      );
+    }
+    if (dto.postponed_to !== undefined) {
+      throw new BadRequestException(
+        "Utilisez la commande dédiée de report d'audience",
+      );
+    }
+    if (dto.report_content !== undefined) {
+      throw new BadRequestException(
+        "Utilisez les commandes dédiées au cycle du rapport d'audience",
+      );
+    }
+
+    if (
+      dto.starts_at_utc !== undefined ||
+      dto.audience_date !== undefined ||
+      dto.audience_time !== undefined ||
+      dto.timezone !== undefined
+    ) {
+      const schedule = normalizeAudienceSchedule({
+        starts_at_utc: dto.starts_at_utc ?? audience.starts_at_utc,
+        timezone: dto.timezone ?? audience.timezone,
+        audience_date: dto.audience_date ?? audience.audience_date,
+        audience_time: dto.audience_time ?? audience.audience_time,
+      });
+      this.assertAudienceScheduleAllowed(
+        schedule.startsAtUtc,
+        actor,
+        dto.late_scheduling_reason,
+      );
+      audience.starts_at_utc = schedule.startsAtUtc;
+      audience.timezone = schedule.timezone;
+      audience.audience_date = schedule.legacyDate as unknown as Date;
+      audience.audience_time = schedule.legacyTime;
+      audience.reminder_sent = false;
+      audience.reminder_sent_at = null;
+      rescheduledAt = schedule.startsAtUtc;
+    }
+
+    // ✅ VÉRIFICATION: Si on tente de marquer l'audience comme tenue (HELD)
+    if (dto.status !== undefined && dto.status === AudienceStatus.HELD) {
+      const now = new Date();
+      const audienceDateTime = new Date(
+        `${audience.audience_date}T${audience.audience_time}`,
+      );
+
+      // Vérifier si la date de l'audience n'est pas encore passée
+      if (audienceDateTime > now) {
+        throw new BadRequestException(
+          `Impossible de marquer l'audience comme tenue car elle n'a pas encore eu lieu. ` +
+            `Date de l'audience: ${audience.audience_date} à ${audience.audience_time}`,
+        );
+      }
+    }
+
+    // Gestion pour jurisdiction_id - ignorer si null
+    if (dto.jurisdiction_id !== undefined && dto.jurisdiction_id !== null) {
+      audience.jurisdiction = plainToInstance(
+        Jurisdiction,
+        await this.jurisdictionService.findOne(dto.jurisdiction_id),
+      );
+    }
+
+    if (dto.audience_type_id !== undefined && dto.audience_type_id !== null) {
+      audience.audience_type = plainToInstance(
+        AudienceType,
+        await this.audienceTypeService.findOne(dto.audience_type_id),
+      );
+    }
+
+    // Gestion spéciale pour document_ids
+    if (dto.document_ids !== undefined && dto.document_ids !== null) {
+      const documents = await this.documentCustomerService.findByIds(
+        dto.document_ids,
+      );
+      this.assertDocumentsBelongToDossier(
+        documents,
+        Number(audience.dossier_id),
+      );
+      audience.documents = documents;
+    }
+
+    // Pour les autres champs, exclure document_ids et jurisdiction_id déjà traités
+    const otherFields = { ...dto };
+    delete otherFields.document_ids;
+    delete otherFields.jurisdiction_id;
+    delete otherFields.audience_type_id;
+    delete otherFields.status;
+    delete otherFields.starts_at_utc;
+    delete otherFields.timezone;
+    delete otherFields.audience_date;
+    delete otherFields.audience_time;
+    delete otherFields.late_scheduling_reason;
+    delete otherFields.dossier_id;
+    delete otherFields.stage_visit_id;
+    delete otherFields.sub_stage_visit_id;
+    delete otherFields.postponed_to;
+    delete otherFields.report_content;
+
+    // 🔥 IMPORTANT: Assigner les autres champs
+    Object.assign(audience, otherFields);
+    if (dto.notify_client !== undefined) {
+      (audience as any).notify_client = !!dto.notify_client;
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.save(audience);
+      if (rescheduledAt) {
+        await this.outboxService.enqueue(manager, {
+          eventType: 'audience.reminder.requested',
+          aggregateType: 'Audience',
+          aggregateId: audience.id,
+          idempotencyKey: `audience-reminder:${audience.id}:${rescheduledAt.toISOString()}`,
+          nextAttemptAt: new Date(
+            Math.max(Date.now(), rescheduledAt.getTime() - 48 * 60 * 60 * 1000),
+          ),
+          payload: {
+            audienceId: audience.id,
+            dossierId: Number(audience.dossier_id),
+          },
+        });
+      }
+      const audit = await this.auditService.append(manager, {
+        actorId: actor.userId ?? actor.id,
+        action: rescheduledAt ? 'audience.rescheduled' : 'audience.updated',
+        resourceType: 'Audience',
+        resourceId: audience.id,
+        dossierId: Number(audience.dossier_id),
+        afterState: rescheduledAt
+          ? {
+              startsAtUtc: rescheduledAt.toISOString(),
+              timezone: audience.timezone,
+            }
+          : { updated: true },
+        justification: dto.late_scheduling_reason ?? null,
+      });
       await this.outboxService.enqueue(manager, {
-        eventType: 'audience.reminder.requested',
+        eventType: rescheduledAt ? 'audience.rescheduled' : 'audience.updated',
         aggregateType: 'Audience',
         aggregateId: audience.id,
-        idempotencyKey: `audience-reminder:${audience.id}:${rescheduledAt.toISOString()}`,
-        nextAttemptAt: new Date(
-          Math.max(
-            Date.now(),
-            rescheduledAt.getTime() - 48 * 60 * 60 * 1000,
-          ),
-        ),
+        idempotencyKey: `${
+          rescheduledAt ? 'audience-rescheduled' : 'audience-updated'
+        }:${audit.id}`,
         payload: {
           audienceId: audience.id,
           dossierId: Number(audience.dossier_id),
+          notifyClient: dto.notify_client === true,
         },
       });
-    }
-    const audit = await this.auditService.append(manager, {
-      actorId: actor.userId ?? actor.id,
-      action: rescheduledAt ? 'audience.rescheduled' : 'audience.updated',
-      resourceType: 'Audience',
-      resourceId: audience.id,
-      dossierId: Number(audience.dossier_id),
-      afterState: rescheduledAt
-        ? {
-            startsAtUtc: rescheduledAt.toISOString(),
-            timezone: audience.timezone,
-          }
-        : { updated: true },
-      justification: dto.late_scheduling_reason ?? null,
     });
-    await this.outboxService.enqueue(manager, {
-      eventType: rescheduledAt
-        ? 'audience.rescheduled'
-        : 'audience.updated',
-      aggregateType: 'Audience',
-      aggregateId: audience.id,
-      idempotencyKey: `${
-        rescheduledAt ? 'audience-rescheduled' : 'audience-updated'
-      }:${audit.id}`,
-      payload: {
-        audienceId: audience.id,
-        dossierId: Number(audience.dossier_id),
-        notifyClient: dto.notify_client === true,
-      },
-    });
-  });
-  return await this.findOneV1(id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);
-}
+    return await this.findOneV1(
+      id,
+      this.getDefaultSearchOptions().relationFields,
+      AudienceResponseDto,
+    );
+  }
 
   /**
-   * ❌ Suppression d'une audience 
+   * ❌ Suppression d'une audience
    */
   async remove(_id: number): Promise<void> {
     throw new BadRequestException(
@@ -554,133 +638,128 @@ async update(
       dto.late_scheduling_reason ?? dto.reason,
     );
 
-    return this.dataSource.transaction(
-      'SERIALIZABLE',
-      async (manager) => {
-        const audience = await manager.findOne(Audience, {
-          where: { id },
-          relations: this.getDefaultSearchOptions().relationFields,
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (!audience) {
-          throw new NotFoundException(`Audience ${id} introuvable`);
-        }
-        if (audience.status === AudienceStatus.POSTPONED) {
-          throw new BadRequestException('Cette audience a déjà été reportée');
-        }
-        if (
-          audience.status === AudienceStatus.CANCELLED ||
-          audience.status === AudienceStatus.HELD
-        ) {
-          throw new BadRequestException(
-            'Une audience annulée ou tenue ne peut pas être reportée',
-          );
-        }
+    return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const audience = await manager.findOne(Audience, {
+        where: { id },
+        relations: this.getDefaultSearchOptions().relationFields,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!audience) {
+        throw new NotFoundException(`Audience ${id} introuvable`);
+      }
+      if (audience.status === AudienceStatus.POSTPONED) {
+        throw new BadRequestException('Cette audience a déjà été reportée');
+      }
+      if (
+        audience.status === AudienceStatus.CANCELLED ||
+        audience.status === AudienceStatus.HELD
+      ) {
+        throw new BadRequestException(
+          'Une audience annulée ou tenue ne peut pas être reportée',
+        );
+      }
 
-        const incomingReport = dto.report_content?.trim();
-        if (!incomingReport && !audience.report_content?.trim()) {
-          throw new BadRequestException(
-            "Le rapport d'audience doit être rédigé avant le report",
-          );
-        }
+      const incomingReport = dto.report_content?.trim();
+      if (!incomingReport && !audience.report_content?.trim()) {
+        throw new BadRequestException(
+          "Le rapport d'audience doit être rédigé avant le report",
+        );
+      }
 
-        if (incomingReport) {
-          audience.report_content = incomingReport;
-          audience.report_date = audience.report_date ?? new Date();
-          audience.report_author_id =
-            audience.report_author_id ??
-            String(actor.userId ?? actor.id);
-        }
-        audience.status = AudienceStatus.POSTPONED;
-        audience.postponed_to = schedule.startsAtUtc;
-        audience.reminder_sent = true;
-        audience.reminder_sent_at = new Date();
-        if (dto.reason?.trim()) {
-          audience.notes =
-            `${audience.notes || ''}\nReporté: ${dto.reason.trim()}`.trim();
-        }
-        const original = await manager.save(audience);
+      if (incomingReport) {
+        audience.report_content = incomingReport;
+        audience.report_date = audience.report_date ?? new Date();
+        audience.report_author_id =
+          audience.report_author_id ?? String(actor.userId ?? actor.id);
+      }
+      audience.status = AudienceStatus.POSTPONED;
+      audience.postponed_to = schedule.startsAtUtc;
+      audience.reminder_sent = true;
+      audience.reminder_sent_at = new Date();
+      if (dto.reason?.trim()) {
+        audience.notes =
+          `${audience.notes || ''}\nReporté: ${dto.reason.trim()}`.trim();
+      }
+      const original = await manager.save(audience);
 
-        const replacement = manager.create(Audience, {
-          audience_date: schedule.legacyDate as unknown as Date,
-          audience_time: schedule.legacyTime,
-          starts_at_utc: schedule.startsAtUtc,
-          timezone: schedule.timezone,
-          jurisdiction: audience.jurisdiction,
-          jurisdiction_id: audience.jurisdiction_id,
-          room: dto.room ?? audience.room,
-          type: audience.type,
-          audience_type: audience.audience_type,
-          audience_type_id: audience.audience_type_id,
-          judge_name: dto.judge_name ?? audience.judge_name,
-          duration_minutes: dto.duration_minutes ?? audience.duration_minutes,
-          notes: dto.reason
-            ? `Audience issue du report de #${audience.id}. Motif : ${dto.reason}`
-            : `Audience issue du report de #${audience.id}.`,
-          dossier: audience.dossier,
-          dossier_id: audience.dossier_id,
-          status: AudienceStatus.SCHEDULED,
-          procedure_instance_id: audience.procedure_instance_id,
-          stageVisit_id: audience.stageVisit_id,
-          sub_stage_visit_id: audience.sub_stage_visit_id,
-          sub_stage_id: audience.sub_stage_id,
-          parent_audience_id: audience.id,
-          reminder_sent: false,
-        });
-        const savedReplacement = await manager.save(replacement);
+      const replacement = manager.create(Audience, {
+        audience_date: schedule.legacyDate as unknown as Date,
+        audience_time: schedule.legacyTime,
+        starts_at_utc: schedule.startsAtUtc,
+        timezone: schedule.timezone,
+        jurisdiction: audience.jurisdiction,
+        jurisdiction_id: audience.jurisdiction_id,
+        room: dto.room ?? audience.room,
+        type: audience.type,
+        audience_type: audience.audience_type,
+        audience_type_id: audience.audience_type_id,
+        judge_name: dto.judge_name ?? audience.judge_name,
+        duration_minutes: dto.duration_minutes ?? audience.duration_minutes,
+        notes: dto.reason
+          ? `Audience issue du report de #${audience.id}. Motif : ${dto.reason}`
+          : `Audience issue du report de #${audience.id}.`,
+        dossier: audience.dossier,
+        dossier_id: audience.dossier_id,
+        status: AudienceStatus.SCHEDULED,
+        procedure_instance_id: audience.procedure_instance_id,
+        stageVisit_id: audience.stageVisit_id,
+        sub_stage_visit_id: audience.sub_stage_visit_id,
+        sub_stage_id: audience.sub_stage_id,
+        parent_audience_id: audience.id,
+        reminder_sent: false,
+      });
+      const savedReplacement = await manager.save(replacement);
 
-        await this.outboxService.enqueue(manager, {
-          eventType: 'audience.reminder.requested',
-          aggregateType: 'Audience',
-          aggregateId: savedReplacement.id,
-          idempotencyKey:
-            `audience-reminder:${savedReplacement.id}:` +
-            schedule.startsAtUtc.toISOString(),
-          nextAttemptAt: new Date(
-            Math.max(
-              Date.now(),
-              schedule.startsAtUtc.getTime() - 48 * 60 * 60 * 1000,
-            ),
+      await this.outboxService.enqueue(manager, {
+        eventType: 'audience.reminder.requested',
+        aggregateType: 'Audience',
+        aggregateId: savedReplacement.id,
+        idempotencyKey:
+          `audience-reminder:${savedReplacement.id}:` +
+          schedule.startsAtUtc.toISOString(),
+        nextAttemptAt: new Date(
+          Math.max(
+            Date.now(),
+            schedule.startsAtUtc.getTime() - 48 * 60 * 60 * 1000,
           ),
-          payload: {
-            audienceId: savedReplacement.id,
-            dossierId: Number(audience.dossier_id),
-          },
-        });
-        await this.outboxService.enqueue(manager, {
-          eventType: 'audience.postponed',
-          aggregateType: 'Audience',
-          aggregateId: audience.id,
-          idempotencyKey:
-            `audience-postponed:${audience.id}:${savedReplacement.id}`,
-          payload: {
-            audienceId: audience.id,
-            originalAudienceId: audience.id,
-            replacementAudienceId: savedReplacement.id,
-            dossierId: Number(audience.dossier_id),
-            notifyClient: dto.notify_client === true,
-          },
-        });
-        await this.auditService.append(manager, {
-          actorId: actor.userId ?? actor.id,
-          action: 'audience.postponed',
-          resourceType: 'Audience',
-          resourceId: audience.id,
+        ),
+        payload: {
+          audienceId: savedReplacement.id,
           dossierId: Number(audience.dossier_id),
-          beforeState: {
-            status: AudienceStatus.SCHEDULED,
-            startsAtUtc: audience.starts_at_utc?.toISOString?.() ?? null,
-          },
-          afterState: {
-            status: AudienceStatus.POSTPONED,
-            replacementAudienceId: savedReplacement.id,
-            startsAtUtc: schedule.startsAtUtc.toISOString(),
-          },
-          justification: dto.reason ?? null,
-        });
-        return { original, replacement: savedReplacement };
-      },
-    );
+        },
+      });
+      await this.outboxService.enqueue(manager, {
+        eventType: 'audience.postponed',
+        aggregateType: 'Audience',
+        aggregateId: audience.id,
+        idempotencyKey: `audience-postponed:${audience.id}:${savedReplacement.id}`,
+        payload: {
+          audienceId: audience.id,
+          originalAudienceId: audience.id,
+          replacementAudienceId: savedReplacement.id,
+          dossierId: Number(audience.dossier_id),
+          notifyClient: dto.notify_client === true,
+        },
+      });
+      await this.auditService.append(manager, {
+        actorId: actor.userId ?? actor.id,
+        action: 'audience.postponed',
+        resourceType: 'Audience',
+        resourceId: audience.id,
+        dossierId: Number(audience.dossier_id),
+        beforeState: {
+          status: AudienceStatus.SCHEDULED,
+          startsAtUtc: audience.starts_at_utc?.toISOString?.() ?? null,
+        },
+        afterState: {
+          status: AudienceStatus.POSTPONED,
+          replacementAudienceId: savedReplacement.id,
+          startsAtUtc: schedule.startsAtUtc.toISOString(),
+        },
+        justification: dto.reason ?? null,
+      });
+      return { original, replacement: savedReplacement };
+    });
   }
 
   /**
@@ -688,7 +767,13 @@ async update(
    */
   async addReport(
     id: number,
-    payload: { report_content: string; report_date?: Date; report_author_id?: string; document_ids?: number[]; amendment_reason?: string },
+    payload: {
+      report_content: string;
+      report_date?: Date;
+      report_author_id?: string;
+      document_ids?: number[];
+      amendment_reason?: string;
+    },
     actor: ResourceActor,
   ): Promise<Audience> {
     return this.updateReport(id, payload, actor);
@@ -696,7 +781,13 @@ async update(
 
   async updateReport(
     id: number,
-    payload: { report_content?: string; report_date?: Date; report_author_id?: string; document_ids?: number[]; amendment_reason?: string },
+    payload: {
+      report_content?: string;
+      report_date?: Date;
+      report_author_id?: string;
+      document_ids?: number[];
+      amendment_reason?: string;
+    },
     actor: ResourceActor,
   ): Promise<Audience> {
     return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
@@ -897,9 +988,7 @@ async update(
           ? audience.report_record_version
           : audience.decision_record_version,
         JSON.stringify(content),
-        report
-          ? audience.report_record_hash
-          : audience.decision_record_hash,
+        report ? audience.report_record_hash : audience.decision_record_hash,
         amendmentReason,
         String(actor.userId ?? actor.id),
       ],
@@ -922,9 +1011,9 @@ async update(
     });
     if (!audience) throw new NotFoundException(`Audience ${id} introuvable`);
     return {
-      report_content:    audience.report_content,
-      report_date:       audience.report_date,
-      report_author_id:  audience.report_author_id,
+      report_content: audience.report_content,
+      report_date: audience.report_date,
+      report_author_id: audience.report_author_id,
       report_documents: (audience.report_documents ?? []).map((document) => ({
         id: document.id,
         name: document.name,
@@ -934,6 +1023,77 @@ async update(
       record_version: audience.report_record_version,
       record_hash: audience.report_record_hash,
       sealed_at: audience.report_sealed_at,
+    };
+  }
+
+  /**
+   * Documents de l'audience en deux groupes : `preparation` (avant) et
+   * `after` (après), ce dernier incluant les pièces du compte rendu et de la
+   * décision, signalées par `badge`. Filtré par cabinet.
+   */
+  async getDocuments(
+    id: number,
+  ): Promise<{ preparation: any[]; after: any[] }> {
+    const tenantId = getCurrentTenantId();
+    const manager = this.repository.manager;
+    const owner = await manager.query(
+      'SELECT id FROM audiences WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
+      [id, tenantId],
+    );
+    if (!owner.length)
+      throw new NotFoundException(`Audience ${id} introuvable`);
+
+    const select = (
+      source: string,
+      badge: string | null,
+      table: string,
+      phaseColumn: string,
+    ) => `
+      SELECT d.id, d.name, d.description, d.file_mimetype, d.file_size, d.uploaded_at,
+             d.required_for_hearing, d.is_confidential,
+             cat.name AS category_name, dt.name AS type_name,
+             TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS author_name,
+             ${phaseColumn} AS phase, '${source}' AS source, ${badge ? `'${badge}'` : 'NULL'} AS badge
+        FROM ${table} link
+        JOIN document_customer d ON d.id = link.document_id
+        LEFT JOIN document_categories cat ON cat.id = d.category_id
+        LEFT JOIN document_type dt ON dt.id = d.document_type_id
+        LEFT JOIN \`user\` u ON u.id = d.uploaded_by_id
+       WHERE link.audience_id = ? AND d.tenant_id = ? AND d.deleted_at IS NULL
+         AND COALESCE(d.is_current_version, 1) = 1`;
+
+    const rows: any[] = await manager.query(
+      `${select('link', null, 'audience_documents', 'link.phase')}
+       UNION ALL ${select('report', 'Compte rendu', 'audience_report_documents', "'after'")}
+       UNION ALL ${select('decision', 'Décision', 'audience_decision_documents', "'after'")}
+       ORDER BY uploaded_at DESC, id DESC`,
+      [id, tenantId, id, tenantId, id, tenantId],
+    );
+
+    // Une pièce déjà rangée dans « après » et aussi au compte rendu / à la
+    // décision n'apparaît qu'une fois, avec son badge.
+    const byId = new Map<number, any>();
+    for (const row of rows) {
+      const kept = byId.get(Number(row.id));
+      if (!kept || (!kept.badge && row.badge)) byId.set(Number(row.id), row);
+    }
+    const documents = [...byId.values()].map((row) => ({
+      id: Number(row.id),
+      name: row.name,
+      description: row.description,
+      category: row.category_name ?? null,
+      document_type: row.type_name ?? null,
+      date: row.uploaded_at,
+      author: row.author_name || null,
+      mimetype: row.file_mimetype ?? null,
+      size: row.file_size != null ? Number(row.file_size) : null,
+      is_confidential: !!row.is_confidential,
+      badge: row.badge ?? null,
+      phase: row.phase === 'after' ? 'after' : 'preparation',
+    }));
+    return {
+      preparation: documents.filter((doc) => doc.phase === 'preparation'),
+      after: documents.filter((doc) => doc.phase === 'after'),
     };
   }
 
@@ -966,7 +1126,9 @@ async update(
       }
       audience.status = AudienceStatus.HELD;
       if (notes?.trim()) {
-        audience.notes = [audience.notes, notes.trim()].filter(Boolean).join('\n');
+        audience.notes = [audience.notes, notes.trim()]
+          .filter(Boolean)
+          .join('\n');
       }
       const saved = await manager.save(audience);
       await this.outboxService.enqueue(manager, {
@@ -1064,7 +1226,6 @@ async update(
     });
   }
 
-
   /**
    * ⏰ Récupérer les audiences nécessitant un rappel (48h avant)
    */
@@ -1082,31 +1243,27 @@ async update(
   async markReminderSent(id: number): Promise<Audience> {
     const audience = await this.findOne(id);
     audience.reminder_sent = true;
-    (audience).reminder_sent_at = new Date();
-    return this.repository.save((audience));
+    audience.reminder_sent_at = new Date();
+    return this.repository.save(audience);
   }
 
+  // audiences.service.ts
+  async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
+    const audience = await this.repository.findOne({
+      where: { id: audienceId },
+      relations: this.getDefaultSearchOptions().relationFields,
+    });
 
-// audiences.service.ts
-async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
-  const audience = await this.repository.findOne({
-    where: { id: audienceId },
-    relations: this.getDefaultSearchOptions().relationFields,
-  });
+    if (!audience) throw new NotFoundException('Audience non trouvée');
+    if (!documentIds) return audience;
 
-  if (!audience) throw new NotFoundException('Audience non trouvée');
-  if(!documentIds) return audience
+    const documents = await this.documentCustomerService.findByIds(documentIds);
+    this.assertDocumentsBelongToDossier(documents, Number(audience.dossier_id));
 
-  const documents = await this.documentCustomerService.findByIds(documentIds);
-  this.assertDocumentsBelongToDossier(
-    documents,
-    Number(audience.dossier_id),
-  );
-
-  audience.documents = [...(audience.documents || []), ...documents];
-  return await this.repository.save(audience);
-}
-// audiences.service.ts
+    audience.documents = [...(audience.documents || []), ...documents];
+    return await this.repository.save(audience);
+  }
+  // audiences.service.ts
   async sendEmails(audienceId: number, entityManager?: EntityManager) {
     void audienceId;
     void entityManager;
@@ -1116,29 +1273,32 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
 
     /* istanbul ignore next -- ancien envoi direct neutralisé */
     try {
-
       const repo = entityManager?.getRepository(Audience) ?? this.repository;
-      
-      const data = await repo
-      .createQueryBuilder('audience')
-      .leftJoinAndSelect('audience.documents', 'documents')
-      .leftJoinAndSelect('audience.dossier', 'dossier')
-      .leftJoinAndSelect('dossier.client', 'client')
-      .leftJoinAndSelect('audience.jurisdiction', 'jurisdiction')
-      .leftJoinAndSelect('audience.audience_type', 'audience_type')
-      .leftJoinAndSelect('documents.document_type', 'document_type')
-      .leftJoinAndSelect('documents.category', 'category')
-      .where('audience.id = :id', { id: audienceId })
-      .getOne();
-      const audience = plainToInstance(AudienceResponseDto,data)
-// 'dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category'
+
+      const dataQB = repo
+        .createQueryBuilder('audience')
+        .leftJoinAndSelect('audience.documents', 'documents')
+        .leftJoinAndSelect('audience.dossier', 'dossier')
+        .leftJoinAndSelect('dossier.client', 'client')
+        .leftJoinAndSelect('audience.jurisdiction', 'jurisdiction')
+        .leftJoinAndSelect('audience.audience_type', 'audience_type')
+        .leftJoinAndSelect('documents.document_type', 'document_type')
+        .leftJoinAndSelect('documents.category', 'category')
+        .where('audience.id = :id', { id: audienceId });
+      // Isolation multi-tenant.
+      addTenantCondition(dataQB, 'audience');
+      const data = await dataQB.getOne();
+      const audience = plainToInstance(AudienceResponseDto, data);
+      // 'dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category'
       // console.log('QueryBuilder result - documents count:', audience?.documents?.length);
       // console.log('QueryBuilder result - documents:', audience?.status_label);
       if (!audience) {
         throw new Error(`Audience ${audienceId} non trouvée`);
       }
 
-      const users = await this.employeeService.findAllV1(undefined,undefined, ['user']);
+      const users = await this.employeeService.findAllV1(undefined, undefined, [
+        'user',
+      ]);
       const attachments = await this.prepareAttachments(audience.documents);
 
       // Destinataire : le client concerné par l'audience ; à défaut, les
@@ -1148,25 +1308,32 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
         ? [clientEmail]
         : users.map((u) => u.email).filter(Boolean);
 
-      const mailDto = new CreateMailDto()
+      const mailDto = new CreateMailDto();
       const deduplicationKey = `commande-${audience.id}-confirmation-${audience.status}`;
-      mailDto.templateName = "entities/audience/audience-created"
-      mailDto.context = audience
-      mailDto.to = recipients
-      mailDto.subject = "Creation de l'audience Concernant le dossier " + audience?.dossier_details?.dossier_number
+      mailDto.templateName = 'entities/audience/audience-created';
+      mailDto.context = audience;
+      mailDto.to = recipients;
+      mailDto.subject =
+        "Creation de l'audience Concernant le dossier " +
+        audience?.dossier_details?.dossier_number;
       mailDto.attachments = attachments; // Ajouter les pièces jointes
 
       // console.log(mailDto.context.documents)
-      await this.sendMail(mailDto, deduplicationKey)
+      await this.sendMail(mailDto, deduplicationKey);
       const deduplicationKey1 = `commande-${audience.id}-confirmation-${audience.status}-3`;
-      mailDto.templateName = "entities/audience/audience-remider-3"
-      mailDto.scheduledAt = DateUtils.getDateNJoursAvant(audience.audience_date, 3)
-      await this.sendMail(mailDto, deduplicationKey1)
+      mailDto.templateName = 'entities/audience/audience-remider-3';
+      mailDto.scheduledAt = DateUtils.getDateNJoursAvant(
+        audience.audience_date,
+        3,
+      );
+      await this.sendMail(mailDto, deduplicationKey1);
       const deduplicationKey2 = `commande-${audience.id}-confirmation-${audience.status}-1`;
-      mailDto.templateName = "entities/audience/audience-remider-1"
-      mailDto.scheduledAt = DateUtils.getDateNJoursAvant(audience.audience_date, 1)
-      await this.sendMail(mailDto, deduplicationKey2)
-
+      mailDto.templateName = 'entities/audience/audience-remider-1';
+      mailDto.scheduledAt = DateUtils.getDateNJoursAvant(
+        audience.audience_date,
+        1,
+      );
+      await this.sendMail(mailDto, deduplicationKey2);
     } catch (_error) {
       this.logger.warn(
         'Notification legacy audience non envoyee; les rappels durables restent autoritatifs',
@@ -1175,21 +1342,18 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private prepareAttachments(documents: any[]): any[] {
-    if (!documents || documents.length === 0) { 
-      return []; 
+    if (!documents || documents.length === 0) {
+      return [];
     }
-    
-    return documents.map(doc => ({
+
+    return documents.map((doc) => ({
       filename: doc.name || 'document.pdf',
       href: undefined,
-      contentType: doc.file_mimetype, 
+      contentType: doc.file_mimetype,
     }));
   }
 
-
-
-
-   async getStats(filters?: {
+  async getStats(filters?: {
     startDate?: Date;
     endDate?: Date;
     lawyerId?: number;
@@ -1202,7 +1366,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
       upcoming,
       pastStats,
       monthlyTrend,
-      weeklyDist
+      weeklyDist,
+      upcomingTotal,
     ] = await Promise.all([
       this.getTotalCount(filters),
       this.getDistributionByStatus(filters),
@@ -1211,20 +1376,22 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
       this.getPastAudiencesStats(filters),
       this.getMonthlyTrend(filters),
       this.getWeeklyDistribution(filters),
+      this.getUpcomingAudiencesCount(filters),
     ]);
 
     return {
       total,
-      scheduled: byStatus.find(s => s.name === 'Planifiée')?.value || 0,
-      held: byStatus.find(s => s.name === 'Tenue')?.value || 0,
-      postponed: byStatus.find(s => s.name === 'Reportée')?.value || 0,
-      cancelled: byStatus.find(s => s.name === 'Annulée')?.value || 0,
+      scheduled: byStatus.find((s) => s.name === 'Planifiée')?.value || 0,
+      held: byStatus.find((s) => s.name === 'Tenue')?.value || 0,
+      postponed: byStatus.find((s) => s.name === 'Reportée')?.value || 0,
+      cancelled: byStatus.find((s) => s.name === 'Annulée')?.value || 0,
       byStatus,
       byType: await this.getDistributionByType(filters),
       byJurisdiction: await this.getDistributionByJurisdiction(filters),
       byDossier: await this.getDistributionByDossier(filters),
       evolution,
       upcomingAudiences: upcoming,
+      upcomingAudiencesTotal: upcomingTotal,
       pastAudiences: pastStats,
       monthlyTrend,
       weeklyDistribution: weeklyDist,
@@ -1238,7 +1405,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getDistributionByStatus(filters?: any): Promise<any[]> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select('audience.status', 'status')
       .addSelect('COUNT(*)', 'count')
       .groupBy('audience.status');
@@ -1262,7 +1430,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
       [AudienceStatus.CANCELLED]: '#ef4444', // rouge
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: statusLabels[r.status] || 'Inconnu',
       value: parseInt(r.count),
       percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
@@ -1272,7 +1440,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getDistributionByType(filters?: any): Promise<any[]> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select('audience.audience_type', 'type')
       .addSelect('COUNT(*)', 'count')
       .groupBy('audience.audience_type');
@@ -1282,7 +1451,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.type || 'Non spécifié',
       value: parseInt(r.count),
       percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
@@ -1290,7 +1459,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getDistributionByJurisdiction(filters?: any): Promise<any[]> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .leftJoin('audience.jurisdiction', 'jurisdiction')
       .select('jurisdiction.name', 'name')
       .addSelect('COUNT(*)', 'count')
@@ -1304,7 +1474,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.name || 'Inconnue',
       value: parseInt(r.count),
       percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
@@ -1312,7 +1482,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getDistributionByDossier(filters?: any): Promise<any[]> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .leftJoin('audience.dossier', 'dossier')
       .select('dossier.dossier_number', 'dossierNumber')
       .addSelect('COUNT(*)', 'count')
@@ -1326,7 +1497,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.dossierNumber || 'Dossier inconnu',
       value: parseInt(r.count),
       percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
@@ -1334,14 +1505,28 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getEvolution(filters?: any): Promise<any[]> {
-    const { startDate = subMonths(new Date(), 6), endDate = new Date() } = filters || {};
+    const { startDate = subMonths(new Date(), 6), endDate = new Date() } =
+      filters || {};
 
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select("DATE_FORMAT(audience.audience_date, '%Y-%m-%d')", 'date')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`, 'scheduled')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`, 'held')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.POSTPONED} THEN 1 ELSE 0 END)`, 'postponed')
-      .where('audience.audience_date BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`,
+        'scheduled',
+      )
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`,
+        'held',
+      )
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.POSTPONED} THEN 1 ELSE 0 END)`,
+        'postponed',
+      )
+      .where('audience.audience_date BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
       .groupBy("DATE_FORMAT(audience.audience_date, '%Y-%m-%d')")
       .orderBy('date', 'ASC');
 
@@ -1350,8 +1535,11 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     return query.getRawMany();
   }
 
-  private async getUpcomingAudiences(filters?: any): Promise<UpcomingAudienceDto[]> {
-    const query = this.repository.createQueryBuilder('audience')
+  private async getUpcomingAudiences(
+    filters?: any,
+  ): Promise<UpcomingAudienceDto[]> {
+    const query = this.repository
+      .createQueryBuilder('audience')
       .leftJoinAndSelect('audience.dossier', 'dossier')
       .leftJoinAndSelect('audience.jurisdiction', 'jurisdiction')
       .leftJoinAndSelect('dossier.client', 'client')
@@ -1361,18 +1549,25 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
         'audience.status',
         'jurisdiction.name',
         'dossier.dossier_number',
-        'client'
+        'client',
       ])
-      .where('audience.audience_date >= :now', { now: new Date() })
-      .andWhere('audience.status = :status', { status: AudienceStatus.SCHEDULED })
+      // `audience_date` est une DATE et l'enum de statut est stocké en texte :
+      // comparer à la date du jour et lier le statut sous forme de chaîne est
+      // indispensable pour ne pas perdre les audiences du jour.
+      .where('audience.audience_date >= CURDATE()')
+      .andWhere('audience.status = :status', {
+        status: String(AudienceStatus.SCHEDULED),
+      })
       .orderBy('audience.audience_date', 'ASC')
-      .limit(10);
+      .limit(50);
+    // Isolation multi-tenant.
+    addTenantCondition(query, 'audience');
 
     this.applyFilters(query, filters);
 
     const results = await query.getMany();
 
-    return results.map(a => ({
+    return results.map((a) => ({
       id: a.id,
       date: a.audience_date,
       jurisdiction: a.jurisdiction?.name || 'Inconnue',
@@ -1382,12 +1577,34 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     }));
   }
 
+  /**
+   * Volumétrie des audiences à venir, indépendante du plafond de
+   * `getUpcomingAudiences` : le tableau de bord en affiche 5 et indique
+   * combien d'autres sont programmées.
+   */
+  private async getUpcomingAudiencesCount(filters?: any): Promise<number> {
+    const query = this.repository
+      .createQueryBuilder('audience')
+      .where('audience.audience_date >= CURDATE()')
+      .andWhere('audience.status = :status', {
+        status: String(AudienceStatus.SCHEDULED),
+      });
+
+    addTenantCondition(query, 'audience');
+    this.applyFilters(query, filters);
+    return query.getCount();
+  }
+
   private async getPastAudiencesStats(filters?: any): Promise<any> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select('COUNT(*)', 'total')
       .addSelect('AVG(audience.duration_minutes)', 'avgDuration')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END) / COUNT(*) * 100`, 'successRate')
-      .where('audience.audience_date < :now', { now: new Date() });
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END) / COUNT(*) * 100`,
+        'successRate',
+      )
+      .where('audience.audience_date < CURDATE()');
 
     this.applyFilters(query, filters);
 
@@ -1401,13 +1618,24 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getMonthlyTrend(filters?: any): Promise<any[]> {
-    const { startDate = subMonths(new Date(), 12), endDate = new Date() } = filters || {};
+    const { startDate = subMonths(new Date(), 12), endDate = new Date() } =
+      filters || {};
 
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select("DATE_FORMAT(audience.audience_date, '%Y-%m')", 'month')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`, 'scheduled')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`, 'held')
-      .where('audience.audience_date BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`,
+        'scheduled',
+      )
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`,
+        'held',
+      )
+      .where('audience.audience_date BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
       .groupBy("DATE_FORMAT(audience.audience_date, '%Y-%m')")
       .orderBy('month', 'ASC');
 
@@ -1417,11 +1645,14 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getWeeklyDistribution(filters?: any): Promise<any[]> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select('DAYNAME(audience.audience_date)', 'dayOfWeek')
       .addSelect('COUNT(*)', 'count')
       .groupBy('DAYNAME(audience.audience_date)')
-      .orderBy("FIELD(DAYNAME(audience.audience_date), 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')");
+      .orderBy(
+        "FIELD(DAYNAME(audience.audience_date), 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')",
+      );
 
     this.applyFilters(query, filters);
 
@@ -1429,31 +1660,39 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
     const dayNames = {
-      'Monday': 'Lundi',
-      'Tuesday': 'Mardi',
-      'Wednesday': 'Mercredi',
-      'Thursday': 'Jeudi',
-      'Friday': 'Vendredi',
-      'Saturday': 'Samedi',
-      'Sunday': 'Dimanche'
+      Monday: 'Lundi',
+      Tuesday: 'Mardi',
+      Wednesday: 'Mercredi',
+      Thursday: 'Jeudi',
+      Friday: 'Vendredi',
+      Saturday: 'Samedi',
+      Sunday: 'Dimanche',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       dayOfWeek: dayNames[r.dayOfWeek] || r.dayOfWeek,
       count: parseInt(r.count),
       percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
     }));
   }
 
-  private applyFilters(query: any, filters?: any, alias: string = 'audience'): void {
+  private applyFilters(
+    query: any,
+    filters?: any,
+    alias: string = 'audience',
+  ): void {
     if (!filters) return;
 
     if (filters.startDate) {
-      query.andWhere(`${alias}.audience_date >= :startDate`, { startDate: filters.startDate });
+      query.andWhere(`${alias}.audience_date >= :startDate`, {
+        startDate: filters.startDate,
+      });
     }
 
     if (filters.endDate) {
-      query.andWhere(`${alias}.audience_date <= :endDate`, { endDate: filters.endDate });
+      query.andWhere(`${alias}.audience_date <= :endDate`, {
+        endDate: filters.endDate,
+      });
     }
 
     if (filters.lawyerId) {
@@ -1465,9 +1704,9 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     }
 
     if (filters.dossierId) {
-      query.andWhere(`${alias}.dossier_id = :dossierId`, { dossierId: filters.dossierId });
+      query.andWhere(`${alias}.dossier_id = :dossierId`, {
+        dossierId: filters.dossierId,
+      });
     }
   }
-
-
 }

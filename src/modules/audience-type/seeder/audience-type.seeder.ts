@@ -1,14 +1,16 @@
 import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 
-import { AudienceType, AudienceTypeCategory } from '../entities/audience-type.entity';
+import {
+  AudienceType,
+  AudienceTypeCategory,
+} from '../entities/audience-type.entity';
 import { findOneForTenant } from 'src/core/tenant/seeder-helper';
-
 
 export default class AudienceTypeSeeder implements Seeder {
   public async run(
     dataSource: DataSource,
-    factoryManager: SeederFactoryManager
+    factoryManager: SeederFactoryManager,
   ): Promise<any> {
     const repository = dataSource.getRepository(AudienceType);
 
@@ -26,13 +28,9 @@ export default class AudienceTypeSeeder implements Seeder {
         metadata: {
           preparation_time_days: 7,
           required_documents: [1, 2, 3], // IDs des documents types requis
-          possible_outcomes: [
-            'Mise en état',
-            'Renvoi',
-            'Jugement sur le fond'
-          ],
-          legal_basis: 'Article 750 du Code de Procédure Civile'
-        }
+          possible_outcomes: ['Mise en état', 'Renvoi', 'Jugement sur le fond'],
+          legal_basis: 'Article 750 du Code de Procédure Civile',
+        },
       },
       {
         code: 'AUD_MISE_ETAT',
@@ -47,8 +45,8 @@ export default class AudienceTypeSeeder implements Seeder {
         metadata: {
           preparation_time_days: 14,
           required_documents: [4, 5, 6],
-          legal_basis: 'Article 755 du Code de Procédure Civile'
-        }
+          legal_basis: 'Article 755 du Code de Procédure Civile',
+        },
       },
       {
         code: 'AUD_PLAIDOIRIE',
@@ -66,14 +64,14 @@ export default class AudienceTypeSeeder implements Seeder {
           possible_outcomes: [
             'Jugement immédiat',
             'Mise en délibéré',
-            'Renvoi pour supplément d\'instruction'
-          ]
-        }
+            "Renvoi pour supplément d'instruction",
+          ],
+        },
       },
       {
         code: 'AUD_INSTRUCTION',
-        name: 'Audience d\'Instruction',
-        description: 'Audience pour l\'instruction de l\'affaire',
+        name: "Audience d'Instruction",
+        description: "Audience pour l'instruction de l'affaire",
         category: AudienceTypeCategory.HEARING,
         default_duration_minutes: 90,
         is_public: false,
@@ -82,8 +80,8 @@ export default class AudienceTypeSeeder implements Seeder {
         is_active: true,
         metadata: {
           preparation_time_days: 21,
-          required_documents: [10, 11]
-        }
+          required_documents: [10, 11],
+        },
       },
       {
         code: 'AUD_CONCILIATION',
@@ -97,12 +95,8 @@ export default class AudienceTypeSeeder implements Seeder {
         is_active: true,
         metadata: {
           preparation_time_days: 7,
-          possible_outcomes: [
-            'Accord',
-            'Échec de la conciliation',
-            'Report'
-          ]
-        }
+          possible_outcomes: ['Accord', 'Échec de la conciliation', 'Report'],
+        },
       },
       {
         code: 'AUD_JUGEMENT',
@@ -116,13 +110,13 @@ export default class AudienceTypeSeeder implements Seeder {
         is_active: true,
         metadata: {
           preparation_time_days: 3,
-          required_documents: [12]
-        }
+          required_documents: [12],
+        },
       },
       {
         code: 'AUD_APPEL',
-        name: 'Audience d\'Appel',
-        description: 'Audience devant la cour d\'appel',
+        name: "Audience d'Appel",
+        description: "Audience devant la cour d'appel",
         category: AudienceTypeCategory.APPEAL,
         default_duration_minutes: 180,
         is_public: true,
@@ -132,13 +126,13 @@ export default class AudienceTypeSeeder implements Seeder {
         metadata: {
           preparation_time_days: 60,
           required_documents: [13, 14, 15],
-          legal_basis: 'Article 543 du Code de Procédure Civile'
-        }
+          legal_basis: 'Article 543 du Code de Procédure Civile',
+        },
       },
       {
         code: 'AUD_EXPERTISE',
-        name: 'Audience d\'Expertise',
-        description: 'Désignation et audition d\'expert',
+        name: "Audience d'Expertise",
+        description: "Désignation et audition d'expert",
         category: AudienceTypeCategory.EXPERTISE,
         default_duration_minutes: 120,
         is_public: false,
@@ -147,8 +141,8 @@ export default class AudienceTypeSeeder implements Seeder {
         is_active: true,
         metadata: {
           preparation_time_days: 30,
-          required_documents: [16, 17]
-        }
+          required_documents: [16, 17],
+        },
       },
       {
         code: 'AUD_CASSATION',
@@ -163,8 +157,8 @@ export default class AudienceTypeSeeder implements Seeder {
         metadata: {
           preparation_time_days: 90,
           required_documents: [18, 19, 20],
-          legal_basis: 'Loi n°2006/015 du 29 décembre 2006'
-        }
+          legal_basis: 'Loi n°2006/015 du 29 décembre 2006',
+        },
       },
       {
         code: 'AUD_URGENCE',
@@ -179,8 +173,8 @@ export default class AudienceTypeSeeder implements Seeder {
         metadata: {
           preparation_time_days: 2,
           required_documents: [21, 22],
-          legal_basis: 'Article 808 du Code de Procédure Civile'
-        }
+          legal_basis: 'Article 808 du Code de Procédure Civile',
+        },
       },
       {
         code: 'AUD_FAMILLE',
@@ -194,8 +188,8 @@ export default class AudienceTypeSeeder implements Seeder {
         is_active: true,
         metadata: {
           preparation_time_days: 14,
-          required_documents: [23, 24]
-        }
+          required_documents: [23, 24],
+        },
       },
       {
         code: 'AUD_COMMERCE',
@@ -210,13 +204,17 @@ export default class AudienceTypeSeeder implements Seeder {
         metadata: {
           preparation_time_days: 21,
           required_documents: [25, 26],
-          legal_basis: 'Code de Commerce camerounais'
-        }
-      }
+          legal_basis: 'Code de Commerce camerounais',
+        },
+      },
     ];
 
     for (const typeData of audienceTypes) {
-      const existing = await findOneForTenant(repository, 'code', typeData.code);
+      const existing = await findOneForTenant(
+        repository,
+        'code',
+        typeData.code,
+      );
 
       if (!existing) {
         const audienceType = repository.create(typeData);

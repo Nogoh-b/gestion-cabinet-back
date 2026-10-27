@@ -12,7 +12,10 @@ const CATEGORIES = ['auth', 'dossier', 'audience', 'billing', 'general'];
 const AUDIENCES = ['client', 'collaborator', 'both'];
 
 export class CreateMailTemplateDto {
-  @ApiProperty({ example: 'account_opening', description: 'Code unique du template' })
+  @ApiProperty({
+    example: 'account_opening',
+    description: 'Code unique du template',
+  })
   @IsString()
   @IsNotEmpty()
   code: string;
@@ -28,7 +31,11 @@ export class CreateMailTemplateDto {
   @IsOptional()
   category?: string;
 
-  @ApiPropertyOptional({ example: 'client', enum: AUDIENCES, description: 'Destinataire visé : client, collaborator ou both' })
+  @ApiPropertyOptional({
+    example: 'client',
+    enum: AUDIENCES,
+    description: 'Destinataire visé : client, collaborator ou both',
+  })
   @IsString()
   @IsIn(AUDIENCES)
   @IsOptional()
@@ -44,7 +51,9 @@ export class CreateMailTemplateDto {
   @IsNotEmpty()
   subject: string;
 
-  @ApiProperty({ example: '<p>Bonjour {{firstName}}, votre compte est prêt.</p>' })
+  @ApiProperty({
+    example: '<p>Bonjour {{firstName}}, votre compte est prêt.</p>',
+  })
   @IsString()
   @IsNotEmpty()
   body_html: string;
@@ -54,7 +63,10 @@ export class CreateMailTemplateDto {
   @IsOptional()
   variables?: string;
 
-  @ApiPropertyOptional({ example: 'inter', description: 'Clé de police (FONTS front)' })
+  @ApiPropertyOptional({
+    example: 'inter',
+    description: 'Clé de police (FONTS front)',
+  })
   @IsString()
   @IsOptional()
   font_family?: string;

@@ -1,6 +1,6 @@
 // src/modules/factures/dto/facture-stats.dto.ts
 
-import { BaseStatsDto, DistributionItem } from "src/core/types/base-stats.dto";
+import { BaseStatsDto, DistributionItem } from 'src/core/types/base-stats.dto';
 
 export class FactureStatsDto extends BaseStatsDto {
   // Vue d'ensemble
@@ -11,25 +11,25 @@ export class FactureStatsDto extends BaseStatsDto {
   paidCount: number;
   unpaidCount: number;
   overdueCount: number;
-  
+
   // Distributions
   byStatus: DistributionItem[];
   byType: DistributionItem[];
   byClient: DistributionItem[];
   byDossier: DistributionItem[];
-  
+
   // Statistiques financières
   financialSummary: FinancialSummaryDto;
-  
+
   // Statistiques de retard
   overdueStats: OverdueStatsDto;
-  
+
   // Tendances
   monthlyRevenue: MonthlyRevenueDto[];
-  
+
   // Factures récentes
   recentInvoices: RecentInvoiceDto[];
-  
+
   // Factures impayées
   unpaidInvoices: UnpaidInvoiceDto[];
 }

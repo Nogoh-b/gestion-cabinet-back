@@ -1,10 +1,19 @@
 // types/instance-mapped.type.ts
 
-import { ProcedureInstance } from "../procedure-instance.entity";
+import { ProcedureInstance } from '../procedure-instance.entity';
 
-export type SubStageStatus = 'pending' | 'in_progress' | 'completed' | 'skipped';
+export type SubStageStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'completed'
+  | 'skipped';
 export type StageStatus = 'pending' | 'in_progress' | 'current' | 'completed';
-export type InstanceStatus = 'pending' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
+export type InstanceStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'paused'
+  | 'completed'
+  | 'cancelled';
 export interface MappedSubStage {
   id: string;
   name: string;
@@ -41,24 +50,24 @@ export interface MappedInstance {
   stages: MappedStage[];
   currentStage: MappedStage;
   progress: number;
-  totalSubStagesCount
-totalMandatorySubStagesCount?: any;
-completedSubStagesCount?: any;
-completedMandatorySubStagesCount?: any;
-remainingSubStagesCount?: any;
-remainingMandatorySubStagesCount?: any;
-totalSubStagesToCompleteCount?: any;
-completedSubStagesToCompleteCount?: any;
-progressPercentage?: any;
-isCurrentStageCompleted?: any;
-areAllMandatorySubStagesCompleted?: any;
-isFullyCompleted?: any;
-isOnLastStage?: any;
-areAllCurrentStageSubStagesCompleted?: any;
-currentStageProgress?: any;
-remainingMandatorySubStages?: any;
-canBeCompleted?: any;
-stagesTraversedCount?: any;
-totalDurationInDays?: any;
-completedAt?: any;
+  totalSubStagesCount;
+  totalMandatorySubStagesCount?: any;
+  completedSubStagesCount?: any;
+  completedMandatorySubStagesCount?: any;
+  remainingSubStagesCount?: any;
+  remainingMandatorySubStagesCount?: any;
+  totalSubStagesToCompleteCount?: any;
+  completedSubStagesToCompleteCount?: any;
+  progressPercentage?: any;
+  isCurrentStageCompleted?: any;
+  areAllMandatorySubStagesCompleted?: any;
+  isFullyCompleted?: any;
+  isOnLastStage?: any;
+  areAllCurrentStageSubStagesCompleted?: any;
+  currentStageProgress?: any;
+  remainingMandatorySubStages?: any;
+  canBeCompleted?: any;
+  stagesTraversedCount?: any;
+  totalDurationInDays?: any;
+  completedAt?: any;
 }

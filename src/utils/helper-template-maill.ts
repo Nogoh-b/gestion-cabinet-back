@@ -1,4 +1,4 @@
-import { ConfigService } from "@nestjs/config";
+import { ConfigService } from '@nestjs/config';
 
 const configService = new ConfigService();
 
@@ -16,24 +16,26 @@ export const helpers = {
   appUrl: () => configService.get('APP_URL'),
 
   // Helpers pour les liens - utilisent le token passé dans le contexte
-  resetPasswordLink: (token: string) => 
+  resetPasswordLink: (token: string) =>
     `${configService.get('APP_URL')}/reset-password?token=${token}`,
-  
-  activationLink: (token: string) => 
+
+  activationLink: (token: string) =>
     `${configService.get('APP_URL')}/auth/activate?token=${token}`,
-  
+
   loginLink: () => `${configService.get('APP_URL')}/login`,
 
   // Helper qui calcule automatiquement la date d'expiration pour reset password
   resetPasswordExpiration: () => {
     const expirationDate = new Date();
-    expirationDate.setHours(expirationDate.getHours() + RESET_PASSWORD_VALIDITY);
+    expirationDate.setHours(
+      expirationDate.getHours() + RESET_PASSWORD_VALIDITY,
+    );
     return expirationDate.toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   },
 
@@ -46,7 +48,7 @@ export const helpers = {
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   },
 
@@ -63,7 +65,7 @@ export const helpers = {
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   },
 
@@ -78,7 +80,7 @@ export const helpers = {
     return d.toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
     });
   },
 
@@ -90,7 +92,7 @@ export const helpers = {
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   },
 

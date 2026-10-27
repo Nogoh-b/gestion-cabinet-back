@@ -31,7 +31,12 @@ export class DashboardOverviewDto {
   trends: {
     dossiers: Array<{ date: string; count: number }>;
     audiences: Array<{ date: string; count: number }>;
-    factures: Array<{ month: string; totalTTC: number; totalHT: number; totalPaid: number }>;
+    factures: Array<{
+      month: string;
+      totalTTC: number;
+      totalHT: number;
+      totalPaid: number;
+    }>;
   };
 
   // Activité récente - pour RecentActivity
@@ -54,12 +59,62 @@ export class DashboardOverviewDto {
     successRate: number;
   }>;
 
-  // Résumé financier - pour PerformanceCharts (onglet financier)
+  // Résumé financier - pour PerformanceCharts (onglet financier).
+  // null sans view_factures / view_financial_reports (hors admin) : la
+  // facturation du cabinet n'est pas chargée (trends.factures vide aussi).
   financial: {
     totalFacture: number;
     totalPaye: number;
     totalImpaye: number;
     tauxRecouvrement: number;
     facturesEnRetard: number;
+  } | null;
+
+  // Plan d'action de l'avocat - diligences à traiter, échéances, audiences.
+  // Chaque liste est tronquée (voir ACTIONS_SECTION_LIMIT) ; `totaux` porte la
+  // volumétrie réelle pour l'indicateur « voir tout » du tableau de bord.
+  actions: {
+    /**
+     * Volumétrie réelle de chaque section (indépendante de la troncature des
+     * listes ci-dessous) : elle alimente l'indicateur « voir tout » du
+     * tableau de bord.
+     */
+    totaux: {
+      diligencesEnRetard: number;
+      echeancesProches: number;
+      prochainesAudiences: number;
+    };
+    diligencesEnRetard: Array<{
+      id: number;
+      title: string;
+      dossierNumber?: string;
+      dossierId?: number | null;
+      sourceActionId?: string | null;
+      clientName?: string;
+      lawyerName?: string;
+      deadline: Date;
+      daysOverdue: number;
+      priority?: string;
+    }>;
+    echeancesProches: Array<{
+      id: number;
+      title: string;
+      dossierNumber?: string;
+      dossierId?: number | null;
+      sourceActionId?: string | null;
+      clientName?: string;
+      lawyerName?: string;
+      deadline: Date;
+      daysRemaining: number;
+      priority?: string;
+    }>;
+    prochainesAudiences: Array<{
+      id: number;
+      date: Date;
+      jurisdiction?: string;
+      dossierNumber?: string;
+      clientName?: string;
+      status?: string;
+    }>;
   };
 }

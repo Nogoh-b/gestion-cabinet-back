@@ -1,15 +1,26 @@
 // location-city.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { District } from '../../district/entities/district.entity';
 import { Expose } from 'class-transformer';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('location_city')
 @BusinessTable({
   label: 'Villes',
   description: 'Villes et communes.',
   icon: '🏙️',
-  category: 'geographie'
+  category: 'geographie',
 })
 export class LocationCity {
   @PrimaryGeneratedColumn()
@@ -18,7 +29,7 @@ export class LocationCity {
     description: 'Identifiant unique de la ville',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -28,7 +39,7 @@ export class LocationCity {
     description: 'Nom officiel de la ville',
     example: 'Douala, Yaoundé, Dakar',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   name: string;
 
@@ -38,7 +49,7 @@ export class LocationCity {
     description: 'Code postal ou code unique de la ville',
     example: '00237, 00221, 75001',
     importance: 'medium',
-    group: 'identification'
+    group: 'identification',
   })
   code: string;
 
@@ -48,7 +59,7 @@ export class LocationCity {
     description: 'Population estimée de la ville',
     unit: 'habitants',
     importance: 'low',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   population: string;
 
@@ -58,7 +69,7 @@ export class LocationCity {
     description: 'Identifiant du district parent',
     importance: 'low',
     group: 'relation',
-    ignored: true
+    ignored: true,
   })
   districts_id: number;
 
@@ -68,7 +79,7 @@ export class LocationCity {
     label: 'District',
     description: 'District auquel appartient la ville',
     importance: 'high',
-    group: 'relation'
+    group: 'relation',
   })
   district: District;
 
@@ -79,7 +90,7 @@ export class LocationCity {
     format: 'date',
     importance: 'low',
     group: 'audit',
-    ignored: true
+    ignored: true,
   })
   created_at: Date;
 
@@ -90,7 +101,7 @@ export class LocationCity {
     format: 'date',
     importance: 'low',
     group: 'audit',
-    ignored: true
+    ignored: true,
   })
   updated_at: Date;
 
@@ -100,6 +111,8 @@ export class LocationCity {
     const division = this.district?.division?.name ?? '';
     const region = this.district?.division?.region?.name ?? '';
     const country = this.district?.division?.region?.country?.name ?? '';
-    return [this.name, district, division, region, country].filter(Boolean).join(', ');
+    return [this.name, district, division, region, country]
+      .filter(Boolean)
+      .join(', ');
   }
 }

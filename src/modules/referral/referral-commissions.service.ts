@@ -238,9 +238,7 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     return items.map((item) => this.enrichCommission(item));
   }
 
-  async findByReferrer(
-    referrerId: number,
-  ): Promise<ReferralCommission[]> {
+  async findByReferrer(referrerId: number): Promise<ReferralCommission[]> {
     const items = await this.repository.find({
       where: {
         tenant_id: getCurrentTenantId(),
@@ -363,10 +361,9 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     await this.dataSource.transaction(async (manager) => {
       const commission = await this.lockCommission(manager, id);
       if (
-        ![
-          CommissionStatus.CALCULATED,
-          CommissionStatus.APPROVED,
-        ].includes(commission.status)
+        ![CommissionStatus.CALCULATED, CommissionStatus.APPROVED].includes(
+          commission.status,
+        )
       ) {
         throw new ForbiddenException(
           'Une commission payée ou annulée ne peut pas être annulée',
@@ -413,9 +410,7 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
       const sources = await this.resolveSources(
         manager,
         commission.dossier_referral_id,
-        dto.facture_id === undefined
-          ? commission.facture_id
-          : dto.facture_id,
+        dto.facture_id === undefined ? commission.facture_id : dto.facture_id,
         dto.paiement_id === undefined
           ? commission.paiement_id
           : dto.paiement_id,
@@ -426,9 +421,7 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
       commission.paiement_id = sources.paiement?.id ?? null;
       commission.paiement = sources.paiement;
       if (dto.amount !== undefined) {
-        commission.amount = this.fromMinorUnits(
-          this.toMinorUnits(dto.amount),
-        );
+        commission.amount = this.fromMinorUnits(this.toMinorUnits(dto.amount));
       }
       if (dto.calculation_date !== undefined) {
         commission.calculation_date = this.parsePastDate(
@@ -455,10 +448,7 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     return this.findOne(id);
   }
 
-  async remove(
-    id: number,
-    actor: ReferralCommissionActor,
-  ): Promise<void> {
+  async remove(id: number, actor: ReferralCommissionActor): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
       const commission = await this.lockCommission(manager, id);
       if (commission.status !== CommissionStatus.CALCULATED) {
@@ -483,25 +473,19 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     payload: Record<string, any>,
   ): Promise<ReferralCommission | null> {
     const invoiceId = String(payload.invoiceId ?? payload.id ?? '');
-    const dossierId = Number(
-      payload.dossierId ?? payload.dossier_id,
-    );
+    const dossierId = Number(payload.dossierId ?? payload.dossier_id);
     if (!invoiceId || !Number.isInteger(dossierId) || dossierId <= 0) {
       throw new BadRequestException(
-        "Événement de facture incomplet pour le calcul de commission",
+        'Événement de facture incomplet pour le calcul de commission',
       );
     }
     return this.dataSource.transaction(async (manager) => {
-      const sources = await this.lockReferralByDossier(
-        manager,
-        dossierId,
-      );
+      const sources = await this.lockReferralByDossier(manager, dossierId);
       if (!sources) return null;
       if (
-        ![
-          CommissionBasis.INVOICED_HT,
-          CommissionBasis.INVOICED_TTC,
-        ].includes(sources.commission_basis)
+        ![CommissionBasis.INVOICED_HT, CommissionBasis.INVOICED_TTC].includes(
+          sources.commission_basis,
+        )
       ) {
         return null;
       }
@@ -517,15 +501,13 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
           'Facture source de la commission introuvable',
         );
       }
-      const existing = await manager
-        .getRepository(ReferralCommission)
-        .findOne({
-          where: {
-            tenant_id: getCurrentTenantId(),
-            dossier_referral_id: sources.id,
-            facture_id: invoiceId,
-          },
-        });
+      const existing = await manager.getRepository(ReferralCommission).findOne({
+        where: {
+          tenant_id: getCurrentTenantId(),
+          dossier_referral_id: sources.id,
+          facture_id: invoiceId,
+        },
+      });
       if (existing) return existing;
       if (await this.fixedCommissionExists(manager, sources)) {
         return null;
@@ -548,12 +530,8 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
   async calculateFromPaymentEvent(
     payload: Record<string, any>,
   ): Promise<ReferralCommission | null> {
-    const paymentId = String(
-      payload.paymentId ?? payload.id ?? '',
-    );
-    const invoiceId = String(
-      payload.invoiceId ?? payload.facture?.id ?? '',
-    );
+    const paymentId = String(payload.paymentId ?? payload.id ?? '');
+    const invoiceId = String(payload.invoiceId ?? payload.facture?.id ?? '');
     const dossierId = Number(
       payload.dossierId ??
         payload.facture?.dossier_id ??
@@ -566,20 +544,16 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
       dossierId <= 0
     ) {
       throw new BadRequestException(
-        "Événement de paiement incomplet pour le calcul de commission",
+        'Événement de paiement incomplet pour le calcul de commission',
       );
     }
     return this.dataSource.transaction(async (manager) => {
-      const referral = await this.lockReferralByDossier(
-        manager,
-        dossierId,
-      );
+      const referral = await this.lockReferralByDossier(manager, dossierId);
       if (!referral) return null;
       if (
-        ![
-          CommissionBasis.COLLECTED_HT,
-          CommissionBasis.COLLECTED_TTC,
-        ].includes(referral.commission_basis)
+        ![CommissionBasis.COLLECTED_HT, CommissionBasis.COLLECTED_TTC].includes(
+          referral.commission_basis,
+        )
       ) {
         return null;
       }
@@ -592,22 +566,17 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
         },
         relations: ['facture'],
       });
-      if (
-        !paiement ||
-        paiement.facture?.dossier_id !== dossierId
-      ) {
+      if (!paiement || paiement.facture?.dossier_id !== dossierId) {
         throw new NotFoundException(
           'Paiement source validé de la commission introuvable',
         );
       }
-      const existing = await manager
-        .getRepository(ReferralCommission)
-        .findOne({
-          where: {
-            tenant_id: getCurrentTenantId(),
-            paiement_id: paymentId,
-          },
-        });
+      const existing = await manager.getRepository(ReferralCommission).findOne({
+        where: {
+          tenant_id: getCurrentTenantId(),
+          paiement_id: paymentId,
+        },
+      });
       if (existing) return existing;
       if (await this.fixedCommissionExists(manager, referral)) {
         return null;
@@ -615,8 +584,7 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
       let base = Number(payload.amount ?? paiement.montant);
       if (referral.commission_basis === CommissionBasis.COLLECTED_HT) {
         const taxRate = Number(paiement.facture?.tauxTVA ?? 0);
-        base =
-          taxRate > 0 ? base / (1 + taxRate / 100) : base;
+        base = taxRate > 0 ? base / (1 + taxRate / 100) : base;
       }
       return this.saveAutomaticallyCalculated(
         manager,
@@ -683,12 +651,10 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     paiementId?: string | null,
   ): Promise<ResolvedCommissionSources> {
     const tenantId = getCurrentTenantId();
-    const referral = await manager
-      .getRepository(DossierReferral)
-      .findOne({
-        where: { id: dossierReferralId, tenant_id: tenantId },
-        relations: ['dossier', 'referrer'],
-      });
+    const referral = await manager.getRepository(DossierReferral).findOne({
+      where: { id: dossierReferralId, tenant_id: tenantId },
+      relations: ['dossier', 'referrer'],
+    });
     if (!referral) {
       throw new NotFoundException('Apport de dossier non trouvé');
     }
@@ -704,9 +670,7 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
         relations: ['facture'],
       });
       if (!paiement) {
-        throw new NotFoundException(
-          'Paiement source validé non trouvé',
-        );
+        throw new NotFoundException('Paiement source validé non trouvé');
       }
       facture = paiement.facture;
       if (factureId && facture.id !== factureId) {
@@ -722,10 +686,7 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
         throw new NotFoundException('Facture source non trouvée');
       }
     }
-    if (
-      facture &&
-      facture.dossier_id !== referral.dossier_id
-    ) {
+    if (facture && facture.dossier_id !== referral.dossier_id) {
       throw new BadRequestException(
         "La facture et l'apport n'appartiennent pas au même dossier",
       );
@@ -738,21 +699,16 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
         StatutFacture.PAYEE,
       ].includes(facture.status)
     ) {
-      throw new BadRequestException(
-        'La facture source doit être validée',
-      );
+      throw new BadRequestException('La facture source doit être validée');
     }
     return { referral, facture, paiement };
   }
 
-  private assertSourceRequired(
-    sources: ResolvedCommissionSources,
-  ): void {
+  private assertSourceRequired(sources: ResolvedCommissionSources): void {
     if (
-      [
-        CommissionBasis.INVOICED_HT,
-        CommissionBasis.INVOICED_TTC,
-      ].includes(sources.referral.commission_basis) &&
+      [CommissionBasis.INVOICED_HT, CommissionBasis.INVOICED_TTC].includes(
+        sources.referral.commission_basis,
+      ) &&
       !sources.facture
     ) {
       throw new BadRequestException(
@@ -760,10 +716,9 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
       );
     }
     if (
-      [
-        CommissionBasis.COLLECTED_HT,
-        CommissionBasis.COLLECTED_TTC,
-      ].includes(sources.referral.commission_basis) &&
+      [CommissionBasis.COLLECTED_HT, CommissionBasis.COLLECTED_TTC].includes(
+        sources.referral.commission_basis,
+      ) &&
       !sources.paiement
     ) {
       throw new BadRequestException(
@@ -845,16 +800,11 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     return user;
   }
 
-  private calculateAmount(
-    referral: DossierReferral,
-    base: number,
-  ): number {
+  private calculateAmount(referral: DossierReferral, base: number): number {
     if (!Number.isFinite(base) || base <= 0) return 0;
     if (referral.commission_mode === CommissionMode.FIXED_AMOUNT) {
       const fixed = Number(referral.commission_amount ?? 0);
-      return fixed > 0
-        ? this.fromMinorUnits(this.toMinorUnits(fixed))
-        : 0;
+      return fixed > 0 ? this.fromMinorUnits(this.toMinorUnits(fixed)) : 0;
     }
     const rate = Number(referral.commission_rate ?? 0);
     if (!Number.isFinite(rate) || rate <= 0) return 0;
@@ -862,17 +812,12 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     if (!Number.isSafeInteger(baseMinor) || baseMinor <= 0) {
       return 0;
     }
-    return this.fromMinorUnits(
-      Math.round(baseMinor * rate / 100),
-    );
+    return this.fromMinorUnits(Math.round((baseMinor * rate) / 100));
   }
 
   private parsePastDate(value: string, message: string): Date {
     const date = new Date(value);
-    if (
-      Number.isNaN(date.getTime()) ||
-      date.getTime() > Date.now() + 60_000
-    ) {
+    if (Number.isNaN(date.getTime()) || date.getTime() > Date.now() + 60_000) {
       throw new BadRequestException(message);
     }
     return date;
@@ -899,9 +844,7 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     return value / 100;
   }
 
-  private auditState(
-    commission: ReferralCommission,
-  ): Record<string, unknown> {
+  private auditState(commission: ReferralCommission): Record<string, unknown> {
     return {
       status: commission.status,
       dossierReferralId: commission.dossier_referral_id,
@@ -914,9 +857,7 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     };
   }
 
-  private enrichCommission(
-    commission: ReferralCommission,
-  ): ReferralCommission {
+  private enrichCommission(commission: ReferralCommission): ReferralCommission {
     const referrer = commission.dossier_referral?.referrer as
       | Referrer
       | undefined;
@@ -940,9 +881,7 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     return labels[status] ?? String(status ?? '');
   }
 
-  private getReferrerDisplayName(
-    referrer?: Referrer | null,
-  ): string | null {
+  private getReferrerDisplayName(referrer?: Referrer | null): string | null {
     if (!referrer) return null;
     const employeeUser = (referrer as any).employee?.user;
     const employeeName =

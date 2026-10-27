@@ -8,13 +8,11 @@ import {
   Min,
   IsBoolean,
   IsNotEmpty,
+  IsArray,
   ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ClientSatisfaction, DossierOutcome } from '../entities/dossier.entity';
-
-
-
 
 export class CloseDossierDto {
   @IsEnum(DossierOutcome)
@@ -43,13 +41,13 @@ export class CloseDossierDto {
   @IsString()
   final_decision_text?: string;
 
-  @ValidateIf(o => o.outcome === DossierOutcome.SETTLED)
+  @ValidateIf((o) => o.outcome === DossierOutcome.SETTLED)
   @IsNumber()
   @Min(0)
   @IsOptional()
   settlement_amount?: number;
 
-  @ValidateIf(o => o.outcome === DossierOutcome.SETTLED)
+  @ValidateIf((o) => o.outcome === DossierOutcome.SETTLED)
   @IsString()
   @IsOptional()
   settlement_terms?: string;
@@ -70,4 +68,13 @@ export class CloseDossierDto {
   @IsString()
   @IsNotEmpty()
   override_reason?: string;
+  /** Motif obligatoire lorsque le contrôle V2 remonte des avertissements. */
+  @IsOptional()
+  @IsString()
+  justification?: string;
+
+  /** Résolutions structurées des points relevés par le contrôle de clôture. */
+  @IsOptional()
+  @IsArray()
+  resolutions?: Array<Record<string, unknown>>;
 }

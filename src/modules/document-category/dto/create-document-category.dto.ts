@@ -1,9 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsNumber, IsHexColor } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  IsNumber,
+  IsHexColor,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreateDocumentCategoryDto {
-  @ApiProperty({ description: 'Code unique. Généré automatiquement si non fourni.', required: false })
+  @ApiProperty({
+    description: 'Code unique. Généré automatiquement si non fourni.',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   code?: string;
@@ -23,7 +33,10 @@ export class CreateDocumentCategoryDto {
   @IsString()
   icon?: string;
 
-  @ApiPropertyOptional({ description: 'Couleur hexadécimale', default: '#4F46E5' })
+  @ApiPropertyOptional({
+    description: 'Couleur hexadécimale',
+    default: '#4F46E5',
+  })
   @IsOptional()
   @IsHexColor()
   color?: string = '#4F46E5';
@@ -37,18 +50,23 @@ export class CreateDocumentCategoryDto {
   @ApiPropertyOptional({ description: 'Période de rétention en jours' })
   @IsOptional()
   @IsNumber()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   retention_period?: number;
 
   @ApiPropertyOptional({ description: 'Types MIME autorisés (JSON array)' })
   @IsOptional()
-  @Transform(({ value }) => typeof value === 'string' ? JSON.parse(value) : value)
+  @Transform(({ value }) =>
+    typeof value === 'string' ? JSON.parse(value) : value,
+  )
   allowed_mime_types?: string[];
 
-  @ApiPropertyOptional({ description: 'Taille max du fichier en MB', default: 50 })
+  @ApiPropertyOptional({
+    description: 'Taille max du fichier en MB',
+    default: 50,
+  })
   @IsOptional()
   @IsNumber()
-  @Transform(({ value }) => value ? parseInt(value) : 50)
+  @Transform(({ value }) => (value ? parseInt(value) : 50))
   max_file_size_mb?: number = 50;
 
   @ApiPropertyOptional({ description: 'Niveau de confidentialité' })

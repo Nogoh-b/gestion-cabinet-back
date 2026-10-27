@@ -1,35 +1,45 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { stripRestrictedInput } from 'src/core/security/restricted-fields';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { CreateUserDto } from 'src/modules/iam/user/dto/create-user.dto';
 
-
-
-import { Controller, Get, Post, Body, UseGuards, Param, ParseIntPipe, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
-
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  UseGuards,
+  Param,
+  ParseIntPipe,
+  Query,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+} from '@nestjs/swagger';
 
 import { ResetPasswordRequestDto } from './dto/create-employee.dto';
+import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { SearchEmployeeDto } from './dto/search-dossier.dto';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { EmployeeService } from './employee.service';
 import { EmployeeStatsService } from './employee-stats.service';
 
-
-
-
-
-
 @Controller('user')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@ApiBearerAuth() 
-
+@ApiBearerAuth()
 export class EmployeeController {
-  constructor(private readonly employeeService: EmployeeService,
-  private readonly statsService: EmployeeStatsService) {}
-
+  constructor(
+    private readonly employeeService: EmployeeService,
+    private readonly statsService: EmployeeStatsService,
+  ) {}
 
   @Get('stats')
   @RequirePermissions('view_users')
@@ -43,14 +53,14 @@ export class EmployeeController {
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
       branchId: branchId ? +branchId : undefined,
-      fieldToUseForDate : 'hireDate'
+      fieldToUseForDate: 'hireDate',
     });
   }
 
   @Get('stats/:id')
   @RequirePermissions('view_users')
-  @ApiOperation({ summary: 'Obtenir les statistiques d\'un employé spécifique' })
-  @ApiParam({ name: 'id', description: 'ID de l\'employé' })
+  @ApiOperation({ summary: "Obtenir les statistiques d'un employé spécifique" })
+  @ApiParam({ name: 'id', description: "ID de l'employé" })
   async getStatsForEmployee(
     @Param('id', ParseIntPipe) id: number,
     @Query('startDate') startDate?: string,
@@ -84,19 +94,38 @@ export class EmployeeController {
     return (stats as any).topPerformers;
   }
 
-  @Get('search')
-  @RequirePermissions('view_users')
-  @ApiOperation({ summary: 'Recherche texte avec relations' })
-  @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [EmployeeResponseDto]  })
-  async search(
-
+  @Get('directory')
+  @RequirePermissions('view_user_directory')
+  @ApiOperation({ summary: "Annuaire minimal des utilisateurs (selects d'assignation)" })
+  @ApiResponse({ status: 200, description: "Entrées d'annuaire" })
+  async directory(
     @Query() searchParams?: SearchEmployeeDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.employeeService.searchWithTransformer(searchParams as SearchCriteria, EmployeeResponseDto , paginationParams);
+    return this.employeeService.searchDirectory(
+      searchParams as SearchCriteria,
+      paginationParams,
+    );
   }
 
-
+  @Get('search')
+  @RequirePermissions('view_users')
+  @ApiOperation({ summary: 'Recherche texte avec relations' })
+  @ApiResponse({
+    status: 200,
+    description: 'Résultats de recherche',
+    type: [EmployeeResponseDto],
+  })
+  async search(
+    @Query() searchParams?: SearchEmployeeDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.employeeService.searchWithTransformer(
+      searchParams as SearchCriteria,
+      EmployeeResponseDto,
+      paginationParams,
+    );
+  }
 
   @Post()
   @RequirePermissions('create_user')
@@ -115,8 +144,31 @@ export class EmployeeController {
   @RequirePermissions('edit_user')
   async sendNewPassword(@Body() dto: ResetPasswordRequestDto) {
     return this.employeeService.send_new_password({
-      id: dto.id
+      id: dto.id,
     });
+  }
+
+  @Patch(':id')
+  @RequirePermissions('edit_user')
+  @ApiOperation({ summary: 'Mettre à jour un employé' })
+  @ApiParam({ name: 'id', description: "ID de l'employé" })
+  @ApiResponse({
+    status: 200,
+    description: 'Employé mis à jour',
+    type: EmployeeResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Employé non trouvé' })
+  async updateEmployee(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateEmployeeDto,
+    @CurrentUser() user: any,
+  ): Promise<EmployeeResponseDto> {
+    // Salaire et taux horaire : non modifiables par qui ne peut pas les voir
+    // (le formulaire les renverrait vides, donc à 0 ou null).
+    return this.employeeService.updateEmployee(
+      id,
+      stripRestrictedInput('employee', dto, user),
+    );
   }
 
   @Get(':id')
@@ -125,11 +177,13 @@ export class EmployeeController {
   @ApiResponse({
     status: 200,
     description: 'Employé trouvé',
-    type: EmployeeResponseDto
+    type: EmployeeResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Employé non trouvé' })
-  async findOne(@Param('id', ParseIntPipe) id: number): Promise<EmployeeResponseDto | any> {
-    return this.employeeService.findOneV1(id,null,EmployeeResponseDto);
+  async findOne(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<EmployeeResponseDto | any> {
+    return this.employeeService.findOneV1(id, null, EmployeeResponseDto);
   }
 
   /**
@@ -138,9 +192,9 @@ export class EmployeeController {
   @Post(':id/send-new-password')
   @RequirePermissions('edit_user')
   async sendNewPasswordById(@Param('id', ParseIntPipe) id: number) {
-    return this.employeeService.send_new_password({ id }); 
+    return this.employeeService.send_new_password({ id });
   }
-    /*@Get(':id')
+  /*@Get(':id')
     @ApiOperation({ summary: 'Récupérer un utilisateur avec son role' })
     // @RequirePermissions('VIEW_EMPLOYEE')
     findOne(@Param('id') id: string): Promise<any> {

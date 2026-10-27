@@ -1,7 +1,11 @@
 // src/modules/factures/services/facture-stats.service.ts
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
+import {
+  addRelatedDossierVisibilityCondition,
+  canBypassConfidentiality,
+} from '../dossiers/dossier-visibility';
 import { Facture } from './entities/facture.entity';
 import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service';
 import { FactureStatsDto } from './dto/facture-stats.dto';
@@ -16,6 +20,36 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     private factureRepository: Repository<Facture>,
   ) {
     super(factureRepository);
+  }
+
+  /**
+   * Confidentialité des dossiers appliquée aux statistiques financières :
+   * toutes les requêtes de ce service passent par `applyFilters`, aucune
+   * facture rattachée à un dossier confidentiel n'est donc agrégée pour un
+   * appelant non habilité.
+   *
+   * Comme pour les statistiques de dossiers, l'administration exclut ces
+   * dossiers par défaut et peut les réintégrer via `includeConfidential`.
+   */
+  protected applyFilters(
+    query: SelectQueryBuilder<Facture>,
+    filters?: StatsFilterDto,
+    alias: string = 'entity',
+  ): SelectQueryBuilder<Facture> {
+    super.applyFilters(query, filters, alias);
+
+    if (canBypassConfidentiality()) {
+      if (filters?.includeConfidential !== true) {
+        query.andWhere(
+          `(${alias}.dossier_id IS NULL OR ${alias}.dossier_id IN (
+             SELECT d.id FROM dossiers d WHERE d.confidentiality_level = false
+           ))`,
+        );
+      }
+      return query;
+    }
+
+    return addRelatedDossierVisibilityCondition(query, alias);
   }
 
   async getStats(filters?: StatsFilterDto): Promise<FactureStatsDto> {
@@ -79,6 +113,56 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       recentInvoices,
       unpaidInvoices,
     };
+  }
+
+  /**
+   * Une facture annulée reste consultable pour la traçabilité, mais elle ne
+   * constitue plus une facture active et ne doit donc alimenter aucun KPI.
+   */
+  protected async getTotalCount(filters?: StatsFilterDto): Promise<number> {
+    const query = this.factureRepository
+      .createQueryBuilder('facture')
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      });
+    this.applyFilters(query, filters, 'facture');
+    return query.getCount();
+  }
+
+  protected async getEvolution(
+    filters?: StatsFilterDto,
+    dateField: string = 'created_at',
+    alias: string = 'facture',
+  ): Promise<any[]> {
+    const { startDate = this.getDefaultStartDate(), endDate = new Date() } =
+      filters || {};
+    dateField = filters?.fieldToUseForDate ?? dateField;
+
+    const query = this.factureRepository
+      .createQueryBuilder(alias)
+      .select(`DATE(${alias}.${dateField})`, 'date')
+      .addSelect('COUNT(*)', 'count')
+      .where(`${alias}.${dateField} BETWEEN :start AND :end`, {
+        start: startDate,
+        end: endDate,
+      })
+      .andWhere(`${alias}.status != :cancelled`, {
+        cancelled: StatutFacture.ANNULEE,
+      })
+      .groupBy(`DATE(${alias}.${dateField})`)
+      .orderBy('date', 'ASC');
+
+    this.applyFilters(query, filters, alias);
+    const results = await query.getRawMany();
+    let cumulative = 0;
+    return results.map((result) => {
+      cumulative += parseInt(result.count);
+      return {
+        date: result.date,
+        count: parseInt(result.count),
+        cumulative,
+      };
+    });
   }
 
   private async getTotalHT(filters?: StatsFilterDto): Promise<number> {
@@ -159,7 +243,11 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         validatedPayment: StatutPaiement.VALIDE,
         validated: StatutFacture.VALIDEE,
       });
-    
+
+    query.andWhere('facture.status != :cancelled', {
+      cancelled: StatutFacture.ANNULEE,
+    });
+
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
     return parseFloat(result.total || 0);
@@ -180,10 +268,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .where('facture.status IN (:...statuses)', {
-        statuses: [
-          StatutFacture.VALIDEE,
-          StatutFacture.PARTIELLEMENT_PAYEE,
-        ],
+        statuses: [StatutFacture.VALIDEE, StatutFacture.PARTIELLEMENT_PAYEE],
       })
       .andWhere('facture.nature != :creditNote', {
         creditNote: InvoiceNature.CREDIT_NOTE,
@@ -198,10 +283,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .createQueryBuilder('facture')
       .where('facture.dateEcheance < :now', { now })
       .andWhere('facture.status IN (:...statuses)', {
-        statuses: [
-          StatutFacture.VALIDEE,
-          StatutFacture.PARTIELLEMENT_PAYEE,
-        ],
+        statuses: [StatutFacture.VALIDEE, StatutFacture.PARTIELLEMENT_PAYEE],
       })
       .andWhere('facture.nature != :creditNote', {
         creditNote: InvoiceNature.CREDIT_NOTE,
@@ -210,19 +292,27 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     return query.getCount();
   }
 
-  private async getDistributionByStatus(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByStatus(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .select('facture.status', 'status')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'total')
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .groupBy('facture.status');
 
     this.applyFilters(query, filters, 'facture');
 
     const results = await query.getRawMany();
     const totalCount = results.reduce((sum, r) => sum + parseInt(r.count), 0);
-    const totalAmount = results.reduce((sum, r) => sum + parseFloat(r.total || 0), 0);
+    const totalAmount = results.reduce(
+      (sum, r) => sum + parseFloat(r.total || 0),
+      0,
+    );
 
     const statusLabels = {
       [StatutFacture.BROUILLON]: 'Brouillon',
@@ -242,18 +332,23 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       [StatutFacture.VALIDEE]: '#8b5cf6',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: statusLabels[r.status] || 'Inconnu',
       value: parseInt(r.count),
       total: parseFloat(r.total || 0),
       percentage: this.calculatePercentage(parseInt(r.count), totalCount),
-      amountPercentage: totalAmount > 0 ? Math.round((parseFloat(r.total || 0) / totalAmount) * 100) : 0,
+      amountPercentage:
+        totalAmount > 0
+          ? Math.round((parseFloat(r.total || 0) / totalAmount) * 100)
+          : 0,
       color: statusColors[r.status],
       id: r.status,
     }));
   }
 
-  private async getDistributionByType(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByType(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .leftJoin('facture.invoice_type', 'invoice_type')
@@ -261,6 +356,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .select('invoice_type.name', 'invoice_type_name')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'total')
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .groupBy('invoice_type.name');
 
     this.applyFilters(query, filters, 'facture');
@@ -269,15 +367,15 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
     const typeLabels = {
-      'HONORAIRES': 'Honoraires',
-      'PROVISION': 'Provision',
-      'FRAIS': 'Frais',
-      'CONDAMNATION': 'Condamnation',
+      HONORAIRES: 'Honoraires',
+      PROVISION: 'Provision',
+      FRAIS: 'Frais',
+      CONDAMNATION: 'Condamnation',
     };
 
-    console.log(results)
+    console.log(results);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.invoice_type_name,
       value: parseInt(r.count),
       total: parseFloat(r.total || 0),
@@ -285,15 +383,23 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     }));
   }
 
-  private async getDistributionByClient(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByClient(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .leftJoin('facture.client', 'client')
       .select('client.id', 'clientId')
-      .addSelect("CONCAT(client.first_name, ' ', client.last_name)", 'customerName')      
+      .addSelect(
+        "CONCAT(client.first_name, ' ', client.last_name)",
+        'customerName',
+      )
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'total')
       .where('client.id IS NOT NULL')
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .groupBy('client.id, client.first_name, client.last_name')
       .orderBy('total', 'DESC')
       .limit(10);
@@ -302,7 +408,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
 
     const results = await query.getRawMany();
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.clientName || 'Client inconnu',
       value: parseInt(r.count),
       total: parseFloat(r.total || 0),
@@ -310,7 +416,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     }));
   }
 
-  private async getDistributionByDossier(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByDossier(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .leftJoin('facture.dossier', 'dossier')
@@ -318,6 +426,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'total')
       .where('dossier.id IS NOT NULL')
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .groupBy('dossier.dossier_number')
       .orderBy('total', 'DESC')
       .limit(10);
@@ -326,7 +437,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
 
     const results = await query.getRawMany();
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.dossierNumber || 'Dossier inconnu',
       value: parseInt(r.count),
       total: parseFloat(r.total || 0),
@@ -364,6 +475,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         'facture.montantTTC',
         "CONCAT(client.first_name, ' ', client.last_name)",
       ])
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .orderBy('facture.montantTTC', 'DESC')
       .limit(1);
 
@@ -371,114 +485,137 @@ export class FactureStatsService extends BaseStatsService<Facture> {
 
     const result = await query.getOne();
 
-    return result ? {
-      id: result.id,
-      numero: result.numero,
-      montantTTC: result.montantTTC,
-      client: result.client?.full_name,
-    } : null;
+    return result
+      ? {
+          id: result.id,
+          numero: result.numero,
+          montantTTC: result.montantTTC,
+          client: result.client?.full_name,
+        }
+      : null;
   }
 
   private async getOverdueStats(filters?: StatsFilterDto): Promise<any> {
-      const now = new Date();
+    const now = new Date();
 
-      // Récupérer toutes les factures impayées avec leurs paiements
-      const query = this.factureRepository
-          .createQueryBuilder('facture')
-          .leftJoinAndSelect('facture.client', 'client')
-          .leftJoinAndSelect('facture.paiements', 'paiement', 'paiement.status = :valide', {
-              valide: StatutPaiement.VALIDE
-          })
-          .select([
-              'facture.id',
-              'facture.numero',
-              'facture.montantTTC',
-              'facture.dateEcheance',
-              'client.first_name',
-              'client.last_name',
-              'paiement.montant',
-          ])
-          .where('facture.dateEcheance < :now', { now })
-          .andWhere('facture.status IN (:...statuses)', {
-              statuses: [
-                StatutFacture.VALIDEE,
-                StatutFacture.PARTIELLEMENT_PAYEE,
-              ],
-          })
-          .andWhere('facture.nature != :creditNote', {
-              creditNote: InvoiceNature.CREDIT_NOTE,
-          });
-
-      this.applyFilters(query, filters, 'facture');
-
-      const results = await query.getMany();
-
-      // Calculer le montant payé pour chaque facture
-      const overdueData = results.map(facture => {
-          const montantPaye = facture.paiements?.reduce((sum, p) => sum + Number(p.montant), 0) || 0;
-          const resteAPayer = facture.montantTTC - montantPaye;
-          
-          // Convertir la date en objet Date si ce n'est pas déjà le cas
-          const dateEcheance = facture.dateEcheance instanceof Date 
-              ? facture.dateEcheance 
-              : new Date(facture.dateEcheance);
-          
-          const joursRetard = Math.ceil((now.getTime() - dateEcheance.getTime()) / (1000 * 60 * 60 * 24));
-
-          return {
-              id: facture.id,
-              numero: facture.numero,
-              montantTTC: facture.montantTTC,
-              resteAPayer,
-              joursRetard,
-              clientName: facture.client?.full_name,
-          };
+    // Récupérer toutes les factures impayées avec leurs paiements
+    const query = this.factureRepository
+      .createQueryBuilder('facture')
+      .leftJoinAndSelect('facture.client', 'client')
+      .leftJoinAndSelect(
+        'facture.paiements',
+        'paiement',
+        'paiement.status = :valide',
+        {
+          valide: StatutPaiement.VALIDE,
+        },
+      )
+      .select([
+        'facture.id',
+        'facture.numero',
+        'facture.montantTTC',
+        'facture.dateEcheance',
+        'client.first_name',
+        'client.last_name',
+        'paiement.montant',
+      ])
+      .where('facture.dateEcheance < :now', { now })
+      .andWhere('facture.status IN (:...statuses)', {
+        statuses: [StatutFacture.VALIDEE, StatutFacture.PARTIELLEMENT_PAYEE],
+      })
+      .andWhere('facture.nature != :creditNote', {
+        creditNote: InvoiceNature.CREDIT_NOTE,
       });
 
-      const delays = overdueData.map(inv => inv.joursRetard).filter(d => d > 0);
+    this.applyFilters(query, filters, 'facture');
 
-      const byDelayRange = [
-          { range: '1-30 jours', min: 1, max: 30, count: 0, total: 0 },
-          { range: '31-60 jours', min: 31, max: 60, count: 0, total: 0 },
-          { range: '61-90 jours', min: 61, max: 90, count: 0, total: 0 },
-          { range: '> 90 jours', min: 91, max: Infinity, count: 0, total: 0 },
-      ];
+    const results = await query.getMany();
 
-      overdueData.forEach(inv => {
-          const delay = inv.joursRetard;
-          const amount = inv.resteAPayer;
+    // Calculer le montant payé pour chaque facture
+    const overdueData = results.map((facture) => {
+      const montantPaye =
+        facture.paiements?.reduce((sum, p) => sum + Number(p.montant), 0) || 0;
+      const resteAPayer = facture.montantTTC - montantPaye;
 
-          const range = byDelayRange.find(r => delay >= r.min && delay <= r.max);
-          if (range) {
-              range.count++;
-              range.total += amount;
-          }
-      });
+      // Convertir la date en objet Date si ce n'est pas déjà le cas
+      const dateEcheance =
+        facture.dateEcheance instanceof Date
+          ? facture.dateEcheance
+          : new Date(facture.dateEcheance);
+
+      const joursRetard = Math.ceil(
+        (now.getTime() - dateEcheance.getTime()) / (1000 * 60 * 60 * 24),
+      );
 
       return {
-          count: overdueData.length,
-          totalAmount: overdueData.reduce((sum, inv) => sum + inv.resteAPayer, 0),
-          averageDelay: delays.length > 0 ? delays.reduce((a, b) => a + b, 0) / delays.length : 0,
-          maxDelay: delays.length > 0 ? Math.max(...delays) : 0,
-          byDelayRange,
+        id: facture.id,
+        numero: facture.numero,
+        montantTTC: facture.montantTTC,
+        resteAPayer,
+        joursRetard,
+        clientName: facture.client?.full_name,
       };
+    });
+
+    const delays = overdueData
+      .map((inv) => inv.joursRetard)
+      .filter((d) => d > 0);
+
+    const byDelayRange = [
+      { range: '1-30 jours', min: 1, max: 30, count: 0, total: 0 },
+      { range: '31-60 jours', min: 31, max: 60, count: 0, total: 0 },
+      { range: '61-90 jours', min: 61, max: 90, count: 0, total: 0 },
+      { range: '> 90 jours', min: 91, max: Infinity, count: 0, total: 0 },
+    ];
+
+    overdueData.forEach((inv) => {
+      const delay = inv.joursRetard;
+      const amount = inv.resteAPayer;
+
+      const range = byDelayRange.find((r) => delay >= r.min && delay <= r.max);
+      if (range) {
+        range.count++;
+        range.total += amount;
+      }
+    });
+
+    return {
+      count: overdueData.length,
+      totalAmount: overdueData.reduce((sum, inv) => sum + inv.resteAPayer, 0),
+      averageDelay:
+        delays.length > 0
+          ? delays.reduce((a, b) => a + b, 0) / delays.length
+          : 0,
+      maxDelay: delays.length > 0 ? Math.max(...delays) : 0,
+      byDelayRange,
+    };
   }
 
   private async getMonthlyRevenue(filters?: StatsFilterDto): Promise<any[]> {
-    const { startDate = this.getDefaultStartDate(), endDate = new Date() } = filters || {};
+    const { startDate = this.getDefaultStartDate(), endDate = new Date() } =
+      filters || {};
 
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .select("DATE_FORMAT(facture.dateFacture, '%Y-%m')", 'month')
       .addSelect(this.netRecognizedExpression('facture.montantHT'), 'totalHT')
       .addSelect(this.netRecognizedExpression('facture.montantTTC'), 'totalTTC')
-      .addSelect('SUM(CASE WHEN facture.status = :paid THEN facture.montantTTC ELSE 0 END)', 'totalPaid')
+      .addSelect(
+        'SUM(CASE WHEN facture.status = :paid THEN facture.montantTTC ELSE 0 END)',
+        'totalPaid',
+      )
       .addSelect('COUNT(*)', 'count')
       .setParameters({
         ...this.financialStatusParameters(),
         paid: StatutFacture.PAYEE,
       })
-      .where('facture.dateFacture BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .where('facture.dateFacture BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .groupBy("DATE_FORMAT(facture.dateFacture, '%Y-%m')")
       .orderBy('month', 'ASC');
 
@@ -499,7 +636,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
 
     const results = await query.getMany();
 
-    return results.map(f => ({
+    return results.map((f) => ({
       id: f.id,
       numero: f.numero,
       clientName: f.client?.full_name,
@@ -513,67 +650,79 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   }
 
   private async getUnpaidInvoices(filters?: StatsFilterDto): Promise<any[]> {
-      const query = this.factureRepository
-          .createQueryBuilder('facture')
-          .leftJoinAndSelect('facture.client', 'client')
-          .leftJoinAndSelect('facture.dossier', 'dossier')
-          .leftJoinAndSelect('facture.paiements', 'paiement', 'paiement.status = :valide', {
-              valide: StatutPaiement.VALIDE
-          })
-          .leftJoinAndSelect(
-              'facture.creditNotes',
-              'creditNote',
-              'creditNote.status = :validatedCredit',
-              { validatedCredit: StatutFacture.VALIDEE },
-          )
-          .where('facture.status IN (:...statuses)', {
-              statuses: [
-                StatutFacture.VALIDEE,
-                StatutFacture.PARTIELLEMENT_PAYEE,
-              ],
-          })
-          .andWhere('facture.nature != :creditNature', {
-              creditNature: InvoiceNature.CREDIT_NOTE,
-          })
-          .orderBy('facture.dateEcheance', 'ASC')
-          .limit(20);
+    const query = this.factureRepository
+      .createQueryBuilder('facture')
+      .leftJoinAndSelect('facture.client', 'client')
+      .leftJoinAndSelect('facture.dossier', 'dossier')
+      .leftJoinAndSelect(
+        'facture.paiements',
+        'paiement',
+        'paiement.status = :valide',
+        {
+          valide: StatutPaiement.VALIDE,
+        },
+      )
+      .leftJoinAndSelect(
+        'facture.creditNotes',
+        'creditNote',
+        'creditNote.status = :validatedCredit',
+        { validatedCredit: StatutFacture.VALIDEE },
+      )
+      .where('facture.status IN (:...statuses)', {
+        statuses: [StatutFacture.VALIDEE, StatutFacture.PARTIELLEMENT_PAYEE],
+      })
+      .andWhere('facture.nature != :creditNature', {
+        creditNature: InvoiceNature.CREDIT_NOTE,
+      })
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
+      .orderBy('facture.dateEcheance', 'ASC')
+      .limit(20);
 
-      this.applyFilters(query, filters, 'facture');
+    this.applyFilters(query, filters, 'facture');
 
-      const results = await query.getMany();
+    const results = await query.getMany();
 
-      return results.map(f => {
-          const montantPaye = f.paiements?.reduce((sum, p) => sum + Number(p.montant), 0) || 0;
-          const montantAvoir = f.creditNotes?.reduce(
-              (sum, credit) => sum + Number(credit.montantTTC),
-              0,
-          ) || 0;
-          const resteAPayer = Math.max(
-              0,
-              Number(f.montantTTC) - montantPaye - montantAvoir,
-          );
-          
-          // Convertir la date en objet Date
-          const dateEcheance = f.dateEcheance instanceof Date 
-              ? f.dateEcheance 
-              : new Date(f.dateEcheance);
-          
-          const joursRetard = dateEcheance < new Date() 
-              ? Math.ceil((new Date().getTime() - dateEcheance.getTime()) / (1000 * 60 * 60 * 24))
-              : 0;
+    return results.map((f) => {
+      const montantPaye =
+        f.paiements?.reduce((sum, p) => sum + Number(p.montant), 0) || 0;
+      const montantAvoir =
+        f.creditNotes?.reduce(
+          (sum, credit) => sum + Number(credit.montantTTC),
+          0,
+        ) || 0;
+      const resteAPayer = Math.max(
+        0,
+        Number(f.montantTTC) - montantPaye - montantAvoir,
+      );
 
-          return {
-              id: f.id,
-              numero: f.numero,
-              clientName: f.client?.full_name,
-              dossierNumber: f.dossier?.dossier_number,
-              dateFacture: f.dateFacture,
-              dateEcheance: f.dateEcheance,
-              montantTTC: f.montantTTC,
-              resteAPayer,
-              joursRetard,
-          };
-      });
+      // Convertir la date en objet Date
+      const dateEcheance =
+        f.dateEcheance instanceof Date
+          ? f.dateEcheance
+          : new Date(f.dateEcheance);
+
+      const joursRetard =
+        dateEcheance < new Date()
+          ? Math.ceil(
+              (new Date().getTime() - dateEcheance.getTime()) /
+                (1000 * 60 * 60 * 24),
+            )
+          : 0;
+
+      return {
+        id: f.id,
+        numero: f.numero,
+        clientName: f.client?.full_name,
+        dossierNumber: f.dossier?.dossier_number,
+        dateFacture: f.dateFacture,
+        dateEcheance: f.dateEcheance,
+        montantTTC: f.montantTTC,
+        resteAPayer,
+        joursRetard,
+      };
+    });
   }
 
   private netRecognizedExpression(column: string): string {

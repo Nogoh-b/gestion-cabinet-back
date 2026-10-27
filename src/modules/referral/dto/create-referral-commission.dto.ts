@@ -13,17 +13,23 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateReferralCommissionDto {
-  @ApiProperty({ example: 1, description: 'ID de l\'apport (dossier_referral)' })
+  @ApiProperty({ example: 1, description: "ID de l'apport (dossier_referral)" })
   @IsInt()
   @IsNotEmpty()
   dossier_referral_id: number;
 
-  @ApiPropertyOptional({ example: 'b1c2…uuid', description: 'ID (UUID) de la facture source' })
+  @ApiPropertyOptional({
+    example: 'b1c2…uuid',
+    description: 'ID (UUID) de la facture source',
+  })
   @IsUUID()
   @IsOptional()
   facture_id?: string;
 
-  @ApiPropertyOptional({ example: 'a9f8…uuid', description: 'ID (UUID) du paiement source' })
+  @ApiPropertyOptional({
+    example: 'a9f8…uuid',
+    description: 'ID (UUID) du paiement source',
+  })
   @IsUUID()
   @IsOptional()
   paiement_id?: string;

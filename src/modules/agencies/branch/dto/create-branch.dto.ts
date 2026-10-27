@@ -2,9 +2,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsInt, IsISO8601, IsOptional } from 'class-validator';
 
 export class CreateBranchDto {
+  code: string;
 
-  code : string 
-  
   @ApiProperty()
   @IsString()
   name: string;
@@ -21,11 +20,10 @@ export class CreateBranchDto {
   @IsInt()
   @ApiProperty()
   opening_hour: string;
-  
+
   @IsInt()
   @ApiProperty()
   closing_hour: string;
 
- 
   status: number;
 }

@@ -1,36 +1,30 @@
 import { TenantEntity } from 'src/core/entities/tenant.entity';
-import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
-import {
-  Entity,
-  ManyToOne,
-  JoinColumn,
-  Column,
-  PrimaryColumn,
-} from 'typeorm';
+import { Entity, ManyToOne, JoinColumn, Column, PrimaryColumn } from 'typeorm';
 
 import { Permission } from '../../permission/entities/permission.entity';
 import { UserRole } from '../../user-role/entities/user-role.entity';
 
-
-@SharedAcrossTenants()
+// Isolation stricte par cabinet : les liaisons rôle↔permission sont
+// filtrées par WHERE tenant_id = X, comme Permission et UserRole.
+// Pas de @SharedAcrossTenants — sinon doublons via IN (1, X).
 @Entity('role_permission')
 export class RolePermission extends TenantEntity {
-  @PrimaryColumn({ unsigned: true, type: 'tinyint' })
+  @PrimaryColumn({ unsigned: true, type: 'int' })
   role_id: number;
 
-  @PrimaryColumn({ unsigned: true, type: 'smallint' })
+  @PrimaryColumn({ unsigned: true, type: 'int' })
   permission_id: number;
 
   @ManyToOne(() => UserRole, (role) => role.permissions, {
     onDelete: 'CASCADE',
-    eager: true
+    eager: true,
   })
   @JoinColumn({ name: 'role_id' })
   role: UserRole;
 
   @ManyToOne(() => Permission, (permission) => permission.roles, {
     onDelete: 'CASCADE',
-    eager: true
+    eager: true,
   })
   @JoinColumn({ name: 'permission_id' })
   permission: Permission;

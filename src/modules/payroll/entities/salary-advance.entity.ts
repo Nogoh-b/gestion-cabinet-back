@@ -1,5 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
@@ -34,7 +43,8 @@ export enum SalaryAdvanceStatus {
 @Entity('salary_advance')
 @BusinessTable({
   label: 'Avances sur salaire',
-  description: "Avance sur salaire accordée à un collaborateur, récupérée automatiquement sur ses paies.",
+  description:
+    'Avance sur salaire accordée à un collaborateur, récupérée automatiquement sur ses paies.',
   icon: '💸',
   category: 'rh',
 })
@@ -72,7 +82,7 @@ export class SalaryAdvance extends TenantEntity {
   @Column({ type: 'decimal', precision: 18, scale: 2, name: 'amount' })
   @BusinessColumn({
     label: "Montant de l'avance",
-    description: "Montant accordé au collaborateur",
+    description: 'Montant accordé au collaborateur',
     unit: 'XAF',
     example: '150000.00',
     importance: 'high',
@@ -80,10 +90,17 @@ export class SalaryAdvance extends TenantEntity {
   })
   amount: number;
 
-  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'recovered_amount', default: 0 })
+  @Column({
+    type: 'decimal',
+    precision: 18,
+    scale: 2,
+    name: 'recovered_amount',
+    default: 0,
+  })
   @BusinessColumn({
     label: 'Montant déjà récupéré',
-    description: "Part de l'avance déjà retenue sur des paies (reste à récupérer = montant − ce champ)",
+    description:
+      "Part de l'avance déjà retenue sur des paies (reste à récupérer = montant − ce champ)",
     unit: 'XAF',
     example: '50000.00',
     importance: 'medium',
@@ -101,16 +118,26 @@ export class SalaryAdvance extends TenantEntity {
   })
   date_granted: Date;
 
-  @Column({ type: 'enum', enum: SalaryAdvanceStatus, default: SalaryAdvanceStatus.PENDING })
+  @Column({
+    type: 'enum',
+    enum: SalaryAdvanceStatus,
+    default: SalaryAdvanceStatus.PENDING,
+  })
   @BusinessColumn({
     label: 'Statut',
-    description: "BD: 'pending'=Demandée, 'approved'=Approuvée, 'paid'=Versée, 'recovered'=Récupérée, 'cancelled'=Annulée.",
+    description:
+      "BD: 'pending'=Demandée, 'approved'=Approuvée, 'paid'=Versée, 'recovered'=Récupérée, 'cancelled'=Annulée.",
     importance: 'high',
     group: 'statut',
   })
   status: SalaryAdvanceStatus;
 
-  @Column({ type: 'datetime', precision: 6, nullable: true, name: 'payment_date' })
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'payment_date',
+  })
   @BusinessColumn({
     label: 'Date de versement',
     description: "Date effective du versement de l'avance",
@@ -191,4 +218,13 @@ export class SalaryAdvance extends TenantEntity {
     group: 'audit',
   })
   reason: string | null;
+
+  @Column({ type: 'text', nullable: true, name: 'cancel_reason' })
+  @BusinessColumn({
+    label: "Motif d'annulation",
+    description: "Raison de l'annulation, saisie par l'administrateur",
+    importance: 'low',
+    group: 'audit',
+  })
+  cancel_reason: string;
 }

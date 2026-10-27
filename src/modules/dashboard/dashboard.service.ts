@@ -1,5 +1,5 @@
 // src/modules/dashboard/services/dashboard.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AudienceStatsService } from '../audiences/audience-stats.service';
 import { DiligenceStatsService } from '../diligence/diligence-stats.service';
 import { DossierStatsService } from '../dossiers/dossier-stats.service';
@@ -8,10 +8,42 @@ import { FactureStatsService } from '../facture/facture-stats.service';
 import { CustomerStatsService } from '../customer/customer/customer-stats.service';
 import { EmployeeStatsService } from '../agencies/employee/employee-stats.service';
 import { DashboardOverviewDto } from './dto/dashboard-overview.dto';
+import {
+  RestrictedFieldsUser,
+  seesAllRestrictedFields,
+} from 'src/core/security/restricted-fields';
 
+/**
+ * Droits dont UN SEUL suffit pour voir les chiffres financiers du cabinet sur
+ * le tableau de bord (CA, encaissements, impayés, factures récentes). Le
+ * tableau de bord est ouvert à tout `view_dashboard` : sans ces droits, la
+ * section factures n'est même pas calculée — voir restricted-fields.ts.
+ */
+const FINANCIAL_OVERVIEW_PERMISSIONS = ['view_factures', 'view_financial_reports'];
+
+/** Administration du cabinet, SUPER_ADMIN, ou l'un des droits financiers. */
+export function seesFinancialOverview(
+  user: RestrictedFieldsUser | null | undefined,
+): boolean {
+  if (!user) return false;
+  return (
+    seesAllRestrictedFields(user) ||
+    FINANCIAL_OVERVIEW_PERMISSIONS.some((code) => user.permissions?.includes(code))
+  );
+}
+
+/**
+ * Nombre d'éléments affichés par section du plan d'action (« Actions en
+ * retard », « Échéances sous 30 jours », « Prochaines audiences »). Au-delà,
+ * le tableau de bord renvoie seulement la volumétrie : la liste complète vit
+ * sur la page métier correspondante.
+ */
+const ACTIONS_SECTION_LIMIT = 5;
 
 @Injectable()
 export class DashboardService {
+  private readonly logger = new Logger(DashboardService.name);
+
   constructor(
     private dossierStatsService: DossierStatsService,
     private audienceStatsService: AudienceStatsService,
@@ -22,7 +54,28 @@ export class DashboardService {
     private employeeStatsService: EmployeeStatsService,
   ) {}
 
-  async getOverview(): Promise<DashboardOverviewDto> {
+  async getOverview(
+    user?: RestrictedFieldsUser | null,
+  ): Promise<DashboardOverviewDto> {
+    // Sans droit financier, aucune statistique de facturation n'est chargée :
+    // `financial` vaut null, `trends.factures` est vide, aucune facture dans
+    // l'activité récente, et les compteurs de factures restent à 0.
+    const withFinancials = seesFinancialOverview(user);
+
+    // Chaque section est isolée : une statistique en panne ne doit pas priver
+    // l'utilisateur du reste du tableau de bord. L'erreur est journalisée —
+    // sans trace, une section vide est indiscernable d'une absence de données.
+    const safely = async <T>(section: string, load: () => Promise<T>) => {
+      try {
+        return await load();
+      } catch (error: any) {
+        this.logger.warn(
+          `[Dashboard] section ${section} indisponible: ${error?.message ?? error}`,
+        );
+        return null;
+      }
+    };
+
     // Lancer toutes les requêtes en parallèle
     const [
       dossiers,
@@ -33,33 +86,54 @@ export class DashboardService {
       clients,
       employes,
     ] = await Promise.all([
-      this.dossierStatsService.getStats().catch(() => null),
-      this.audienceStatsService.getStats().catch(() => null),
-      this.diligenceStatsService.getStats().catch(() => null),
-      this.documentStatsService.getStats().catch(() => null),
-      this.factureStatsService.getStats().catch(() => null),
-      this.customerStatsService.getStats().catch(() => null),
-      this.employeeStatsService.getStats().catch(() => null),
+      safely('dossiers', () => this.dossierStatsService.getStats()),
+      safely('audiences', () => this.audienceStatsService.getStats()),
+      safely('diligences', () => this.diligenceStatsService.getStats()),
+      safely('documents', () => this.documentStatsService.getStats()),
+      withFinancials
+        ? safely('factures', () => this.factureStatsService.getStats())
+        : null,
+      safely('clients', () => this.customerStatsService.getStats()),
+      safely('employes', () => this.employeeStatsService.getStats()),
     ]);
 
     return {
       summary: this.buildSummary({
-        dossiers, audiences, diligences, documents, factures, clients, employes
+        dossiers,
+        audiences,
+        diligences,
+        documents,
+        factures,
+        clients,
+        employes,
       }),
       alerts: this.buildAlerts({
-        dossiers, diligences, factures, documents, audiences
+        dossiers,
+        diligences,
+        factures,
+        documents,
+        audiences,
       }),
       byStatus: this.buildByStatus({
-        dossiers, audiences, diligences
+        dossiers,
+        audiences,
+        diligences,
       }),
       trends: await this.buildTrends({
-        dossiers, audiences, factures
+        dossiers,
+        audiences,
+        factures,
       }),
       recentActivity: this.buildRecentActivity({
-        dossiers, audiences, diligences, documents, factures
+        dossiers,
+        audiences,
+        diligences,
+        documents,
+        factures,
       }),
       topPerformers: this.buildTopPerformers(employes),
-      financial: this.buildFinancial(factures),
+      financial: withFinancials ? this.buildFinancial(factures) : null,
+      actions: this.buildActions({ diligences, audiences }),
     };
   }
 
@@ -81,7 +155,80 @@ export class DashboardService {
       diligencesEnRetard: data.diligences?.overdue || 0,
       facturesImpayees: data.factures?.unpaidCount || 0,
       documentsEnAttente: data.documents?.pendingValidation || 0,
-      audiencesAJour: data.audiences?.upcomingAudiences?.length || 0,
+      audiencesAJour:
+        data.audiences?.upcomingAudiencesTotal ??
+        data.audiences?.upcomingAudiences?.length ??
+        0,
+    };
+  }
+
+  private buildActions(data: any): DashboardOverviewDto['actions'] {
+    const diligencesEnRetard = (data.diligences?.expiredDeadlines || [])
+      .slice(0, ACTIONS_SECTION_LIMIT)
+      .map((d: any) => ({
+        id: d.id,
+        title: d.title,
+        dossierNumber: d.dossierNumber,
+        clientName: d.clientName,
+        lawyerName: d.lawyerName,
+        deadline: d.deadline,
+        daysOverdue: d.daysOverdue ?? 0,
+        priority: d.priority,
+        dossierId: d.dossierId ?? null,
+        sourceActionId: d.sourceActionId ?? null,
+      }));
+
+    const echeancesProches = (data.diligences?.upcomingDeadlines || [])
+      .slice(0, ACTIONS_SECTION_LIMIT)
+      .map((d: any) => ({
+        id: d.id,
+        title: d.title,
+        dossierNumber: d.dossierNumber,
+        clientName: d.clientName,
+        lawyerName: d.lawyerName,
+        deadline: d.deadline,
+        daysRemaining: d.daysRemaining ?? 0,
+        priority: d.priority,
+        dossierId: d.dossierId ?? null,
+        sourceActionId: d.sourceActionId ?? null,
+      }));
+
+    const prochainesAudiences = (data.audiences?.upcomingAudiences || [])
+      .slice(0, ACTIONS_SECTION_LIMIT)
+      .map((a: any) => ({
+        id: a.id,
+        date: a.date,
+        jurisdiction: a.jurisdiction,
+        dossierNumber: a.dossierNumber,
+        clientName: a.clientName,
+        status: a.status,
+      }));
+
+    // Volumétrie réelle : les listes ci-dessus sont tronquées pour ne pas
+    // encombrer le tableau de bord, mais l'utilisateur doit savoir combien
+    // d'éléments restent à traiter (indicateur « voir tout »).
+    const expiredTotal = data.diligences?.expiredDeadlinesTotal;
+    const upcomingTotal = data.diligences?.upcomingDeadlinesTotal;
+    const audiencesTotal = data.audiences?.upcomingAudiencesTotal;
+
+    return {
+      totaux: {
+        diligencesEnRetard:
+          typeof expiredTotal === 'number' && expiredTotal > 0
+            ? expiredTotal
+            : (data.diligences?.expiredDeadlines || []).length,
+        echeancesProches:
+          typeof upcomingTotal === 'number' && upcomingTotal > 0
+            ? upcomingTotal
+            : (data.diligences?.upcomingDeadlines || []).length,
+        prochainesAudiences:
+          typeof audiencesTotal === 'number' && audiencesTotal > 0
+            ? audiencesTotal
+            : (data.audiences?.upcomingAudiences || []).length,
+      },
+      diligencesEnRetard,
+      echeancesProches,
+      prochainesAudiences,
     };
   }
 
@@ -93,21 +240,27 @@ export class DashboardService {
     };
   }
 
-  private async buildTrends(data: any): Promise<DashboardOverviewDto['trends']> {
+  private async buildTrends(
+    data: any,
+  ): Promise<DashboardOverviewDto['trends']> {
     return {
       dossiers: (data.dossiers?.evolution || []).slice(-30),
       audiences: (data.audiences?.evolution || []).slice(-30),
-      factures: (data.factures?.monthlyRevenue || []).slice(-6).map((m: any) => ({
-        month: m.month,
-        totalTTC: parseFloat(m.totalTTC || 0),
-        totalHT: parseFloat(m.totalHT || 0),
-        totalPaid: parseFloat(m.totalPaid || 0),
-      })),
+      factures: (data.factures?.monthlyRevenue || [])
+        .slice(-6)
+        .map((m: any) => ({
+          month: m.month,
+          totalTTC: parseFloat(m.totalTTC || 0),
+          totalHT: parseFloat(m.totalHT || 0),
+          totalPaid: parseFloat(m.totalPaid || 0),
+        })),
     };
   }
 
-  private buildRecentActivity(data: any): DashboardOverviewDto['recentActivity'] {
-    const activities : any = [];
+  private buildRecentActivity(
+    data: any,
+  ): DashboardOverviewDto['recentActivity'] {
+    const activities: any = [];
 
     // Ajouter les dossiers récents
     if (data.dossiers?.recentDossiers) {
@@ -190,7 +343,9 @@ export class DashboardService {
       .slice(0, 10);
   }
 
-  private buildTopPerformers(employes: any): DashboardOverviewDto['topPerformers'] {
+  private buildTopPerformers(
+    employes: any,
+  ): DashboardOverviewDto['topPerformers'] {
     if (!employes?.topPerformers) return [];
 
     return employes.topPerformers.slice(0, 20).map((p: any) => ({

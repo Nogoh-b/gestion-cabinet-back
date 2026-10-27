@@ -13,6 +13,15 @@ import { JurisdictionModule } from '../jurisdiction/jurisdiction.module';
 @Module({
   controllers: [DashboardController],
   providers: [DashboardService],
-  imports :[DossiersModule,AudiencesModule,DiligenceModule,DocumentsModule,FactureModule,CustomerModule,AgenciesModule,JurisdictionModule]
+  imports: [
+    DossiersModule,
+    AudiencesModule,
+    DiligenceModule,
+    DocumentsModule,
+    FactureModule,
+    CustomerModule,
+    AgenciesModule,
+    JurisdictionModule,
+  ],
 })
 export class DashboardModule {}

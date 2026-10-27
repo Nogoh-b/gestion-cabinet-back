@@ -5,16 +5,11 @@ import {
   FindOptionsWhere,
   ObjectLiteral,
   FindManyOptions,
-  FindOptionsOrder
+  FindOptionsOrder,
 } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 
 import { PaginationParamsDto } from '../../dto/pagination-params.dto';
-import {
-  getDefaultSortColumn,
-  isEntityColumnPath,
-} from '../../utils/entity-property-path.util';
-
 
 export interface PaginatedResult<T> {
   data: T[];
@@ -28,6 +23,32 @@ export interface PaginatedResult<T> {
   };
 }
 
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 10;
+// Au-dessus du max du DTO (100) : le front demande jusqu'à 500 éléments
+// (export PDF des audiences, calendrier, liste des modèles PDF).
+const MAX_LIMIT = 500;
+
+/** Entier ≥ 1 (partie entière), sinon la valeur par défaut. */
+function toPositiveInt(value: unknown, fallback: number): number {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
+/**
+ * Page et limite exploitables à partir de paramètres de requête bruts
+ * (texte, absents ou invalides) : entiers ≥ 1, défauts 1/10, plafond 500.
+ */
+export function normalizePaging(params?: {
+  page?: unknown;
+  limit?: unknown;
+}): { page: number; limit: number } {
+  return {
+    page: toPositiveInt(params?.page, DEFAULT_PAGE),
+    limit: Math.min(toPositiveInt(params?.limit, DEFAULT_LIMIT), MAX_LIMIT),
+  };
+}
+
 @Injectable()
 export class PaginationServiceV1 {
   async paginate<T extends ObjectLiteral>(
@@ -35,35 +56,45 @@ export class PaginationServiceV1 {
     paginationParams: PaginationParamsDto,
     where?: FindOptionsWhere<T> | FindOptionsWhere<T>[],
     relations: string[] = [],
-    additionalOptions: FindManyOptions<T> = {}
+    additionalOptions: FindManyOptions<T> = {},
   ): Promise<PaginatedResult<T>> {
-    const requestedPage = Number(paginationParams.page);
-    const requestedLimit = Number(paginationParams.limit);
-    const page =
-      Number.isInteger(requestedPage) && requestedPage > 0
-        ? requestedPage
-        : 1;
-    const limit =
-      Number.isInteger(requestedLimit) && requestedLimit > 0
-        ? Math.min(requestedLimit, 100)
-        : 10;
-    
-    // Construire l'ordre en prenant en compte les relations
-    const order = this.buildOrderFromParams(
+    // Pas de ValidationPipe global : page/limit arrivent bruts (string,
+    // undefined…) et Number(undefined) = NaN, que `??` ne rattrape pas.
+    const { page, limit } = normalizePaging(paginationParams);
+
+    console.log('Pagination params:', page, '*', limit);
+
+    const validSortBy = this.getValidSortBy(
       repository,
-      paginationParams,
-      additionalOptions.order,
+      paginationParams.sort_by,
     );
-    const safeAdditionalOptions = { ...additionalOptions };
-    delete safeAdditionalOptions.order;
+    const invalidSortRequested = !!paginationParams.sort_by && !validSortBy;
+    const safePaginationParams = Object.assign(
+      new PaginationParamsDto(),
+      paginationParams,
+      {
+        sort_by: validSortBy,
+        sort_direction: validSortBy
+          ? paginationParams.sort_direction
+          : undefined,
+      },
+    );
+
+    // Un ordre dérivé d'un sort_by invalide doit aussi être écarté.
+    const order = this.buildOrderFromParams(
+      safePaginationParams,
+      invalidSortRequested ? undefined : additionalOptions.order,
+    );
+    const { order: _ignoredOrder, ...safeAdditionalOptions } =
+      additionalOptions;
 
     const [data, total] = await repository.findAndCount({
+      ...safeAdditionalOptions,
       where,
       relations,
       order,
       skip: (page - 1) * limit,
       take: limit,
-      ...safeAdditionalOptions,
     });
 
     const totalPages = Math.ceil(total / limit);
@@ -83,57 +114,84 @@ export class PaginationServiceV1 {
     };
   }
 
+  /** Retourne le chemin de tri uniquement s'il existe dans les métadonnées TypeORM. */
+  private getValidSortBy<T extends ObjectLiteral>(
+    repository: Repository<T>,
+    sortBy?: string,
+  ): string | undefined {
+    if (!sortBy) return undefined;
+
+    if (
+      repository.metadata.columns.some(
+        (column) =>
+          column.propertyName === sortBy || column.propertyPath === sortBy,
+      )
+    ) {
+      return sortBy;
+    }
+
+    const parts = sortBy.split('.');
+    if (parts.length < 2) return undefined;
+
+    let metadata = repository.metadata;
+    for (let index = 0; index < parts.length - 1; index++) {
+      const relation = metadata.relations.find(
+        (candidate) => candidate.propertyName === parts[index],
+      );
+      if (!relation?.inverseEntityMetadata) return undefined;
+      metadata = relation.inverseEntityMetadata;
+    }
+
+    const property = parts[parts.length - 1];
+    return metadata.columns.some(
+      (column) =>
+        column.propertyName === property || column.propertyPath === property,
+    )
+      ? sortBy
+      : undefined;
+  }
+
   /**
    * Construit l'ordre à partir des paramètres de pagination
    */
-  private buildOrderFromParams<T extends ObjectLiteral>(
-    repository: Repository<T>,
+  private buildOrderFromParams<T>(
     paginationParams: PaginationParamsDto,
-    defaultOrder?: FindOptionsOrder<T>
+    defaultOrder?: FindOptionsOrder<T>,
   ): FindOptionsOrder<T> {
-    const safeSortBy =
-      paginationParams.sort_by &&
-      isEntityColumnPath(repository.metadata, paginationParams.sort_by)
-        ? paginationParams.sort_by
-        : undefined;
-
-    if (!safeSortBy) {
-      if (defaultOrder) {
-        return defaultOrder;
-      }
-
-      const fallbackColumn = getDefaultSortColumn(repository.metadata);
-      return fallbackColumn
-        ? ({
-            [fallbackColumn]: 'ASC',
-          } as FindOptionsOrder<T>)
-        : ({} as FindOptionsOrder<T>);
+    if (!paginationParams.sort_by) {
+      return (
+        defaultOrder ||
+        ({ created_at: 'ASC' } as unknown as FindOptionsOrder<T>)
+      );
     }
 
-    const sortDirection = (paginationParams.sort_direction || 'ASC').toUpperCase();
+    const sortBy = paginationParams.sort_by;
+    const sortDirection = (
+      paginationParams.sort_direction || 'ASC'
+    ).toUpperCase();
 
     // Vérifier si le tri concerne une relation (contient un point)
-    if (safeSortBy.includes('.')) {
-      const parts = safeSortBy.split('.');
-      
+    if (sortBy.includes('.')) {
+      const parts = sortBy.split('.');
+
       // Reconstruire l'objet order de manière récursive
       // Ex: 'procedure_subtype.name' -> { procedure_subtype: { name: 'ASC' } }
-      let orderObj: any = {};
+      const orderObj: any = {};
       let current = orderObj;
-      
+
       for (let i = 0; i < parts.length - 1; i++) {
         current[parts[i]] = {};
         current = current[parts[i]];
       }
-      
+
       current[parts[parts.length - 1]] = sortDirection;
-      
+
       return orderObj as FindOptionsOrder<T>;
     }
 
     // Tri simple sur un champ direct
     return {
-      [safeSortBy]: sortDirection
+      [sortBy]: sortDirection,
     } as FindOptionsOrder<T>;
   }
 
@@ -149,12 +207,14 @@ export class PaginationServiceV1 {
     additionalOptions: FindManyOptions<T> = {},
     dtoClass?: new (...args: any[]) => R,
   ): Promise<PaginatedResult<R>> {
-    
     // S'assurer que les relations nécessaires sont incluses pour le tri
-    const finalRelations = this.ensureRelationsForSorting(
+    const validSortBy = this.getValidSortBy(
       repository,
-      relations,
       paginationParams.sort_by,
+    );
+    const finalRelations = this.ensureRelationsForSorting(
+      relations,
+      validSortBy,
     );
 
     const result = await this.paginate(
@@ -183,22 +243,17 @@ export class PaginationServiceV1 {
   /**
    * S'assure que les relations nécessaires pour le tri sont incluses
    */
-  private ensureRelationsForSorting<T extends ObjectLiteral>(
-    repository: Repository<T>,
-    existingRelations: string[], 
-    sortBy?: string
+  private ensureRelationsForSorting(
+    existingRelations: string[],
+    sortBy?: string,
   ): string[] {
-    if (
-      !sortBy ||
-      !sortBy.includes('.') ||
-      !isEntityColumnPath(repository.metadata, sortBy)
-    ) {
+    if (!sortBy || !sortBy.includes('.')) {
       return existingRelations;
     }
 
     const relations = [...existingRelations];
     const relationPath = sortBy.split('.')[0]; // Prendre seulement la première partie
-    
+
     if (!relations.includes(relationPath)) {
       relations.push(relationPath);
     }

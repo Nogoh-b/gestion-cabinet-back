@@ -1,11 +1,12 @@
-import { Controller, Get, Post, Body, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-import { ComptesService } from '../services/comptes.service';
-import { CompteComptable } from '../entities/compte.entity';
-import { ClasseCompte } from '../enums/comptabilite.enums';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+
+import { CompteComptable } from '../entities/compte.entity';
+import { ClasseCompte } from '../enums/comptabilite.enums';
+import { ComptesService } from '../services/comptes.service';
 import { CreateCompteDto } from '../dto/create-compte.dto';
 
 @ApiTags('comptabilite-comptes')
@@ -19,7 +20,8 @@ export class ComptesController {
   @RequirePermissions('view_accounting')
   @ApiOperation({ summary: 'Liste tous les comptes du plan comptable' })
   findAll(@Query('classe') classe?: number) {
-    if (classe) return this.service.findByClasse(Number(classe) as ClasseCompte);
+    if (classe)
+      return this.service.findByClasse(Number(classe) as ClasseCompte);
     return this.service.findAll();
   }
 

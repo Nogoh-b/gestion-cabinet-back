@@ -2,6 +2,7 @@ import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantContext } from './tenant.context';
+import { PLATFORM_PATH_PREFIX } from '../decorators/platform.decorator';
 
 /**
  * TenantResolverMiddleware — résout le cabinet (tenant) depuis la requête HTTP.
@@ -29,7 +30,20 @@ export class TenantResolverMiddleware implements NestMiddleware {
   ) {}
 
   async use(req: Request, res: Response, next: NextFunction) {
+    // Espace plateforme : jamais de contexte cabinet implicite (ni header
+    // x-tenant-code, ni sous-domaine). Les opérations ciblant un cabinet
+    // ouvrent explicitement leur contexte (tenantContext.run(cabinetId)).
+    const path = String(req.originalUrl ?? req.url ?? '').split('?')[0];
+    if (
+      path === PLATFORM_PATH_PREFIX ||
+      path.startsWith(`${PLATFORM_PATH_PREFIX}/`)
+    ) {
+      next();
+      return;
+    }
+
     const code = this.extractCode(req);
+    let resolvedTenantId: number | undefined;
 
     if (code) {
       if (!this.isValidCode(code)) {
@@ -38,10 +52,11 @@ export class TenantResolverMiddleware implements NestMiddleware {
       }
       const resolved = await this.resolveCode(code);
       if (resolved) {
-        (req as any)['resolvedTenantId'] = resolved;
-        this.logger.debug(`[Tenant] code="${code}" → tenant_id=${resolved}`);
-        this.tenantContext.run(resolved, next);
-        return;
+        resolvedTenantId = resolved;
+        (req as any)['resolvedTenantId'] = resolvedTenantId;
+        this.logger.debug(
+          `[Tenant] code="${code}" → tenant_id=${resolvedTenantId}`,
+        );
       } else {
         this.logger.warn(`[Tenant] code="${code}" non trouvé`);
         res.status(404).json({ message: 'Cabinet inconnu' });
@@ -49,9 +64,16 @@ export class TenantResolverMiddleware implements NestMiddleware {
       }
     }
 
-    // Route globale ou authentification qui sera ensuite rattachée au tenant
-    // du JWT. Aucun cabinet implicite n'est injecté.
-    next();
+    // IMPORTANT : si aucun tenant n'est résolu ici, on N'invoque PAS
+    // tenantContext.run() avec tenant_id=1 « au cas où ». On laisse le
+    // TenantInterceptor (qui tourne après le guard JWT) décider du tenant à
+    // partir du JWT. Cela évite qu'une requête sans header active un contexte
+    // « cabinet système » qui contournerait l'isolation des données.
+    if (resolvedTenantId !== undefined) {
+      this.tenantContext.run(resolvedTenantId, next, true);
+    } else {
+      next();
+    }
   }
 
   // ── Extraction du code ────────────────────────────────────────────
@@ -76,7 +98,9 @@ export class TenantResolverMiddleware implements NestMiddleware {
     if (match) return match[1];
 
     // 4. Path /cabinets/resolve/:code — route publique de résolution
-    const resolveMatch = req.path.match(/^\/cabinets\/resolve\/([a-z0-9]+)(\/|$)/);
+    const resolveMatch = req.path.match(
+      /^\/cabinets\/resolve\/([a-z0-9]+)(\/|$)/,
+    );
     if (resolveMatch) return resolveMatch[1];
 
     return null;
@@ -100,7 +124,9 @@ export class TenantResolverMiddleware implements NestMiddleware {
       if (id) this.cache.set(code, id);
       return id;
     } catch (err) {
-      this.logger.error(`[Tenant] Erreur résolution code "${code}": ${err?.message}`);
+      this.logger.error(
+        `[Tenant] Erreur résolution code "${code}": ${err?.message}`,
+      );
       return null;
     }
   }

@@ -75,3 +75,8 @@ uploads/
 /backups-private/
 /artifacts-private/
 ecosystem.config.js
+
+storage/
+
+# PM2 - config locale au serveur, ne pas versionner
+/ecosystem.config.js

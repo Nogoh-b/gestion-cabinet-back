@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  BadRequestException,
   Injectable,
   NotFoundException,
   Logger,
@@ -13,8 +14,14 @@ import {
   PayrollContribution,
   PayrollContributionStatus,
 } from '../entities/payroll-contribution.entity';
-import { SalaryAdvance, SalaryAdvanceStatus } from '../entities/salary-advance.entity';
-import { Employee } from '../../agencies/employee/entities/employee.entity';
+import {
+  SalaryAdvance,
+  SalaryAdvanceStatus,
+} from '../entities/salary-advance.entity';
+import {
+  Employee,
+  EmployeeStatus,
+} from '../../agencies/employee/entities/employee.entity';
 import { Dossier } from '../../dossiers/entities/dossier.entity';
 import { PayrollCalculatorService } from './payroll-calculator.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
@@ -46,13 +53,20 @@ export class PayrollGenerationService {
   private readonly logger = new Logger(PayrollGenerationService.name);
 
   constructor(
-    @InjectRepository(Payslip) private readonly payslipRepo: Repository<Payslip>,
-    @InjectRepository(PayslipLine) private readonly lineRepo: Repository<PayslipLine>,
-    @InjectRepository(PayrollPeriod) private readonly periodRepo: Repository<PayrollPeriod>,
-    @InjectRepository(PayrollContribution) private readonly contributionRepo: Repository<PayrollContribution>,
-    @InjectRepository(SalaryAdvance) private readonly advanceRepo: Repository<SalaryAdvance>,
-    @InjectRepository(Employee) private readonly employeeRepo: Repository<Employee>,
-    @InjectRepository(Dossier) private readonly dossierRepo: Repository<Dossier>,
+    @InjectRepository(Payslip)
+    private readonly payslipRepo: Repository<Payslip>,
+    @InjectRepository(PayslipLine)
+    private readonly lineRepo: Repository<PayslipLine>,
+    @InjectRepository(PayrollPeriod)
+    private readonly periodRepo: Repository<PayrollPeriod>,
+    @InjectRepository(PayrollContribution)
+    private readonly contributionRepo: Repository<PayrollContribution>,
+    @InjectRepository(SalaryAdvance)
+    private readonly advanceRepo: Repository<SalaryAdvance>,
+    @InjectRepository(Employee)
+    private readonly employeeRepo: Repository<Employee>,
+    @InjectRepository(Dossier)
+    private readonly dossierRepo: Repository<Dossier>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     private readonly calculator: PayrollCalculatorService,
   ) {}
@@ -75,7 +89,9 @@ export class PayrollGenerationService {
     });
     if (!period) throw new NotFoundException('Période de paie non trouvée');
     if (period.status !== 'draft') {
-      throw new NotFoundException('La génération n\'est possible que sur une période en brouillon.');
+      throw new BadRequestException(
+        "La génération n'est possible que sur une période en brouillon.",
+      );
     }
 
     const employees = await this.employeeRepo.find({
@@ -84,6 +100,8 @@ export class PayrollGenerationService {
     const contributions = await this.findApplicableContributions(
       period.end_date,
     );
+    const effectiveBranchId =
+      branchId ?? (period.branch_id ? Number(period.branch_id) : undefined);
 
     const result: GenerationResult = {
       period_id: periodId,
@@ -95,8 +113,9 @@ export class PayrollGenerationService {
     };
 
     for (const emp of employees) {
-      if (!emp.is_active) continue;
-      if (branchId && Number(emp.branch_id) !== Number(branchId)) continue;
+      if (Number(emp.status) !== EmployeeStatus.ACTIVE) continue;
+      if (effectiveBranchId && Number(emp.branch_id) !== effectiveBranchId)
+        continue;
       result.eligible_employees++;
 
       const salary = Number(emp.salary);
@@ -168,9 +187,7 @@ export class PayrollGenerationService {
     const base = Number(baseSalary) || 0;
     const contribs =
       contributions ??
-      (await this.findApplicableContributions(
-        effectiveAt ?? new Date(),
-      ));
+      (await this.findApplicableContributions(effectiveAt ?? new Date()));
 
     // Ligne salaire de base
     await this.lineRepo.save(
@@ -185,7 +202,11 @@ export class PayrollGenerationService {
 
     // Application du barème de cotisations (part salariale → retenues)
     const baseTotals = this.calculator.computeTotals([
-      { line_type: PayslipLineType.BASE_SALARY, amount: base, is_taxable: true } as PayslipLine,
+      {
+        line_type: PayslipLineType.BASE_SALARY,
+        amount: base,
+        is_taxable: true,
+      } as PayslipLine,
     ]);
     const contrib = this.calculator.computeContributions(baseTotals, contribs);
 
@@ -206,29 +227,34 @@ export class PayrollGenerationService {
     await this.applyAdvanceRecovery(payslipId);
 
     // Recalcul final des totaux + charges patronales
-    const finalLines = await this.lineRepo.find({ where: { payslip_id: payslipId } });
+    const finalLines = await this.lineRepo.find({
+      where: { payslip_id: payslipId },
+    });
     const finalTotals = this.calculator.computeTotals(finalLines);
     await this.payslipRepo.update(payslipId, {
       gross_amount: finalTotals.gross_amount,
       net_amount: finalTotals.net_amount,
       total_employer_charges: contrib.totalEmployer,
       contribution_snapshot: contribs.map((item) => ({
-          id: item.id,
-          code: item.code,
-          version: item.version,
-          label: item.label,
-          rate: Number(item.rate),
-          base_type: item.base_type,
-          payer: item.payer,
-          ceiling:
-            item.ceiling == null ? null : Number(item.ceiling),
-          account_number: item.account_number,
-          valid_from: item.valid_from,
-          valid_until: item.valid_until,
-        })) as any,
+        id: item.id,
+        code: item.code,
+        version: item.version,
+        label: item.label,
+        rate: Number(item.rate),
+        base_type: item.base_type,
+        payer: item.payer,
+        ceiling: item.ceiling == null ? null : Number(item.ceiling),
+        account_number: item.account_number,
+        valid_from: item.valid_from,
+        valid_until: item.valid_until,
+      })) as any,
     });
 
-    return { gross: finalTotals.gross_amount, net: finalTotals.net_amount, totalEmployer: contrib.totalEmployer };
+    return {
+      gross: finalTotals.gross_amount,
+      net: finalTotals.net_amount,
+      totalEmployer: contrib.totalEmployer,
+    };
   }
 
   /**
@@ -256,17 +282,23 @@ export class PayrollGenerationService {
       order: { id: 'ASC' },
     });
     const totalOutstanding = advances.reduce(
-      (s, a) => s + Math.max(0, Number(a.amount || 0) - Number(a.recovered_amount || 0)),
+      (s, a) =>
+        s +
+        Math.max(0, Number(a.amount || 0) - Number(a.recovered_amount || 0)),
       0,
     );
     if (totalOutstanding <= 0) return 0;
 
     // Net disponible avant récupération (gains − cotisations déjà posées).
-    const lines = await this.lineRepo.find({ where: { payslip_id: payslipId } });
+    const lines = await this.lineRepo.find({
+      where: { payslip_id: payslipId },
+    });
     const netAvailable = this.calculator.computeTotals(lines).net_amount;
     if (netAvailable <= 0) return 0;
 
-    const recovery = PayrollCalculatorService.round(Math.min(totalOutstanding, netAvailable));
+    const recovery = PayrollCalculatorService.round(
+      Math.min(totalOutstanding, netAvailable),
+    );
     if (recovery <= 0) return 0;
 
     await this.lineRepo.save(
@@ -291,14 +323,19 @@ export class PayrollGenerationService {
    * clôturés sur la période, rattachés au collaborateur, selon un taux.
    * Le bulletin doit être en brouillon.
    */
-  async generateCommissions(payslipId: number, ratePercent: number): Promise<PayslipLine[]> {
+  async generateCommissions(
+    payslipId: number,
+    ratePercent: number,
+  ): Promise<PayslipLine[]> {
     const payslip = await this.payslipRepo.findOne({
       where: { id: payslipId, tenant_id: getCurrentTenantId() },
       relations: ['period'],
     });
     if (!payslip) throw new NotFoundException('Fiche de paie non trouvée');
     if (payslip.status !== PayslipStatus.DRAFT) {
-      throw new NotFoundException('Commissions générables uniquement sur un brouillon.');
+      throw new NotFoundException(
+        'Commissions générables uniquement sur un brouillon.',
+      );
     }
 
     // Dossiers du collaborateur ayant des honoraires, sur la période.
@@ -335,7 +372,9 @@ export class PayrollGenerationService {
     }
 
     if (created.length > 0) {
-      const finalLines = await this.lineRepo.find({ where: { payslip_id: payslip.id } });
+      const finalLines = await this.lineRepo.find({
+        where: { payslip_id: payslip.id },
+      });
       const totals = this.calculator.computeTotals(finalLines);
       payslip.gross_amount = totals.gross_amount;
       payslip.net_amount = totals.net_amount;

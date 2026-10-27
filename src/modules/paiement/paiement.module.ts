@@ -10,7 +10,6 @@ import { PaiementSubscriber } from './subscribers/paiement.subscriber';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { DocumentsModule } from '../documents/documents.module';
 
-
 @Module({
   imports: [
     TypeOrmModule.forFeature([Paiement, Facture, Cabinet]),

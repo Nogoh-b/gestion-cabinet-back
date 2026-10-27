@@ -4,7 +4,10 @@ import { Transform } from 'class-transformer';
 import { InvoiceTypeCategory, TaxRate } from '../entities/invoice-type.entity';
 
 export class SearchInvoiceTypeDto {
-  @ApiPropertyOptional({ example: 'honoraires', description: 'Recherche texte' })
+  @ApiPropertyOptional({
+    example: 'honoraires',
+    description: 'Recherche texte',
+  })
   @IsOptional()
   @IsString()
   search?: string;

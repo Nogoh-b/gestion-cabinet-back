@@ -1,18 +1,17 @@
 // src/modules/customer/type-customer/dto/type-customer-response.dto.ts
-import { Expose, Transform } from "class-transformer";
-import { ApiProperty } from "@nestjs/swagger";
-
+import { Expose, Transform } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class TypeCustomerResponseDto {
   @ApiProperty({ example: 1 })
   @Expose()
   id: number;
 
-  @ApiProperty({ example: "Professionnel" })
+  @ApiProperty({ example: 'Professionnel' })
   @Expose()
   name: string;
 
-  @ApiProperty({ example: "PRO" })
+  @ApiProperty({ example: 'PRO' })
   @Expose()
   code: string;
 
@@ -20,12 +19,12 @@ export class TypeCustomerResponseDto {
   @Expose()
   status: number;
 
-  @ApiProperty({ example: "2025-01-15T08:00:00Z" })
+  @ApiProperty({ example: '2025-01-15T08:00:00Z' })
   @Expose()
   @Transform(({ obj }) => obj.created_at)
   created_at: Date;
 
-  @ApiProperty({ example: "2025-04-10T10:00:00Z" })
+  @ApiProperty({ example: '2025-04-10T10:00:00Z' })
   @Expose()
   @Transform(({ obj }) => obj.updated_at)
   updated_at: Date;
@@ -36,17 +35,17 @@ export class TypeCustomerResponseDto {
     example: [
       {
         id: 1,
-        name: "KBIS",
-        code: "KBIS",
-        description: "Extrait Kbis"
+        name: 'KBIS',
+        code: 'KBIS',
+        description: 'Extrait Kbis',
       },
       {
         id: 2,
-        name: "Statuts",
-        code: "STATUTS",
-        description: "Statuts de la société"
-      }
-    ]
+        name: 'Statuts',
+        code: 'STATUTS',
+        description: 'Statuts de la société',
+      },
+    ],
   })
   @Expose()
   @Transform(({ obj }) => {
@@ -55,7 +54,7 @@ export class TypeCustomerResponseDto {
       id: doc.id,
       name: doc.name,
       code: doc.code,
-      description: doc.description
+      description: doc.description,
     }));
   })
   required_documents?: {
@@ -71,11 +70,11 @@ export class TypeCustomerResponseDto {
     example: [
       {
         id: 1,
-        full_name: "Société ABC SARL",
-        customer_code: "CLI-2025-001",
-        email: "contact@abc.cm"
-      }
-    ]
+        full_name: 'Société ABC SARL',
+        customer_code: 'CLI-2025-001',
+        email: 'contact@abc.cm',
+      },
+    ],
   })
   @Expose()
   @Transform(({ obj }) => {
@@ -85,7 +84,7 @@ export class TypeCustomerResponseDto {
       full_name: customer.full_name,
       customer_code: customer.customer_code,
       email: customer.email,
-      company_name: customer.company_name
+      company_name: customer.company_name,
     }));
   })
   customers?: {
@@ -97,83 +96,130 @@ export class TypeCustomerResponseDto {
   }[];
 
   // ---------------- COMPTAGES ----------------
-  @ApiProperty({ example: 25, description: "Nombre total de clients de ce type" })
+  @ApiProperty({
+    example: 25,
+    description: 'Nombre total de clients de ce type',
+  })
   @Expose()
   @Transform(({ obj }) => obj.customers?.length || 0)
   customer_count: number;
 
-  @ApiProperty({ example: 5, description: "Nombre de documents requis pour ce type" })
+  @ApiProperty({
+    example: 5,
+    description: 'Nombre de documents requis pour ce type',
+  })
   @Expose()
   @Transform(({ obj }) => obj.requiredDocuments?.length || 0)
   required_document_count: number;
 
-  @ApiProperty({ example: 20, description: "Nombre de clients actifs de ce type" })
+  @ApiProperty({
+    example: 20,
+    description: 'Nombre de clients actifs de ce type',
+  })
   @Expose()
-  @Transform(({ obj }) => obj.customers?.filter((c: any) => c.status === 1).length || 0)
+  @Transform(
+    ({ obj }) => obj.customers?.filter((c: any) => c.status === 1).length || 0,
+  )
   active_customer_count: number;
 
   // ---------------- ÉTATS LOGIQUES ----------------
-  @ApiProperty({ example: true, description: "Le type de client est-il actif ?" })
+  @ApiProperty({
+    example: true,
+    description: 'Le type de client est-il actif ?',
+  })
   @Expose()
   @Transform(({ obj }) => obj.status === 1)
   is_active: boolean;
 
-  @ApiProperty({ example: false, description: "Le type de client est-il un type professionnel ?" })
+  @ApiProperty({
+    example: false,
+    description: 'Le type de client est-il un type professionnel ?',
+  })
   @Expose()
-  @Transform(({ obj }) => obj.code?.includes('PRO') || obj.name?.toLowerCase().includes('professionnel') || obj.name?.toLowerCase().includes('entreprise'))
+  @Transform(
+    ({ obj }) =>
+      obj.code?.includes('PRO') ||
+      obj.name?.toLowerCase().includes('professionnel') ||
+      obj.name?.toLowerCase().includes('entreprise'),
+  )
   is_professional: boolean;
 
-  @ApiProperty({ example: true, description: "Le type de client est-il un type particulier ?" })
+  @ApiProperty({
+    example: true,
+    description: 'Le type de client est-il un type particulier ?',
+  })
   @Expose()
-  @Transform(({ obj }) => obj.code?.includes('PART') || obj.name?.toLowerCase().includes('particulier') || obj.name?.toLowerCase().includes('individuel'))
+  @Transform(
+    ({ obj }) =>
+      obj.code?.includes('PART') ||
+      obj.name?.toLowerCase().includes('particulier') ||
+      obj.name?.toLowerCase().includes('individuel'),
+  )
   is_particulier: boolean;
 
-  @ApiProperty({ example: true, description: "Le type de client a-t-il des documents requis ?" })
+  @ApiProperty({
+    example: true,
+    description: 'Le type de client a-t-il des documents requis ?',
+  })
   @Expose()
   @Transform(({ obj }) => (obj.requiredDocuments?.length || 0) > 0)
   has_required_documents: boolean;
 
   // ---------------- STATISTIQUES AVANCÉES ----------------
-  @ApiProperty({ 
-    example: 15, 
-    description: "Nombre de dossiers ouverts pour ce type de client" 
+  @ApiProperty({
+    example: 15,
+    description: 'Nombre de dossiers ouverts pour ce type de client',
   })
   @Expose()
   @Transform(({ obj }) => {
     if (!obj.customers) return 0;
     return obj.customers.reduce((total: number, customer: any) => {
-      return total + (customer.dossiers?.filter((d: any) => d.is_active).length || 0);
+      return (
+        total + (customer.dossiers?.filter((d: any) => d.is_active).length || 0)
+      );
     }, 0);
   })
   active_dossier_count: number;
 
-  @ApiProperty({ 
-    example: 5000000, 
-    description: "Chiffre d'affaires total pour ce type de client" 
+  @ApiProperty({
+    example: 5000000,
+    description: "Chiffre d'affaires total pour ce type de client",
   })
   @Expose()
   @Transform(({ obj }) => {
     if (!obj.customers) return 0;
     return obj.customers.reduce((total: number, customer: any) => {
       if (!customer.dossiers) return total;
-      return total + customer.dossiers.reduce((dossierTotal: number, dossier: any) => {
-        if (!dossier.factures) return dossierTotal;
-        return dossierTotal + dossier.factures.reduce((factureTotal: number, facture: any) => 
-          factureTotal + parseFloat(facture.amount_ttc?.toString() || '0'), 0);
-      }, 0);
+      return (
+        total +
+        customer.dossiers.reduce((dossierTotal: number, dossier: any) => {
+          if (!dossier.factures) return dossierTotal;
+          return (
+            dossierTotal +
+            dossier.factures.reduce(
+              (factureTotal: number, facture: any) =>
+                factureTotal +
+                parseFloat(facture.amount_ttc?.toString() || '0'),
+              0,
+            )
+          );
+        }, 0)
+      );
     }, 0);
   })
   total_revenue: number;
 
-  @ApiProperty({ 
-    example: 75, 
-    description: "Taux d'activité moyen des clients de ce type (%)" 
+  @ApiProperty({
+    example: 75,
+    description: "Taux d'activité moyen des clients de ce type (%)",
   })
   @Expose()
   @Transform(({ obj }) => {
     if (!obj.customers || obj.customers.length === 0) return 0;
     const totalCustomers = obj.customers.length;
-    const activeCustomers = obj.customers.filter((c: any) => c.status === 1).length;
+    const activeCustomers = obj.customers.filter(
+      (c: any) => c.status === 1,
+    ).length;
     return Math.round((activeCustomers / totalCustomers) * 100);
   })
   activity_rate: number;
@@ -185,11 +231,11 @@ export class TypeCustomerListResponseDto {
   @Expose()
   id: number;
 
-  @ApiProperty({ example: "Professionnel" })
+  @ApiProperty({ example: 'Professionnel' })
   @Expose()
   name: string;
 
-  @ApiProperty({ example: "PRO" })
+  @ApiProperty({ example: 'PRO' })
   @Expose()
   code: string;
 
@@ -212,7 +258,7 @@ export class TypeCustomerListResponseDto {
   @Transform(({ obj }) => obj.status === 1)
   is_active: boolean;
 
-  @ApiProperty({ example: "2025-01-15T08:00:00Z" })
+  @ApiProperty({ example: '2025-01-15T08:00:00Z' })
   @Expose()
   @Transform(({ obj }) => obj.created_at)
   created_at: Date;

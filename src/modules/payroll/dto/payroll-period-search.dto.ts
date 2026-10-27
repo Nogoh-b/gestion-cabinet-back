@@ -1,5 +1,12 @@
 import { Type } from 'class-transformer';
-import { IsDate, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsDate,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PayrollPeriodStatus } from '../entities/payroll-period.entity';
 
@@ -9,7 +16,10 @@ export class PayrollPeriodSearchDto {
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ enum: PayrollPeriodStatus, description: 'Filtrer par statut' })
+  @ApiPropertyOptional({
+    enum: PayrollPeriodStatus,
+    description: 'Filtrer par statut',
+  })
   @IsOptional()
   @IsEnum(PayrollPeriodStatus)
   status?: PayrollPeriodStatus;

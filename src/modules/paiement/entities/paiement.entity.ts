@@ -39,15 +39,13 @@ export class Paiement extends TenantEntity {
   })
   id: string;
 
-  @Column({ name: 'facture_id' })
-  @BusinessColumn({
-    label: 'Facture',
-    description: 'Identifiant de la facture associée',
-    importance: 'critical',
-    group: 'relation',
-    ignored: true,
-  })
-  factureId: string;
+  /** Colonne DB facture_id gérée via la relation @ManyToOne (voir ci-dessous). */
+  get factureId(): string {
+    return this.facture?.id;
+  }
+  set factureId(v: string) {
+    if (v) this.facture = { id: v } as Facture;
+  }
 
   @Column({ type: 'decimal', precision: 18, scale: 2 })
   @BusinessColumn({
@@ -194,6 +192,16 @@ export class Paiement extends TenantEntity {
     length: 64,
   })
   preuveSha256: string | null;
+  @Column({ name: 'declared_by_client', type: 'tinyint', width: 1, default: 0 })
+  @BusinessColumn({
+    label: 'Déclaré par le client',
+    description:
+      'Paiement déclaré par le client depuis son espace (créé en attente, à approuver par le cabinet).',
+    importance: 'low',
+    group: 'interne',
+    ignored: true,
+  })
+  declared_by_client: boolean;
 
   // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 

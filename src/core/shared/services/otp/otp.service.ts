@@ -2,37 +2,8 @@ import { OtpCode, OtpOnlineLink } from 'src/core/entities/otp-code.entity';
 import { Repository } from 'typeorm';
 import { forwardRef, Injectable } from '@nestjs/common';
 
-
 import { InjectRepository } from '@nestjs/typeorm';
 import { EmailService } from '../email/email.service copy';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @Injectable()
 export class OtpService {
@@ -42,9 +13,11 @@ export class OtpService {
     @InjectRepository(OtpOnlineLink)
     private readonly otpOnlineLinkRepo: Repository<OtpOnlineLink>,
     private readonly emailService: EmailService,
-   /* @Inject(forwardRef(() => SavingsAccountService))
+    /* @Inject(forwardRef(() => SavingsAccountService))
     private readonly savingsAccountService: SavingsAccountService*/
-  ) {console.log(forwardRef)}
+  ) {
+    console.log(forwardRef);
+  }
 
   async generateOtp(
     email: string,
@@ -79,7 +52,7 @@ export class OtpService {
 
     await this.otpRepository.save(otp);
 
-    console.log(code)
+    console.log(code);
     const email_sended = this.emailService.sendMail({
       to: 'nogohbrice@gmail.com',
       subject: 'Envoi de votre code OTP',
@@ -90,7 +63,7 @@ export class OtpService {
       },
     });
 
-    return  { message: 'OTP envoyé' , email_sended };
+    return { message: 'OTP envoyé', email_sended };
   }
 
   async verifyOtp(email: string, code: string) {
@@ -105,23 +78,31 @@ export class OtpService {
     record.used = true;
     await this.otpRepository.save(record);
 
-    return { amount: record.amount, provider: record.provider, targetSavingsAccountCode: record.targetSavingsAccountCode,  message: 'OTP validé.' };
+    return {
+      amount: record.amount,
+      provider: record.provider,
+      targetSavingsAccountCode: record.targetSavingsAccountCode,
+      message: 'OTP validé.',
+    };
   }
 
+  async generateOtpLink(
+    email: string,
+    savingsAccountCode: string,
+    cotiCode: string = '0',
+  ) {
+    const code = Math.floor(10000 + Math.random() * 90000).toString(); // de 10000 à 99999
 
-  async generateOtpLink(email: string, savingsAccountCode: string, cotiCode: string = '0') {
-  const code = Math.floor(10000 + Math.random() * 90000).toString(); // de 10000 à 99999
+    const otp = this.otpOnlineLinkRepo.create({
+      email,
+      code,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 min
+      used: false,
+      savingsAccountCode,
+      cotiCustomerCode: cotiCode,
+    });
 
-  const otp = this.otpOnlineLinkRepo.create({
-    email,
-    code,
-    expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 min
-    used: false,
-    savingsAccountCode,
-    cotiCustomerCode: cotiCode
-  });
-
-  await this.otpOnlineLinkRepo.save(otp);
+    await this.otpOnlineLinkRepo.save(otp);
 
     const email_sended = this.emailService.sendMail({
       to: email,
@@ -133,30 +114,33 @@ export class OtpService {
       },
     });
 
-    return  { message: 'OTP envoyé' , email_sended };
+    return { message: 'OTP envoyé', email_sended };
   }
 
   async validateOtpLink(email: string, code: string): Promise<any> {
-    const otp = await this.otpOnlineLinkRepo.findOne({ where: { email, code, used: false } });
+    const otp = await this.otpOnlineLinkRepo.findOne({
+      where: { email, code, used: false },
+    });
 
-    if (!otp || otp.expiresAt < new Date()) return { success: false, message: 'OTP invalide ou expiré.' };
+    if (!otp || otp.expiresAt < new Date())
+      return { success: false, message: 'OTP invalide ou expiré.' };
 
     otp.used = true;
     await this.otpOnlineLinkRepo.save(otp ?? new OtpCode());
     // const sa = await this.savingsAccountService.findOneByCode(otp.savingsAccountCode)
 
-    return {number_saving_account : otp?.savingsAccountCode};
+    return { number_saving_account: otp?.savingsAccountCode };
   }
 
-
-  async sendMail(email: string, html: string ,subject: string = '') {
-      const email_sended = this.emailService.sendMail({
+  async sendMail(email: string, html: string, subject: string = '') {
+    const email_sended = this.emailService.sendMail({
       to: email,
       subject,
       message: html,
       context: {
         name: '',
-        message: html      },
+        message: html,
+      },
     });
     return email_sended;
   }

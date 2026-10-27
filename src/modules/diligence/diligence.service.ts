@@ -1,7 +1,11 @@
 // src/modules/diligences/diligences.service.ts
 import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import {
   DataSource,
   EntityManager,
@@ -10,11 +14,14 @@ import {
   Repository,
   In,
 } from 'typeorm';
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
 
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { DossiersService } from '../dossiers/dossiers.service';
@@ -27,15 +34,15 @@ import { DossierMember } from '../dossiers/entities/dossier-member.entity';
 import { CreateDiligenceDto } from './dto/create-diligence.dto';
 import { DiligenceResponseDto } from './dto/response-diligence.dto';
 import { UpdateDiligenceDto } from './dto/update-diligence.dto';
-import { Diligence, DiligenceStatus, DiligencePriority } from './entities/diligence.entity';
+import {
+  Diligence,
+  DiligenceStatus,
+  DiligencePriority,
+} from './entities/diligence.entity';
 import { AuditService } from 'src/core/audit/audit.service';
 import { OutboxService } from 'src/core/outbox/outbox.service';
-
-
-
-
-
-
+import { DossierAction } from '../case-workflow/entities/dossier-action.entity';
+import { CaseWorkflowEvent } from '../case-workflow/entities/workflow-audit.entity';
 
 @Injectable()
 export class DiligencesService extends BaseServiceV1<Diligence> {
@@ -52,7 +59,6 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     private readonly outboxService: OutboxService,
     // @Inject(forwardRef(() => StepsService))
     // private stepsService: StepsService,
-    
   ) {
     super(repository, paginationService);
   }
@@ -62,10 +68,34 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
    */
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      searchFields: ['title', 'description', 'scope', 'findings_summary', 'recommendations'],
-      exactMatchFields: ['status', 'type', 'priority', 'dossier_id', 'assigned_lawyer_id'],
-      dateRangeFields: ['start_date', 'deadline', 'completion_date', 'created_at'],
-      relationFields: ['dossier', 'dossier.client', 'assigned_lawyer', 'findings', 'documents','subStage'],
+      searchFields: [
+        'title',
+        'description',
+        'scope',
+        'findings_summary',
+        'recommendations',
+      ],
+      exactMatchFields: [
+        'status',
+        'type',
+        'priority',
+        'dossier_id',
+        'assigned_lawyer_id',
+      ],
+      dateRangeFields: [
+        'start_date',
+        'deadline',
+        'completion_date',
+        'created_at',
+      ],
+      relationFields: [
+        'dossier',
+        'dossier.client',
+        'assigned_lawyer',
+        'findings',
+        'documents',
+        'subStage',
+      ],
     };
   }
 
@@ -79,25 +109,31 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     // Vérifier que le dossier existe
     const dossier = await this.dossierService.findOne(dto.dossier_id);
     if (!dossier) {
-      throw new NotFoundException(`Dossier avec ID ${dto.dossier_id} non trouvé`);
+      throw new NotFoundException(
+        `Dossier avec ID ${dto.dossier_id} non trouvé`,
+      );
     }
 
     // Vérifier que l'avocat assigné existe (si fourni)
     if (dto.assigned_lawyer_id) {
       const lawyer = await this.usersService.findOne(dto.assigned_lawyer_id);
       if (!lawyer) {
-        throw new NotFoundException(`Avocat avec ID ${dto.assigned_lawyer_id} non trouvé`);
+        throw new NotFoundException(
+          `Avocat avec ID ${dto.assigned_lawyer_id} non trouvé`,
+        );
       }
     }
 
     // Valider les dates
     const startDate = new Date(dto.start_date);
     const deadline = new Date(dto.deadline);
-    
+
     if (deadline <= startDate) {
-      throw new BadRequestException('La date limite doit être postérieure à la date de début');
+      throw new BadRequestException(
+        'La date limite doit être postérieure à la date de début',
+      );
     }
-    
+
     let procedureInstance: ProcedureInstance | any = null;
 
     if (dossier.procedureInstance) {
@@ -111,7 +147,8 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     let stageVisitId: string | undefined = dto.stage_visit_id;
 
     if (!subStageVisitId && procedureInstance?.currentVisit) {
-      subStageVisitId = procedureInstance.currentVisit.currentSubStageVisitId ?? undefined;
+      subStageVisitId =
+        procedureInstance.currentVisit.currentSubStageVisitId ?? undefined;
     }
     if (!stageVisitId && procedureInstance?.currentVisit) {
       stageVisitId = procedureInstance.currentVisit.id ?? undefined;
@@ -138,7 +175,9 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       scope: dto.scope,
       client_reference: dto.client_reference,
       dossier: { id: dossier.id },
-      assigned_lawyer: dto.assigned_lawyer_id ? { id: dto.assigned_lawyer_id } : undefined,
+      assigned_lawyer: dto.assigned_lawyer_id
+        ? { id: dto.assigned_lawyer_id }
+        : undefined,
       status: DiligenceStatus.DRAFT,
       confidential: dto.confidential ?? true,
       sub_stage_visit_id: subStageVisitId,
@@ -201,14 +240,80 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
   async findOne(id: number): Promise<DiligenceResponseDto | any> {
     const diligence = await this.repository.findOne({
       where: { id },
-      relations: ['dossier', 'dossier.client', 'assigned_lawyer', 'findings', 'documents'],
+      relations: [
+        'dossier',
+        'dossier.client',
+        'assigned_lawyer',
+        'findings',
+        'documents',
+      ],
     });
 
     if (!diligence) {
       throw new NotFoundException(`Diligence avec ID ${id} introuvable`);
     }
 
-    return plainToInstance(DiligenceResponseDto, diligence);
+    const dto = plainToInstance(DiligenceResponseDto, diligence);
+    const sourceAction = await this.findSourceAction(diligence);
+    const deadlineExtensions = await this.getDeadlineExtensions(diligence);
+    return {
+      ...dto,
+      source_action: sourceAction,
+      deadline_extensions: deadlineExtensions,
+    };
+  }
+
+  private async findSourceAction(diligence: Diligence) {
+    if (!diligence.source_action_id) return null;
+    const action = await this.repository.manager
+      .getRepository(DossierAction)
+      .findOne({
+        where: {
+          id: diligence.source_action_id,
+          tenant_id: diligence.tenant_id,
+        },
+      });
+    if (!action) return null;
+    return {
+      id: action.id,
+      dossierId: action.dossier_id,
+      title: action.title,
+      status: action.status,
+      priority: action.priority,
+      dueAt: action.due_at,
+    };
+  }
+
+  private async getDeadlineExtensions(diligence: Diligence) {
+    if (!diligence.source_action_id) return { count: 0, history: [] };
+    const events = await this.repository.manager
+      .getRepository(CaseWorkflowEvent)
+      .find({
+        where: {
+          tenant_id: diligence.tenant_id,
+          aggregate_type: 'DossierAction',
+          aggregate_id: diligence.source_action_id,
+          event_type: In([
+            'DOSSIER_ACTION_DEADLINE_SET',
+            'DOSSIER_ACTION_DEADLINE_EXTENDED',
+          ]),
+        },
+        order: { created_at: 'ASC' },
+      });
+    const history = events
+      .filter(
+        (event) => event.event_type === 'DOSSIER_ACTION_DEADLINE_EXTENDED',
+      )
+      .map((event) => {
+        const payload = (event.payload || {}) as Record<string, any>;
+        return {
+          date: (event as any).created_at,
+          previousDueAt: payload.previousDueAt ?? null,
+          dueAt: payload.dueAt ?? null,
+          reason: payload.reason ?? null,
+        };
+      });
+    return { count: history.length, history };
   }
 
   async getAccessScope(
@@ -294,8 +399,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
         deadline,
         budget_hours: dto.budget_hours ?? diligence.budget_hours,
         scope: dto.scope ?? diligence.scope,
-        client_reference:
-          dto.client_reference ?? diligence.client_reference,
+        client_reference: dto.client_reference ?? diligence.client_reference,
         confidential: dto.confidential ?? diligence.confidential,
       });
       if (assignedLawyerId) {
@@ -378,45 +482,35 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     recommendations: string | undefined,
     actorId: number,
   ): Promise<Diligence> {
-    return this.transition(
-      id,
-      actorId,
-      'diligence.completed',
-      (diligence) => {
-        if (diligence.status !== DiligenceStatus.REVIEW) {
-          throw new BadRequestException(
-            'La diligence doit être en relecture avant sa clôture',
-          );
-        }
-        const blockingCritical = (diligence.findings ?? []).filter(
-          (finding) =>
-            finding.severity === 'critical' &&
-            !['resolved', 'waived'].includes(finding.status),
+    return this.transition(id, actorId, 'diligence.completed', (diligence) => {
+      if (diligence.status !== DiligenceStatus.REVIEW) {
+        throw new BadRequestException(
+          'La diligence doit être en relecture avant sa clôture',
         );
-        if (blockingCritical.length > 0) {
-          throw new BadRequestException(
-            'Les constats critiques doivent être résolus ou acceptés avant la clôture',
-          );
-        }
-        diligence.complete(recommendations);
-      },
-    );
+      }
+      const blockingCritical = (diligence.findings ?? []).filter(
+        (finding) =>
+          finding.severity === 'critical' &&
+          !['resolved', 'waived'].includes(finding.status),
+      );
+      if (blockingCritical.length > 0) {
+        throw new BadRequestException(
+          'Les constats critiques doivent être résolus ou acceptés avant la clôture',
+        );
+      }
+      diligence.complete(recommendations);
+    });
   }
 
   async start(id: number, actorId: number): Promise<Diligence> {
-    return this.transition(
-      id,
-      actorId,
-      'diligence.started',
-      (diligence) => {
-        if (diligence.status !== DiligenceStatus.DRAFT) {
-          throw new BadRequestException(
-            'Seule une diligence brouillon peut être démarrée',
-          );
-        }
-        diligence.status = DiligenceStatus.IN_PROGRESS;
-      },
-    );
+    return this.transition(id, actorId, 'diligence.started', (diligence) => {
+      if (diligence.status !== DiligenceStatus.DRAFT) {
+        throw new BadRequestException(
+          'Seule une diligence brouillon peut être démarrée',
+        );
+      }
+      diligence.status = DiligenceStatus.IN_PROGRESS;
+    });
   }
 
   async submitForReview(id: number, actorId: number): Promise<Diligence> {
@@ -476,12 +570,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
       const diligence = await manager.getRepository(Diligence).findOne({
         where: { id },
-        relations: [
-          'findings',
-          'dossier',
-          'dossier.client',
-          'assigned_lawyer',
-        ],
+        relations: ['findings', 'dossier', 'dossier.client', 'assigned_lawyer'],
         lock: { mode: 'pessimistic_write' },
       });
       if (!diligence) {
@@ -507,9 +596,8 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
         medium: diligence.findings.filter(
           (finding) => finding.severity === 'medium',
         ).length,
-        low: diligence.findings.filter(
-          (finding) => finding.severity === 'low',
-        ).length,
+        low: diligence.findings.filter((finding) => finding.severity === 'low')
+          .length,
       };
       const beforeState = this.auditState(diligence);
       diligence.findings_summary = [
@@ -639,7 +727,11 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       where: {
         ...(dossierIds ? { dossier_id: In(dossierIds) } : {}),
         deadline: MoreThan(today),
-        status: In([DiligenceStatus.DRAFT, DiligenceStatus.IN_PROGRESS, DiligenceStatus.REVIEW]),
+        status: In([
+          DiligenceStatus.DRAFT,
+          DiligenceStatus.IN_PROGRESS,
+          DiligenceStatus.REVIEW,
+        ]),
       },
       relations: ['dossier', 'dossier.client', 'assigned_lawyer'],
       order: { deadline: 'ASC' },
@@ -657,7 +749,11 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       where: {
         ...(dossierIds ? { dossier_id: In(dossierIds) } : {}),
         deadline: LessThan(today),
-        status: In([DiligenceStatus.DRAFT, DiligenceStatus.IN_PROGRESS, DiligenceStatus.REVIEW]),
+        status: In([
+          DiligenceStatus.DRAFT,
+          DiligenceStatus.IN_PROGRESS,
+          DiligenceStatus.REVIEW,
+        ]),
       },
       relations: ['dossier', 'dossier.client', 'assigned_lawyer'],
       order: { deadline: 'ASC' },
@@ -668,12 +764,14 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
    * 📊 Statistiques par type
    */
   async getStatsByType(): Promise<any> {
-    const result = await this.repository
+    const qb = this.repository
       .createQueryBuilder('diligence')
       .select('diligence.type', 'type')
       .addSelect('COUNT(diligence.id)', 'count')
-      .groupBy('diligence.type')
-      .getRawMany();
+      .groupBy('diligence.type');
+    // Isolation multi-tenant.
+    addTenantCondition(qb, 'diligence');
+    const result = await qb.getRawMany();
 
     return result;
   }
@@ -682,12 +780,14 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
    * 📊 Statistiques par statut
    */
   async getStatsByStatus(): Promise<any> {
-    const result = await this.repository
+    const qb = this.repository
       .createQueryBuilder('diligence')
       .select('diligence.status', 'status')
       .addSelect('COUNT(diligence.id)', 'count')
-      .groupBy('diligence.status')
-      .getRawMany();
+      .groupBy('diligence.status');
+    // Isolation multi-tenant.
+    addTenantCondition(qb, 'diligence');
+    const result = await qb.getRawMany();
 
     return result;
   }
@@ -733,10 +833,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     const stageVisit = await this.dataSource
       .getRepository(StageVisit)
       .findOne({ where: { id: resolvedStageVisitId! } });
-    if (
-      !stageVisit ||
-      stageVisit.instanceId !== String(procedureInstanceId)
-    ) {
+    if (!stageVisit || stageVisit.instanceId !== String(procedureInstanceId)) {
       throw new BadRequestException(
         'La visite procédurale n’appartient pas à l’instance du dossier',
       );
@@ -787,9 +884,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
           lock: { mode: 'pessimistic_write' },
         });
         if (!diligence) {
-          throw new NotFoundException(
-            `Diligence avec ID ${id} introuvable`,
-          );
+          throw new NotFoundException(`Diligence avec ID ${id} introuvable`);
         }
 
         const beforeState = this.auditState(diligence);

@@ -5,7 +5,9 @@ export class AddAiRequestLogMetrics1782200000000 implements MigrationInterface {
     const addColumn = async (name: string, definition: string) => {
       const exists = await queryRunner.hasColumn('ai_request_log', name);
       if (!exists) {
-        await queryRunner.query(`ALTER TABLE ai_request_log ADD COLUMN ${name} ${definition}`);
+        await queryRunner.query(
+          `ALTER TABLE ai_request_log ADD COLUMN ${name} ${definition}`,
+        );
       }
     };
 
@@ -25,7 +27,9 @@ export class AddAiRequestLogMetrics1782200000000 implements MigrationInterface {
     const dropColumn = async (name: string) => {
       const exists = await queryRunner.hasColumn('ai_request_log', name);
       if (exists) {
-        await queryRunner.query(`ALTER TABLE ai_request_log DROP COLUMN ${name}`);
+        await queryRunner.query(
+          `ALTER TABLE ai_request_log DROP COLUMN ${name}`,
+        );
       }
     };
 

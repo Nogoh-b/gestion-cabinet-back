@@ -10,11 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
@@ -33,9 +29,7 @@ import { ReferralCommissionsService } from './referral-commissions.service';
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ReferralCommissionsController {
-  constructor(
-    private readonly service: ReferralCommissionsService,
-  ) {}
+  constructor(private readonly service: ReferralCommissionsService) {}
 
   private actor(user: any) {
     return {
@@ -58,9 +52,7 @@ export class ReferralCommissionsController {
     @Body() dto: CreateReferralCommissionDto,
     @CurrentUser() user: any,
   ) {
-    return this.response(
-      await this.service.create(dto, this.actor(user)),
-    );
+    return this.response(await this.service.create(dto, this.actor(user)));
   }
 
   @Get('/search')
@@ -89,23 +81,15 @@ export class ReferralCommissionsController {
   @Get('/referral/:referralId')
   @RequirePermissions('view_referral_commissions')
   @ApiOperation({ summary: "Commissions d'un apport spécifique" })
-  async findByReferral(
-    @Param('referralId', ParseIntPipe) referralId: number,
-  ) {
-    return this.response(
-      await this.service.findByReferral(referralId),
-    );
+  async findByReferral(@Param('referralId', ParseIntPipe) referralId: number) {
+    return this.response(await this.service.findByReferral(referralId));
   }
 
   @Get('/referrer/:referrerId')
   @RequirePermissions('view_referral_commissions')
   @ApiOperation({ summary: "Commissions d'un apporteur" })
-  async findByReferrer(
-    @Param('referrerId', ParseIntPipe) referrerId: number,
-  ) {
-    return this.response(
-      await this.service.findByReferrer(referrerId),
-    );
+  async findByReferrer(@Param('referrerId', ParseIntPipe) referrerId: number) {
+    return this.response(await this.service.findByReferrer(referrerId));
   }
 
   @Get()
@@ -129,9 +113,7 @@ export class ReferralCommissionsController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: any,
   ) {
-    return this.response(
-      await this.service.approve(id, this.actor(user)),
-    );
+    return this.response(await this.service.approve(id, this.actor(user)));
   }
 
   @Post(':id/pay')
@@ -142,9 +124,7 @@ export class ReferralCommissionsController {
     @Body() dto: PayReferralCommissionDto,
     @CurrentUser() user: any,
   ) {
-    return this.response(
-      await this.service.pay(id, dto, this.actor(user)),
-    );
+    return this.response(await this.service.pay(id, dto, this.actor(user)));
   }
 
   @Post(':id/cancel')
@@ -155,9 +135,7 @@ export class ReferralCommissionsController {
     @Body() dto: CancelReferralCommissionDto,
     @CurrentUser() user: any,
   ) {
-    return this.response(
-      await this.service.cancel(id, dto, this.actor(user)),
-    );
+    return this.response(await this.service.cancel(id, dto, this.actor(user)));
   }
 
   @Patch(':id')
@@ -168,18 +146,13 @@ export class ReferralCommissionsController {
     @Body() dto: UpdateReferralCommissionDto,
     @CurrentUser() user: any,
   ) {
-    return this.response(
-      await this.service.update(id, dto, this.actor(user)),
-    );
+    return this.response(await this.service.update(id, dto, this.actor(user)));
   }
 
   @Delete(':id')
   @RequirePermissions('edit_referral_commission')
   @ApiOperation({ summary: 'Supprimer une commission calculée' })
-  remove(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: any,
-  ) {
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.remove(id, this.actor(user));
   }
 }

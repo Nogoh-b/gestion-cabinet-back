@@ -7,7 +7,10 @@ import {
   OneToMany,
 } from 'typeorm';
 import { Dossier } from '../../dossiers/entities/dossier.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Referrer } from './referral.entity';
 import { ReferralCommission } from './referral-commission.entity';
@@ -27,7 +30,8 @@ export enum CommissionMode {
 @Entity('dossier_referral')
 @BusinessTable({
   label: 'Apports de dossiers',
-  description: 'Lie un dossier à son apporteur avec les conditions spécifiques de commission.',
+  description:
+    'Lie un dossier à son apporteur avec les conditions spécifiques de commission.',
   icon: '📎',
   category: 'tiers',
 })
@@ -65,14 +69,16 @@ export class DossierReferral extends TenantEntity {
   @Column({ type: 'int', name: 'referrer_id' })
   @BusinessColumn({
     label: 'Apporteur',
-    description: 'Identifiant de l\'apporteur',
+    description: "Identifiant de l'apporteur",
     importance: 'high',
     group: 'relation',
     ignored: true,
   })
   referrer_id: number;
 
-  @ManyToOne(() => Referrer, (referrer) => referrer.dossier_referrals, { nullable: false })
+  @ManyToOne(() => Referrer, (referrer) => referrer.dossier_referrals, {
+    nullable: false,
+  })
   @JoinColumn({ name: 'referrer_id' })
   @BusinessColumn({
     label: 'Apporteur',
@@ -93,7 +99,12 @@ export class DossierReferral extends TenantEntity {
   })
   commission_rate: number;
 
-  @Column({ type: 'enum', enum: CommissionMode, default: CommissionMode.RATE, name: 'commission_mode' })
+  @Column({
+    type: 'enum',
+    enum: CommissionMode,
+    default: CommissionMode.RATE,
+    name: 'commission_mode',
+  })
   @BusinessColumn({
     label: 'Mode de commission',
     description: "BD: 'rate'=Commission par taux, 'fixed_amount'=Montant fixe.",
@@ -102,7 +113,13 @@ export class DossierReferral extends TenantEntity {
   })
   commission_mode: CommissionMode;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true, name: 'commission_amount' })
+  @Column({
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
+    nullable: true,
+    name: 'commission_amount',
+  })
   @BusinessColumn({
     label: 'Montant fixe de commission',
     description: 'Montant fixe negocie pour ce dossier',
@@ -111,10 +128,16 @@ export class DossierReferral extends TenantEntity {
   })
   commission_amount: number | null;
 
-  @Column({ type: 'enum', enum: CommissionBasis, default: CommissionBasis.COLLECTED_HT, name: 'commission_basis' })
+  @Column({
+    type: 'enum',
+    enum: CommissionBasis,
+    default: CommissionBasis.COLLECTED_HT,
+    name: 'commission_basis',
+  })
   @BusinessColumn({
     label: 'Base de calcul',
-    description: "BD: 'invoiced_ht', 'invoiced_ttc', 'collected_ht', 'collected_ttc'.",
+    description:
+      "BD: 'invoiced_ht', 'invoiced_ttc', 'collected_ht', 'collected_ttc'.",
     importance: 'medium',
     group: 'financier',
   })
@@ -122,7 +145,7 @@ export class DossierReferral extends TenantEntity {
 
   @Column({ type: 'date', name: 'referral_date' })
   @BusinessColumn({
-    label: 'Date d\'apport',
+    label: "Date d'apport",
     description: 'Date à laquelle le dossier a été apporté',
     format: 'date',
     importance: 'medium',
@@ -139,7 +162,9 @@ export class DossierReferral extends TenantEntity {
   })
   notes: string;
 
-  @OneToMany(() => ReferralCommission, (commission) => commission.dossier_referral)
+  @OneToMany(
+    () => ReferralCommission,
+    (commission) => commission.dossier_referral,
+  )
   commissions: ReferralCommission[];
-
 }

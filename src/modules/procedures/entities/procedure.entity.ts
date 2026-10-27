@@ -2,8 +2,15 @@
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { ProcedureTemplate } from 'src/modules/procedure/entities/procedure-template.entity';
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn, Unique } from 'typeorm';
-
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  OneToMany,
+  ManyToOne,
+  JoinColumn,
+  Unique,
+} from 'typeorm';
 
 @Entity('procedure_types')
 @Unique(['tenant_id', 'code'])
@@ -51,11 +58,11 @@ export class ProcedureType extends BaseEntity {
 
   @ManyToOne(() => ProcedureTemplate)
   @JoinColumn({ name: 'procedure_template_id' })
-  procedure_template?: ProcedureTemplate | null ;
+  procedure_template?: ProcedureTemplate | null;
 
   @OneToMany(() => ProcedureType, (type) => type.parent)
-  subtypes: ProcedureType[];  
-  
+  subtypes: ProcedureType[];
+
   @OneToMany(() => Dossier, (dossier) => dossier.procedure_type)
   dossiers: Dossier[];
 
@@ -143,25 +150,24 @@ export class ProcedureType extends BaseEntity {
     if (!this.specific_jurisdictions) {
       return 'Toutes juridictions';
     }
-    
+
     // If it's an array, join it
     if (Array.isArray(this.specific_jurisdictions)) {
       return this.specific_jurisdictions.join(', ');
     }
-    
+
     // If it's a string, return it as is
     if (typeof this.specific_jurisdictions === 'string') {
       return this.specific_jurisdictions;
     }
-    
+
     // Fallback
     return 'Toutes juridictions';
   }
- 
 
   get duration_display(): string {
     if (!this.average_duration) return 'Non défini';
-    
+
     const days = this.average_duration;
     if (days < 30) {
       return `${days} jour${days > 1 ? 's' : ''}`;
@@ -205,13 +211,13 @@ export class ProcedureType extends BaseEntity {
       dossiers: this.dossiers_count,
       documents: this.document_count,
       jurisdictions: this.jurisdictions_count,
-      duration: this.duration_display
+      duration: this.duration_display,
     };
   }
 
   get tree_display(): string {
     const indent = '  '.repeat(this.hierarchy_level - 1);
-    const prefix = this.is_main_type ? '📁' : (this.is_sub_type ? '📄' : '📌');
+    const prefix = this.is_main_type ? '📁' : this.is_sub_type ? '📄' : '📌';
     const status = this.is_active ? '✅' : '❌';
     return `${indent}${prefix} ${this.name} (${this.code}) ${status}`;
   }

@@ -1,26 +1,35 @@
-import { AttachmentMail, Mail, MailStatus } from 'src/core/shared/emails/entities/mail.entity';
+import {
+  AttachmentMail,
+  Mail,
+  MailStatus,
+} from 'src/core/shared/emails/entities/mail.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { helpers } from 'src/utils/helper-template-maill';
 import { Repository, LessThanOrEqual } from 'typeorm';
 import { MailerService } from '@nestjs-modules/mailer';
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 
-
-
-
 import { CreateMailDto } from './dto/create-mail.dto';
 import { SmtpService } from './smtp.service';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-
-
-
-
+import {
+  getCurrentTenantId,
+  TenantContext,
+} from 'src/core/tenant/tenant.context';
+import { signUploadUrl } from 'src/core/security/uploads-access';
+import { promises as fsPromises } from 'fs';
+import * as nodePath from 'path';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
+  /** Mails programmés en cours d'envoi (le cron passe chaque minute). */
+  private readonly scheduledInFlight = new Set<string>();
 
   constructor(
     @InjectRepository(Mail)
@@ -29,6 +38,7 @@ export class MailService {
     private dossierRepository: Repository<Dossier>,
     private mailerService: MailerService,
     private smtpService: SmtpService,
+    private tenantContext: TenantContext,
   ) {}
 
   /**
@@ -36,32 +46,56 @@ export class MailService {
    * inline), sinon via le SMTP par défaut (MailerService). Repli automatique en
    * cas d'erreur de résolution du transport cabinet.
    */
-  private async dispatch(mailOptions: any): Promise<void> {
-    if (!mailOptions.template) {
+  private async dispatch(
+    mailOptions: any,
+    transport: 'tenant' | 'platform' = 'tenant',
+  ): Promise<void> {
+    let tenantTransportError: unknown;
+    // transport 'platform' : emails de la plateforme elle-même (OTP super
+    // admin, factures d'abonnement…) → toujours le SMTP global SMTP_*.
+    if (!mailOptions.template && transport === 'tenant') {
       try {
-        const t = await this.smtpService.getTenantTransport(getCurrentTenantId());
+        const t =
+          await this.smtpService.getTenantTransport(getCurrentTenantId());
         if (t) {
-          await t.transport.sendMail({ ...mailOptions, from: mailOptions.from ?? t.from });
+          await t.transport.sendMail({
+            ...mailOptions,
+            from: mailOptions.from ?? t.from,
+          });
           return;
         }
       } catch (e: any) {
+        tenantTransportError = e;
         this.logger.warn(
           `[SMTP cabinet] indisponible, repli sur SMTP par défaut: ${e?.message ?? e}`,
         );
       }
     }
+
+    // Nodemailer utilise implicitement localhost quand `host` est absent.
+    // On bloque ce repli trompeur afin de fournir un diagnostic exploitable.
+    if (!process.env.SMTP_HOST?.trim()) {
+      const message = tenantTransportError
+        ? 'Connexion au serveur SMTP du cabinet impossible. Vérifiez puis testez sa configuration dans Administration > Configuration SMTP.'
+        : 'Aucun serveur SMTP configuré. Renseignez puis testez la configuration dans Administration > Configuration SMTP.';
+      throw new ServiceUnavailableException(message);
+    }
+
     await this.mailerService.sendMail(mailOptions);
   }
 
   /**
    * Crée un email en base (programmé ou immédiat)
    */
-  async create(createMailDto: CreateMailDto, deduplicationKey?: string): Promise<Mail> {
+  async create(
+    createMailDto: CreateMailDto,
+    deduplicationKey?: string,
+  ): Promise<Mail> {
     if (deduplicationKey) {
       const existingMail = await this.mailRepository.findOne({
-        where: { deduplicationKey }
+        where: { deduplicationKey },
       });
-      
+
       if (existingMail) {
         this.logger.warn(`Email déjà créé avec la clé ${deduplicationKey}`);
         return existingMail;
@@ -70,7 +104,9 @@ export class MailService {
     const mail = this.mailRepository.create({
       ...createMailDto,
       deduplicationKey, // Stocker la clé
-    scheduledAt: createMailDto.scheduledAt ? new Date(createMailDto.scheduledAt) : undefined,
+      scheduledAt: createMailDto.scheduledAt
+        ? new Date(createMailDto.scheduledAt)
+        : undefined,
       status: MailStatus.PENDING,
     });
     const saved = await this.mailRepository.save(mail);
@@ -78,9 +114,30 @@ export class MailService {
     // Si pas de programmation, on tente l'envoi immédiat (asynchrone)
     if (!saved.scheduledAt) {
       // On lance l'envoi sans attendre (fire-and-forget)
-      this.sendMail(saved.id).catch(err => this.logger.error(`Erreur envoi immédiat mail ${saved.id}`, err));
+      this.sendMail(saved.id).catch((err) =>
+        this.logger.error(`Erreur envoi immédiat mail ${saved.id}`, err),
+      );
     }
 
+    return saved;
+  }
+
+  /**
+   * Enregistre l'e-mail puis l'envoie en attendant le résultat (un échec est
+   * levé et le mail marqué « failed »). Programmé : enregistré seulement, le
+   * cron l'enverra à l'heure prévue.
+   */
+  async createAndSend(createMailDto: CreateMailDto): Promise<Mail> {
+    const saved = await this.mailRepository.save(
+      this.mailRepository.create({
+        ...createMailDto,
+        scheduledAt: createMailDto.scheduledAt
+          ? new Date(createMailDto.scheduledAt)
+          : undefined,
+        status: MailStatus.PENDING,
+      }),
+    );
+    if (!saved.scheduledAt) await this.sendMail(saved.id);
     return saved;
   }
 
@@ -98,36 +155,41 @@ export class MailService {
       this.logger.warn(`Mail ${id} déjà envoyé`);
       return;
     }
-    let attachments : AttachmentMail[] = []
-    if(mail.attachments)
-      attachments = await this.prepareAttachmentsWithBuffers(mail.attachments);
-
     try {
+      // Dans le try : une pièce introuvable marque l'envoi en échec, sinon
+      // le cron le reprendrait chaque minute.
+      let attachments: AttachmentMail[] = [];
+      if (mail.attachments)
+        attachments = await this.prepareAttachmentsWithBuffers(
+          mail.attachments,
+        );
+
       // Préparer les options d'envoi
       const mailOptions: any = {
         to: mail.to,
         cc: mail.cc,
         bcc: mail.bcc,
         subject: mail.subject,
-        attachments: mail.attachments,
+        // Pièces récupérées (URL signée) : /uploads est privé.
+        attachments,
       };
 
       // Si template, l'utiliser
       if (mail.templateName) {
         // Rendu via fichier Handlebars (.hbs)
         mailOptions.template = mail.templateName;
-        mailOptions.context  = mail.context || {};
+        mailOptions.context = mail.context || {};
       } else {
         // HTML déjà rendu (composer frontend) — court-circuit Handlebars complet.
         // On utilise la propriété nodemailer native `html` ET on désactive le
         // layout par défaut (`defaultLayout: 'layout'` dans app.module) afin que
         // le HandlebarsAdapter ne tente pas de re-compiler le HTML via Handlebars
         // (ce qui échouerait en mode strict sur des accolades CSS / non résolues).
-        mailOptions.html    = mail.html;
-        mailOptions.text    = mail.text;
+        mailOptions.html = mail.html;
+        mailOptions.text = mail.text;
         // layout: false → désactive le defaultLayout pour cet envoi uniquement
-        (mailOptions as any).context  = { ...(mail.context || {}) };
-        (mailOptions as any).layout   = false;
+        mailOptions.context = { ...(mail.context || {}) };
+        mailOptions.layout = false;
       }
 
       // Envoyer (SMTP cabinet si configuré, sinon défaut)
@@ -152,25 +214,56 @@ export class MailService {
     }
   }
 
-
-  private async prepareAttachmentsWithBuffers(documents: AttachmentMail[]): Promise<any[]> {
-  const attachments = [] as AttachmentMail[];
-  for (const doc of documents) {
-    if (doc.href) {
-      const response = await fetch(doc.href);
-      const buffer = await response.arrayBuffer();
-      attachments.push({
-        filename: doc.filename,
-        content: Buffer.from(buffer),
-        contentType: doc.contentType,
-      });
+  private async prepareAttachmentsWithBuffers(
+    documents: AttachmentMail[],
+  ): Promise<any[]> {
+    const attachments = [] as AttachmentMail[];
+    for (const doc of documents) {
+      if (doc.href) {
+        // Signé à l'envoi (l'URL stockée n'expire pas) : /uploads est privé.
+        const response = await fetch(signUploadUrl(doc.href));
+        if (!response.ok) {
+          throw new Error(
+            `Pièce jointe « ${doc.filename} » introuvable (${response.status}).`,
+          );
+        }
+        const buffer = await response.arrayBuffer();
+        attachments.push({
+          filename: doc.filename,
+          content: Buffer.from(buffer),
+          contentType: doc.contentType,
+        });
+      } else if (doc.content) {
+        // Contenu déjà en mémoire (ex. PDF généré à la volée). Relu depuis la
+        // base, un Buffer revient en `{ type: 'Buffer', data }` : on le
+        // reconstruit. Une chaîne est du base64 (contrat d'AttachmentDto, composer).
+        const raw = doc.content as any;
+        const content =
+          raw && typeof raw === 'object' && raw.type === 'Buffer' && Array.isArray(raw.data)
+            ? Buffer.from(raw.data)
+            : typeof raw === 'string'
+              ? Buffer.from(raw.replace(/^data:[^,]*;base64,/, ''), 'base64')
+              : raw;
+        attachments.push({
+          filename: doc.filename,
+          content,
+          contentType: doc.contentType,
+        });
+      } else if (doc.path) {
+        // Pièce de la GED : lue sur le disque à l'envoi (rien en base64 dans la ligne).
+        attachments.push({
+          filename: doc.filename,
+          content: await readUploadedFile(doc.path, doc.filename),
+          contentType: doc.contentType,
+        });
+      } else if (doc.unreadable) {
+        throw new Error("Pièces jointes illisibles : renvoyez l'e-mail avec ses pièces.");
+      }
     }
-    // sinon, lire depuis le disque local
+    return attachments;
   }
-  return attachments;
-}
 
- /**
+  /**
    * Envoie un email immédiatement sans le persister en base
    */
   async sendDirect(options: {
@@ -183,8 +276,21 @@ export class MailService {
     attachments?: AttachmentMail[];
     cc?: string | string[];
     bcc?: string | string[];
+    /** 'platform' = SMTP global (jamais celui du cabinet courant). */
+    transport?: 'tenant' | 'platform';
   }): Promise<void> {
-    const { to, subject, html, text, templateName, context, attachments, cc, bcc } = options;
+    const {
+      to,
+      subject,
+      html,
+      text,
+      templateName,
+      context,
+      attachments,
+      cc,
+      bcc,
+      transport,
+    } = options;
 
     // Préparer les pièces jointes si nécessaire (récupération des buffers)
     let attachmentList: any[] = [];
@@ -203,63 +309,61 @@ export class MailService {
 
     if (templateName) {
       mailOptions.template = templateName;
-      mailOptions.context  = context || {};
+      mailOptions.context = context || {};
     } else {
       // HTML inline — désactive le defaultLayout Handlebars (évite erreur strict mode)
-      mailOptions.html    = html;
-      mailOptions.text    = text;
-      (mailOptions as any).layout  = false;
-      (mailOptions as any).context = {};
+      mailOptions.html = html;
+      mailOptions.text = text;
+      mailOptions.layout = false;
+      mailOptions.context = {};
     }
 
     // Envoyer (SMTP cabinet si configuré, sinon défaut)
-    await this.dispatch(mailOptions);
+    await this.dispatch(mailOptions, transport ?? 'tenant');
     this.logger.log(`Email direct envoyé à ${to}`);
   }
 
-
-
   async sendResetPasswordEmail(user: any, token: string) {
-  const context = {
-    ...user,
-    resetLink: helpers.resetPasswordLink(token)
-  };
-  
-  await this.sendDirect({
-    to: user.email,
-    subject: 'Réinitialisation de votre mot de passe',
-    templateName: 'entities/employee/reset-password',
-    context
-  });
-}
+    const context = {
+      ...user,
+      resetLink: helpers.resetPasswordLink(token),
+    };
 
-async sendActivationEmail(user: any, token: string) {
-  const context = {
-    ...user,
-    activationLink: helpers.activationLink(token)
-  };
-  
-  await this.sendDirect({
-    to: user.email,
-    subject: 'Activez votre compte',
-    templateName: 'entities/employee/welcome-activation',
-    context
-  });
-}
+    await this.sendDirect({
+      to: user.email,
+      subject: 'Réinitialisation de votre mot de passe',
+      templateName: 'entities/employee/reset-password',
+      context,
+    });
+  }
 
-async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
-  const context = {
-    ...user,
-    tempPassword
-  };
-  
-  await this.sendDirect({
-    to: user.email,
-    subject: 'Bienvenue sur la plateforme',
-    templateName: 'entities/employee/welcome-password',
-    context
-  });
-}
+  async sendActivationEmail(user: any, token: string) {
+    const context = {
+      ...user,
+      activationLink: helpers.activationLink(token),
+    };
+
+    await this.sendDirect({
+      to: user.email,
+      subject: 'Activez votre compte',
+      templateName: 'entities/employee/welcome-activation',
+      context,
+    });
+  }
+
+  async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
+    const context = {
+      ...user,
+      tempPassword,
+    };
+
+    await this.sendDirect({
+      to: user.email,
+      subject: 'Bienvenue sur la plateforme',
+      templateName: 'entities/employee/welcome-password',
+      context,
+    });
+  }
 
   /**
    * Annule un email programmé
@@ -275,25 +379,34 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
   }
 
   /**
-   * Cron pour envoyer les emails programmés (toutes les minutes)
+   * Cron pour envoyer les emails programmés (toutes les minutes).
+   * Un cron tourne sans contexte cabinet : chaque mail est envoyé dans le
+   * contexte de son cabinet, pour utiliser son SMTP et ses lectures scopées.
    */
-  @Cron(CronExpression.EVERY_12_HOURS)
+  @Cron(CronExpression.EVERY_MINUTE)
   async handleScheduledMails() {
-    this.logger.debug('Recherche des emails programmés à envoyer...');
-
     const now = new Date();
-    const pendingMails = await this.mailRepository.find({
-      where: {
-        status: MailStatus.PENDING,
-        scheduledAt: LessThanOrEqual(now),
-      },
-    });
+    const pendingMails = await this.tenantContext.runWithoutTenant(() =>
+      this.mailRepository.find({
+        where: {
+          status: MailStatus.PENDING,
+          scheduledAt: LessThanOrEqual(now),
+        },
+        select: ['id', 'tenant_id'],
+      }),
+    );
 
     for (const mail of pendingMails) {
+      // Un envoi lent (SMTP) ne doit pas repartir au passage suivant.
+      if (this.scheduledInFlight.has(mail.id)) continue;
+      this.scheduledInFlight.add(mail.id);
       // On lance l'envoi en arrière-plan pour ne pas bloquer le cron
-      this.sendMail(mail.id).catch(err =>
-        this.logger.error(`Erreur cron pour mail ${mail.id}`, err),
-      );
+      this.tenantContext
+        .run(mail.tenant_id, () => this.sendMail(mail.id))
+        .catch((err) =>
+          this.logger.error(`Erreur cron pour mail ${mail.id}`, err),
+        )
+        .finally(() => this.scheduledInFlight.delete(mail.id));
     }
   }
 
@@ -309,26 +422,31 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
    * Convention de stockage : `metadata = { linkedEntity: { type: 'dossier', id: 42 } }`.
    * Utilise une requête JSON (compatible MySQL 5.7+).
    */
-  async findByEntity(entityType: string, entityId: string | number): Promise<Mail[]> {    
+  async findByEntity(
+    entityType: string,
+    entityId: string | number,
+  ): Promise<Mail[]> {
     const idStr = String(entityId);
-    return this.mailRepository
-      .createQueryBuilder('mail')
-      // 1. Mail directement lié à l'entité (linkedEntity)
-      .where(
-        `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type')) = :type
+    return (
+      this.mailRepository
+        .createQueryBuilder('mail')
+        // 1. Mail directement lié à l'entité (linkedEntity)
+        .where(
+          `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type')) = :type
           AND JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.id')) = :idStr)`,
-        { type: entityType, idStr },
-      )
-      // 2. Mail lié à une sous-ressource MAIS rattaché à ce parent (parentRef).
-      //    Ex : mail envoyé depuis une facture/audience d'un dossier → doit
-      //    apparaître dans l'historique du dossier parent.
-      .orWhere(
-        `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.parentRef.type')) = :type
+          { type: entityType, idStr },
+        )
+        // 2. Mail lié à une sous-ressource MAIS rattaché à ce parent (parentRef).
+        //    Ex : mail envoyé depuis une facture/audience d'un dossier → doit
+        //    apparaître dans l'historique du dossier parent.
+        .orWhere(
+          `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.parentRef.type')) = :type
           AND JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.parentRef.id')) = :idStr)`,
-        { type: entityType, idStr },
-      )
-      .orderBy('mail.created_at', 'DESC')
-      .getMany();
+          { type: entityType, idStr },
+        )
+        .orderBy('mail.created_at', 'DESC')
+        .getMany()
+    );
   }
 
   /**
@@ -349,7 +467,7 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
       'SELECT id FROM dossiers WHERE client_id = ? AND deleted_at IS NULL',
       [idNum],
     );
-    const dossierIds = rawRows.map(r => String(r.id));
+    const dossierIds = rawRows.map((r) => String(r.id));
 
     this.logger.debug(
       `[findByClient] clientId=${idStr} → ${rawRows.length} dossier(s) : [${dossierIds.join(', ')}]`,
@@ -357,8 +475,9 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
 
     // Diagnostic : si toujours 0, loguer quels client_ids ont des dossiers avec des mails
     if (rawRows.length === 0) {
-      const sample: Array<{ client_id: number; cnt: string }> = await this.dossierRepository.query(
-        `SELECT d.client_id, COUNT(d.id) as cnt
+      const sample: Array<{ client_id: number; cnt: string }> =
+        await this.dossierRepository.query(
+          `SELECT d.client_id, COUNT(d.id) as cnt
          FROM dossiers d
          WHERE d.deleted_at IS NULL
            AND EXISTS (
@@ -369,21 +488,21 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
          GROUP BY d.client_id
          ORDER BY cnt DESC
          LIMIT 20`,
-      );
+        );
       this.logger.debug(
         `[findByClient] DEBUG — clients ayant des dossiers avec mails : ` +
-        sample.map(r => `client_id=${r.client_id}(${r.cnt} dossiers)`).join(', '),
+          sample
+            .map((r) => `client_id=${r.client_id}(${r.cnt} dossiers)`)
+            .join(', '),
       );
     }
 
-    const qb = this.mailRepository
-      .createQueryBuilder('mail')
-      .where(
-        // Mail directement lié au client
-        `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type')) = 'client'
+    const qb = this.mailRepository.createQueryBuilder('mail').where(
+      // Mail directement lié au client
+      `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type')) = 'client'
           AND JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.id')) = :idStr)`,
-        { idStr },
-      );
+      { idStr },
+    );
 
     if (dossierIds.length > 0) {
       qb.orWhere(
@@ -404,5 +523,19 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
    */
   async findOne(id: string): Promise<Mail | null> {
     return this.mailRepository.findOne({ where: { id } });
+  }
+}
+
+/** Lit un fichier de `uploads/` (jamais en dehors : le chemin peut venir d'une requête). */
+async function readUploadedFile(filePath: string, name: string): Promise<Buffer> {
+  const root = nodePath.resolve(process.cwd(), 'uploads');
+  const resolved = nodePath.resolve(process.cwd(), filePath);
+  if (resolved !== root && !resolved.startsWith(root + nodePath.sep)) {
+    throw new Error(`Pièce jointe « ${name} » refusée.`);
+  }
+  try {
+    return await fsPromises.readFile(resolved);
+  } catch {
+    throw new Error(`Pièce jointe « ${name} » introuvable.`);
   }
 }

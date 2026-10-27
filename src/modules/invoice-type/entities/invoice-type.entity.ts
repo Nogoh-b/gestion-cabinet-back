@@ -1,6 +1,9 @@
 // invoice-type.entity.ts
 import { Expose } from 'class-transformer';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
@@ -9,32 +12,31 @@ import {
   PrimaryGeneratedColumn,
   Column,
   OneToMany,
-  Unique
+  Unique,
 } from 'typeorm';
-
 
 export enum InvoiceTypeCategory {
   LEGAL_FEES = 'legal_fees',
   EXPENSES = 'expenses',
   ADVANCE = 'advance',
   SETTLEMENT = 'settlement',
-  OTHER = 'other'
+  OTHER = 'other',
 }
 
 export enum TaxRate {
   ZERO = 0,
   REDUCED = 5.5,
   INTERMEDIATE = 10,
-  STANDARD = 20
+  STANDARD = 20,
 }
 
 @SharedAcrossTenants()
 @Entity('invoice_types')
 @BusinessTable({
   label: "Types d'honoraires",
-  description: 'Catégories d\'honoraires et de frais facturables aux clients.',
+  description: "Catégories d'honoraires et de frais facturables aux clients.",
   icon: '💰',
-  category: 'finance'
+  category: 'finance',
 })
 @Unique(['tenant_id', 'code'])
 export class InvoiceType extends TenantEntity {
@@ -45,7 +47,7 @@ export class InvoiceType extends TenantEntity {
     description: 'Identifiant unique du type',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -53,10 +55,10 @@ export class InvoiceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Code',
-    description: 'Code unique du type d\'honoraire',
+    description: "Code unique du type d'honoraire",
     example: 'HON_FIXE, HON_HORAIRE, FRAIS_DIVERS',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   code: string;
 
@@ -64,10 +66,10 @@ export class InvoiceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Nom',
-    description: 'Nom du type d\'honoraire',
+    description: "Nom du type d'honoraire",
     example: 'Honoraires forfaitaires, Honoraires horaires, Frais de dossier',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   name: string;
 
@@ -75,39 +77,41 @@ export class InvoiceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Description',
-    description: 'Description détaillée du type d\'honoraire',
+    description: "Description détaillée du type d'honoraire",
     importance: 'medium',
-    group: 'contenu'
+    group: 'contenu',
   })
   description: string;
 
   @Column({
     type: 'enum',
     enum: InvoiceTypeCategory,
-    default: InvoiceTypeCategory.LEGAL_FEES
+    default: InvoiceTypeCategory.LEGAL_FEES,
   })
   @Expose()
   @BusinessColumn({
     label: 'Catégorie',
-    description: "BD: 'legal_fees', 'expenses', 'advance', 'settlement', 'other'.",
+    description:
+      "BD: 'legal_fees', 'expenses', 'advance', 'settlement', 'other'.",
     importance: 'high',
-    group: 'classification'
+    group: 'classification',
   })
   category: InvoiceTypeCategory;
 
   @Column({
     type: 'enum',
     enum: TaxRate,
-    default: TaxRate.STANDARD
+    default: TaxRate.STANDARD,
   })
   @Expose()
   @BusinessColumn({
     label: 'Taux TVA par défaut',
-    description: 'BD: 0=ZERO, 5.5=REDUCED, 10=INTERMEDIATE, 20=STANDARD. En SQL utiliser le nombre.',
+    description:
+      'BD: 0=ZERO, 5.5=REDUCED, 10=INTERMEDIATE, 20=STANDARD. En SQL utiliser le nombre.',
     unit: '%',
     format: 'percentage',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   default_tax_rate: TaxRate;
 
@@ -117,7 +121,7 @@ export class InvoiceType extends TenantEntity {
     label: 'Facturable',
     description: 'True = ce type peut être facturé au client',
     importance: 'medium',
-    group: 'règles'
+    group: 'règles',
   })
   is_billable: boolean;
 
@@ -127,7 +131,7 @@ export class InvoiceType extends TenantEntity {
     label: 'Nécessite approbation',
     description: 'True = nécessite une validation avant facturation',
     importance: 'medium',
-    group: 'règles'
+    group: 'règles',
   })
   requires_approval: boolean;
 
@@ -138,7 +142,7 @@ export class InvoiceType extends TenantEntity {
     description: 'Nombre de jours pour le paiement',
     unit: 'jours',
     importance: 'medium',
-    group: 'règles'
+    group: 'règles',
   })
   default_payment_days: number;
 
@@ -148,7 +152,7 @@ export class InvoiceType extends TenantEntity {
     label: 'Actif',
     description: 'True = type actif et utilisable',
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   is_active: boolean;
 
@@ -159,7 +163,7 @@ export class InvoiceType extends TenantEntity {
     description: 'Informations supplémentaires',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   metadata: {
     accounting_code?: string;
@@ -169,8 +173,7 @@ export class InvoiceType extends TenantEntity {
     legal_basis?: string;
   };
 
-  @OneToMany(() => Facture, facture => facture.invoice_type)
+  @OneToMany(() => Facture, (facture) => facture.invoice_type)
   @Expose()
   invoices: Facture[];
-
 }

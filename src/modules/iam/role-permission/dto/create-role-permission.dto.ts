@@ -3,7 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsArray, IsInt } from 'class-validator';
 
 export class CreateRolePermissionDto {
-  @ApiProperty({ description: 'ID du rôle', example: 1, required: true, })
+  @ApiProperty({ description: 'ID du rôle', example: 1, required: true })
   @IsInt()
   role_id: number;
 

@@ -1,7 +1,16 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Payslip } from './payslip.entity';
 import { Dossier } from '../../dossiers/entities/dossier.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 export enum PayslipLineType {
@@ -17,7 +26,8 @@ export enum PayslipLineType {
 @Entity('payslip_line')
 @BusinessTable({
   label: 'Lignes de fiche de paie',
-  description: 'Chaque ligne compose le bulletin : salaire de base, primes, commissions internes, retenues, avantages.',
+  description:
+    'Chaque ligne compose le bulletin : salaire de base, primes, commissions internes, retenues, avantages.',
   icon: '📝',
   category: 'rh',
 })
@@ -55,7 +65,8 @@ export class PayslipLine extends TenantEntity {
   @Column({ type: 'enum', enum: PayslipLineType, name: 'line_type' })
   @BusinessColumn({
     label: 'Type de ligne',
-    description: "BD: 'base_salary', 'bonus', 'internal_commission', 'deduction', 'advance_recovery', 'benefit', 'overtime'.",
+    description:
+      "BD: 'base_salary', 'bonus', 'internal_commission', 'deduction', 'advance_recovery', 'benefit', 'overtime'.",
     importance: 'high',
     group: 'identification',
   })
@@ -94,7 +105,8 @@ export class PayslipLine extends TenantEntity {
   @Column({ type: 'int', nullable: true, name: 'dossier_id' })
   @BusinessColumn({
     label: 'Dossier source',
-    description: 'Identifiant du dossier ayant généré la commission (si applicable)',
+    description:
+      'Identifiant du dossier ayant généré la commission (si applicable)',
     importance: 'medium',
     group: 'relation',
     ignored: true,
@@ -105,7 +117,7 @@ export class PayslipLine extends TenantEntity {
   @JoinColumn({ name: 'dossier_id' })
   @BusinessColumn({
     label: 'Dossier source',
-    description: 'Dossier à l\'origine de la commission interne',
+    description: "Dossier à l'origine de la commission interne",
     importance: 'medium',
     group: 'relation',
   })
@@ -114,7 +126,8 @@ export class PayslipLine extends TenantEntity {
   @Column({ type: 'varchar', length: 500, nullable: true })
   @BusinessColumn({
     label: 'Détail',
-    description: 'Précision sur le calcul (ex: "10% des honoraires du dossier #123")',
+    description:
+      'Précision sur le calcul (ex: "10% des honoraires du dossier #123")',
     example: '10% des honoraires HT du dossier DOS-2026-015',
     importance: 'low',
     group: 'audit',

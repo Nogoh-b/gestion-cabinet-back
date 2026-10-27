@@ -10,10 +10,13 @@ import { RolePermission } from 'src/modules/iam/role-permission/entities/role-pe
 import { RolePermissionService } from 'src/modules/iam/role-permission/role-permission.service';
 // import { swaggerConfig } from './config/swagger.config';
 import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
+import { UserRoleAssignment } from 'src/modules/iam/user-role-assignment/entities/user-role-assignment.entity';
 
 import { UserRolesService } from 'src/modules/iam/user-role/user-role.service';
 
 import { User } from 'src/modules/iam/user/entities/user.entity';
+import { ActivitiesUser } from 'src/modules/iam/activities-user/entities/activities-user.entity';
+import { ActivitiesUserService } from 'src/modules/iam/activities-user/activities-user.service';
 
 import { UsersService } from 'src/modules/iam/user/user.service';
 
@@ -29,12 +32,10 @@ import { forwardRef, Global, Module } from '@nestjs/common';
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
-
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AiDatabaseModule } from './ai-database/ai-database.module';
@@ -50,6 +51,7 @@ import { RefreshStrategy } from './auth/strategies/refresh.strategy';
 import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { databaseConfig } from './config/database.config';
+import { getJwtSecret } from './config/secrets';
 import { PublicGuard } from './decorators/public.guard';
 import { OtpCode, OtpOnlineLink } from './entities/otp-code.entity';
 import { InitService } from './init/init.service';
@@ -58,10 +60,14 @@ import { OtpController } from './shared/controlers/otp.controller';
 import { EmailsModule } from './shared/emails/emails.module';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
+import { SignUploadUrlsInterceptor } from './shared/interceptors/sign-upload-urls.interceptor';
 import { EmailService } from './shared/services/email/email.service copy';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
 import { OtpService } from './shared/services/otp/otp.service';
-import { PaginationService as MyPaginationService, PaginationService } from './shared/services/pagination/pagination.service';
+import {
+  PaginationService as MyPaginationService,
+  PaginationService,
+} from './shared/services/pagination/pagination.service';
 import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1.service';
 import { MainGateway } from './shared/services/socket/main.gateway';
 import { SocketService } from './shared/services/socket/socket.service';
@@ -76,34 +82,9 @@ import { ResourcePolicyService } from './resource-policy.service';
 import { CookieOriginGuard } from './common/guards/cookie-origin.guard';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { DossierMember } from 'src/modules/dossiers/entities/dossier-member.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { RequestUserContext } from './security/request-user.context';
+import { RequestUserInterceptor } from './security/request-user.interceptor';
+import { RestrictedFieldsInterceptor } from './security/restricted-fields.interceptor';
 
 @Global()
 @Module({
@@ -137,7 +118,8 @@ import { DossierMember } from 'src/modules/dossiers/entities/dossier-member.enti
         return {
           secret,
           signOptions: {
-            expiresIn: (configService.get<string>('JWT_EXPIRES_IN') || '1h') as any,
+            expiresIn: (configService.get<string>('JWT_EXPIRES_IN') ||
+              '1h') as any,
           },
         };
       },
@@ -152,23 +134,28 @@ import { DossierMember } from 'src/modules/dossiers/entities/dossier-member.enti
       Permission,
       User,
       Branch,
-      RolePermission, 
+      RolePermission,
       Employee,
       UserRole,
+      UserRoleAssignment,
       Customer,
       OtpOnlineLink,
       AuthToken,
       AuditEvent,
       Dossier,
       DossierMember,
+      ActivitiesUser,
     ]),
     PassportModule,
     ChatModule,
     // forwardRef(() => ChatModule),
-    forwardRef(() => NotificationModule) ,// Pour éviter les dépendances circulaires
+    forwardRef(() => NotificationModule), // Pour éviter les dépendances circulaires
     // forwardRef(() => NotificationModule),
     // SeedersModule,
-    ScheduleModule.forRoot(), AiDatabaseModule, PlansModule,
+    // ScheduleModule.forRoot() : déjà initialisé dans AppModule (un second
+    // forRoot risquerait de déclencher chaque cron deux fois).
+    AiDatabaseModule,
+    PlansModule,
     CoreNotificationsModule,
     OutboxModule,
   ],
@@ -185,14 +172,16 @@ import { DossierMember } from 'src/modules/dossiers/entities/dossier-member.enti
     EmployeeService,
     UserRolesService,
     PermissionsService,
-    RolePermissionService,// RolesGuard,
+    RolePermissionService, // RolesGuard,
     PermissionsGuard,
+    ActivitiesUserService,
     PublicGuard,
     { provide: APP_GUARD, useClass: PublicGuard },
     { provide: APP_GUARD, useClass: CookieOriginGuard },
     { provide: APP_FILTER, useClass: TypeOrmExceptionFilter },
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: SignUploadUrlsInterceptor },
     InitService,
     KeyGeneratorService,
     MyPaginationService,
@@ -208,7 +197,11 @@ import { DossierMember } from 'src/modules/dossiers/entities/dossier-member.enti
     AuditService,
     ResourcePolicyService,
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
-    TypeOrmModule
+    RequestUserContext,
+    { provide: APP_INTERCEPTOR, useClass: RequestUserInterceptor },
+    // Champs financiers retirés des réponses selon les droits de l'appelant.
+    { provide: APP_INTERCEPTOR, useClass: RestrictedFieldsInterceptor },
+    TypeOrmModule,
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],
   exports: [
@@ -227,6 +220,7 @@ import { DossierMember } from 'src/modules/dossiers/entities/dossier-member.enti
     PermissionSeeder,
     RoleSeeder,
     PermissionsGuard,
+    ActivitiesUserService,
     MyPaginationService,
     PaginationService,
     PaginationServiceV1,
@@ -235,6 +229,7 @@ import { DossierMember } from 'src/modules/dossiers/entities/dossier-member.enti
     SocketService,
     MainGateway,
     TenantContext,
+    RequestUserContext,
     CoreNotificationsModule,
     AuditService,
     ResourcePolicyService,

@@ -1,5 +1,15 @@
 // src/modules/notification/dto/create-notification.dto.ts
-import { IsNotEmpty, IsString, IsOptional, IsEnum, IsNumber, IsObject, IsArray, IsBoolean, IsEmpty } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsNumber,
+  IsObject,
+  IsArray,
+  IsBoolean,
+  IsEmpty,
+} from 'class-validator';
 import { NotificationType } from '../enum/notification-type.enum';
 
 export class CreateNotificationDto {
@@ -86,7 +96,6 @@ export class CreateBulkNotificationDto {
   @IsString()
   image_url?: string;
 }
-
 
 // src/modules/notification/dto/mark-read.dto.ts
 export class MarkReadDto {

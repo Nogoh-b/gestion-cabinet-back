@@ -1,14 +1,25 @@
 // country.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Region } from '../../region/entities/region.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('country')
 @BusinessTable({
   label: 'Pays',
-  description: 'Liste des pays où le cabinet intervient. Un pays peut contenir plusieurs régions.',
+  description:
+    'Liste des pays où le cabinet intervient. Un pays peut contenir plusieurs régions.',
   icon: '🌍',
-  category: 'geographie'
+  category: 'geographie',
 })
 export class Country {
   @PrimaryGeneratedColumn()
@@ -17,7 +28,7 @@ export class Country {
     description: 'Identifiant unique du pays',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -27,7 +38,7 @@ export class Country {
     description: 'Nom officiel du pays',
     example: 'France, Cameroun, Belgique, Suisse',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   name: string;
 
@@ -37,7 +48,7 @@ export class Country {
     description: 'Code ISO à deux ou trois lettres du pays',
     example: 'FR, CM, BE, CH',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   code: string;
 
@@ -48,19 +59,16 @@ export class Country {
     unit: 'habitants',
     example: '67 000 000, 25 000 000',
     importance: 'low',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   population: string;
 
-  @OneToMany(
-    () => Region,
-    region => region.country
-  )
+  @OneToMany(() => Region, (region) => region.country)
   @BusinessColumn({
     label: 'Régions',
     description: 'Liste des régions administratives du pays',
     importance: 'medium',
-    group: 'relation'
+    group: 'relation',
   })
   regions: Region[];
 
@@ -71,7 +79,7 @@ export class Country {
     format: 'date',
     importance: 'low',
     group: 'audit',
-    ignored: true
+    ignored: true,
   })
   created_at: Date;
 
@@ -82,7 +90,7 @@ export class Country {
     format: 'date',
     importance: 'low',
     group: 'audit',
-    ignored: true
+    ignored: true,
   })
   updated_at: Date;
 
@@ -90,10 +98,10 @@ export class Country {
 
   @BusinessColumn({
     label: 'Nom complet',
-    description: 'Code et nom combinés pour l\'affichage',
+    description: "Code et nom combinés pour l'affichage",
     example: 'FR - France',
     importance: 'medium',
-    group: 'identification'
+    group: 'identification',
   })
   get display_name(): string {
     return `${this.code} - ${this.name}`;
@@ -103,7 +111,7 @@ export class Country {
     label: 'Nombre de régions',
     description: 'Nombre total de régions dans ce pays',
     importance: 'medium',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get regions_count(): number {
     return this.regions?.length || 0;

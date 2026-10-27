@@ -1,0 +1,22 @@
+# Fichiers à exclure du contexte de build Docker.
+node_modules
+dist
+coverage
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.md
+docs
+uploads
+backups
+test
+plan
+memory
+*.log
+.vscode
+.idea
+.claude
+.continue
+.roo

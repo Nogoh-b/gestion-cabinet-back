@@ -19,11 +19,7 @@ import {
   statSync,
   unlinkSync,
 } from 'fs';
-import {
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-} from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { basename, join } from 'path';
 import { Transform } from 'stream';
 import { pipeline } from 'stream/promises';
@@ -144,9 +140,7 @@ export class BackupService {
           created_at: stats.mtime.toISOString(),
         };
       })
-      .sort((left, right) =>
-        left.created_at < right.created_at ? 1 : -1,
-      );
+      .sort((left, right) => (left.created_at < right.created_at ? 1 : -1));
   }
 
   /**
@@ -199,9 +193,7 @@ export class BackupService {
         processHandle.on('close', (code) =>
           code === 0
             ? resolve()
-            : reject(
-                new Error(standardError || `mysql a retourné ${code}`),
-              ),
+            : reject(new Error(standardError || `mysql a retourné ${code}`)),
         );
       });
     } catch (error: any) {

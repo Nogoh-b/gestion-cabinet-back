@@ -30,7 +30,12 @@ export class SingleBranchStatsDto {
 
   // Statistiques des employés
   employes: {
-    parPosition: Array<{ position: string; count: number; percentage: number; color?: string }>;
+    parPosition: Array<{
+      position: string;
+      count: number;
+      percentage: number;
+      color?: string;
+    }>;
     recents: Array<{
       id: number;
       nom: string;
@@ -70,7 +75,12 @@ export class SingleBranchStatsDto {
   // Statistiques des dossiers
   dossiers: {
     total: number;
-    parStatut: Array<{ name: string; value: number; percentage: number; color?: string }>;
+    parStatut: Array<{
+      name: string;
+      value: number;
+      percentage: number;
+      color?: string;
+    }>;
     parType: Array<{ type: string; count: number; percentage: number }>;
     evolution: Array<{ mois: string; count: number }>;
     recents: Array<{

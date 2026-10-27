@@ -1,23 +1,26 @@
 // jurisdiction.entity.ts
 import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column, OneToMany,
-    ManyToOne,
-    JoinColumn,
-    Unique
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  OneToMany,
+  ManyToOne,
+  JoinColumn,
+  Unique,
 } from 'typeorm';
 import { Expose } from 'class-transformer';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
-
 
 export enum JurisdictionLevel {
   MUNICIPAL = 'municipal',
   REGIONAL = 'regional',
   NATIONAL = 'national',
-  INTERNATIONAL = 'international'
+  INTERNATIONAL = 'international',
 }
 
 export enum JurisdictionType {
@@ -26,18 +29,19 @@ export enum JurisdictionType {
   ADMINISTRATIVE = 'administrative',
   PENAL = 'penal',
   LABOR = 'labor',
-  FAMILY = 'family'
+  FAMILY = 'family',
 }
 
 @Entity('jurisdictions')
 @BusinessTable({
   label: 'Juridictions',
-  description: 'Tribunaux et cours de justice. Une juridiction peut être civile, commerciale, administrative, pénale, prud\'homale ou familiale.',
+  description:
+    "Tribunaux et cours de justice. Une juridiction peut être civile, commerciale, administrative, pénale, prud'homale ou familiale.",
   icon: '⚖️',
-  category: 'judiciaire'
+  category: 'judiciaire',
 })
 @Unique(['tenant_id', 'code'])
-export class Jurisdiction  extends BaseEntity{
+export class Jurisdiction extends BaseEntity {
   @PrimaryGeneratedColumn()
   @Expose()
   @BusinessColumn({
@@ -45,7 +49,7 @@ export class Jurisdiction  extends BaseEntity{
     description: 'Identifiant unique de la juridiction',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -56,7 +60,7 @@ export class Jurisdiction  extends BaseEntity{
     description: 'Code unique de la juridiction',
     example: 'TJ_PARIS, CA_DOUALA, TGI_YDE',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   code: string;
 
@@ -65,9 +69,9 @@ export class Jurisdiction  extends BaseEntity{
   @BusinessColumn({
     label: 'Nom',
     description: 'Nom officiel de la juridiction',
-    example: 'Tribunal judiciaire de Paris, Cour d\'appel de Douala',
+    example: "Tribunal judiciaire de Paris, Cour d'appel de Douala",
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   name: string;
 
@@ -77,35 +81,36 @@ export class Jurisdiction  extends BaseEntity{
     label: 'Description',
     description: 'Description détaillée de la juridiction',
     importance: 'medium',
-    group: 'contenu'
+    group: 'contenu',
   })
   description: string;
 
   @Column({
     type: 'enum',
     enum: JurisdictionLevel,
-    default: JurisdictionLevel.REGIONAL
+    default: JurisdictionLevel.REGIONAL,
   })
   @Expose()
   @BusinessColumn({
     label: 'Niveau',
     description: "BD: 'municipal', 'regional', 'national', 'international'.",
     importance: 'high',
-    group: 'classification'
+    group: 'classification',
   })
   level: JurisdictionLevel;
 
   @Column({
     type: 'enum',
     enum: JurisdictionType,
-    default: JurisdictionType.CIVIL
+    default: JurisdictionType.CIVIL,
   })
   @Expose()
   @BusinessColumn({
     label: 'Type',
-    description: "BD: 'civil', 'commercial', 'administrative', 'penal', 'labor', 'family'.",
+    description:
+      "BD: 'civil', 'commercial', 'administrative', 'penal', 'labor', 'family'.",
     importance: 'critical',
-    group: 'classification'
+    group: 'classification',
   })
   jurisdiction_type: JurisdictionType;
 
@@ -116,7 +121,7 @@ export class Jurisdiction  extends BaseEntity{
     description: 'Ville où siège la juridiction',
     example: 'Paris, Douala, Lyon',
     importance: 'high',
-    group: 'localisation'
+    group: 'localisation',
   })
   city: string;
 
@@ -127,7 +132,7 @@ export class Jurisdiction  extends BaseEntity{
     description: 'Région de la juridiction',
     example: 'Île-de-France, Littoral',
     importance: 'medium',
-    group: 'localisation'
+    group: 'localisation',
   })
   region: string;
 
@@ -138,7 +143,7 @@ export class Jurisdiction  extends BaseEntity{
     description: 'Pays de la juridiction',
     example: 'France, Cameroun',
     importance: 'high',
-    group: 'localisation'
+    group: 'localisation',
   })
   country: string;
 
@@ -148,7 +153,7 @@ export class Jurisdiction  extends BaseEntity{
     label: 'Adresse',
     description: 'Adresse postale complète',
     importance: 'medium',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   address: string;
 
@@ -159,7 +164,7 @@ export class Jurisdiction  extends BaseEntity{
     description: 'Numéro de téléphone du greffe',
     format: 'phone',
     importance: 'medium',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   phone: string;
 
@@ -170,7 +175,7 @@ export class Jurisdiction  extends BaseEntity{
     description: 'Adresse email du greffe',
     format: 'email',
     importance: 'medium',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   email: string;
 
@@ -180,7 +185,7 @@ export class Jurisdiction  extends BaseEntity{
     label: 'Site web',
     description: 'Site internet officiel',
     importance: 'low',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   website: string;
 
@@ -192,13 +197,14 @@ export class Jurisdiction  extends BaseEntity{
   @Expose()
   @BusinessColumn({
     label: 'Juridiction parente',
-    description: 'Juridiction hiérarchiquement supérieure (ex: Cour d\'appel pour un TGI)',
+    description:
+      "Juridiction hiérarchiquement supérieure (ex: Cour d'appel pour un TGI)",
     importance: 'medium',
-    group: 'relation'
+    group: 'relation',
   })
   parent_jurisdiction: Jurisdiction;
 
-  @OneToMany(() => Audience, audience => audience.jurisdiction)
+  @OneToMany(() => Audience, (audience) => audience.jurisdiction)
   @Expose()
   audiences: Audience[];
 
@@ -208,7 +214,7 @@ export class Jurisdiction  extends BaseEntity{
     label: 'Active',
     description: 'True = juridiction active',
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   is_active: boolean;
 
@@ -219,7 +225,7 @@ export class Jurisdiction  extends BaseEntity{
     description: 'Informations supplémentaires',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   metadata: {
     timezone?: string;
@@ -228,8 +234,6 @@ export class Jurisdiction  extends BaseEntity{
     court_number?: string;
     judge_name?: string;
   };
-
- 
 
   @Column({ nullable: true })
   @Expose()

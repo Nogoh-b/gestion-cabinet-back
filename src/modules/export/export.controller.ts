@@ -35,9 +35,7 @@ export class ExportController {
           user?.cabinet_id,
       ),
       role: user?.role,
-      permissions: Array.isArray(user?.permissions)
-        ? user.permissions
-        : [],
+      permissions: Array.isArray(user?.permissions) ? user.permissions : [],
       customerId: user?.customerId ?? user?.customer_id ?? null,
     };
   }
@@ -48,9 +46,7 @@ export class ExportController {
       userAgent: req.get('user-agent') ?? null,
       requestId:
         String(
-          req.headers['x-request-id'] ??
-            req.headers['x-correlation-id'] ??
-            '',
+          req.headers['x-request-id'] ?? req.headers['x-correlation-id'] ?? '',
         ) || null,
     };
   }
@@ -76,7 +72,10 @@ export class ExportController {
   /** Export ZIP de plusieurs dossiers (?ids=1,2,3) — un dossier par sous-dossier. */
   @Get('dossiers')
   @RequirePermissions('view_dossiers')
-  @ApiOperation({ summary: 'Exporter plusieurs dossiers en ZIP (ids séparés par des virgules)' })
+  @ApiOperation({
+    summary:
+      'Exporter plusieurs dossiers en ZIP (ids séparés par des virgules)',
+  })
   exportMany(
     @Query('ids') ids: string,
     @CurrentUser() user: any,

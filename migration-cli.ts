@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { Command } from 'commander';
-import { readdirSync } from 'fs';
 import inquirer from 'inquirer';
+
 // migration-cli.ts
 // This script is a CLI tool for managing database migrations.
 // It allows users to generate, run, and revert migrations using a command-line interface.
@@ -46,7 +46,7 @@ const promptFunc = async (): Promise<string> => {
         ).on('close', (code) => {
           if (code === 0) {
             console.log('Migration generated successfully.');
-          }
+          } 
         });
       } else if (answers.application === COMMANDS.RUN) {
         console.log(`Running migrations for ${answers.application}...`);

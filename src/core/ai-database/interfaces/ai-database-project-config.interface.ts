@@ -98,6 +98,12 @@ export interface AiDatabaseProjectConfig {
     sampling?: { sampleRows: number; maxStringLength: number };
     tableDescriptions?: Record<string, string>;
     tableSynonyms?: Record<string, string[]>;
+    /**
+     * Tables toujours fournies avec une autre (ex: factures → paiements) :
+     * sans elles, le modèle ne peut pas calculer un reste à payer et se
+     * rabat sur un statut, ce qui exclut des lignes.
+     */
+    tableCompanions?: Record<string, string[]>;
   };
 
   /**

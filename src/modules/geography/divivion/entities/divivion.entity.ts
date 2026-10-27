@@ -1,15 +1,27 @@
 // division.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Region } from '../../region/entities/region.entity';
 import { District } from '../../district/entities/district.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('division')
 @BusinessTable({
   label: 'Divisions',
   description: 'Subdivisions administratives des régions.',
   icon: '🗺️',
-  category: 'geographie'
+  category: 'geographie',
 })
 export class Division {
   @PrimaryGeneratedColumn()
@@ -18,7 +30,7 @@ export class Division {
     description: 'Identifiant unique de la division',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -28,7 +40,7 @@ export class Division {
     description: 'Nom officiel de la division',
     example: 'Littoral, Centre, Ouest',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   name: string;
 
@@ -38,7 +50,7 @@ export class Division {
     description: 'Code unique de la division',
     example: 'LT, CE, OU',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   code: string;
 
@@ -48,7 +60,7 @@ export class Division {
     description: 'Identifiant de la région parente',
     importance: 'low',
     group: 'relation',
-    ignored: true
+    ignored: true,
   })
   region_id: number;
 
@@ -58,14 +70,11 @@ export class Division {
     label: 'Région',
     description: 'Région administrative parente',
     importance: 'high',
-    group: 'relation'
+    group: 'relation',
   })
   region: Region;
 
-  @OneToMany(
-    () => District,
-    district => district.division
-  )
+  @OneToMany(() => District, (district) => district.division)
   districts: District[];
 
   @Column({ type: 'varchar', length: 45, nullable: true })
@@ -74,7 +83,7 @@ export class Division {
     description: 'Population estimée de la division',
     unit: 'habitants',
     importance: 'low',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   population: string;
 
@@ -85,7 +94,7 @@ export class Division {
     format: 'date',
     importance: 'low',
     group: 'audit',
-    ignored: true
+    ignored: true,
   })
   created_at: Date;
 
@@ -96,7 +105,7 @@ export class Division {
     format: 'date',
     importance: 'low',
     group: 'audit',
-    ignored: true
+    ignored: true,
   })
   updated_at: Date;
 
@@ -105,7 +114,7 @@ export class Division {
     label: 'Statut',
     description: 'BD: 1=Actif, 0=Inactif. En SQL utiliser le nombre.',
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   status: number;
 }

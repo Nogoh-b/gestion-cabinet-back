@@ -1,7 +1,16 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEnum, IsBoolean, IsNumber } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsBoolean,
+  IsNumber,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
-import { JurisdictionLevel, JurisdictionType } from '../entities/jurisdiction.entity';
+import {
+  JurisdictionLevel,
+  JurisdictionType,
+} from '../entities/jurisdiction.entity';
 
 export class SearchJurisdictionDto {
   @ApiPropertyOptional({ example: 'paris', description: 'Recherche texte' })

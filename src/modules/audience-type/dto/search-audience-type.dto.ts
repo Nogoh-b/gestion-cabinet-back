@@ -4,7 +4,10 @@ import { Transform } from 'class-transformer';
 import { AudienceTypeCategory } from '../entities/audience-type.entity';
 
 export class SearchAudienceTypeDto {
-  @ApiPropertyOptional({ example: 'préliminaire', description: 'Recherche texte' })
+  @ApiPropertyOptional({
+    example: 'préliminaire',
+    description: 'Recherche texte',
+  })
   @IsOptional()
   @IsString()
   search?: string;

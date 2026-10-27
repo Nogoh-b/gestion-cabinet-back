@@ -13,16 +13,7 @@ import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-inst
 import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
-import {
-  Entity,
-  Index,
-  PrimaryGeneratedColumn,
-  Column,
-  OneToMany,
-  ManyToOne,
-  JoinColumn,
-  BeforeInsert,
-} from 'typeorm';
+import { Entity, Index, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn, BeforeInsert } from 'typeorm';
 
 import { Paiement } from '../../paiement/entities/paiement.entity';
 import {
@@ -31,6 +22,7 @@ import {
   StatutFacture,
   TypeFacture,
 } from '../dto/create-facture.dto';
+import { InvoiceLine } from 'src/modules/case-workflow/entities/billing.entity';
 
 @Entity('factures')
 @Index('UQ_factures_tenant_numero', ['tenant_id', 'numero'], {
@@ -92,8 +84,9 @@ export class Facture extends BaseEntity {
   @BusinessColumn({
     label: 'Type de facture',
     description:
-      'BD: 0=HONORAIRES, 1=FRAIS_PROCEDURE, 2=DILIGENCES, 3=AUTRES. En SQL utiliser le nombre, pas le libellé.',
-    example: '0 = Honoraires, 1 = Frais de procédure, 2 = Diligences',
+      'BD: 0=HONORAIRES, 1=FRAIS_PROCEDURE, 2=DILIGENCES, 3=AUTRES, 4=AVOIR (montant TTC négatif, vient en déduction de la facture d’origine). En SQL utiliser le nombre, pas le libellé.',
+    example:
+      '0 = Honoraires, 1 = Frais de procédure, 2 = Diligences, 4 = Avoir',
     importance: 'critical',
     group: 'classification',
   })
@@ -173,6 +166,16 @@ export class Facture extends BaseEntity {
   })
   montantTTC: number;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  @BusinessColumn({
+    label: 'Libellé',
+    description:
+      'Libellé utilisé pour identifier la facture (affichages, listes, PDF). Reprend le numéro si non renseigné.',
+    importance: 'high',
+    group: 'identification',
+  })
+  libelle: string | null;
+
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Description',
@@ -190,7 +193,7 @@ export class Facture extends BaseEntity {
   @BusinessColumn({
     label: 'Statut',
     description:
-      'BD: 0=BROUILLON, 1=ENVOYEE, 2=PARTIELLEMENT_PAYEE, 3=PAYEE, 5=ANNULEE, 6=VALIDEE. Le retard est calculé et non stocké.',
+      'BD: 0=BROUILLON, 1=ENVOYEE, 2=PARTIELLEMENT_PAYEE, 3=PAYEE, 5=ANNULEE, 6=VALIDEE. Le retard est calculé et non stocké. Une facture annulée (5) sort de tous les totaux.',
     example: 'status = 3 pour une facture payée',
     importance: 'critical',
     group: 'état',
@@ -302,6 +305,23 @@ export class Facture extends BaseEntity {
   })
   paiements: Paiement[];
 
+  @OneToMany(() => InvoiceLine, (line) => line.facture)
+  lines: InvoiceLine[];
+
+  @Column({ name: 'original_facture_id', type: 'varchar', nullable: true })
+  @BusinessColumn({
+    label: 'Facture d’origine',
+    description:
+      'Pour un avoir (type 4) : facture qu’il corrige (jointure factures.id).',
+    importance: 'medium',
+    group: 'relation',
+  })
+  original_facture_id: string | null;
+
+  @ManyToOne(() => Facture, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'original_facture_id' })
+  original_facture: Facture | null;
+
   @ManyToOne(() => Dossier, { nullable: true })
   @JoinColumn({ name: 'dossier_id' })
   @BusinessColumn({
@@ -333,35 +353,75 @@ export class Facture extends BaseEntity {
   client: Customer;
 
   @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
+  @BusinessColumn({
+    label: 'Ancienne sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   sub_stage_id: string;
 
   @ManyToOne(() => SubStage, (subStage) => subStage.factures, {
     nullable: true,
   })
   @JoinColumn({ name: 'sub_stage_id' })
+  @BusinessColumn({
+    label: 'Ancienne sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   subStage: SubStage;
 
   @Column({ name: 'sub_stage_visit_id', type: 'varchar', nullable: true })
+  @BusinessColumn({
+    label: 'Ancienne visite de sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   sub_stage_visit_id: string;
 
   @ManyToOne(() => SubStageVisit, (subStageVisit) => subStageVisit.factures, {
     nullable: true,
   })
   @JoinColumn({ name: 'sub_stage_visit_id' })
+  @BusinessColumn({
+    label: 'Ancienne visite de sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   subStageVisit: SubStageVisit;
 
   @Column({ name: 'stageVisit_id', type: 'varchar', nullable: true })
+  @BusinessColumn({
+    label: 'Ancienne visite d’étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   stageVisit_id: string;
 
   @ManyToOne(() => StageVisit)
   @JoinColumn({ name: 'stageVisit_id' })
+  @BusinessColumn({
+    label: 'Ancienne visite d’étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   stageVisit: StageVisit;
 
   @Column({ name: 'procedure_instance_id', type: 'varchar', nullable: true })
+  @BusinessColumn({
+    label: 'Ancienne instance de procédure',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   procedure_instance_id: string;
 
   @ManyToOne(() => ProcedureInstance, { nullable: true })
   @JoinColumn({ name: 'procedure_instance_id' })
+  @BusinessColumn({
+    label: 'Ancienne instance de procédure',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   procedureInstance: ProcedureInstance;
 
   // ==================== GETTERS MÉTIER ====================
@@ -377,7 +437,7 @@ export class Facture extends BaseEntity {
   get montantPaye(): number {
     if (!this.paiements || this.paiements.length === 0) return 0;
     return this.paiements
-      .filter((p) => p.status === StatutPaiement.VALIDE)
+      .filter((p) => Number(p.status) === StatutPaiement.VALIDE)
       .reduce((sum, p) => sum + Number(p.montant), 0);
   }
 
@@ -508,7 +568,7 @@ export class Facture extends BaseEntity {
       [StatutFacture.ANNULEE]: 'Annulée',
       [StatutFacture.VALIDEE]: 'Validée',
     };
-    return (labels[this.status] || String(this.status)) as string;
+    return labels[this.status] || String(this.status);
   }
 
   @BusinessColumn({

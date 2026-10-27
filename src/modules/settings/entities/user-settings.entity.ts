@@ -1,4 +1,10 @@
-import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  OneToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { ApiProperty } from '@nestjs/swagger';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
@@ -20,9 +26,33 @@ export class UserSettings extends TenantEntity {
   @Column({ length: 10, default: 'system' })
   user_theme: string;
 
-  @ApiProperty({ example: 'md' })
-  @Column({ length: 5, default: 'md' })
+  @ApiProperty({ example: 'lg' })
+  @Column({ length: 5, default: 'lg' })
   user_font_size: string;
+
+  // ── Apparence personnelle ───────────────────────────────────────────────
+  // Copiée depuis les défauts du cabinet à la création de la ligne, puis
+  // modifiable par l'utilisateur. NULL = repli sur les défauts du cabinet.
+
+  @ApiProperty({ example: 'midnight', nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  user_theme_name: string | null;
+
+  @ApiProperty({ example: 'outfit', nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  user_font_ui: string | null;
+
+  @ApiProperty({ example: 'outfit', nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  user_font_heading: string | null;
+
+  @ApiProperty({ example: 'jetbrains_mono', nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  user_font_mono: string | null;
+
+  @ApiProperty({ example: 'tinted', nullable: true })
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  user_sidebar_style: string | null;
 
   @ApiProperty({ example: 'fr' })
   @Column({ length: 10, default: 'fr' })
@@ -81,5 +111,8 @@ export class UserSettings extends TenantEntity {
     nullable: true,
   })
   @Column({ type: 'json', nullable: true, name: 'notification_preferences' })
-  notification_preferences: Record<string, { in_app: boolean; email: boolean }> | null;
+  notification_preferences: Record<
+    string,
+    { in_app: boolean; email: boolean }
+  > | null;
 }

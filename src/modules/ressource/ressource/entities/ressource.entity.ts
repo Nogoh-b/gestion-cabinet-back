@@ -1,25 +1,15 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
-
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 
 import { ApiProperty } from '@nestjs/swagger';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 
-
-
-
-
-
 import { RessourceType } from '../../ressource-type/entities/ressource-type.entity';
-
-
-
-
-
-
-
-
-
-
 
 @Entity()
 export class Ressource extends TenantEntity {
@@ -39,14 +29,10 @@ export class Ressource extends TenantEntity {
   @JoinColumn({ name: 'ressource_type_id' })
   ressource_type: RessourceType;
 
-  
-
   @Column({ default: 1 })
   @ApiProperty({ example: 1 })
   status: number;
 
-
-  
   @Column({ nullable: true, default: 1 })
   quantity: number;
 }

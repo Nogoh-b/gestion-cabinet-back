@@ -1,3 +1,4 @@
+import { businessRole } from 'src/core/auth/business-role';
 // src/modules/dossiers/dossiers.service.ts
 import { plainToInstance } from 'class-transformer';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
@@ -5,11 +6,27 @@ import { UserRole } from 'src/core/enums/user-role.enum';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
 import { MailService } from 'src/core/shared/emails/emails.service';
-import { PaginatedResult, PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  normalizePaging,
+  PaginatedResult,
+  PaginationServiceV1,
+} from 'src/core/shared/services/pagination/paginations-v1.service';
+import {
+  BaseServiceV1,
+  SearchCriteria,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 import { SearchFilter, SearchUtils } from 'src/core/shared/utils/search.utils';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-
+import {
+  DossierLifecyclePhase,
+  WorkflowEngine,
+} from 'src/modules/case-workflow/case-workflow.enums';
+import { CaseWorkflowFeature } from 'src/modules/case-workflow/entities/workflow-audit.entity';
+import { DossierBillingProfile } from 'src/modules/case-workflow/entities/billing.entity';
+import { BillingMode } from 'src/modules/case-workflow/case-workflow.enums';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
+import { runWithoutRequestUser } from 'src/core/security/request-user.context';
 
 import {
   Repository,
@@ -22,29 +39,17 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   forwardRef,
 } from '@nestjs/common';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
 
-
-
-
+import { addDossierVisibilityCondition } from './dossier-visibility';
+import { dossierClientScope, dossierRoleScope } from './dossier-role-scope';
+import { DossierAccessGrant } from './entities/dossier-access-grant.entity';
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { CreateConversationDto } from '../chat/dto/create-conversation.dto';
@@ -54,24 +59,30 @@ import { DocumentVersionService } from '../documents/document-customer/document-
 import { User } from '../iam/user/entities/user.entity';
 import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
 import { PlanQuotaService } from '../plans/plan-quota.service';
+import { StatutFacture } from '../facture/dto/create-facture.dto';
+import { Paiement } from '../paiement/entities/paiement.entity';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
 import { InstanceStatus } from '../procedure/entities/enums/instance-status.enum';
 import { AudienceStatus } from '../audiences/entities/audience.entity';
-import {
-  InvoiceNature,
-  StatutFacture,
-  TypeFacture,
-} from '../facture/dto/create-facture.dto';
+import { InvoiceNature, TypeFacture } from '../facture/dto/create-facture.dto';
 import { FactureService } from '../facture/facture.service';
 import { StageVisit } from '../procedure/entities/stage-visit.entity';
 import { ProcedureInstanceService } from '../procedure/services/procedure-instance.service';
 import { ProcedureType } from '../procedures/entities/procedure.entity';
 import { CloseDossierDto } from './dto/close-dossier.dto';
-import { CreateDossierDto, UploadDocumentToSubStageDto } from './dto/create-dossier.dto';
+import {
+  CreateDossierDto,
+  InitialDossierBillingProfileDto,
+  UploadDocumentToSubStageDto,
+} from './dto/create-dossier.dto';
 import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
-import { DangerLevel, Dossier, DossierOutcome } from './entities/dossier.entity';
+import {
+  DangerLevel,
+  Dossier,
+  DossierOutcome,
+} from './entities/dossier.entity';
 import {
   DossierMember,
   DossierMemberRole,
@@ -83,34 +94,19 @@ import {
 import { AuditService } from 'src/core/audit/audit.service';
 import { OutboxService } from 'src/core/outbox/outbox.service';
 import { createHash } from 'crypto';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { DossierChatSyncService } from './dossier-chat-sync.service';
 
 // import { StepsService } from './step.service';
 
 // import { DistributionItem, DossierStatsDto, EvolutionData, FinancialStats, LawyerStats, RecentDossier, TimelineStats, UrgentDossier } from 'src/core/types/base-stats.dto';
 
-
-
 @Injectable()
-export class DossiersService  extends BaseServiceV1<Dossier>  {
+export class DossiersService extends BaseServiceV1<Dossier> {
   constructor(
     @InjectRepository(Dossier)
     private readonly dossierRepository: Repository<Dossier>,
+    @InjectRepository(DossierAccessGrant)
+    private readonly dossierAccessGrantRepository: Repository<DossierAccessGrant>,
     @InjectRepository(Customer)
     private readonly clientRepository: Repository<Customer>,
     @InjectRepository(Employee)
@@ -130,8 +126,12 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     private readonly outboxService: OutboxService,
     @Inject(forwardRef(() => FactureService))
     private readonly factureService: FactureService,
+    @InjectRepository(CaseWorkflowFeature)
+    private readonly caseWorkflowFeatureRepository: Repository<CaseWorkflowFeature>,
+    @InjectRepository(DossierBillingProfile)
+    private readonly billingProfileRepository: Repository<DossierBillingProfile>,
+    private readonly dossierChatSync: DossierChatSyncService,
     protected readonly emailsService?: MailService, // Optionnel
-
   ) {
     super(dossierRepository, paginationService, emailsService);
   }
@@ -147,10 +147,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       ) ?? null
     );
   }
- 
-  
 
-/**
+  /**
    * Override des options de recherche par défaut pour Customer
    */
   protected getDefaultSearchOptions(): SearchOptions {
@@ -171,9 +169,9 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'procedure_type.name',
         'procedure_subtype.name',
         'client.email',
-        'danger_level'
+        'danger_level',
       ],
-      
+
       // Champs pour recherche exacte
       exactMatchFields: [
         'id',
@@ -181,9 +179,9 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'confidentiality_level',
         'priority_level',
         'budget_estimate',
-        'danger_level'
+        'danger_level',
       ],
-      
+
       // Champs pour ranges de dates
       /*dateRangeFields: [
         'created_at',
@@ -191,7 +189,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'opening_date',
         'closing_date'
       ],*/
-      
+
       // Champs de relations pour filtrage
       relationFields: [
         'client',
@@ -211,12 +209,11 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'collaborators',
         'conversation',
         'collaborators.user',
-        'diligences'
+        'diligences',
         // 'comments',
-        // 'comments.user' 
-      ]
+        // 'comments.user'
+      ],
     };
-
   }
   /**
    * Recherche avancée des clients avec relations
@@ -225,115 +222,196 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
   async searhDosiers(
     criteria: any,
     paginationParams?: any,
-    relations: string[] = ['client', 'lawyer', 'diligences', 'jurisdiction', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators']
+    relations: string[] = [
+      'client',
+      'lawyer',
+      'diligences',
+      'jurisdiction',
+      'procedure_type',
+      'procedure_subtype',
+      'documents',
+      'audiences',
+      'factures',
+      'collaborators',
+    ],
   ) {
     return this.searchWithTransformer(
       criteria,
       DossierResponseDto, // ✅ Juste passer la classe DTO
       paginationParams,
       relations,
-      { created_at: 'DESC' } as any
+      { created_at: 'DESC' } as any,
     );
   }
 
-
-  async create(createDossierDto: CreateDossierDto, createdBy: User): Promise<DossierResponseDto> {
+  async create(
+    createDossierDto: CreateDossierDto,
+    createdBy: User,
+  ): Promise<DossierResponseDto> {
     // ── Vérification quota plan ────────────────────────────────────────────
     const tenantId = getCurrentTenantId();
     if (tenantId) {
       const currentCount = await this.dossierRepository.count();
-      await this.planQuotaService.checkLimit(tenantId, 'dossiers', currentCount);
+      await this.planQuotaService.checkLimit(
+        tenantId,
+        'dossiers',
+        currentCount,
+      );
     }
 
-    // Validation de la paire type/sous-type (R8)
-    const isValidPair = await this.validateProcedureTypeSubtype(
-      createDossierDto.procedure_type_id,
-      createDossierDto.procedure_subtype_id
-    );
+    // Avocat, type et sous-type peuvent être complétés plus tard (brouillon).
+    const lawyerId = createDossierDto.lawyer_id ?? null;
+    const procedureTypeId = createDossierDto.procedure_type_id ?? null;
+    const procedureSubtypeId = createDossierDto.procedure_subtype_id ?? null;
 
-    if (!isValidPair) {
-      throw new BadRequestException('Le sous-type ne correspond pas au type de procédure');
+    // La cohérence de la hiérarchie n'est vérifiable que si les deux sont fournis.
+    if (procedureTypeId != null && procedureSubtypeId != null) {
+      const isValidPair = await this.validateProcedureTypeSubtype(
+        procedureTypeId,
+        procedureSubtypeId,
+      );
+      if (!isValidPair) {
+        throw new BadRequestException(
+          'Le sous-type ne correspond pas au type de procédure',
+        );
+      }
     }
 
     // Vérification des entités liées
-    const [client, lawyer, procedureType, procedureSubtype] = await Promise.all([
-      this.clientRepository.findOne({ where: { id: Number(createDossierDto.client_id) } }),
-      this.userRepository.findOne({ where: { id: createDossierDto.lawyer_id }, relations: ['user'] }),
-      this.procedureTypeRepository.findOne({
-        where: { id: createDossierDto.procedure_type_id },
-        relations: ['procedure_template'],
-      }),
-      this.procedureTypeRepository.findOne({
-        where: { id: createDossierDto.procedure_subtype_id },
-        relations: ['procedure_template', 'parent', 'parent.procedure_template'],
-      }),
-    ]);
+    const [client, lawyer, procedureType, procedureSubtype] = await Promise.all(
+      [
+        this.clientRepository.findOne({
+          where: { id: Number(createDossierDto.client_id) },
+        }),
+        lawyerId != null
+          ? this.userRepository.findOne({
+              where: { id: lawyerId },
+              relations: ['user'],
+            })
+          : null,
+        procedureTypeId != null
+          ? this.procedureTypeRepository.findOne({
+              where: { id: procedureTypeId },
+              relations: ['procedure_template'],
+            })
+          : null,
+        procedureSubtypeId != null
+          ? this.procedureTypeRepository.findOne({
+              where: { id: procedureSubtypeId },
+              relations: [
+                'procedure_template',
+                'parent',
+                'parent.procedure_template',
+              ],
+            })
+          : null,
+      ],
+    );
 
     if (!client) {
       throw new NotFoundException('Client non trouvé');
     }
-    if (!lawyer) {
+    if (lawyerId != null && !lawyer) {
       throw new NotFoundException('Avocat non trouvé');
     }
-    if (!procedureType) {
+    if (procedureTypeId != null && !procedureType) {
       throw new NotFoundException('Type de procédure non trouvé');
     }
-    if (!procedureSubtype) {
+    if (procedureSubtypeId != null && !procedureSubtype) {
       throw new NotFoundException('Sous-type de procédure non trouvé');
     }
 
+    // Le code saisi est prioritaire. Un code automatique n'est généré que
+    // lorsque le champ est vide ou ne contient que des espaces.
+    const providedDossierNumber = createDossierDto.dossier_number?.trim();
+    const dossierNumber =
+      providedDossierNumber || (await this.generateDossierNumber());
 
-    // Génération du numéro de dossier
-    const dossierNumber = await this.generateDossierNumber();
-    if(!createDossierDto.dossier_number){
-      createDossierDto.dossier_number = dossierNumber
-    } 
+    if (providedDossierNumber) {
+      const duplicateQB = this.dossierRepository
+        .createQueryBuilder('dossier')
+        .withDeleted()
+        .where('dossier.dossier_number = :dossierNumber', { dossierNumber });
+      addTenantCondition(duplicateQB, 'dossier');
+      if (await duplicateQB.getOne()) {
+        throw new ConflictException(
+          `Le code dossier « ${dossierNumber} » est déjà utilisé`,
+        );
+      }
+    }
 
-    // let procedureInstanceDTO = new CreateProcedureInstanceDto();
-    // procedureInstanceDTO.templateId = procedureSubtype.procedure_template?.id || procedureType.procedure_template?.id;
-    // procedureInstanceDTO.title = createDossierDto.dossier_number;
-
-    // const procedureInstance = await this.procedureInstanceService.create(procedureInstanceDTO, createdBy.id.toString())
-
-    const { notes: _notes, mode: _mode, ...writableDossierData } = createDossierDto;
+    const workflowFeature = tenantId
+      ? await this.caseWorkflowFeatureRepository.findOne({
+          where: { tenant_id: tenantId },
+        })
+      : null;
+    const useActionsV2 = Boolean(
+      workflowFeature?.enabled && workflowFeature.default_for_new_dossiers,
+    );
+    const {
+      notes: _notes,
+      mode: _mode,
+      billing_profile: initialBillingProfile,
+      ...writableDossierData
+    } = createDossierDto as CreateDossierDto & {
+      notes?: unknown;
+      mode?: unknown;
+    };
     const dossier = this.dossierRepository.create({
       ...writableDossierData,
       dossier_number: dossierNumber,
       client,
       lawyer,
-      jurisdiction_id : createDossierDto.jurisdiction_id ?? createDossierDto.jurisdiction ?? null,
-      jurisdiction: (createDossierDto.jurisdiction_id ?? createDossierDto.jurisdiction)
-        ? ({ id: createDossierDto.jurisdiction_id ?? createDossierDto.jurisdiction } as Jurisdiction)
-        : null,
+      jurisdiction_id:
+        createDossierDto.jurisdiction_id ??
+        createDossierDto.jurisdiction ??
+        null,
+      jurisdiction:
+        (createDossierDto.jurisdiction_id ?? createDossierDto.jurisdiction)
+          ? ({
+              id:
+                createDossierDto.jurisdiction_id ??
+                createDossierDto.jurisdiction,
+            } as Jurisdiction)
+          : null,
       procedure_type: procedureType,
       procedure_subtype: procedureSubtype,
-      // procedureInstance,
-      opening_date: createDossierDto.opening_date ? new Date(createDossierDto.opening_date) : new Date(),
+      opening_date: createDossierDto.opening_date
+        ? new Date(createDossierDto.opening_date)
+        : new Date(),
+      // Cycle administratif : un dossier naît brouillon, puis est activé.
       status: DossierStatus.DRAFT,
-    });
+      workflow_engine: useActionsV2
+        ? WorkflowEngine.ACTIONS_V2
+        : WorkflowEngine.LEGACY,
+      lifecycle_phase: DossierLifecyclePhase.OPENING,
+    } as any) as unknown as Dossier;
     // Champ transient consommé par DossierSubscriber pour notifier le client.
     (dossier as any).notify_client = !!createDossierDto.notify_client;
 
     // Gestion des collaborateurs
-    if (createDossierDto.collaborator_ids && createDossierDto.collaborator_ids.length > 0) {
+    if (
+      createDossierDto.collaborator_ids &&
+      createDossierDto.collaborator_ids.length > 0
+    ) {
       const collaborators = await this.userRepository.find({
-        where: { id: In(createDossierDto.collaborator_ids) }
+        where: { id: In(createDossierDto.collaborator_ids) },
       });
       dossier.collaborators = collaborators;
     }
 
     // La conversation de suivi est créée par le DossierSubscriber
-    // (onAfterCreate), source unique, dans la transaction d'insertion et avec
-    // l'avocat + les collaborateurs comme participants. On ne la crée donc plus
-    // ici : la créer en amont produisait une conversation orpheline doublonnée
-    // (le subscriber écrasait ensuite le lien).
+    // (onAfterCreate), source unique, dans la transaction d'insertion.
     const savedDossier = await this.dataSource.transaction(async (manager) => {
       const saved = await manager.save(dossier);
-      // Un template peut être porté par le sous-type ou hérité du type parent.
-      const template = this.resolvePublishedProcedureTemplate(
-        procedureSubtype.procedure_template,
-        procedureType.procedure_template,
-      );
+      // Parcours V2 (actions) : pas d'instance de procédure legacy.
+      // Sinon, le template peut être porté par le sous-type ou hérité du type.
+      const template = useActionsV2
+        ? null
+        : this.resolvePublishedProcedureTemplate(
+            procedureSubtype?.procedure_template,
+            procedureType?.procedure_template,
+          );
       if (template) {
         const instance = await this.procedureInstanceService.create(
           {
@@ -347,11 +425,10 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         await manager.save(saved);
       }
       const memberRepository = manager.getRepository(DossierMember);
-      const initialMembers = new Map<
-        number,
-        DossierMemberRole
-      >();
-      initialMembers.set(Number(lawyer.id), DossierMemberRole.RESPONSIBLE);
+      const initialMembers = new Map<number, DossierMemberRole>();
+      if (lawyer) {
+        initialMembers.set(Number(lawyer.id), DossierMemberRole.RESPONSIBLE);
+      }
       for (const collaborator of dossier.collaborators ?? []) {
         if (!initialMembers.has(Number(collaborator.id))) {
           initialMembers.set(
@@ -387,6 +464,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
           lawyerId: saved.lawyer_id,
           procedureTypeId: saved.procedure_type_id,
           procedureSubtypeId: saved.procedure_subtype_id,
+          workflowEngine: saved.workflow_engine,
           members: [...initialMembers.entries()].map(([userId, role]) => ({
             userId,
             role,
@@ -406,7 +484,119 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       });
       return saved;
     });
+
+    if (initialBillingProfile) {
+      await this.saveInitialBillingProfile(
+        savedDossier,
+        initialBillingProfile,
+      );
+    }
+
+    // Un dossier confidentiel n'est visible que de l'administration et des
+    // collaborateurs explicitement autorisés : son auteur reçoit d'emblée
+    // l'autorisation (l'administration peut la révoquer).
+    if (savedDossier.confidentiality_level && createdBy?.id) {
+      await this.grantInitialConfidentialAccess(
+        savedDossier.id,
+        Number(createdBy.id),
+      );
+    }
+
     return this.mapToResponseDto(savedDossier);
+  }
+
+  /**
+   * Enregistre la configuration proposée à l'ouverture sans rendre la création
+   * du dossier dépendante d'un profil complet. En cas d'incident technique, le
+   * profil sera recréé avec les valeurs du cabinet à sa première consultation.
+   */
+  private async saveInitialBillingProfile(
+    dossier: Dossier,
+    initial: InitialDossierBillingProfileDto,
+  ): Promise<void> {
+    const tenantId = getCurrentTenantId();
+    if (!tenantId) return;
+
+    try {
+      const existing = await this.billingProfileRepository.findOne({
+        where: { tenant_id: tenantId, dossier_id: dossier.id },
+      });
+      if (existing) return;
+
+      const cabinet = await this.cabinetRepository.findOne({
+        where: { id: tenantId },
+      });
+      const openingFee =
+        initial.opening_fee ??
+        (dossier.procedure_costs != null
+          ? Number(dossier.procedure_costs)
+          : cabinet?.dossier_opening_fee_enabled
+            ? Number(cabinet.dossier_opening_fee)
+            : null);
+
+      await this.billingProfileRepository.save(
+        this.billingProfileRepository.create({
+          tenant_id: tenantId,
+          dossier_id: dossier.id,
+          currency:
+            initial.currency?.trim().toUpperCase() ||
+            cabinet?.currency ||
+            'XAF',
+          vat_rate: Number(initial.vat_rate ?? cabinet?.default_tva_rate ?? 0),
+          mode: initial.mode ?? BillingMode.FIXED,
+          fixed_fee: initial.fixed_fee ?? null,
+          hourly_rate: initial.hourly_rate ?? null,
+          percentage_rate: null,
+          percentage_base: null,
+          opening_fee: openingFee,
+          opening_fee_enabled:
+            initial.opening_fee_enabled ??
+            (openingFee != null && Number(openingFee) > 0),
+          opening_fee_included_in_fixed_fee:
+            initial.opening_fee_included_in_fixed_fee ?? false,
+          default_vacation_rate: initial.default_vacation_rate ?? null,
+          result_fee_enabled: initial.result_fee_enabled ?? false,
+          result_fee_rate: initial.result_fee_rate ?? null,
+          rebill_expenses: initial.rebill_expenses ?? true,
+          rebill_disbursements: initial.rebill_disbursements ?? true,
+          require_disbursement_receipt:
+            initial.require_disbursement_receipt ?? true,
+          is_confirmed: initial.is_confirmed ?? false,
+        }),
+      );
+    } catch (cause) {
+      console.error(
+        `[Dossier] Profil de facturation initial non enregistré pour le dossier ${dossier.id} :`,
+        (cause as Error)?.message ?? cause,
+      );
+    }
+  }
+
+  /**
+   * Autorisation initiale sur un dossier confidentiel. Un échec ne doit pas
+   * annuler la création : le dossier existe, et l'administration pourra
+   * toujours accorder l'accès manuellement.
+   */
+  private async grantInitialConfidentialAccess(
+    dossierId: number,
+    employeeId: number,
+  ): Promise<void> {
+    try {
+      await this.dossierAccessGrantRepository.save(
+        this.dossierAccessGrantRepository.create({
+          dossier_id: dossierId,
+          employee_id: employeeId,
+          granted_by: employeeId,
+          granted_at: new Date(),
+          reason: 'Auteur du dossier confidentiel',
+        }),
+      );
+    } catch (cause) {
+      console.error(
+        `[Dossier] Autorisation initiale impossible sur le dossier ${dossierId} :`,
+        (cause as Error)?.message ?? cause,
+      );
+    }
   }
 
   async findAll(searchDto: DossierSearchDto, user: User): Promise<any[]> {
@@ -417,14 +607,15 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       relations: [
         'client',
         'lawyer',
+        'lawyer.user',
         'procedure_type',
         'procedure_subtype',
         'documents',
         'diligences',
         'audiences',
         'factures',
-        'collaborators'
-      ]
+        'collaborators',
+      ],
     });
 
     return dossiers;
@@ -433,53 +624,43 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
   async findAllPaginated(
     paginationParams: PaginationParamsDto,
     searchDto: DossierSearchDto,
-    user: User
+    user: User,
   ): Promise<PaginatedResult<DossierResponseDto>> {
     const whereConditions = this.buildWhereConditions(searchDto, user);
-    
+
     return this.paginationService.paginateWithTransformer(
       this.dossierRepository,
       paginationParams,
-      (dossiers) => Promise.all(dossiers.map(dossier => this.mapToResponseDto(dossier))),
-      whereConditions,
+      (dossiers) =>
+        Promise.all(dossiers.map((dossier) => this.mapToResponseDto(dossier))),
+      // `where: []` échapperait au filtre de confidentialité (DossierVisibilityPatch).
+      whereConditions.length > 0 ? whereConditions : undefined,
       [
         'client',
         'lawyer',
-        'lawyer.employee',
+        'lawyer.user',
         'procedure_type',
         'procedure_subtype',
         'documents',
         'audiences',
-        'factures'
-      ]
+        'factures',
+      ],
     );
   }
 
-  private buildWhereConditions(searchDto: DossierSearchDto, user: User): FindOptionsWhere<Dossier>[] {
-    const conditions: FindOptionsWhere<Dossier>[] = [];
-    const authUser = user as any;
+  /**
+   * Un tableau `where` est un OU pour TypeORM : seule la recherche texte
+   * (un champ OU un autre) produit plusieurs branches. Les filtres (statut,
+   * client) et la portée du rôle sont fusionnés dans CHACUNE d'elles, sinon
+   * `search` ou `status` ouvriraient les dossiers d'autres clients ou avocats.
+   */
+  private buildWhereConditions(
+    searchDto: DossierSearchDto,
+    user: User,
+  ): FindOptionsWhere<Dossier>[] {
+    const scope = this.buildRoleScope(user);
 
-    // Filtrage par rôle : avocat voit ses propres dossiers
-    if (authUser.role === UserRole.AVOCAT) {
-      conditions.push({ lawyer: { id: authUser.id } });
-    }
-
-    // Filtrage par rôle : client voit uniquement ses propres dossiers
-    if (authUser.role === UserRole.CLIENT) {
-      if (!authUser.customerId) return [{ client_id: -1 }]; // aucun résultat si customerId absent
-      conditions.push({ client_id: authUser.customerId });
-    }
-
-    // Filtres de recherche
     const filters: SearchFilter[] = [];
-
-    if (searchDto.search) {
-      const searchConditions = SearchUtils.buildSearchConditions<Dossier>(
-        searchDto.search,
-        ['object', 'jurisdiction', 'dossier_number']
-      );
-      conditions.push(...searchConditions);
-    }
 
     if (searchDto.status) {
       filters.push({ field: 'status', value: searchDto.status });
@@ -489,96 +670,168 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       filters.push({ field: 'client', value: { id: searchDto.client_id } });
     }
 
-    if (filters.length > 0) {
-      const filterConditions = SearchUtils.buildWhereConditions<Dossier>(filters);
-      conditions.push(filterConditions);
+    const filterConditions = SearchUtils.buildWhereConditions<Dossier>(filters);
+
+    const searchConditions = searchDto.search
+      ? SearchUtils.buildSearchConditions<Dossier>(searchDto.search, [
+          'object',
+          'jurisdiction',
+          'dossier_number',
+        ])
+      : [];
+
+    // La portée du rôle vient en dernier : aucun filtre ne peut l'écraser.
+    return (searchConditions.length > 0 ? searchConditions : [{}])
+      .map((condition) => ({ ...condition, ...filterConditions, ...scope }))
+      .filter((condition) => Object.keys(condition).length > 0);
+  }
+
+  /**
+   * Portée imposée par le rôle de l'appelant, à fusionner dans chaque
+   * branche du `where` (cf. buildWhereConditions). Règle partagée avec
+   * l'export ZIP : cf. dossier-role-scope.ts.
+   */
+  private buildRoleScope(user: User): FindOptionsWhere<Dossier> {
+    return dossierRoleScope(user as any);
+  }
+
+  /** Client : uniquement ses propres dossiers. */
+  private buildClientScope(user: User): FindOptionsWhere<Dossier> {
+    return dossierClientScope(user as any);
+  }
+
+  /**
+   * GET /dossiers/search : recherche générique, bornée pour un client à ses
+   * propres dossiers. Le personnel garde la recherche sur tout le cabinet
+   * (liste des dossiers du back-office).
+   */
+  async searchForUser(
+    criteria: SearchCriteria,
+    paginationParams: PaginationParamsDto | undefined,
+    user: User,
+  ): Promise<PaginatedResult<DossierResponseDto>> {
+    return this.searchWithTransformer(
+      criteria,
+      DossierResponseDto,
+      paginationParams,
+      undefined,
+      undefined,
+      this.buildClientScope(user),
+    );
+  }
+
+  // Dans votre DossierService
+  async findOne(id: number, user?: User): Promise<DossierResponseDto | any> {
+    // ✅ Charger UNIQUEMENT le dossier avec ses relations directes
+    const dossier = await this.dossierRepository.findOne({
+      where: { id },
+      relations: this.getDefaultSearchOptions().relationFields,
+    });
+
+    if (!dossier) {
+      throw new NotFoundException(`Dossier ${id} non trouvé`);
     }
 
-    return conditions;
+    // Contrôle d'accès : client ne peut voir que ses propres dossiers
+    if (user) {
+      this.checkDossierAccess(dossier, user);
+    }
+
+    await this.attachInvoicePayments(dossier);
+
+    // ✅ Charger procedureInstance séparément si nécessaire
+    if (dossier.procedureInstanceId) {
+      const procedureInstance =
+        await this.procedureInstanceService.getWorkflowStatus(
+          dossier.procedureInstanceId,
+        );
+
+      if (procedureInstance) {
+        dossier.procedureInstance = procedureInstance;
+        (dossier as any).procedure_summary = procedureInstance.procedureSummary;
+
+        // ✅ Charger les subStages de l'étape courante séparément si vraiment besoin
+        // if (procedureInstance.currentStage) {
+        //   const stageWithSubStages = await this.stageRepository.findOne({
+        //     where: { id: procedureInstance.currentStage.id },
+        //     relations: ['subStages'],
+        //   });
+
+        //   if (stageWithSubStages) {
+        //     dossier.procedureInstance.currentStage = stageWithSubStages;
+        //   }
+        // }
+      }
+    }
+
+    return plainToInstance(DossierResponseDto, dossier);
   }
 
-// Dans votre DossierService
-async findOne(id: number, user?: User): Promise<DossierResponseDto | any> {
-  // ✅ Charger UNIQUEMENT le dossier avec ses relations directes
-  const dossier = await this.dossierRepository.findOne({
-    where: { id },
-    relations: this.getDefaultSearchOptions().relationFields,
-  });
-
-  if (!dossier) {
-    throw new NotFoundException(`Dossier ${id} non trouvé`);
-  }
-
-  // Contrôle d'accès : client ne peut voir que ses propres dossiers
-  if (user) {
-    this.checkDossierAccess(dossier, user);
-  }
-
-  // ✅ Charger procedureInstance séparément si nécessaire
-  if (dossier.procedureInstanceId) {
-    const procedureInstance = await this.procedureInstanceService.getWorkflowStatus(dossier.procedureInstanceId);
-    
-    if (procedureInstance) {
-      dossier.procedureInstance = procedureInstance;
-      (dossier as any).procedure_summary = procedureInstance.procedureSummary;
-      
-      // ✅ Charger les subStages de l'étape courante séparément si vraiment besoin
-      // if (procedureInstance.currentStage) {
-      //   const stageWithSubStages = await this.stageRepository.findOne({
-      //     where: { id: procedureInstance.currentStage.id },
-      //     relations: ['subStages'],
-      //   });
-        
-      //   if (stageWithSubStages) {
-      //     dossier.procedureInstance.currentStage = stageWithSubStages;
-      //   }
-      // }
+  /**
+   * Paiements des factures, chargés à part : une jointure de plus sur la
+   * fiche multiplierait les lignes (documents × audiences × factures…).
+   * Sans eux, « Encaissé » ne voyait que les factures soldées, pas les acomptes.
+   */
+  private async attachInvoicePayments(dossier: Dossier): Promise<void> {
+    const factures = dossier.factures ?? [];
+    if (!factures.length) return;
+    const paiements = await this.dossierRepository.manager
+      .getRepository(Paiement)
+      .find({
+        where: { facture: { id: In(factures.map((f) => f.id)) } },
+        relations: ['facture'],
+      });
+    for (const facture of factures) {
+      facture.paiements = paiements
+        .filter((p) => p.facture?.id === facture.id)
+        // La facture complète est déjà dans la fiche : seul son id reste.
+        .map((p) => Object.assign(p, { facture: { id: facture.id } }));
     }
   }
 
-  return plainToInstance(DossierResponseDto, dossier);
-}
-async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto | any> {
-  
-  // ✅ Charger UNIQUEMENT le dossier avec ses relations directes
-  const dossier = await this.dossierRepository.findOne({
-    where: { procedureInstanceId },
-    relations: [
-      'client',
-      'lawyer',
-      'lawyer.user',
-      'conversation',
-      'factures',
-      'procedure_type',
-      'procedureInstance',
-      'procedure_subtype',
-      'jurisdiction',
-    ],
-  });
+  async findOneByInstance(
+    procedureInstanceId: string,
+  ): Promise<DossierResponseDto | any> {
+    // ✅ Charger UNIQUEMENT le dossier avec ses relations directes
+    const dossier = await this.dossierRepository.findOne({
+      where: { procedureInstanceId },
+      relations: [
+        'client',
+        'lawyer',
+        'lawyer.user',
+        'conversation',
+        'factures',
+        'procedure_type',
+        'procedureInstance',
+        'procedure_subtype',
+        'jurisdiction',
+      ],
+    });
 
-  if (!dossier) {
-    throw new NotFoundException(`Dossiernon trouvé`);
-  }
-
-  // ✅ Charger procedureInstance séparément si nécessaire
-  if (dossier.procedureInstanceId) {
-    const procedureInstance = await this.procedureInstanceService.getWorkflowStatus(dossier.procedureInstanceId);
-    
-    if (procedureInstance) {
-      dossier.procedureInstance = procedureInstance;
-      (dossier as any).procedure_summary = procedureInstance.procedureSummary;
-      
+    if (!dossier) {
+      throw new NotFoundException(`Dossiernon trouvé`);
     }
-  }
 
-  return plainToInstance(DossierResponseDto, dossier);
-}
+    // ✅ Charger procedureInstance séparément si nécessaire
+    if (dossier.procedureInstanceId) {
+      const procedureInstance =
+        await this.procedureInstanceService.getWorkflowStatus(
+          dossier.procedureInstanceId,
+        );
+
+      if (procedureInstance) {
+        dossier.procedureInstance = procedureInstance;
+        (dossier as any).procedure_summary = procedureInstance.procedureSummary;
+      }
+    }
+
+    return plainToInstance(DossierResponseDto, dossier);
+  }
   async update(
     id: number,
     updateDossierDto: UpdateDossierDto,
-    user: User
+    user: User,
   ): Promise<DossierResponseDto> {
-
     const dossier = await this.dossierRepository.findOne({
       where: { id },
       relations: [
@@ -611,15 +864,13 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
     }
     if (
       dossier.status !== DossierStatus.DRAFT &&
-      (
-        updateDossierDto.client_id !== undefined ||
+      (updateDossierDto.client_id !== undefined ||
         updateDossierDto.lawyer_id !== undefined ||
         updateDossierDto.procedure_type_id !== undefined ||
         updateDossierDto.procedure_subtype_id !== undefined ||
         updateDossierDto.jurisdiction !== undefined ||
         updateDossierDto.jurisdiction_id !== undefined ||
-        updateDossierDto.opening_date !== undefined
-      )
+        updateDossierDto.opening_date !== undefined)
     ) {
       throw new BadRequestException(
         "Le client, l'avocat responsable, la juridiction, le type de procédure et la date d'ouverture sont verrouillés après activation",
@@ -627,27 +878,33 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
     }
 
     /* =============================
-    * Validation type / sous-type
-    * ============================= */
-    if (
-      updateDossierDto.procedure_type_id !== undefined ||
+     * Validation type / sous-type
+     * ============================= */
+    const nextProcedureTypeId =
+      updateDossierDto.procedure_type_id !== undefined
+        ? updateDossierDto.procedure_type_id
+        : dossier.procedure_type_id;
+    const nextProcedureSubtypeId =
       updateDossierDto.procedure_subtype_id !== undefined
-    ) {
+        ? updateDossierDto.procedure_subtype_id
+        : dossier.procedure_subtype_id;
+
+    if (nextProcedureTypeId != null && nextProcedureSubtypeId != null) {
       const isValidPair = await this.validateProcedureTypeSubtype(
-        updateDossierDto.procedure_type_id ?? dossier.procedure_type_id,
-        updateDossierDto.procedure_subtype_id ?? dossier.procedure_subtype_id,
+        nextProcedureTypeId,
+        nextProcedureSubtypeId,
       );
 
       if (!isValidPair) {
         throw new BadRequestException(
-          'Le sous-type ne correspond pas au type de procédure'
+          'Le sous-type ne correspond pas au type de procédure',
         );
       }
     }
 
     /* =============================
-    * Chargement des entités liées
-    * ============================= */
+     * Chargement des entités liées
+     * ============================= */
     if (updateDossierDto.client_id) {
       const client = await this.clientRepository.findOne({
         where: { id: Number(updateDossierDto.client_id) },
@@ -664,47 +921,59 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
       dossier.lawyer = lawyer;
     }
 
-    if (updateDossierDto.procedure_type_id) {
-      const procedureType = await this.procedureTypeRepository.findOne({
-        where: { id: updateDossierDto.procedure_type_id },
-      });
-      if (!procedureType) {
-        throw new NotFoundException('Type de procédure non trouvé');
+    if (updateDossierDto.procedure_type_id !== undefined) {
+      if (updateDossierDto.procedure_type_id === null) {
+        dossier.procedure_type_id = null;
+        dossier.procedure_type = null;
+      } else {
+        const procedureType = await this.procedureTypeRepository.findOne({
+          where: { id: updateDossierDto.procedure_type_id },
+        });
+        if (!procedureType) {
+          throw new NotFoundException('Type de procédure non trouvé');
+        }
+        dossier.procedure_type = procedureType;
       }
-      dossier.procedure_type = procedureType;
     }
 
-    if (updateDossierDto.procedure_subtype_id) {
-      const procedureSubtype = await this.procedureTypeRepository.findOne({
-        where: { id: updateDossierDto.procedure_subtype_id },
-      });
-      if (!procedureSubtype) {
-        throw new NotFoundException('Sous-type de procédure non trouvé');
+    if (updateDossierDto.procedure_subtype_id !== undefined) {
+      if (updateDossierDto.procedure_subtype_id === null) {
+        dossier.procedure_subtype_id = null;
+        dossier.procedure_subtype = null;
+      } else {
+        const procedureSubtype = await this.procedureTypeRepository.findOne({
+          where: { id: updateDossierDto.procedure_subtype_id },
+        });
+        if (!procedureSubtype) {
+          throw new NotFoundException('Sous-type de procédure non trouvé');
+        }
+        dossier.procedure_subtype = procedureSubtype;
       }
-      dossier.procedure_subtype = procedureSubtype;
     }
 
     /* =============================
-    * Juridiction
-    * ============================= */
+     * Juridiction
+     * ============================= */
     if (updateDossierDto.jurisdiction) {
       dossier.jurisdiction_id = updateDossierDto.jurisdiction;
-      dossier.jurisdiction = { id: updateDossierDto.jurisdiction } as Jurisdiction;
+      dossier.jurisdiction = {
+        id: updateDossierDto.jurisdiction,
+      } as Jurisdiction;
     }
 
     /* =============================
-    * Dates
-    * ============================= */
+     * Dates
+     * ============================= */
     if (updateDossierDto.opening_date) {
       dossier.opening_date = new Date(updateDossierDto.opening_date);
     }
 
     /* =============================
-    * Statut
-    * ============================= */
+     * Statut
+     * ============================= */
     /* =============================
-    * Champs simples (merge)
-    * ============================= */
+     * Champs simples (merge)
+     * ============================= */
     const beforeState = {
       status: dossier.status,
       clientId: dossier.client_id,
@@ -713,36 +982,43 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
       procedureSubtypeId: dossier.procedure_subtype_id,
       jurisdictionId: dossier.jurisdiction_id,
     };
+    const { billing_profile: _ignoredBillingProfile, ...updateFields } =
+      updateDossierDto;
     Object.assign(dossier, {
-      ...updateDossierDto,
+      ...updateFields,
       dossier_number: dossier.dossier_number, // protection
     });
     if (updateDossierDto.notify_client !== undefined) {
       (dossier as any).notify_client = !!updateDossierDto.notify_client;
     }
-    const updatedDossier = await this.dataSource.transaction(async (manager) => {
-      const saved = await manager.save(dossier);
-      await this.auditService.append(manager, {
-        actorId: (user as any)?.id ?? null,
-        action: 'dossier.updated',
-        resourceType: 'Dossier',
-        resourceId: saved.id,
-        dossierId: saved.id,
-        beforeState,
-        afterState: {
-          status: saved.status,
-          clientId: saved.client_id,
-          lawyerId: saved.lawyer_id,
-          procedureTypeId: saved.procedure_type_id,
-          procedureSubtypeId: saved.procedure_subtype_id,
-          jurisdictionId: saved.jurisdiction_id,
-        },
-      });
-      return saved;
-    });
+    const updatedDossier = await this.dataSource.transaction(
+      async (manager) => {
+        const saved = await manager.save(dossier);
+        await this.auditService.append(manager, {
+          actorId: (user as any)?.id ?? null,
+          action: 'dossier.updated',
+          resourceType: 'Dossier',
+          resourceId: saved.id,
+          dossierId: saved.id,
+          beforeState,
+          afterState: {
+            status: saved.status,
+            clientId: saved.client_id,
+            lawyerId: saved.lawyer_id,
+            procedureTypeId: saved.procedure_type_id,
+            procedureSubtypeId: saved.procedure_subtype_id,
+            jurisdictionId: saved.jurisdiction_id,
+          },
+        });
+        return saved;
+      },
+    );
+    // Si seuls les collaborateurs ont changé, afterUpdate n'a pas été émis.
+    if (updateDossierDto.collaborator_ids || updateDossierDto.lawyer_id) {
+      await this.dossierChatSync.sync(updatedDossier.id);
+    }
     return this.mapToResponseDto(updatedDossier);
   }
-
 
   async remove(id: number, user: User): Promise<void> {
     await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
@@ -789,145 +1065,149 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
   }
 
   async activate(id: number, user: User): Promise<DossierResponseDto> {
-    await this.dossierRepository.manager.transaction(
-      async (manager) => {
-        const dossier = await manager.findOne(Dossier, {
-          where: { id },
-          relations: [
-            'client',
-            'lawyer',
-            'collaborators',
-            'procedure_type',
-            'procedure_subtype',
-            'jurisdiction',
-          ],
-          lock: { mode: 'pessimistic_write' },
+    await this.dossierRepository.manager.transaction(async (manager) => {
+      const dossier = await manager.findOne(Dossier, {
+        where: { id },
+        relations: [
+          'client',
+          'lawyer',
+          'collaborators',
+          'procedure_type',
+          'procedure_subtype',
+          'jurisdiction',
+        ],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!dossier) {
+        throw new NotFoundException(`Dossier ${id} non trouvé`);
+      }
+      this.checkDossierAccess(dossier, user);
+      if (dossier.status !== DossierStatus.DRAFT) {
+        throw new BadRequestException(
+          `Seul un dossier brouillon peut être activé (cycle actuel : ${dossier.status})`,
+        );
+      }
+
+      const subtype = await manager.findOne(ProcedureType, {
+        where: { id: dossier.procedure_subtype_id },
+        relations: [
+          'procedure_template',
+          'parent',
+          'parent.procedure_template',
+        ],
+      });
+      const template = this.resolvePublishedProcedureTemplate(
+        subtype?.procedure_template,
+        subtype?.parent?.procedure_template,
+      );
+      const missing: string[] = [];
+      if (!dossier.client_id) missing.push('client');
+      // Les informations de partie adverse sont facultatives à l'activation.
+      if (!dossier.lawyer_id) missing.push('avocat responsable');
+      if (!dossier.jurisdiction_id) missing.push('juridiction');
+      if (!dossier.procedure_type_id || !dossier.procedure_subtype_id) {
+        missing.push('type de procédure');
+      }
+      if (!template) {
+        missing.push('version publiée et intègre du template');
+      }
+      if (missing.length > 0) {
+        throw new BadRequestException({
+          message: 'Le dossier ne satisfait pas les préconditions d’activation',
+          missing,
         });
-        if (!dossier) {
-          throw new NotFoundException(`Dossier ${id} non trouvé`);
-        }
-        this.checkDossierAccess(dossier, user);
-        if (dossier.status !== DossierStatus.DRAFT) {
-          throw new BadRequestException(
-            `Seul un dossier brouillon peut être activé (cycle actuel : ${dossier.status})`,
+      }
+
+      const instance = dossier.procedureInstanceId
+        ? await manager.findOneByOrFail(ProcedureInstance, {
+            id: dossier.procedureInstanceId,
+          })
+        : await this.procedureInstanceService.create(
+            {
+              templateId: template!.id,
+              title: `Procédure - ${dossier.dossier_number}`,
+            },
+            String((user as any)?.id ?? 'system'),
+            manager,
           );
-        }
+      const previousStatus = dossier.status;
+      dossier.procedureInstanceId = instance.id;
+      dossier.procedureInstance = instance;
+      dossier.status = DossierStatus.ACTIVE;
+      await manager.save(dossier);
 
-        const subtype = await manager.findOne(ProcedureType, {
-          where: { id: dossier.procedure_subtype_id },
-          relations: ['procedure_template', 'parent', 'parent.procedure_template'],
+      const openingInvoice = await this.createOpeningInvoice(
+        manager,
+        dossier,
+        instance,
+        user,
+      );
+
+      const memberRepository = manager.getRepository(DossierMember);
+      const memberInputs = [
+        {
+          userId: Number(dossier.lawyer.id),
+          role: DossierMemberRole.RESPONSIBLE,
+        },
+        ...(dossier.collaborators ?? []).map((collaborator) => ({
+          userId: Number(collaborator.id),
+          role: DossierMemberRole.COLLABORATOR,
+        })),
+      ];
+      for (const input of memberInputs) {
+        let member = await memberRepository.findOne({
+          where: { dossierId: dossier.id, userId: input.userId },
         });
-        const template = this.resolvePublishedProcedureTemplate(
-          subtype?.procedure_template,
-          subtype?.parent?.procedure_template,
-        );
-        const missing: string[] = [];
-        if (!dossier.client_id) missing.push('client');
-        // Les informations de partie adverse sont facultatives à l'activation.
-        if (!dossier.lawyer_id) missing.push('avocat responsable');
-        if (!dossier.jurisdiction_id) missing.push('juridiction');
-        if (!dossier.procedure_type_id || !dossier.procedure_subtype_id) {
-          missing.push('type de procédure');
-        }
-        if (!template) {
-          missing.push('version publiée et intègre du template');
-        }
-        if (missing.length > 0) {
-          throw new BadRequestException({
-            message: 'Le dossier ne satisfait pas les préconditions d’activation',
-            missing,
-          });
-        }
-
-        const instance = dossier.procedureInstanceId
-          ? await manager.findOneByOrFail(ProcedureInstance, { id: dossier.procedureInstanceId })
-          : await this.procedureInstanceService.create(
-          {
-            templateId: template!.id,
-            title: `Procédure - ${dossier.dossier_number}`,
-          },
-          String((user as any)?.id ?? 'system'),
-          manager,
-        );
-        const previousStatus = dossier.status;
-        dossier.procedureInstanceId = instance.id;
-        dossier.procedureInstance = instance;
-        dossier.status = DossierStatus.ACTIVE;
-        await manager.save(dossier);
-
-        const openingInvoice = await this.createOpeningInvoice(
-          manager,
-          dossier,
-          instance,
-          user,
-        );
-
-        const memberRepository = manager.getRepository(DossierMember);
-        const memberInputs = [
-          {
-            userId: Number(dossier.lawyer.id),
-            role: DossierMemberRole.RESPONSIBLE,
-          },
-          ...(dossier.collaborators ?? []).map((collaborator) => ({
-            userId: Number(collaborator.id),
-            role: DossierMemberRole.COLLABORATOR,
-          })),
-        ];
-        for (const input of memberInputs) {
-          let member = await memberRepository.findOne({
-            where: { dossierId: dossier.id, userId: input.userId },
-          });
-          if (!member) {
-            member = memberRepository.create({
-              dossierId: dossier.id,
-              userId: input.userId,
-              role: input.role,
-              confidentialityLevel: dossier.confidentiality_level ? 1 : 0,
-              validFrom: new Date(),
-              validUntil: null,
-              revokedAt: null,
-              revokedBy: null,
-            });
-          } else {
-            member.role = input.role;
-            member.confidentialityLevel = dossier.confidentiality_level ? 1 : 0;
-            member.validUntil = null;
-            member.revokedAt = null;
-            member.revokedBy = null;
-          }
-          await memberRepository.save(member);
-        }
-        await this.auditService.append(manager, {
-          actorId: (user as any).id,
-          action: 'dossier.activated',
-          resourceType: 'Dossier',
-          resourceId: dossier.id,
-          dossierId: dossier.id,
-          beforeState: { status: previousStatus, procedureInstanceId: null },
-          afterState: {
-            status: dossier.status,
-            procedureInstanceId: instance.id,
-            templateVersionId: instance.templateVersionId,
-            openingInvoiceId: openingInvoice?.id ?? null,
-          },
-        });
-        await this.outboxService.enqueue(manager, {
-          eventType: 'dossier.activated',
-          aggregateType: 'Dossier',
-          aggregateId: dossier.id,
-          idempotencyKey: `dossier-activated:${dossier.id}:${instance.id}`,
-          payload: {
+        if (!member) {
+          member = memberRepository.create({
             dossierId: dossier.id,
-            instanceId: instance.id,
-            openingInvoiceId: openingInvoice?.id ?? null,
-            actorId: (user as any).id,
-            fromStatus: previousStatus,
-            toStatus: dossier.status,
-          },
-        });
-        return dossier;
-      },
-    );
+            userId: input.userId,
+            role: input.role,
+            confidentialityLevel: dossier.confidentiality_level ? 1 : 0,
+            validFrom: new Date(),
+            validUntil: null,
+            revokedAt: null,
+            revokedBy: null,
+          });
+        } else {
+          member.role = input.role;
+          member.confidentialityLevel = dossier.confidentiality_level ? 1 : 0;
+          member.validUntil = null;
+          member.revokedAt = null;
+          member.revokedBy = null;
+        }
+        await memberRepository.save(member);
+      }
+      await this.auditService.append(manager, {
+        actorId: (user as any).id,
+        action: 'dossier.activated',
+        resourceType: 'Dossier',
+        resourceId: dossier.id,
+        dossierId: dossier.id,
+        beforeState: { status: previousStatus, procedureInstanceId: null },
+        afterState: {
+          status: dossier.status,
+          procedureInstanceId: instance.id,
+          templateVersionId: instance.templateVersionId,
+          openingInvoiceId: openingInvoice?.id ?? null,
+        },
+      });
+      await this.outboxService.enqueue(manager, {
+        eventType: 'dossier.activated',
+        aggregateType: 'Dossier',
+        aggregateId: dossier.id,
+        idempotencyKey: `dossier-activated:${dossier.id}:${instance.id}`,
+        payload: {
+          dossierId: dossier.id,
+          instanceId: instance.id,
+          openingInvoiceId: openingInvoice?.id ?? null,
+          actorId: (user as any).id,
+          fromStatus: previousStatus,
+          toStatus: dossier.status,
+        },
+      });
+      return dossier;
+    });
 
     return this.findOne(id, user);
   }
@@ -947,11 +1227,17 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
     const cabinet = await manager.findOne(Cabinet, {
       where: { id: cabinetId },
     });
-    if (!cabinet?.dossier_opening_fee_enabled) {
+    // Un montant propre au dossier reste applicable même si le tarif global
+    // du cabinet est désactivé.
+    const dossierOverride = Number((dossier as any)?.procedure_costs);
+    const hasOverride = Number.isFinite(dossierOverride) && dossierOverride > 0;
+    if (!cabinet || (!cabinet.dossier_opening_fee_enabled && !hasOverride)) {
       return null;
     }
 
-    const montantHT = Number(cabinet.dossier_opening_fee);
+    const montantHT = hasOverride
+      ? dossierOverride
+      : Number(cabinet.dossier_opening_fee);
     const tauxTVA = Number(cabinet.dossier_opening_fee_tva ?? 0);
     if (
       !Number.isFinite(montantHT) ||
@@ -1070,6 +1356,11 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
         throw new NotFoundException(`Dossier ${id} non trouvé`);
       }
       this.checkDossierAccess(dossier, user);
+      if (dossier.workflow_engine === WorkflowEngine.ACTIONS_V2) {
+        throw new ConflictException(
+          'Un dossier V2 doit être clôturé ou réouvert depuis le contrôle de clôture.',
+        );
+      }
       if (dossier.status !== DossierStatus.CLOSED) {
         throw new BadRequestException(
           'Seul un dossier clôturé peut être archivé',
@@ -1120,7 +1411,8 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
   }
 
   async getStatistics(user: User): Promise<any> {
-    const queryBuilder = this.dossierRepository.createQueryBuilder('dossier')
+    const queryBuilder = this.dossierRepository
+      .createQueryBuilder('dossier')
       .leftJoin('dossier.procedure_type', 'procedure_type')
       .select('procedure_type.name', 'procedure_type')
       .addSelect('COUNT(dossier.id)', 'count')
@@ -1128,27 +1420,43 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
       .groupBy('procedure_type.name');
 
     // Filtrage par utilisateur
-    if (user.role === 'avocat') {
-      queryBuilder.where('dossier.lawyer_id = :lawyerId', { lawyerId: user.id });
+    if (businessRole(user) === 'avocat') {
+      queryBuilder.where('dossier.lawyer_id = :lawyerId', {
+        lawyerId: user.id,
+      });
     }
+    // Isolation multi-tenant : limite aux dossiers du cabinet courant.
+    addTenantCondition(queryBuilder, 'dossier');
+    // Confidentialité : masque les dossiers réservés à l'administration.
+    addDossierVisibilityCondition(queryBuilder, 'dossier');
 
     const stats = await queryBuilder.getRawMany();
 
     // Statistiques par statut
-    const statusStats = await this.dossierRepository
+    const statusStatsQB = this.dossierRepository
       .createQueryBuilder('dossier')
       .select('dossier.status', 'status')
       .addSelect('COUNT(dossier.id)', 'count')
-      .where(user.role === 'avocat' ? 'dossier.lawyer_id = :lawyerId' : '1=1', { lawyerId: user.id })
-      .groupBy('dossier.status')
-      .getRawMany();
+      .where(
+        businessRole(user) === 'avocat'
+          ? 'dossier.lawyer_id = :lawyerId'
+          : '1=1',
+        {
+          lawyerId: user.id,
+        },
+      )
+      .groupBy('dossier.status');
+    addTenantCondition(statusStatsQB, 'dossier');
+    addDossierVisibilityCondition(statusStatsQB, 'dossier');
+    const statusStats = await statusStatsQB.getRawMany();
 
     return {
       by_procedure_type: stats,
       by_status: statusStats,
       total: await this.dossierRepository.count({
-        where: user.role === 'avocat' ? { lawyer: { id: user.id } } : {}
-      })
+        where:
+          businessRole(user) === 'avocat' ? { lawyer: { id: user.id } } : {},
+      }),
     };
   }
 
@@ -1158,13 +1466,17 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
     const settings = await this.cabinetRepository.findOne({
       where: { id: tenantId },
     });
-    const prefix   = (settings?.dossier_prefix ?? 'DOS-').toString();
-    const padding  = 4;
-    const template = (settings?.dossier_number_format ?? '{PREFIX}{YYYY}-{NNNN}').toString();
+    const prefix = (settings?.dossier_prefix ?? 'DOS-').toString();
+    const padding = 4;
+    const template = (
+      settings?.dossier_number_format ?? '{PREFIX}{YYYY}-{NNNN}'
+    ).toString();
 
-    const now  = new Date();
+    const now = new Date();
     const YYYY = now.getFullYear().toString();
-    const MM   = (now.getMonth() + 1).toString().padStart(2, '0');
+    const YY = YYYY.slice(-2);
+    const MM = (now.getMonth() + 1).toString().padStart(2, '0');
+    const DD = now.getDate().toString().padStart(2, '0');
 
     const scopeDescriptor = [
       prefix,
@@ -1172,14 +1484,14 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
       template.includes('{YYYY}') ? YYYY : 'ALL_YEARS',
       template.includes('{MM}') ? MM : 'ALL_MONTHS',
     ].join('|');
-    const scopeKey = createHash('sha256')
-      .update(scopeDescriptor)
-      .digest('hex');
+    const scopeKey = createHash('sha256').update(scopeDescriptor).digest('hex');
     const searchPrefix = template
       .replace('{PREFIX}', prefix)
-      .replace('{YYYY}',   YYYY)
-      .replace('{MM}',     MM)
-      .replace('{NNNN}',   '');
+      .replace('{YYYY}', YYYY)
+      .replace('{YY}', YY)
+      .replace('{MM}', MM)
+      .replace('{DD}', DD)
+      .replace('{NNNN}', '');
     const nextSeq = await this.dataSource.transaction(async (manager) => {
       await manager.query(
         `INSERT IGNORE INTO dossier_number_sequences
@@ -1208,18 +1520,11 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
          LIMIT 1`,
         [tenantId, `${searchPrefix}%`],
       );
-      const lastNumber = String(
-        existingRows?.[0]?.dossier_number ?? '',
-      );
+      const lastNumber = String(existingRows?.[0]?.dossier_number ?? '');
       if (lastNumber.startsWith(searchPrefix)) {
-        const match = lastNumber
-          .slice(searchPrefix.length)
-          .match(/^(\d+)/);
+        const match = lastNumber.slice(searchPrefix.length).match(/^(\d+)/);
         const lastSequence = match ? Number(match[1]) : 0;
-        if (
-          Number.isSafeInteger(lastSequence) &&
-          sequence <= lastSequence
-        ) {
+        if (Number.isSafeInteger(lastSequence) && sequence <= lastSequence) {
           sequence = lastSequence + 1;
         }
       }
@@ -1235,17 +1540,22 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
     const buildNumber = (seq: number) =>
       template
         .replace('{PREFIX}', prefix)
-        .replace('{YYYY}',   YYYY)
-        .replace('{MM}',     MM)
-        .replace('{NNNN}',   seq.toString().padStart(padding, '0'));
+        .replace('{YYYY}', YYYY)
+        .replace('{YY}', YY)
+        .replace('{MM}', MM)
+        .replace('{DD}', DD)
+        .replace('{NNNN}', seq.toString().padStart(padding, '0'));
 
     return buildNumber(nextSeq);
   }
 
-  private async validateProcedureTypeSubtype(typeId: number, subtypeId: number): Promise<boolean | null> {
+  private async validateProcedureTypeSubtype(
+    typeId: number,
+    subtypeId: number,
+  ): Promise<boolean | null> {
     const subtype = await this.procedureTypeRepository.findOne({
       where: { id: subtypeId },
-      relations: ['parent']
+      relations: ['parent'],
     });
     return subtype && Number(subtype.parent_id) === Number(typeId);
   }
@@ -1286,12 +1596,14 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
       document_count: dossier.documents?.length || 0,
       audience_count: dossier.audiences?.length || 0,
       facture_count: dossier.factures?.length || 0,
-      next_audience: dossier.next_audience ? {
-        id: dossier.next_audience.id,
-        audience_date: dossier.next_audience.audience_date,
-        audience_time: dossier.next_audience.audience_time,
-        jurisdiction: dossier.next_audience.jurisdiction
-      } : undefined,
+      next_audience: dossier.next_audience
+        ? {
+            id: dossier.next_audience.id,
+            audience_date: dossier.next_audience.audience_date,
+            audience_time: dossier.next_audience.audience_time,
+            jurisdiction: dossier.next_audience.jurisdiction,
+          }
+        : undefined,
       is_active: dossier.is_active,
       is_closed: dossier.is_closed,
       is_archived: dossier.status === DossierStatus.ARCHIVED,
@@ -1299,349 +1611,215 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
         id: dossier.client.id,
         full_name: dossier.client.full_name,
         email: dossier.client.email,
-        company_name: dossier.client.company_name
+        company_name: dossier.client.company_name,
       },
-      lawyer: {
-        id: dossier.lawyer.id,
-        full_name: dossier.lawyer.full_name,
-        email: dossier.lawyer.email,
-        specialization: dossier.lawyer.specialization
-      },
-      procedure_type: {
-        id: dossier.procedure_type.id,
-        name: dossier.procedure_type.name,
-        code: dossier.procedure_type.code
-      },
-      procedure_subtype: {
-        id: dossier.procedure_subtype.id,
-        name: dossier.procedure_subtype.name,
-        code: dossier.procedure_subtype.code
-      }
+      lawyer: dossier.lawyer
+        ? {
+            id: dossier.lawyer.id,
+            full_name: dossier.lawyer.full_name,
+            email: dossier.lawyer.email,
+            specialization: dossier.lawyer.specialization,
+          }
+        : null,
+      procedure_type: dossier.procedure_type
+        ? {
+            id: dossier.procedure_type.id,
+            name: dossier.procedure_type.name,
+            code: dossier.procedure_type.code,
+          }
+        : null,
+      procedure_subtype: dossier.procedure_subtype
+        ? {
+            id: dossier.procedure_subtype.id,
+            name: dossier.procedure_subtype.name,
+            code: dossier.procedure_subtype.code,
+          }
+        : null,
     });
 
     return response;
   }
 
-
-async getCollaboratorDossiers(
-  collaboratorId: number,
-  paginationParams?: PaginationParamsDto
-): Promise<DossierResponseDto[] | any> {
-  
-  // Vérifier l'existence du collaborateur
-  const collaborator = await this.userRepository.findOne({
-    where: { id: collaboratorId }
-  });
-
-  if (!collaborator) {
-    throw new NotFoundException(`Collaborateur avec l'ID ${collaboratorId} non trouvé`);
-  }
-
-  // Construire la requête de base
-  const queryBuilder = this.dossierRepository
-    .createQueryBuilder('dossier')
-    .leftJoinAndSelect('dossier.collaborators', 'collaborator')
-    .leftJoinAndSelect('dossier.client', 'client')
-    .leftJoinAndSelect('dossier.lawyer', 'lawyer')
-    .leftJoinAndSelect('dossier.procedure_type', 'procedure_type')
-    .leftJoinAndSelect('dossier.procedure_subtype', 'procedure_subtype')
-    .where('collaborator.id = :collaboratorId', { collaboratorId })
-    .orderBy('dossier.created_at', 'DESC');
-
-  // Alternative avec une sous-requête si la première ne fonctionne pas
-  // .where(qb => {
-  //   const subQuery = qb.subQuery()
-  //     .select('dossier.id')
-  //     .from(Dossier, 'd')
-  //     .leftJoin('d.collaborators', 'c')
-  //     .where('c.id = :collaboratorId OR c.id IS NULL')
-  //     .getQuery();
-  //   return 'dossier.id IN ' + subQuery;
-  // }, { collaboratorId })
-
-  // Exécuter la requête
-  const dossiers = await queryBuilder.getMany();
-
-  // Garder uniquement les dossiers où le collaborateur est effectivement membre
-  const filteredDossiers = dossiers.filter(dossier =>
-    dossier.collaborators?.some(c => c.id === collaboratorId)
-  );
-
-  // Si aucun dossier trouvé
-  if (!filteredDossiers || filteredDossiers.length === 0) {
-    // Retourner selon le mode (paginated ou non)
-    if (paginationParams?.page && paginationParams?.limit) {
-      return {
-        data: [],
-        meta: {
-          total: 0,
-          page: paginationParams.page,
-          limit: paginationParams.limit,
-          totalPages: 0,
-          hasNextPage: false,
-          hasPreviousPage: false
-        }
-      };
+  async getCollaboratorDossiers(
+    collaboratorIdParam: number | string,
+    paginationParams?: PaginationParamsDto,
+  ): Promise<DossierResponseDto[] | any> {
+    // Pas de ValidationPipe global : l'identifiant de la route et page/limit
+    // arrivent en texte ('10' + '10' = '1010', 5 !== '5').
+    const collaboratorId = Number(collaboratorIdParam);
+    if (!Number.isInteger(collaboratorId) || collaboratorId < 1) {
+      throw new BadRequestException('Identifiant de collaborateur invalide');
     }
-    return [];
-  }
+    const isPaginated = [paginationParams?.page, paginationParams?.limit].some(
+      (value) => value !== undefined && value !== null && String(value) !== '',
+    );
+    const { page, limit } = normalizePaging(paginationParams);
 
-  // Si pas de pagination, retourner tout
-  if (!paginationParams?.page || !paginationParams?.limit) {
-    return Promise.all(filteredDossiers.map(dossier => this.mapToResponseDto(dossier)));
-  }
+    // Vérifier l'existence du collaborateur
+    const collaborator = await this.userRepository.findOne({
+      where: { id: collaboratorId },
+    });
 
-  // Avec pagination (appliquer la pagination sur les résultats filtrés)
-  const startIndex = (paginationParams.page - 1) * paginationParams.limit;
-  const endIndex = startIndex + paginationParams.limit;
-  const paginatedDossiers = filteredDossiers.slice(startIndex, endIndex);
-  const total = filteredDossiers.length;
-
-  const dtoDossiers = await Promise.all(
-    paginatedDossiers.map(dossier => this.mapToResponseDto(dossier))
-  );
-
-  return {
-    data: dtoDossiers,
-    meta: {
-      total,
-      page: paginationParams.page,
-      limit: paginationParams.limit,
-      totalPages: Math.ceil(total / paginationParams.limit),
-      hasNextPage: paginationParams.page < Math.ceil(total / paginationParams.limit),
-      hasPreviousPage: paginationParams.page > 1
+    if (!collaborator) {
+      throw new NotFoundException(
+        `Collaborateur avec l'ID ${collaboratorId} non trouvé`,
+      );
     }
-  };
-}
 
-/**
- * ➕ Ajouter un collaborateur (Employee) à un dossier.
- *
- * - Charge le dossier avec ses collaborateurs et les relations nécessaires au mapping.
- * - Vérifie que le collaborateur existe et n'est pas déjà associé.
- * - Bloque l'opération si le dossier est clôturé ou archivé.
- */
-async addCollaborator(
-  dossierId: number,
-  employeeId: number,
-  user?: User,
-): Promise<DossierResponseDto> {
-  const empId = Number(employeeId);
-  if (!empId || Number.isNaN(empId)) {
-    throw new BadRequestException('Le collaborateur (employee_id) est requis');
-  }
+    // Construire la requête de base
+    const queryBuilder = this.dossierRepository
+      .createQueryBuilder('dossier')
+      .leftJoinAndSelect('dossier.collaborators', 'collaborator')
+      .leftJoinAndSelect('dossier.client', 'client')
+      .leftJoinAndSelect('dossier.lawyer', 'lawyer')
+      .leftJoinAndSelect('dossier.procedure_type', 'procedure_type')
+      .leftJoinAndSelect('dossier.procedure_subtype', 'procedure_subtype')
+      .where('collaborator.id = :collaboratorId', { collaboratorId })
+      .orderBy('dossier.created_at', 'DESC');
+    // Isolation multi-tenant : limitée aux dossiers du cabinet courant.
+    addTenantCondition(queryBuilder, 'dossier');
+    // Confidentialité : un collaborateur affecté à un dossier confidentiel ne
+    // le voit pas pour autant — il lui faut une autorisation explicite.
+    addDossierVisibilityCondition(queryBuilder, 'dossier');
 
-  const dossier = await this.dossierRepository.findOne({
-    where: { id: dossierId },
-    relations: ['collaborators', 'client', 'lawyer', 'procedure_type', 'procedure_subtype'],
-  });
+    // Alternative avec une sous-requête si la première ne fonctionne pas
+    // .where(qb => {
+    //   const subQuery = qb.subQuery()
+    //     .select('dossier.id')
+    //     .from(Dossier, 'd')
+    //     .leftJoin('d.collaborators', 'c')
+    //     .where('c.id = :collaboratorId OR c.id IS NULL')
+    //     .getQuery();
+    //   return 'dossier.id IN ' + subQuery;
+    // }, { collaboratorId })
 
-  if (!dossier) {
-    throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
-  }
+    // Exécuter la requête
+    const dossiers = await queryBuilder.getMany();
 
-  if (user) {
-    this.checkDossierAccess(dossier, user);
-  }
-
-  if (dossier.is_closed) {
-    throw new BadRequestException(
-      "Impossible d'ajouter un collaborateur à un dossier clôturé ou archivé",
+    // Garder uniquement les dossiers où le collaborateur est effectivement membre
+    const filteredDossiers = dossiers.filter((dossier) =>
+      dossier.collaborators?.some((c) => c.id === collaboratorId),
     );
-  }
 
-  const employee = await this.userRepository.findOne({ where: { id: empId } });
-  if (!employee) {
-    throw new NotFoundException(`Collaborateur ${empId} non trouvé`);
-  }
-
-  dossier.collaborators = dossier.collaborators || [];
-  const alreadyLinked = dossier.collaborators.some((c) => c.id === empId);
-  if (alreadyLinked) {
-    throw new BadRequestException('Ce collaborateur est déjà associé au dossier');
-  }
-
-  dossier.collaborators.push(employee);
-  const saved = await this.dataSource.transaction(async (manager) => {
-    const persisted = await manager.save(dossier);
-    const repository = manager.getRepository(DossierMember);
-    let member = await repository.findOne({
-      where: { dossierId, userId: empId },
-    });
-    if (!member) {
-      member = repository.create({
-        dossierId,
-        userId: empId,
-        role: DossierMemberRole.COLLABORATOR,
-        confidentialityLevel: dossier.confidentiality_level ? 1 : 0,
-        validFrom: new Date(),
-        validUntil: null,
-        revokedAt: null,
-        revokedBy: null,
-      });
-    } else {
-      member.role = DossierMemberRole.COLLABORATOR;
-      member.revokedAt = null;
-      member.revokedBy = null;
-      member.validUntil = null;
-    }
-    await repository.save(member);
-    const auditEvent = await this.auditService.append(manager, {
-      actorId: (user as any)?.id,
-      action: 'dossier.member.added',
-      resourceType: 'DossierMember',
-      resourceId: member.id,
-      dossierId,
-      afterState: { userId: empId, role: member.role },
-    });
-    await this.outboxService.enqueue(manager, {
-      eventType: 'dossier.member.added',
-      aggregateType: 'Dossier',
-      aggregateId: dossierId,
-      idempotencyKey: `dossier-member-added:${auditEvent.id}`,
-      payload: { dossierId, userId: empId },
-    });
-    return persisted;
-  });
-
-  return this.mapToResponseDto(saved);
-}
-
-/**
- * ➖ Retirer un collaborateur (Employee) d'un dossier.
- */
-async removeCollaborator(
-  dossierId: number,
-  employeeId: number,
-  user?: User,
-): Promise<DossierResponseDto> {
-  const empId = Number(employeeId);
-  if (!empId || Number.isNaN(empId)) {
-    throw new BadRequestException('Le collaborateur (employee_id) est requis');
-  }
-
-  const dossier = await this.dossierRepository.findOne({
-    where: { id: dossierId },
-    relations: ['collaborators', 'client', 'lawyer', 'procedure_type', 'procedure_subtype'],
-  });
-
-  if (!dossier) {
-    throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
-  }
-
-  if (user) {
-    this.checkDossierAccess(dossier, user);
-  }
-
-  if (dossier.is_closed) {
-    throw new BadRequestException(
-      "Impossible de retirer un collaborateur d'un dossier clôturé ou archivé",
-    );
-  }
-
-  dossier.collaborators = (dossier.collaborators || []).filter((c) => c.id !== empId);
-  const saved = await this.dataSource.transaction(async (manager) => {
-    const persisted = await manager.save(dossier);
-    const repository = manager.getRepository(DossierMember);
-    const member = await repository.findOne({
-      where: { dossierId, userId: empId },
-    });
-    if (member && !member.revokedAt) {
-      member.revokedAt = new Date();
-      member.revokedBy = Number((user as any)?.id) || null;
-      await repository.save(member);
-      const auditEvent = await this.auditService.append(manager, {
-        actorId: (user as any)?.id,
-        action: 'dossier.member.revoked',
-        resourceType: 'DossierMember',
-        resourceId: member.id,
-        dossierId,
-        beforeState: { userId: empId, revokedAt: null },
-        afterState: { userId: empId, revokedAt: member.revokedAt },
-      });
-      await this.outboxService.enqueue(manager, {
-        eventType: 'dossier.member.revoked',
-        aggregateType: 'Dossier',
-        aggregateId: dossierId,
-        idempotencyKey: `dossier-member-revoked:${auditEvent.id}`,
-        payload: {
-          dossierId,
-          userId: empId,
-          revokeRealtimeAccess: true,
-          removeFromConversation: true,
-        },
-      });
-    }
-    return persisted;
-  });
-
-  return this.mapToResponseDto(saved);
-}
-
-/**
- * 🔄 Synchroniser la liste complète des collaborateurs d'un dossier.
- * Remplace l'ensemble des collaborateurs par la liste fournie.
- */
-async syncCollaborators(
-  dossierId: number,
-  employeeIds: number[],
-  user?: User,
-): Promise<DossierResponseDto> {
-  const dossier = await this.dossierRepository.findOne({
-    where: { id: dossierId },
-    relations: ['collaborators', 'client', 'lawyer', 'procedure_type', 'procedure_subtype'],
-  });
-
-  if (!dossier) {
-    throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
-  }
-
-  if (user) {
-    this.checkDossierAccess(dossier, user);
-  }
-
-  if (dossier.is_closed) {
-    throw new BadRequestException(
-      "Impossible de modifier les collaborateurs d'un dossier clôturé ou archivé",
-    );
-  }
-
-  // Charger les employees correspondants
-  const employees = employeeIds.length > 0
-    ? await this.userRepository.find({
-        where: employeeIds.map((id) => ({ id })),
-      })
-    : [];
-  const requestedEmployeeIds = [...new Set(employeeIds.map(Number))];
-  if (employees.length !== requestedEmployeeIds.length) {
-    throw new BadRequestException(
-      'Un ou plusieurs collaborateurs sont inconnus du cabinet',
-    );
-  }
-
-  dossier.collaborators = employees;
-  const saved = await this.dataSource.transaction(async (manager) => {
-    const persisted = await manager.save(dossier);
-    const repository = manager.getRepository(DossierMember);
-    const currentMembers = await repository.find({
-      where: { dossierId, role: DossierMemberRole.COLLABORATOR },
-    });
-    const desired = new Set(requestedEmployeeIds);
-    const changed: Array<Record<string, any>> = [];
-    for (const member of currentMembers) {
-      if (!desired.has(member.userId) && !member.revokedAt) {
-        member.revokedAt = new Date();
-        member.revokedBy = Number((user as any)?.id) || null;
-        await repository.save(member);
-        changed.push({ userId: member.userId, action: 'REVOKED' });
+    // Si aucun dossier trouvé
+    if (!filteredDossiers || filteredDossiers.length === 0) {
+      // Retourner selon le mode (paginated ou non)
+      if (isPaginated) {
+        return {
+          data: [],
+          meta: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+        };
       }
+      return [];
     }
-    for (const employeeId of desired) {
-      let member = currentMembers.find((item) => item.userId === employeeId);
+
+    // Si pas de pagination, retourner tout
+    if (!isPaginated) {
+      return Promise.all(
+        filteredDossiers.map((dossier) => this.mapToResponseDto(dossier)),
+      );
+    }
+
+    // Avec pagination (appliquer la pagination sur les résultats filtrés)
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedDossiers = filteredDossiers.slice(startIndex, endIndex);
+    const total = filteredDossiers.length;
+
+    const dtoDossiers = await Promise.all(
+      paginatedDossiers.map((dossier) => this.mapToResponseDto(dossier)),
+    );
+
+    return {
+      data: dtoDossiers,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page < Math.ceil(total / limit),
+        hasPreviousPage: page > 1,
+      },
+    };
+  }
+
+  /**
+   * ➕ Ajouter un collaborateur (Employee) à un dossier.
+   *
+   * - Charge le dossier avec ses collaborateurs et les relations nécessaires au mapping.
+   * - Vérifie que le collaborateur existe et n'est pas déjà associé.
+   * - Bloque l'opération si le dossier est clôturé ou archivé.
+   */
+  async addCollaborator(
+    dossierId: number,
+    employeeId: number,
+    user?: User,
+  ): Promise<DossierResponseDto> {
+    const empId = Number(employeeId);
+    if (!empId || Number.isNaN(empId)) {
+      throw new BadRequestException(
+        'Le collaborateur (employee_id) est requis',
+      );
+    }
+
+    const dossier = await this.dossierRepository.findOne({
+      where: { id: dossierId },
+      relations: [
+        'collaborators',
+        'client',
+        'lawyer',
+        'procedure_type',
+        'procedure_subtype',
+      ],
+    });
+
+    if (!dossier) {
+      throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
+    }
+
+    if (user) {
+      this.checkDossierAccess(dossier, user);
+    }
+
+    if (dossier.is_closed) {
+      throw new BadRequestException(
+        "Impossible d'ajouter un collaborateur à un dossier clôturé ou archivé",
+      );
+    }
+
+    const employee = await this.userRepository.findOne({
+      where: { id: empId },
+    });
+    if (!employee) {
+      throw new NotFoundException(`Collaborateur ${empId} non trouvé`);
+    }
+
+    dossier.collaborators = dossier.collaborators || [];
+    const alreadyLinked = dossier.collaborators.some((c) => c.id === empId);
+    if (alreadyLinked) {
+      throw new BadRequestException(
+        'Ce collaborateur est déjà associé au dossier',
+      );
+    }
+
+    dossier.collaborators.push(employee);
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const persisted = await manager.save(dossier);
+      const repository = manager.getRepository(DossierMember);
+      let member = await repository.findOne({
+        where: { dossierId, userId: empId },
+      });
       if (!member) {
         member = repository.create({
           dossierId,
-          userId: employeeId,
+          userId: empId,
           role: DossierMemberRole.COLLABORATOR,
           confidentialityLevel: dossier.confidentiality_level ? 1 : 0,
           validFrom: new Date(),
@@ -1649,45 +1827,238 @@ async syncCollaborators(
           revokedAt: null,
           revokedBy: null,
         });
-        changed.push({ userId: employeeId, action: 'ADDED' });
-      } else if (member.revokedAt) {
+      } else {
+        member.role = DossierMemberRole.COLLABORATOR;
         member.revokedAt = null;
         member.revokedBy = null;
         member.validUntil = null;
-        changed.push({ userId: employeeId, action: 'RESTORED' });
       }
-      member.confidentialityLevel = dossier.confidentiality_level ? 1 : 0;
       await repository.save(member);
-    }
-    if (changed.length > 0) {
       const auditEvent = await this.auditService.append(manager, {
         actorId: (user as any)?.id,
-        action: 'dossier.members.synchronized',
-        resourceType: 'Dossier',
-        resourceId: dossierId,
+        action: 'dossier.member.added',
+        resourceType: 'DossierMember',
+        resourceId: member.id,
         dossierId,
-        afterState: { members: requestedEmployeeIds, changes: changed },
+        afterState: { userId: empId, role: member.role },
       });
       await this.outboxService.enqueue(manager, {
-        eventType: 'dossier.members.synchronized',
+        eventType: 'dossier.member.added',
         aggregateType: 'Dossier',
         aggregateId: dossierId,
-        idempotencyKey: `dossier-members-synchronized:${auditEvent.id}`,
-        payload: {
-          dossierId,
-          changes: changed,
-          revokeRealtimeAccess: true,
-          synchronizeConversation: true,
-        },
+        idempotencyKey: `dossier-member-added:${auditEvent.id}`,
+        payload: { dossierId, userId: empId },
       });
+      return persisted;
+    });
+    // Seule la relation ManyToMany change : pas d'afterUpdate, synchro explicite.
+    await this.dossierChatSync.sync(saved.id);
+
+    return this.mapToResponseDto(saved);
+  }
+
+  /**
+   * ➖ Retirer un collaborateur (Employee) d'un dossier.
+   */
+  async removeCollaborator(
+    dossierId: number,
+    employeeId: number,
+    user?: User,
+  ): Promise<DossierResponseDto> {
+    const empId = Number(employeeId);
+    if (!empId || Number.isNaN(empId)) {
+      throw new BadRequestException(
+        'Le collaborateur (employee_id) est requis',
+      );
     }
-    return persisted;
-  });
 
-  return this.mapToResponseDto(saved);
-}
+    const dossier = await this.dossierRepository.findOne({
+      where: { id: dossierId },
+      relations: [
+        'collaborators',
+        'client',
+        'lawyer',
+        'procedure_type',
+        'procedure_subtype',
+      ],
+    });
 
-/**
+    if (!dossier) {
+      throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
+    }
+
+    if (user) {
+      this.checkDossierAccess(dossier, user);
+    }
+
+    if (dossier.is_closed) {
+      throw new BadRequestException(
+        "Impossible de retirer un collaborateur d'un dossier clôturé ou archivé",
+      );
+    }
+
+    dossier.collaborators = (dossier.collaborators || []).filter(
+      (c) => c.id !== empId,
+    );
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const persisted = await manager.save(dossier);
+      const repository = manager.getRepository(DossierMember);
+      const member = await repository.findOne({
+        where: { dossierId, userId: empId },
+      });
+      if (member && !member.revokedAt) {
+        member.revokedAt = new Date();
+        member.revokedBy = Number((user as any)?.id) || null;
+        await repository.save(member);
+        const auditEvent = await this.auditService.append(manager, {
+          actorId: (user as any)?.id,
+          action: 'dossier.member.revoked',
+          resourceType: 'DossierMember',
+          resourceId: member.id,
+          dossierId,
+          beforeState: { userId: empId, revokedAt: null },
+          afterState: { userId: empId, revokedAt: member.revokedAt },
+        });
+        await this.outboxService.enqueue(manager, {
+          eventType: 'dossier.member.revoked',
+          aggregateType: 'Dossier',
+          aggregateId: dossierId,
+          idempotencyKey: `dossier-member-revoked:${auditEvent.id}`,
+          payload: {
+            dossierId,
+            userId: empId,
+            revokeRealtimeAccess: true,
+            removeFromConversation: true,
+          },
+        });
+      }
+      return persisted;
+    });
+    // Seule la relation ManyToMany change : pas d'afterUpdate, synchro explicite.
+    await this.dossierChatSync.sync(saved.id);
+
+    return this.mapToResponseDto(saved);
+  }
+
+  /**
+   * 🔄 Synchroniser la liste complète des collaborateurs d'un dossier.
+   * Remplace l'ensemble des collaborateurs par la liste fournie.
+   */
+  async syncCollaborators(
+    dossierId: number,
+    employeeIds: number[],
+    user?: User,
+  ): Promise<DossierResponseDto> {
+    const dossier = await this.dossierRepository.findOne({
+      where: { id: dossierId },
+      relations: [
+        'collaborators',
+        'client',
+        'lawyer',
+        'procedure_type',
+        'procedure_subtype',
+      ],
+    });
+
+    if (!dossier) {
+      throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
+    }
+
+    if (user) {
+      this.checkDossierAccess(dossier, user);
+    }
+
+    if (dossier.is_closed) {
+      throw new BadRequestException(
+        "Impossible de modifier les collaborateurs d'un dossier clôturé ou archivé",
+      );
+    }
+
+    // Charger les employees correspondants
+    const employees =
+      employeeIds.length > 0
+        ? await this.userRepository.find({
+            where: employeeIds.map((id) => ({ id })),
+          })
+        : [];
+    const requestedEmployeeIds = [...new Set(employeeIds.map(Number))];
+    if (employees.length !== requestedEmployeeIds.length) {
+      throw new BadRequestException(
+        'Un ou plusieurs collaborateurs sont inconnus du cabinet',
+      );
+    }
+
+    dossier.collaborators = employees;
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const persisted = await manager.save(dossier);
+      const repository = manager.getRepository(DossierMember);
+      const currentMembers = await repository.find({
+        where: { dossierId, role: DossierMemberRole.COLLABORATOR },
+      });
+      const desired = new Set(requestedEmployeeIds);
+      const changed: Array<Record<string, any>> = [];
+      for (const member of currentMembers) {
+        if (!desired.has(member.userId) && !member.revokedAt) {
+          member.revokedAt = new Date();
+          member.revokedBy = Number((user as any)?.id) || null;
+          await repository.save(member);
+          changed.push({ userId: member.userId, action: 'REVOKED' });
+        }
+      }
+      for (const employeeId of desired) {
+        let member = currentMembers.find((item) => item.userId === employeeId);
+        if (!member) {
+          member = repository.create({
+            dossierId,
+            userId: employeeId,
+            role: DossierMemberRole.COLLABORATOR,
+            confidentialityLevel: dossier.confidentiality_level ? 1 : 0,
+            validFrom: new Date(),
+            validUntil: null,
+            revokedAt: null,
+            revokedBy: null,
+          });
+          changed.push({ userId: employeeId, action: 'ADDED' });
+        } else if (member.revokedAt) {
+          member.revokedAt = null;
+          member.revokedBy = null;
+          member.validUntil = null;
+          changed.push({ userId: employeeId, action: 'RESTORED' });
+        }
+        member.confidentialityLevel = dossier.confidentiality_level ? 1 : 0;
+        await repository.save(member);
+      }
+      if (changed.length > 0) {
+        const auditEvent = await this.auditService.append(manager, {
+          actorId: (user as any)?.id,
+          action: 'dossier.members.synchronized',
+          resourceType: 'Dossier',
+          resourceId: dossierId,
+          dossierId,
+          afterState: { members: requestedEmployeeIds, changes: changed },
+        });
+        await this.outboxService.enqueue(manager, {
+          eventType: 'dossier.members.synchronized',
+          aggregateType: 'Dossier',
+          aggregateId: dossierId,
+          idempotencyKey: `dossier-members-synchronized:${auditEvent.id}`,
+          payload: {
+            dossierId,
+            changes: changed,
+            revokeRealtimeAccess: true,
+            synchronizeConversation: true,
+          },
+        });
+      }
+      return persisted;
+    });
+    // Seule la relation ManyToMany change : pas d'afterUpdate, synchro explicite.
+    await this.dossierChatSync.sync(saved.id);
+
+    return this.mapToResponseDto(saved);
+  }
+
+  /**
    * Uploade un fichier, crée le DocumentCustomer et le lie à la visite de sous-étape.
    *
    * Résolution des IDs :
@@ -1709,13 +2080,13 @@ async syncCollaborators(
 
     // 2. Résoudre les IDs de visite : DTO > visite courante automatique
     let subStageVisitId = dto.sub_stage_visit_id;
-    let stageVisitId    = dto.stage_visit_id;
+    let stageVisitId = dto.stage_visit_id;
 
     if (!subStageVisitId || !stageVisitId) {
-      const currentVisit = await this.getCurrentStageVisit(dossier as any);
+      const currentVisit = await this.getCurrentStageVisit(dossier);
       if (currentVisit) {
         subStageVisitId ??= currentVisit.currentSubStageVisitId ?? undefined;
-        stageVisitId    ??= currentVisit.id;
+        stageVisitId ??= currentVisit.id;
       }
     }
 
@@ -1723,13 +2094,13 @@ async syncCollaborators(
     const created = await this.documentVersionService.createDocument(
       {
         document_type_id: dto.document_type_id,
-        category_id:      dto.category_id,
-        dossier_id:       dossierId,
-        name:             dto.name,
-        description:      dto.description,
-        is_confidential:  dto.is_confidential,
-        strict:           true,
-        stage_visit_id:     stageVisitId,
+        category_id: dto.category_id,
+        dossier_id: dossierId,
+        name: dto.name,
+        description: dto.description,
+        is_confidential: dto.is_confidential,
+        strict: true,
+        stage_visit_id: stageVisitId,
         sub_stage_visit_id: subStageVisitId,
         file,
       },
@@ -1741,217 +2112,236 @@ async syncCollaborators(
     return created;
   }
 
-async getCurrentStageVisit(dossier: Dossier): Promise<StageVisit | null> {
-  if(dossier?.procedureInstanceId)
-    return await this.procedureInstanceService.getCurrentStageVisit(dossier?.procedureInstanceId)
-  return null
-}
-
-async closeDossier(
-  id: number,
-  user: User,
-  closeDto: CloseDossierDto,
-): Promise<DossierResponseDto> {
-  await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
-    const dossier = await manager.findOne(Dossier, {
-      where: { id },
-      relations: [
-        'client',
-        'lawyer',
-        'collaborators',
-        'audiences',
-        'factures',
-      ],
-      lock: { mode: 'pessimistic_write' },
-    });
-    if (!dossier) {
-      throw new NotFoundException(`Dossier ${id} non trouvé`);
+  /**
+   * Archive le document de clôture PDF généré côté frontend dans les
+   * documents du dossier (sans rattachement à une visite de procédure).
+   */
+  async archiveClosureDocument(
+    dossierId: number,
+    file: Express.Multer.File,
+    user: any,
+  ) {
+    if (!file) throw new BadRequestException('Aucun fichier fourni');
+    const dossier = await this.findOne(dossierId, user);
+    const customerId: number =
+      (dossier as any).client?.id ?? (dossier as any).client_id;
+    if (!customerId) {
+      throw new NotFoundException(`Dossier #${dossierId} : client introuvable`);
     }
-    this.checkDossierAccess(dossier, user);
-    if (dossier.status !== DossierStatus.ACTIVE) {
-      throw new BadRequestException(
-        `Seul un dossier actif peut être clôturé (cycle actuel : ${dossier.status})`,
+    const stamp = new Date().toISOString().slice(0, 10);
+    return this.documentCustomerService.create(
+      {
+        dossier_id: dossierId,
+        customer_id: customerId,
+        name: `Cloture-${dossier.dossier_number ?? dossierId}-${stamp}.pdf`,
+        description: 'Document de clôture du dossier',
+        strict: true,
+        file,
+      } as any,
+      user?.id,
+    );
+  }
+  async getCurrentStageVisit(dossier: Dossier): Promise<StageVisit | null> {
+    if (dossier?.procedureInstanceId)
+      return await this.procedureInstanceService.getCurrentStageVisit(
+        dossier?.procedureInstanceId,
       );
-    }
-
-    const violations: string[] = [];
-    if (!dossier.procedureInstanceId) {
-      violations.push('aucune instance procédurale n’est rattachée');
-    } else {
-      const instance = await manager.findOne(ProcedureInstance, {
-        where: { id: dossier.procedureInstanceId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!instance) {
-        violations.push('l’instance procédurale rattachée est introuvable');
-      } else if (instance.status !== InstanceStatus.COMPLETED) {
-        violations.push(`l’instance procédurale est ${instance.status}`);
-      }
-    }
-
-    if (
-      dossier.audiences?.some(
-        (audience) => audience.status === AudienceStatus.SCHEDULED,
-      )
-    ) {
-      violations.push('au moins une audience est encore programmée');
-    }
-    if (
-      dossier.factures?.some(
-        (facture) => !this.isTerminalInvoice(facture),
-      )
-    ) {
-      violations.push(
-        'au moins une facture n’est ni payée ni annulée',
-      );
-    }
-    if (
-      !(dossier.factures ?? []).some(
-        (facture) => facture.nature === InvoiceNature.FINAL,
-      )
-    ) {
-      violations.push('la facture finale du dossier est manquante');
-    }
-    if (!closeDto.outcome_notes?.trim()) {
-      violations.push('le rapport final est manquant');
-    }
-    if (
-      [DossierOutcome.WON, DossierOutcome.LOST].includes(closeDto.outcome) &&
-      !closeDto.final_decision_text?.trim()
-    ) {
-      violations.push('la décision finale est manquante');
-    }
-
-    const permissions: string[] = (user as any)?.permissions ?? [];
-    const overrideReason = closeDto.override_reason?.trim();
-    const canOverride =
-      closeDto.force === true &&
-      permissions.includes('override_dossier_closure') &&
-      !!overrideReason;
-    if (violations.length > 0 && !canOverride) {
-      throw new BadRequestException({
-        message: 'Les préconditions de clôture ne sont pas satisfaites',
-        violations,
-      });
-    }
-
-    const beforeState = {
-      status: dossier.status,
-      outcome: dossier.outcome ?? null,
-      closingDate: dossier.closing_date ?? null,
-    };
-    this.applyClosureData(dossier, closeDto);
-    const saved = await manager.save(dossier);
-    const audit = await this.auditService.append(manager, {
-      actorId: (user as any)?.id,
-      action: canOverride
-        ? 'dossier.closed.with_override'
-        : 'dossier.closed',
-      resourceType: 'Dossier',
-      resourceId: dossier.id,
-      dossierId: dossier.id,
-      beforeState,
-      afterState: {
-        status: saved.status,
-        outcome: saved.outcome,
-        closingDate: saved.closing_date,
-        violations,
-        overrideReason: canOverride ? overrideReason : null,
-      },
-      justification: canOverride ? overrideReason : undefined,
-    });
-    await this.outboxService.enqueue(manager, {
-      eventType: 'dossier.closed',
-      aggregateType: 'Dossier',
-      aggregateId: dossier.id,
-      idempotencyKey: `dossier-closed:${audit.id}`,
-      payload: {
-        dossierId: dossier.id,
-        actorId: (user as any)?.id,
-        sendReportToClient: closeDto.send_report_to_client === true,
-        overridden: canOverride,
-        fromStatus: beforeState.status,
-        toStatus: saved.status,
-      },
-    });
-  });
-
-  return this.findOne(id, user);
-}
-
-private applyClosureData(
-  dossier: Dossier,
-  closeDto: CloseDossierDto,
-): void {
-  dossier.status = DossierStatus.CLOSED;
-  dossier.closing_date = new Date();
-  dossier.outcome = closeDto.outcome;
-  dossier.outcome_date = closeDto.outcome_date
-    ? new Date(closeDto.outcome_date)
-    : new Date();
-  dossier.outcome_notes = closeDto.outcome_notes.trim();
-  dossier.final_decision = closeDto.final_decision_text?.trim() || null;
-  if (closeDto.client_satisfaction !== undefined) {
-    dossier.client_satisfaction = closeDto.client_satisfaction;
+    return null;
   }
 
-  dossier.damages_awarded =
-    closeDto.outcome === DossierOutcome.WON
-      ? (closeDto.damages_awarded ?? 0)
-      : 0;
-  dossier.costs_awarded =
-    closeDto.outcome === DossierOutcome.WON
-      ? (closeDto.costs_awarded ?? 0)
-      : 0;
-  dossier.settlement_amount =
-    closeDto.outcome === DossierOutcome.SETTLED
-      ? (closeDto.settlement_amount ?? 0)
-      : 0;
-  dossier.settlement_terms =
-    closeDto.outcome === DossierOutcome.SETTLED
-      ? (closeDto.settlement_terms?.trim() ?? '')
-      : '';
-}
+  async closeDossier(
+    id: number,
+    user: User,
+    closeDto: CloseDossierDto,
+  ): Promise<DossierResponseDto> {
+    await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const dossier = await manager.findOne(Dossier, {
+        where: { id },
+        relations: [
+          'client',
+          'lawyer',
+          'collaborators',
+          'audiences',
+          'factures',
+        ],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!dossier) {
+        throw new NotFoundException(`Dossier ${id} non trouvé`);
+      }
+      this.checkDossierAccess(dossier, user);
+      if (dossier.status !== DossierStatus.ACTIVE) {
+        throw new BadRequestException(
+          `Seul un dossier actif peut être clôturé (cycle actuel : ${dossier.status})`,
+        );
+      }
 
-private isTerminalInvoice(
-  invoice: { status: StatutFacture; nature?: InvoiceNature },
-): boolean {
-  if (invoice.nature === InvoiceNature.CREDIT_NOTE) {
-    return [StatutFacture.VALIDEE, StatutFacture.ANNULEE].includes(
+      const violations: string[] = [];
+      if (!dossier.procedureInstanceId) {
+        violations.push('aucune instance procédurale n’est rattachée');
+      } else {
+        const instance = await manager.findOne(ProcedureInstance, {
+          where: { id: dossier.procedureInstanceId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!instance) {
+          violations.push('l’instance procédurale rattachée est introuvable');
+        } else if (instance.status !== InstanceStatus.COMPLETED) {
+          violations.push(`l’instance procédurale est ${instance.status}`);
+        }
+      }
+
+      if (
+        dossier.audiences?.some(
+          (audience) => audience.status === AudienceStatus.SCHEDULED,
+        )
+      ) {
+        violations.push('au moins une audience est encore programmée');
+      }
+      if (
+        dossier.factures?.some((facture) => !this.isTerminalInvoice(facture))
+      ) {
+        violations.push('au moins une facture n’est ni payée ni annulée');
+      }
+      if (
+        !(dossier.factures ?? []).some(
+          (facture) => facture.nature === InvoiceNature.FINAL,
+        )
+      ) {
+        violations.push('la facture finale du dossier est manquante');
+      }
+      if (!closeDto.outcome_notes?.trim()) {
+        violations.push('le rapport final est manquant');
+      }
+      if (
+        [DossierOutcome.WON, DossierOutcome.LOST].includes(closeDto.outcome) &&
+        !closeDto.final_decision_text?.trim()
+      ) {
+        violations.push('la décision finale est manquante');
+      }
+
+      const permissions: string[] = (user as any)?.permissions ?? [];
+      const overrideReason = closeDto.override_reason?.trim();
+      const canOverride =
+        closeDto.force === true &&
+        permissions.includes('override_dossier_closure') &&
+        !!overrideReason;
+      if (violations.length > 0 && !canOverride) {
+        throw new BadRequestException({
+          message: 'Les préconditions de clôture ne sont pas satisfaites',
+          violations,
+        });
+      }
+
+      const beforeState = {
+        status: dossier.status,
+        outcome: dossier.outcome ?? null,
+        closingDate: dossier.closing_date ?? null,
+      };
+      this.applyClosureData(dossier, closeDto);
+      const saved = await manager.save(dossier);
+      const audit = await this.auditService.append(manager, {
+        actorId: (user as any)?.id,
+        action: canOverride ? 'dossier.closed.with_override' : 'dossier.closed',
+        resourceType: 'Dossier',
+        resourceId: dossier.id,
+        dossierId: dossier.id,
+        beforeState,
+        afterState: {
+          status: saved.status,
+          outcome: saved.outcome,
+          closingDate: saved.closing_date,
+          violations,
+          overrideReason: canOverride ? overrideReason : null,
+        },
+        justification: canOverride ? overrideReason : undefined,
+      });
+      await this.outboxService.enqueue(manager, {
+        eventType: 'dossier.closed',
+        aggregateType: 'Dossier',
+        aggregateId: dossier.id,
+        idempotencyKey: `dossier-closed:${audit.id}`,
+        payload: {
+          dossierId: dossier.id,
+          actorId: (user as any)?.id,
+          sendReportToClient: closeDto.send_report_to_client === true,
+          overridden: canOverride,
+          fromStatus: beforeState.status,
+          toStatus: saved.status,
+        },
+      });
+    });
+
+    return this.findOne(id, user);
+  }
+
+  private applyClosureData(dossier: Dossier, closeDto: CloseDossierDto): void {
+    dossier.status = DossierStatus.CLOSED;
+    dossier.closing_date = new Date();
+    dossier.outcome = closeDto.outcome;
+    dossier.outcome_date = closeDto.outcome_date
+      ? new Date(closeDto.outcome_date)
+      : new Date();
+    dossier.outcome_notes = closeDto.outcome_notes.trim();
+    dossier.final_decision = closeDto.final_decision_text?.trim() || null;
+    if (closeDto.client_satisfaction !== undefined) {
+      dossier.client_satisfaction = closeDto.client_satisfaction;
+    }
+
+    dossier.damages_awarded =
+      closeDto.outcome === DossierOutcome.WON
+        ? (closeDto.damages_awarded ?? 0)
+        : 0;
+    dossier.costs_awarded =
+      closeDto.outcome === DossierOutcome.WON
+        ? (closeDto.costs_awarded ?? 0)
+        : 0;
+    dossier.settlement_amount =
+      closeDto.outcome === DossierOutcome.SETTLED
+        ? (closeDto.settlement_amount ?? 0)
+        : 0;
+    dossier.settlement_terms =
+      closeDto.outcome === DossierOutcome.SETTLED
+        ? (closeDto.settlement_terms?.trim() ?? '')
+        : '';
+  }
+
+  private isTerminalInvoice(invoice: {
+    status: StatutFacture;
+    nature?: InvoiceNature;
+  }): boolean {
+    if (invoice.nature === InvoiceNature.CREDIT_NOTE) {
+      return [StatutFacture.VALIDEE, StatutFacture.ANNULEE].includes(
+        invoice.status,
+      );
+    }
+    return [StatutFacture.PAYEE, StatutFacture.ANNULEE].includes(
       invoice.status,
     );
   }
-  return [StatutFacture.PAYEE, StatutFacture.ANNULEE].includes(invoice.status);
-}
 
+  // *******************************************************
 
+  // src/modules/dossiers/dossiers.service.ts
+  // Ajoute ces méthodes après la méthode update() ou dans une section dédiée
 
-// *******************************************************
+  /**
+   * 🔒 Clôturer le dossier
+   */
+  // Dans dossiers.service.ts
+  private async closeDossierLegacy(
+    id: number,
+    user: User,
+    closeDto: CloseDossierDto,
+  ): Promise<DossierResponseDto> {
+    void id;
+    void user;
+    void closeDto;
+    throw new ForbiddenException(
+      'La clôture historique non transactionnelle est désactivée',
+    );
 
-
-
-
-
-// src/modules/dossiers/dossiers.service.ts
-// Ajoute ces méthodes après la méthode update() ou dans une section dédiée
-
-/**
- * 🔒 Clôturer le dossier
- */
-// Dans dossiers.service.ts
-private async closeDossierLegacy(
-  id: number, 
-  user: User,
-  closeDto: CloseDossierDto
-): Promise<DossierResponseDto> {
-  void id;
-  void user;
-  void closeDto;
-  throw new ForbiddenException(
-    'La clôture historique non transactionnelle est désactivée',
-  );
-
-  /*
+    /*
   const dossier = await this.dossierRepository.findOne({
     where: { id },
     relations: [
@@ -1969,6 +2359,11 @@ private async closeDossierLegacy(
   }
 
   this.checkDossierAccess(dossier, user);
+    if (dossier.workflow_engine === WorkflowEngine.ACTIONS_V2) {
+      throw new ConflictException(
+        'Ce dossier utilise le parcours V2. Utilisez le contrôle de clôture dans Traitement.',
+      );
+    }
 
   const violations: string[] = [];
   let instance: ProcedureInstance | null = null;
@@ -2121,124 +2516,134 @@ private async closeDossierLegacy(
   
   return this.findOne(id, user);
   */
-}
-
-
-// Méthodes auxiliaires privées
-private async logDossierClosure(
-  dossier: Dossier, 
-  user: User, 
-  wasAlreadyClosed: boolean
-): Promise<void> {
-  // Créer un log de l'action
-  const logMessage = wasAlreadyClosed 
-    ? `Mise à jour du résultat du dossier ${dossier.dossier_number} (${dossier.outcome}) par ${user.full_name}`
-    : `Clôture du dossier ${dossier.dossier_number} avec résultat ${dossier.outcome} par ${user.full_name}`;
-  
-  // Sauvegarder le log (à implémenter selon votre système de logging)
-  console.log(logMessage);
-  
-  // Optionnel: Sauvegarder dans une table de logs
-  // await this.logRepository.save({
-  //   action: wasAlreadyClosed ? 'UPDATE_OUTCOME' : 'CLOSE_DOSSIER',
-  //   dossier_id: dossier.id,
-  //   user_id: user.id,
-  //   message: logMessage,
-  //   metadata: {
-  //     outcome: dossier.outcome,
-  //     outcome_date: dossier.outcome_date,
-  //     damages_awarded: dossier.damages_awarded,
-  //     costs_awarded: dossier.costs_awarded
-  //   },
-  //   created_at: new Date()
-  // });
-}
-
-private async sendClosureReport(dossier: Dossier, user: User): Promise<void> {
-  // Implémenter l'envoi d'email au client
-  // Exemple:
-  // await this.emailService.sendClosureReport({
-  //   to: dossier.client.email,
-  //   subject: `Clôture du dossier ${dossier.dossier_number}`,
-  //   template: 'dossier-closure',
-  //   data: {
-  //     dossier_number: dossier.dossier_number,
-  //     client_name: dossier.client.full_name,
-  //     outcome: dossier.outcome,
-  //     outcome_date: dossier.outcome_date,
-  //     damages_awarded: dossier.damages_awarded,
-  //     final_decision: dossier.final_decision,
-  //     lawyer_name: user.full_name
-  //   }
-  // });
-}
-
-async getStageVisits(dossierId: number) {
-  const dossier = await this.repository.findOne({where: {id: dossierId}, relations: ['client', 'lawyer','collaborators']});
-  if(!dossier?.procedureInstanceId) {
-    throw new NotFoundException(`Dossier ${dossierId} n'a pas de procedure`);
-  }
-  const workflow = await this.procedureInstanceService.getStageVisitHistory(dossier?.procedureInstanceId);
-  const responseDossierDto = plainToInstance(DossierResponseDto, dossier);
-  return {
-    ...responseDossierDto,
-    workflow
-  }
-}
-
-/**
- * Retourne la liste simplifiée des StageVisit d'un dossier pour les selects de formulaire.
- * Format : { data: [{ id, label, visitNumber, stageName, enteredAt, isActive }] }
- */
-async getStageVisitsForSelect(dossierId: number): Promise<any[] > {
-  const dossier = await this.repository.findOne({ where: { id: dossierId } });
-  if (!dossier?.procedureInstanceId) {
-    return  [];
   }
 
-  const visits = await this.procedureInstanceService.getStageVisitHistory(dossier.procedureInstanceId);
+  // Méthodes auxiliaires privées
+  private async logDossierClosure(
+    dossier: Dossier,
+    user: User,
+    wasAlreadyClosed: boolean,
+  ): Promise<void> {
+    // Créer un log de l'action
+    const logMessage = wasAlreadyClosed
+      ? `Mise à jour du résultat du dossier ${dossier.dossier_number} (${dossier.outcome}) par ${user.full_name}`
+      : `Clôture du dossier ${dossier.dossier_number} avec résultat ${dossier.outcome} par ${user.full_name}`;
 
-  const data = visits.map((v: any) => ({
-    id:          v.id,
-    label:       `${v.stage?.name ?? 'Étape'} — visite #${v.visitNumber}`,
-    visitNumber: v.visitNumber,
-    stageName:   v.stage?.name ?? null,
-    enteredAt:   v.enteredAt,
-    isActive:    !v.exitedAt,
-    badge:       !v.exitedAt ? 'En cours' : 'Terminée', 
-  }));
+    // Sauvegarder le log (à implémenter selon votre système de logging)
+    console.log(logMessage);
 
-  return  data ;
-}
-
-/**
- * Retourne la liste simplifiée des SubStageVisit d'une StageVisit pour les selects de formulaire.
- * Format : { data: [{ id, label, subStageName, isCompleted, startedAt }] }
- */
-async getSubStageVisitsForSelect(dossierId: number, stageVisitId: string): Promise<  any[] > {
-  const dossier = await this.repository.findOne({ where: { id: dossierId } });
-  if (!dossier?.procedureInstanceId) {
-    return [] ;
+    // Optionnel: Sauvegarder dans une table de logs
+    // await this.logRepository.save({
+    //   action: wasAlreadyClosed ? 'UPDATE_OUTCOME' : 'CLOSE_DOSSIER',
+    //   dossier_id: dossier.id,
+    //   user_id: user.id,
+    //   message: logMessage,
+    //   metadata: {
+    //     outcome: dossier.outcome,
+    //     outcome_date: dossier.outcome_date,
+    //     damages_awarded: dossier.damages_awarded,
+    //     costs_awarded: dossier.costs_awarded
+    //   },
+    //   created_at: new Date()
+    // });
   }
 
-  const visits = await this.procedureInstanceService.getStageVisitHistory(dossier.procedureInstanceId);
-  const stageVisit = visits.find((v: any) => v.id === stageVisitId);
-
-  if (!stageVisit) {
-    return [] ;
+  private async sendClosureReport(dossier: Dossier, user: User): Promise<void> {
+    // Implémenter l'envoi d'email au client
+    // Exemple:
+    // await this.emailService.sendClosureReport({
+    //   to: dossier.client.email,
+    //   subject: `Clôture du dossier ${dossier.dossier_number}`,
+    //   template: 'dossier-closure',
+    //   data: {
+    //     dossier_number: dossier.dossier_number,
+    //     client_name: dossier.client.full_name,
+    //     outcome: dossier.outcome,
+    //     outcome_date: dossier.outcome_date,
+    //     damages_awarded: dossier.damages_awarded,
+    //     final_decision: dossier.final_decision,
+    //     lawyer_name: user.full_name
+    //   }
+    // });
   }
 
-  const data = (stageVisit.subStageVisits ?? []).map((ssv: any) => ({
-    id:           ssv.id,
-    label:        `${ssv.subStage?.name ?? 'Sous-étape'} ${ssv.isCompleted ? '✓' : ''}`.trim(),
-    subStageName: ssv.subStage?.name ?? null,
-    isCompleted:  ssv.isCompleted,
-    startedAt:    ssv.startedAt,
-    badge:        ssv.isCompleted ? 'Complétée' : 'En cours',
-  }));
+  async getStageVisits(dossierId: number) {
+    const dossier = await this.repository.findOne({
+      where: { id: dossierId },
+      relations: ['client', 'lawyer', 'collaborators'],
+    });
+    if (!dossier?.procedureInstanceId) {
+      throw new NotFoundException(`Dossier ${dossierId} n'a pas de procedure`);
+    }
+    const workflow = await this.procedureInstanceService.getStageVisitHistory(
+      dossier?.procedureInstanceId,
+    );
+    const responseDossierDto = plainToInstance(DossierResponseDto, dossier);
+    return {
+      ...responseDossierDto,
+      workflow,
+    };
+  }
 
-  return data ;
-}
+  /**
+   * Retourne la liste simplifiée des StageVisit d'un dossier pour les selects de formulaire.
+   * Format : { data: [{ id, label, visitNumber, stageName, enteredAt, isActive }] }
+   */
+  async getStageVisitsForSelect(dossierId: number): Promise<any[]> {
+    const dossier = await this.repository.findOne({ where: { id: dossierId } });
+    if (!dossier?.procedureInstanceId) {
+      return [];
+    }
 
+    const visits = await this.procedureInstanceService.getStageVisitHistory(
+      dossier.procedureInstanceId,
+    );
 
+    const data = visits.map((v: any) => ({
+      id: v.id,
+      label: `${v.stage?.name ?? 'Étape'} — visite #${v.visitNumber}`,
+      visitNumber: v.visitNumber,
+      stageName: v.stage?.name ?? null,
+      enteredAt: v.enteredAt,
+      isActive: !v.exitedAt,
+      badge: !v.exitedAt ? 'En cours' : 'Terminée',
+    }));
+
+    return data;
+  }
+
+  /**
+   * Retourne la liste simplifiée des SubStageVisit d'une StageVisit pour les selects de formulaire.
+   * Format : { data: [{ id, label, subStageName, isCompleted, startedAt }] }
+   */
+  async getSubStageVisitsForSelect(
+    dossierId: number,
+    stageVisitId: string,
+  ): Promise<any[]> {
+    const dossier = await this.repository.findOne({ where: { id: dossierId } });
+    if (!dossier?.procedureInstanceId) {
+      return [];
+    }
+
+    const visits = await this.procedureInstanceService.getStageVisitHistory(
+      dossier.procedureInstanceId,
+    );
+    const stageVisit = visits.find((v: any) => v.id === stageVisitId);
+
+    if (!stageVisit) {
+      return [];
+    }
+
+    const data = (stageVisit.subStageVisits ?? []).map((ssv: any) => ({
+      id: ssv.id,
+      label:
+        `${ssv.subStage?.name ?? 'Sous-étape'} ${ssv.isCompleted ? '✓' : ''}`.trim(),
+      subStageName: ssv.subStage?.name ?? null,
+      isCompleted: ssv.isCompleted,
+      startedAt: ssv.startedAt,
+      badge: ssv.isCompleted ? 'Complétée' : 'En cours',
+    }));
+
+    return data;
+  }
 }

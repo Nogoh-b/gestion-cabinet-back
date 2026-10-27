@@ -9,7 +9,7 @@ import {
   IsNumber,
   IsUUID,
   IsBoolean,
-  Min
+  Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DiligenceType, DiligencePriority } from '../entities/diligence.entity';
@@ -17,15 +17,15 @@ import { DiligenceType, DiligencePriority } from '../entities/diligence.entity';
 export class CreateDiligenceDto {
   @ApiProperty({
     example: 'Due Diligence acquisition Société ABC',
-    description: "Titre de la mission de diligence",
+    description: 'Titre de la mission de diligence',
   })
   @IsString()
   @IsNotEmpty()
   title: string;
 
   @ApiPropertyOptional({
-    example: 'Audit complet dans le cadre de l\'acquisition de la société ABC',
-    description: "Description détaillée de la mission",
+    example: "Audit complet dans le cadre de l'acquisition de la société ABC",
+    description: 'Description détaillée de la mission',
   })
   @IsString()
   @IsOptional()
@@ -33,7 +33,7 @@ export class CreateDiligenceDto {
 
   @ApiProperty({
     example: 15,
-    description: "Identifiant du dossier concerné",
+    description: 'Identifiant du dossier concerné',
   })
   @IsInt()
   @IsNotEmpty()
@@ -50,7 +50,7 @@ export class CreateDiligenceDto {
   @ApiProperty({
     enum: DiligenceType,
     example: DiligenceType.ACQUISITION,
-    description: "Type de diligence",
+    description: 'Type de diligence',
   })
   @IsEnum(DiligenceType)
   @IsNotEmpty()
@@ -59,7 +59,7 @@ export class CreateDiligenceDto {
   @ApiProperty({
     enum: DiligencePriority,
     example: DiligencePriority.HIGH,
-    description: "Priorité de la mission",
+    description: 'Priorité de la mission',
   })
   @IsEnum(DiligencePriority)
   @IsOptional()
@@ -67,7 +67,7 @@ export class CreateDiligenceDto {
 
   @ApiProperty({
     example: '2026-03-01',
-    description: "Date de début de la mission",
+    description: 'Date de début de la mission',
   })
   @IsDateString()
   @IsNotEmpty()
@@ -75,7 +75,7 @@ export class CreateDiligenceDto {
 
   @ApiProperty({
     example: '2026-04-15',
-    description: "Date limite de remise du rapport",
+    description: 'Date limite de remise du rapport',
   })
   @IsDateString()
   @IsNotEmpty()
@@ -83,7 +83,7 @@ export class CreateDiligenceDto {
 
   @ApiPropertyOptional({
     example: 50,
-    description: "Budget en heures",
+    description: 'Budget en heures',
   })
   @IsNumber()
   @Min(0)
@@ -91,8 +91,9 @@ export class CreateDiligenceDto {
   budget_hours?: number;
 
   @ApiPropertyOptional({
-    example: 'Périmètre de l\'audiet : contrats, propriété intellectuelle, litiges...',
-    description: "Périmètre détaillé de la diligence",
+    example:
+      "Périmètre de l'audiet : contrats, propriété intellectuelle, litiges...",
+    description: 'Périmètre détaillé de la diligence',
   })
   @IsString()
   @IsOptional()
@@ -100,25 +101,31 @@ export class CreateDiligenceDto {
 
   @ApiPropertyOptional({
     example: 'REF-2026-001',
-    description: "Référence client pour la mission",
+    description: 'Référence client pour la mission',
   })
   @IsString()
   @IsOptional()
   client_reference?: string;
 
-  @ApiPropertyOptional({ description: 'ID UUID de la visite d\'étape courante (optionnel — prend la priorité sur la détection automatique)' })
+  @ApiPropertyOptional({
+    description:
+      "ID UUID de la visite d'étape courante (optionnel — prend la priorité sur la détection automatique)",
+  })
   @IsUUID()
   @IsOptional()
   stage_visit_id?: string;
 
-  @ApiPropertyOptional({ description: 'ID UUID de la visite de sous-étape courante (optionnel — prend la priorité sur la détection automatique)' })
+  @ApiPropertyOptional({
+    description:
+      'ID UUID de la visite de sous-étape courante (optionnel — prend la priorité sur la détection automatique)',
+  })
   @IsUUID()
   @IsOptional()
   sub_stage_visit_id?: string;
 
   /** Transient — case « Notifier le client » du modal. */
   @ApiPropertyOptional({
-    description: "Notifier le client par e-mail à la création de la diligence",
+    description: 'Notifier le client par e-mail à la création de la diligence',
     example: false,
   })
   @IsBoolean()
@@ -126,7 +133,7 @@ export class CreateDiligenceDto {
   notify_client?: boolean;
 
   @ApiPropertyOptional({
-    description: "Restreindre la diligence aux membres habilités du dossier",
+    description: 'Restreindre la diligence aux membres habilités du dossier',
     default: true,
   })
   @IsBoolean()

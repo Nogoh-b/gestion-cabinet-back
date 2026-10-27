@@ -1,6 +1,10 @@
 // services/procedure-template.service.ts
 import { Repository, DataSource } from 'typeorm';
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import * as jsonLogic from 'json-logic-js';
@@ -26,7 +30,6 @@ import {
   hashProcedureTemplateSnapshot,
 } from '../utils/procedure-template-versioning.util';
 import { ProcedureType } from '../../procedures/entities/procedure.entity';
-
 
 @Injectable()
 export class ProcedureTemplateService {
@@ -73,7 +76,7 @@ export class ProcedureTemplateService {
         for (let i = 0; i < dto.stages.length; i++) {
           const stageDto = dto.stages[i];
           const tempId = stageDto.id || `temp-${Date.now()}-${i}`;
-          
+
           const stage = this.stageRepository.create({
             templateId: template.id,
             order: i,
@@ -83,7 +86,7 @@ export class ProcedureTemplateService {
             canBeReentered: stageDto.canBeReentered ?? true,
           });
           await queryRunner.manager.save(stage);
-          
+
           // Stocker le mapping ID temporaire -> ID réel
           stageIdMap.set(tempId, stage.id);
 
@@ -114,7 +117,9 @@ export class ProcedureTemplateService {
               allowDiligences: configDto.allowDiligences ?? false,
               allowInvoices: configDto.allowInvoices ?? false,
               allowHearings: configDto.allowHearings ?? false,
-              documentTypesAllowed: this.serializeJson(configDto.documentTypesAllowed ?? []),
+              documentTypesAllowed: this.serializeJson(
+                configDto.documentTypesAllowed ?? [],
+              ),
               diligenceConfig: this.serializeJson(configDto.diligenceConfig),
               hearingConfig: this.serializeJson(configDto.hearingConfig),
               invoiceConfig: this.serializeJson(configDto.invoiceConfig),
@@ -128,22 +133,27 @@ export class ProcedureTemplateService {
           for (const transitionDto of dto.transitions) {
             const newFromStageId = stageIdMap.get(transitionDto.fromStageId);
             const newToStageId = stageIdMap.get(transitionDto.toStageId);
-            
+
             if (!newFromStageId || !newToStageId) {
               throw new BadRequestException(
                 `Transition invalide : étape source ou cible étrangère (${transitionDto.fromStageId} → ${transitionDto.toStageId})`,
               );
             }
-            
+
             const transition = this.transitionRepository.create({
               fromStageId: newFromStageId,
               toStageId: newToStageId,
               templateId: template.id,
-              type: transitionDto.type === 'AUTOMATIC' ? TransitionType.AUTOMATIC : TransitionType.MANUAL,
+              type:
+                transitionDto.type === 'AUTOMATIC'
+                  ? TransitionType.AUTOMATIC
+                  : TransitionType.MANUAL,
               label: transitionDto.label || null,
               condition: this.serializeJson(transitionDto.condition),
               triggerEvent: transitionDto.triggerEvent || null,
-              triggerCondition: this.serializeJson(transitionDto.triggerCondition),
+              triggerCondition: this.serializeJson(
+                transitionDto.triggerCondition,
+              ),
               isDefault: transitionDto.isDefault ?? false,
               requiresDecision: transitionDto.requiresDecision ?? true,
               requiresValidation: transitionDto.requiresValidation ?? false,
@@ -159,13 +169,13 @@ export class ProcedureTemplateService {
           for (const cycleDto of dto.cycles) {
             const newFromStageId = stageIdMap.get(cycleDto.fromStageId);
             const newToStageId = stageIdMap.get(cycleDto.toStageId);
-            
+
             if (!newFromStageId || !newToStageId) {
               throw new BadRequestException(
                 `Cycle invalide : étape source ou cible étrangère (${cycleDto.fromStageId} → ${cycleDto.toStageId})`,
               );
             }
-            
+
             const cycle = this.cycleRepository.create({
               templateId: template.id,
               fromStageId: newFromStageId,
@@ -197,7 +207,9 @@ export class ProcedureTemplateService {
     } catch (error) {
       await queryRunner.rollbackTransaction();
       console.error('Error creating template:', error);
-      throw new BadRequestException(`Failed to create template: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to create template: ${error.message}`,
+      );
     } finally {
       await queryRunner.release();
     }
@@ -209,7 +221,7 @@ export class ProcedureTemplateService {
       if (activeOnly === true) {
         where.lifecycleStatus = ProcedureTemplateLifecycle.PUBLISHED;
       }
-      
+
       const templates = await this.templateRepository.find({
         where,
         relations: ['stages', 'stages.subStages', 'stages.config'],
@@ -226,21 +238,22 @@ export class ProcedureTemplateService {
           where: { templateId: template.id },
           relations: ['fromStage', 'toStage'],
         });
-        
+
         // Charger les cycles par templateId
         const cycles = await this.cycleRepository.find({
           where: { templateId: template.id },
         });
-        
+
         (template as any).transitions = transitions;
         (template as any).cycles = cycles;
       }
 
-
       return templates;
     } catch (error) {
       console.error('Error finding templates:', error);
-      throw new BadRequestException(`Failed to find templates: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to find templates: ${error.message}`,
+      );
     }
   }
 
@@ -249,12 +262,12 @@ export class ProcedureTemplateService {
       const template = await this.templateRepository.findOne({
         where: { id },
         relations: ['stages', 'stages.subStages', 'stages.config'],
-      order: {
-        created_at: 'DESC', 
-        stages: { order: 'ASC' },
-      },
+        order: {
+          created_at: 'DESC',
+          stages: { order: 'ASC' },
+        },
       });
-      
+
       if (!template) {
         throw new NotFoundException(`Template with ID ${id} not found`);
       }
@@ -264,20 +277,27 @@ export class ProcedureTemplateService {
         where: { templateId: id },
         relations: ['fromStage', 'toStage'],
       });
-      
+
       // Charger les cycles par templateId
       const cycles = await this.cycleRepository.find({
         where: { templateId: id },
       });
 
-
       // Désérialiser les configurations JSON
       for (const stage of template.stages) {
         if (stage.config) {
-          stage.config.documentTypesAllowed = this.deserializeJson(stage.config.documentTypesAllowed);
-          stage.config.diligenceConfig = this.deserializeJson(stage.config.diligenceConfig);
-          stage.config.hearingConfig = this.deserializeJson(stage.config.hearingConfig);
-          stage.config.invoiceConfig = this.deserializeJson(stage.config.invoiceConfig);
+          stage.config.documentTypesAllowed = this.deserializeJson(
+            stage.config.documentTypesAllowed,
+          );
+          stage.config.diligenceConfig = this.deserializeJson(
+            stage.config.diligenceConfig,
+          );
+          stage.config.hearingConfig = this.deserializeJson(
+            stage.config.hearingConfig,
+          );
+          stage.config.invoiceConfig = this.deserializeJson(
+            stage.config.invoiceConfig,
+          );
         }
       }
 
@@ -293,189 +313,218 @@ export class ProcedureTemplateService {
     }
   }
 
-async update(id: string, dto: UpdateProcedureTemplateDto): Promise<ProcedureTemplate> {
-  const queryRunner = this.dataSource.createQueryRunner();
-  await queryRunner.connect();
-  await queryRunner.startTransaction();
+  async update(
+    id: string,
+    dto: UpdateProcedureTemplateDto,
+  ): Promise<ProcedureTemplate> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-  try {
-    const lockedTemplate = await queryRunner.manager.findOne(ProcedureTemplate, {
-      where: { id },
-      lock: { mode: 'pessimistic_write' },
-    });
-    if (!lockedTemplate) {
-      throw new NotFoundException(`Template with ID ${id} not found`);
-    }
-    if (lockedTemplate.lifecycleStatus !== ProcedureTemplateLifecycle.DRAFT) {
-      throw new BadRequestException(
-        'Une version publiée ou retirée est immuable. Créez une nouvelle version.',
+    try {
+      const lockedTemplate = await queryRunner.manager.findOne(
+        ProcedureTemplate,
+        {
+          where: { id },
+          lock: { mode: 'pessimistic_write' },
+        },
       );
-    }
-    const existingTemplate = await this.loadGraphWithManager(
-      queryRunner.manager,
-      id,
-    );
+      if (!lockedTemplate) {
+        throw new NotFoundException(`Template with ID ${id} not found`);
+      }
+      if (lockedTemplate.lifecycleStatus !== ProcedureTemplateLifecycle.DRAFT) {
+        throw new BadRequestException(
+          'Une version publiée ou retirée est immuable. Créez une nouvelle version.',
+        );
+      }
+      const existingTemplate = await this.loadGraphWithManager(
+        queryRunner.manager,
+        id,
+      );
 
-    // 2. Mettre à jour les champs simples
-    if (dto.name !== undefined) existingTemplate.name = dto.name;
-    if (dto.description !== undefined) existingTemplate.description = dto.description;
+      // 2. Mettre à jour les champs simples
+      if (dto.name !== undefined) existingTemplate.name = dto.name;
+      if (dto.description !== undefined)
+        existingTemplate.description = dto.description;
 
-    await queryRunner.manager.save(existingTemplate);
+      await queryRunner.manager.save(existingTemplate);
       const stageIdMap = new Map<string, string>();
 
-    // 3. Gestion des stages et sous-stages
-    if (dto.stages !== undefined) {
-      await this.updateStages(queryRunner, existingTemplate, dto.stages, dto.stageConfigs, stageIdMap);
-    }
+      // 3. Gestion des stages et sous-stages
+      if (dto.stages !== undefined) {
+        await this.updateStages(
+          queryRunner,
+          existingTemplate,
+          dto.stages,
+          dto.stageConfigs,
+          stageIdMap,
+        );
+      }
 
-    // 4. Gestion des transitions (sans le map, on utilise templateId)
-    if (dto.transitions !== undefined) {
-      await this.updateTransitions(
-        queryRunner,
-        id,
-        dto.transitions,
-        stageIdMap,
+      // 4. Gestion des transitions (sans le map, on utilise templateId)
+      if (dto.transitions !== undefined) {
+        await this.updateTransitions(
+          queryRunner,
+          id,
+          dto.transitions,
+          stageIdMap,
+        );
+      }
+
+      // 5. Gestion des cycles
+      if (dto.cycles !== undefined) {
+        await this.updateCycles(queryRunner, id, stageIdMap, dto.cycles);
+      }
+
+      await queryRunner.commitTransaction();
+      return this.findOne(id);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+      throw new BadRequestException(
+        `Failed to update template: ${error.message}`,
       );
+    } finally {
+      await queryRunner.release();
     }
-
-    // 5. Gestion des cycles
-    if (dto.cycles !== undefined) {
-      await this.updateCycles(queryRunner, id, stageIdMap, dto.cycles);
-    }
-
-    await queryRunner.commitTransaction();
-    return this.findOne(id);
-  } catch (error) {
-    await queryRunner.rollbackTransaction();
-    if (
-      error instanceof BadRequestException ||
-      error instanceof NotFoundException
-    ) {
-      throw error;
-    }
-    throw new BadRequestException(`Failed to update template: ${error.message}`);
-  } finally {
-    await queryRunner.release();
   }
-}
   /**
    * Met à jour les stages et sous-stages
    */
-// services/procedure-template.service.ts
+  // services/procedure-template.service.ts
 
-private async updateStages(
-  queryRunner: any,
-  template: ProcedureTemplate,
-  stagesDto: any[],
-  stageConfigs: Record<string, any> | undefined,
-  stageIdMap: Map<string, string>,
-): Promise<void> {
-  const existingStagesMap = new Map(template.stages.map(stage => [stage.id, stage]));
-  const processedStageIds = new Set<string>();
+  private async updateStages(
+    queryRunner: any,
+    template: ProcedureTemplate,
+    stagesDto: any[],
+    stageConfigs: Record<string, any> | undefined,
+    stageIdMap: Map<string, string>,
+  ): Promise<void> {
+    const existingStagesMap = new Map(
+      template.stages.map((stage) => [stage.id, stage]),
+    );
+    const processedStageIds = new Set<string>();
 
-  // ⚠️ IMPORTANT: D'abord, ajouter TOUS les stages existants au map avec leur propre ID
-  for (const [stageId] of existingStagesMap) {
-    stageIdMap.set(stageId, stageId);
-  }
+    // ⚠️ IMPORTANT: D'abord, ajouter TOUS les stages existants au map avec leur propre ID
+    for (const [stageId] of existingStagesMap) {
+      stageIdMap.set(stageId, stageId);
+    }
 
-  for (let i = 0; i < stagesDto.length; i++) {
-    const stageDto = stagesDto[i];
-    const tempId = stageDto.id || `temp-${Date.now()}-${i}`;
-    
-    const isExisting = stageDto.id 
-      && !stageDto.id.startsWith('temp-')
-      && existingStagesMap.has(stageDto.id);
-    
-    let stage: Stage;
-    
-    if (isExisting) {
-      // Mettre à jour le stage existant
-      stage = existingStagesMap.get(stageDto.id)!;
-      
-      if (stageDto.name !== undefined) stage.name = stageDto.name;
-      if (stageDto.description !== undefined) stage.description = stageDto.description;
-      stage.order = i;
-      if (stageDto.canBeSkipped !== undefined) stage.canBeSkipped = stageDto.canBeSkipped;
-      if (stageDto.canBeReentered !== undefined) stage.canBeReentered = stageDto.canBeReentered;
-      
-      await queryRunner.manager.save(stage);
-      
-      // Mettre à jour les sous-stages
-      if (stageDto.subStages !== undefined) {
-        await this.updateSubStages(queryRunner, stage, stageDto.subStages);
-      }
-      
-      // Mettre à jour la configuration du stage
-      if (stageConfigs && stageConfigs[stageDto.id]) {
-        await this.updateStageConfig(queryRunner, stage.id, stageConfigs[stageDto.id]);
-      }
-      
-      processedStageIds.add(stage.id);
-      
-      // ⚠️ Le stage est déjà dans le map (ajouté au début)
-    } else {
-      // Créer un nouveau stage
-      stage = this.stageRepository.create({
-        templateId: template.id,
-        name: stageDto.name ?? '',
-        description: stageDto.description ?? '',
-        order: i,
-        canBeSkipped: stageDto.canBeSkipped ?? false,
-        canBeReentered: stageDto.canBeReentered ?? true,
-      });
-      await queryRunner.manager.save(stage);
-      
-      // Créer les sous-stages
-      if (stageDto.subStages && stageDto.subStages.length > 0) {
-        for (let j = 0; j < stageDto.subStages.length; j++) {
-          const subStageDto = stageDto.subStages[j];
-          const subStage = this.subStageRepository.create({
-            stageId: stage.id,
-            name: subStageDto.name ?? '',
-            description: subStageDto.description ?? '',
-            order: j,
-            isMandatory: subStageDto.isMandatory ?? true,
-            requirements: this.normalizeRequirements(
-              subStageDto.requirements,
-            ),
-          });
-          await queryRunner.manager.save(subStage);
+    for (let i = 0; i < stagesDto.length; i++) {
+      const stageDto = stagesDto[i];
+      const tempId = stageDto.id || `temp-${Date.now()}-${i}`;
+
+      const isExisting =
+        stageDto.id &&
+        !stageDto.id.startsWith('temp-') &&
+        existingStagesMap.has(stageDto.id);
+
+      let stage: Stage;
+
+      if (isExisting) {
+        // Mettre à jour le stage existant
+        stage = existingStagesMap.get(stageDto.id)!;
+
+        if (stageDto.name !== undefined) stage.name = stageDto.name;
+        if (stageDto.description !== undefined)
+          stage.description = stageDto.description;
+        stage.order = i;
+        if (stageDto.canBeSkipped !== undefined)
+          stage.canBeSkipped = stageDto.canBeSkipped;
+        if (stageDto.canBeReentered !== undefined)
+          stage.canBeReentered = stageDto.canBeReentered;
+
+        await queryRunner.manager.save(stage);
+
+        // Mettre à jour les sous-stages
+        if (stageDto.subStages !== undefined) {
+          await this.updateSubStages(queryRunner, stage, stageDto.subStages);
         }
+
+        // Mettre à jour la configuration du stage
+        if (stageConfigs && stageConfigs[stageDto.id]) {
+          await this.updateStageConfig(
+            queryRunner,
+            stage.id,
+            stageConfigs[stageDto.id],
+          );
+        }
+
+        processedStageIds.add(stage.id);
+
+        // ⚠️ Le stage est déjà dans le map (ajouté au début)
+      } else {
+        // Créer un nouveau stage
+        stage = this.stageRepository.create({
+          templateId: template.id,
+          name: stageDto.name ?? '',
+          description: stageDto.description ?? '',
+          order: i,
+          canBeSkipped: stageDto.canBeSkipped ?? false,
+          canBeReentered: stageDto.canBeReentered ?? true,
+        });
+        await queryRunner.manager.save(stage);
+
+        // Créer les sous-stages
+        if (stageDto.subStages && stageDto.subStages.length > 0) {
+          for (let j = 0; j < stageDto.subStages.length; j++) {
+            const subStageDto = stageDto.subStages[j];
+            const subStage = this.subStageRepository.create({
+              stageId: stage.id,
+              name: subStageDto.name ?? '',
+              description: subStageDto.description ?? '',
+              order: j,
+              isMandatory: subStageDto.isMandatory ?? true,
+              requirements: this.normalizeRequirements(
+                subStageDto.requirements,
+              ),
+            });
+            await queryRunner.manager.save(subStage);
+          }
+        }
+
+        // Créer la configuration du stage
+        if (stageConfigs && stageConfigs[tempId]) {
+          const configDto = stageConfigs[tempId];
+          const newConfig = new StageConfig();
+          newConfig.stageId = stage.id;
+          newConfig.allowDocuments = configDto.allowDocuments ?? false;
+          newConfig.allowDiligences = configDto.allowDiligences ?? false;
+          newConfig.allowInvoices = configDto.allowInvoices ?? false;
+          newConfig.allowHearings = configDto.allowHearings ?? false;
+          newConfig.documentTypesAllowed = this.serializeJson(
+            configDto.documentTypesAllowed ?? [],
+          );
+          newConfig.diligenceConfig = this.serializeJson(
+            configDto.diligenceConfig,
+          );
+          newConfig.hearingConfig = this.serializeJson(configDto.hearingConfig);
+          newConfig.invoiceConfig = this.serializeJson(configDto.invoiceConfig);
+
+          await queryRunner.manager.save(newConfig);
+        }
+
+        // Ajouter le mapping de l'ID temporaire vers le nouveau ID réel
+        stageIdMap.set(tempId, stage.id);
+        // Ajouter aussi le nouveau ID vers lui-même pour les références existantes
+        stageIdMap.set(stage.id, stage.id);
       }
-      
-      // Créer la configuration du stage
-      if (stageConfigs && stageConfigs[tempId]) {
-        const configDto = stageConfigs[tempId];
-        const newConfig = new StageConfig();
-        newConfig.stageId = stage.id;
-        newConfig.allowDocuments = configDto.allowDocuments ?? false;
-        newConfig.allowDiligences = configDto.allowDiligences ?? false;
-        newConfig.allowInvoices = configDto.allowInvoices ?? false;
-        newConfig.allowHearings = configDto.allowHearings ?? false;
-        newConfig.documentTypesAllowed = this.serializeJson(configDto.documentTypesAllowed ?? []);
-        newConfig.diligenceConfig = this.serializeJson(configDto.diligenceConfig);
-        newConfig.hearingConfig = this.serializeJson(configDto.hearingConfig);
-        newConfig.invoiceConfig = this.serializeJson(configDto.invoiceConfig);
-        
-        await queryRunner.manager.save(newConfig);
+    }
+
+    // Supprimer les stages non mentionnés
+    for (const [stageId, stage] of existingStagesMap) {
+      if (!processedStageIds.has(stageId)) {
+        await queryRunner.manager.delete(Stage, stageId);
+        // Retirer du map si supprimé
+        stageIdMap.delete(stageId);
       }
-      
-      // Ajouter le mapping de l'ID temporaire vers le nouveau ID réel
-      stageIdMap.set(tempId, stage.id);
-      // Ajouter aussi le nouveau ID vers lui-même pour les références existantes
-      stageIdMap.set(stage.id, stage.id);
     }
   }
-  
-  // Supprimer les stages non mentionnés
-  for (const [stageId, stage] of existingStagesMap) {
-    if (!processedStageIds.has(stageId)) {
-      await queryRunner.manager.delete(Stage, stageId);
-      // Retirer du map si supprimé
-      stageIdMap.delete(stageId);
-    }
-  }
-}
 
   /**
    * Met à jour les sous-stages d'un stage
@@ -486,31 +535,34 @@ private async updateStages(
     subStagesDto: any[],
   ): Promise<void> {
     const existingSubStagesMap = new Map(
-      (stage.subStages || []).map(ss => [ss.id, ss])
+      (stage.subStages || []).map((ss) => [ss.id, ss]),
     );
     const processedSubStageIds = new Set<string>();
 
     for (let j = 0; j < subStagesDto.length; j++) {
       const subStageDto = subStagesDto[j];
-      
-      const isExisting = subStageDto.id 
-        && !subStageDto.id.startsWith('temp-')
-        && existingSubStagesMap.has(subStageDto.id);
-      
+
+      const isExisting =
+        subStageDto.id &&
+        !subStageDto.id.startsWith('temp-') &&
+        existingSubStagesMap.has(subStageDto.id);
+
       if (isExisting) {
         // Mettre à jour la sous-étape existante
         const subStage = existingSubStagesMap.get(subStageDto.id)!;
-        
+
         if (subStageDto.name !== undefined) subStage.name = subStageDto.name;
-        if (subStageDto.description !== undefined) subStage.description = subStageDto.description;
+        if (subStageDto.description !== undefined)
+          subStage.description = subStageDto.description;
         subStage.order = j;
-        if (subStageDto.isMandatory !== undefined) subStage.isMandatory = subStageDto.isMandatory;
+        if (subStageDto.isMandatory !== undefined)
+          subStage.isMandatory = subStageDto.isMandatory;
         if (subStageDto.requirements !== undefined) {
           subStage.requirements = this.normalizeRequirements(
             subStageDto.requirements,
           );
         }
-        
+
         await queryRunner.manager.save(subStage);
         processedSubStageIds.add(subStage.id);
       } else {
@@ -521,14 +573,12 @@ private async updateStages(
           description: subStageDto.description ?? '',
           order: j,
           isMandatory: subStageDto.isMandatory ?? true,
-          requirements: this.normalizeRequirements(
-            subStageDto.requirements,
-          ),
+          requirements: this.normalizeRequirements(subStageDto.requirements),
         });
         await queryRunner.manager.save(subStage);
       }
     }
-    
+
     // Supprimer les sous-stages non mentionnés
     for (const [subStageId] of existingSubStagesMap) {
       if (!processedSubStageIds.has(subStageId)) {
@@ -545,21 +595,31 @@ private async updateStages(
     stageId: string,
     configDto: any,
   ): Promise<void> {
-    let config = await queryRunner.manager.findOne(StageConfig, {
+    const config = await queryRunner.manager.findOne(StageConfig, {
       where: { stageId },
     });
-    
+
     if (config) {
       // Mettre à jour existant
-      if (configDto.allowDocuments !== undefined) config.allowDocuments = configDto.allowDocuments;
-      if (configDto.allowDiligences !== undefined) config.allowDiligences = configDto.allowDiligences;
-      if (configDto.allowInvoices !== undefined) config.allowInvoices = configDto.allowInvoices;
-      if (configDto.allowHearings !== undefined) config.allowHearings = configDto.allowHearings;
-      if (configDto.documentTypesAllowed !== undefined) config.documentTypesAllowed = this.serializeJson(configDto.documentTypesAllowed);
-      if (configDto.diligenceConfig !== undefined) config.diligenceConfig = this.serializeJson(configDto.diligenceConfig);
-      if (configDto.hearingConfig !== undefined) config.hearingConfig = this.serializeJson(configDto.hearingConfig);
-      if (configDto.invoiceConfig !== undefined) config.invoiceConfig = this.serializeJson(configDto.invoiceConfig);
-      
+      if (configDto.allowDocuments !== undefined)
+        config.allowDocuments = configDto.allowDocuments;
+      if (configDto.allowDiligences !== undefined)
+        config.allowDiligences = configDto.allowDiligences;
+      if (configDto.allowInvoices !== undefined)
+        config.allowInvoices = configDto.allowInvoices;
+      if (configDto.allowHearings !== undefined)
+        config.allowHearings = configDto.allowHearings;
+      if (configDto.documentTypesAllowed !== undefined)
+        config.documentTypesAllowed = this.serializeJson(
+          configDto.documentTypesAllowed,
+        );
+      if (configDto.diligenceConfig !== undefined)
+        config.diligenceConfig = this.serializeJson(configDto.diligenceConfig);
+      if (configDto.hearingConfig !== undefined)
+        config.hearingConfig = this.serializeJson(configDto.hearingConfig);
+      if (configDto.invoiceConfig !== undefined)
+        config.invoiceConfig = this.serializeJson(configDto.invoiceConfig);
+
       await queryRunner.manager.save(config);
     } else {
       // Créer nouveau - utiliser new StageConfig() au lieu de create()
@@ -569,11 +629,13 @@ private async updateStages(
       newConfig.allowDiligences = configDto.allowDiligences ?? false;
       newConfig.allowInvoices = configDto.allowInvoices ?? false;
       newConfig.allowHearings = configDto.allowHearings ?? false;
-      newConfig.documentTypesAllowed = this.serializeJson(configDto.documentTypesAllowed ?? []);
+      newConfig.documentTypesAllowed = this.serializeJson(
+        configDto.documentTypesAllowed ?? [],
+      );
       newConfig.diligenceConfig = this.serializeJson(configDto.diligenceConfig);
       newConfig.hearingConfig = this.serializeJson(configDto.hearingConfig);
       newConfig.invoiceConfig = this.serializeJson(configDto.invoiceConfig);
-      
+
       await queryRunner.manager.save(newConfig);
     }
   }
@@ -581,63 +643,68 @@ private async updateStages(
   /**
    * Met à jour les transitions
    */
-/**
- * Met à jour les transitions
- */
-/**
- * Met à jour les transitions (version simplifiée)
- */
-private async updateTransitions(
-  queryRunner: any,
-  templateId: string,
-  transitionsDto: any[],
-  stageIdMap: Map<string, string>,
-): Promise<void> {
-  if (!transitionsDto ) {
-    return;
-  }
-  
-  // Récupérer tous les IDs des stages valides du template
-  const stages = await queryRunner.manager.find(Stage, {
-    where: { templateId },
-    select: ['id'],
-  });
-  
-  const validStageIds = new Set(stages.map(s => s.id));
-  
-  // Supprimer toutes les transitions existantes
-  await queryRunner.manager.delete(Transition, { templateId });
-  
-  // Créer les nouvelles transitions
-  for (const transitionDto of transitionsDto) {
-    const fromStageId =
-      stageIdMap.get(transitionDto.fromStageId) ?? transitionDto.fromStageId;
-    const toStageId =
-      stageIdMap.get(transitionDto.toStageId) ?? transitionDto.toStageId;
-    // Vérifier que les IDs des stages existent dans le template
-    if (!validStageIds.has(fromStageId) || !validStageIds.has(toStageId)) {
-      throw new BadRequestException(
-        `Transition invalide : étape source ou cible étrangère (${transitionDto.fromStageId} → ${transitionDto.toStageId})`,
-      );
+  /**
+   * Met à jour les transitions
+   */
+  /**
+   * Met à jour les transitions (version simplifiée)
+   */
+  private async updateTransitions(
+    queryRunner: any,
+    templateId: string,
+    transitionsDto: any[],
+    stageIdMap: Map<string, string>,
+  ): Promise<void> {
+    if (!transitionsDto) {
+      return;
     }
-    
-    const transition = new Transition();
-    transition.fromStageId = fromStageId;
-    transition.toStageId = toStageId;
-    transition.templateId = templateId;
-    transition.type = transitionDto.type === 'AUTOMATIC' ? TransitionType.AUTOMATIC : TransitionType.MANUAL;
-    transition.label = transitionDto.label || null;
-    transition.condition = this.serializeJson(transitionDto.condition);
-    transition.triggerEvent = transitionDto.triggerEvent || null;
-    transition.triggerCondition = this.serializeJson(transitionDto.triggerCondition);
-    transition.isDefault = transitionDto.isDefault ?? false;
-    transition.requiresDecision = transitionDto.requiresDecision ?? true;
-    transition.requiresValidation = transitionDto.requiresValidation ?? false;
-    transition.onTransition = this.serializeJson(transitionDto.onTransition);
-    
-    await queryRunner.manager.save(transition);
+
+    // Récupérer tous les IDs des stages valides du template
+    const stages = await queryRunner.manager.find(Stage, {
+      where: { templateId },
+      select: ['id'],
+    });
+
+    const validStageIds = new Set(stages.map((s) => s.id));
+
+    // Supprimer toutes les transitions existantes
+    await queryRunner.manager.delete(Transition, { templateId });
+
+    // Créer les nouvelles transitions
+    for (const transitionDto of transitionsDto) {
+      const fromStageId =
+        stageIdMap.get(transitionDto.fromStageId) ?? transitionDto.fromStageId;
+      const toStageId =
+        stageIdMap.get(transitionDto.toStageId) ?? transitionDto.toStageId;
+      // Vérifier que les IDs des stages existent dans le template
+      if (!validStageIds.has(fromStageId) || !validStageIds.has(toStageId)) {
+        throw new BadRequestException(
+          `Transition invalide : étape source ou cible étrangère (${transitionDto.fromStageId} → ${transitionDto.toStageId})`,
+        );
+      }
+
+      const transition = new Transition();
+      transition.fromStageId = fromStageId;
+      transition.toStageId = toStageId;
+      transition.templateId = templateId;
+      transition.type =
+        transitionDto.type === 'AUTOMATIC'
+          ? TransitionType.AUTOMATIC
+          : TransitionType.MANUAL;
+      transition.label = transitionDto.label || null;
+      transition.condition = this.serializeJson(transitionDto.condition);
+      transition.triggerEvent = transitionDto.triggerEvent || null;
+      transition.triggerCondition = this.serializeJson(
+        transitionDto.triggerCondition,
+      );
+      transition.isDefault = transitionDto.isDefault ?? false;
+      transition.requiresDecision = transitionDto.requiresDecision ?? true;
+      transition.requiresValidation = transitionDto.requiresValidation ?? false;
+      transition.onTransition = this.serializeJson(transitionDto.onTransition);
+
+      await queryRunner.manager.save(transition);
+    }
   }
-}
 
   /**
    * Met à jour les cycles
@@ -656,18 +723,18 @@ private async updateTransitions(
 
     // Supprimer tous les cycles existants
     await queryRunner.manager.delete(Cycle, { templateId });
-    
+
     if (!cyclesDto || cyclesDto.length === 0) {
       return;
     }
-    
+
     // Créer les nouveaux cycles avec les nouveaux IDs
     for (const cycleDto of cyclesDto) {
       const newFromStageId =
         stageIdMap.get(cycleDto.fromStageId) ?? cycleDto.fromStageId;
       const newToStageId =
         stageIdMap.get(cycleDto.toStageId) ?? cycleDto.toStageId;
-      
+
       if (
         !validStageIds.has(newFromStageId) ||
         !validStageIds.has(newToStageId)
@@ -676,7 +743,7 @@ private async updateTransitions(
           `Cycle invalide : étape source ou cible étrangère (${cycleDto.fromStageId} → ${cycleDto.toStageId})`,
         );
       }
-      
+
       // Utiliser new Cycle() au lieu de create()
       const cycle = new Cycle();
       cycle.templateId = templateId;
@@ -685,7 +752,7 @@ private async updateTransitions(
       cycle.label = cycleDto.label || null;
       cycle.condition = this.serializeJson(cycleDto.condition);
       cycle.maxLoops = cycleDto.maxLoops ?? 1;
-      
+
       await queryRunner.manager.save(cycle);
     }
   }
@@ -749,10 +816,7 @@ private async updateTransitions(
       if (!lockedOriginal) {
         throw new NotFoundException(`Template with ID ${id} not found`);
       }
-      const original = await this.loadGraphWithManager(
-        queryRunner.manager,
-        id,
-      );
+      const original = await this.loadGraphWithManager(queryRunner.manager, id);
       const versionRow = await queryRunner.manager
         .createQueryBuilder(ProcedureTemplate, 'template')
         .select('MAX(template.version)', 'maxVersion')
@@ -761,7 +825,7 @@ private async updateTransitions(
         })
         .getRawOne();
       const nextVersion = Number(versionRow?.maxVersion ?? 0) + 1;
-      
+
       // Créer le nouveau template
       const newTemplate = this.templateRepository.create({
         familyId: original.familyId,
@@ -774,12 +838,13 @@ private async updateTransitions(
         contentHash: null,
       });
       await queryRunner.manager.save(newTemplate);
-      
+
       // Map des anciens IDs de stages vers les nouveaux
       const stageIdMap = new Map<string, string>();
-      
-      // Dupliquer les stages
-      for (const stage of original.stages) {
+
+      // Dupliquer les stages (les étapes système — ex: "Ouverture" runtime —
+      // ne sont jamais dupliquées dans les templates copiés)
+      for (const stage of (original.stages ?? []).filter((s) => !s.isSystem)) {
         const newStage = this.stageRepository.create({
           templateId: newTemplate.id,
           name: stage.name,
@@ -790,7 +855,7 @@ private async updateTransitions(
         });
         await queryRunner.manager.save(newStage);
         stageIdMap.set(stage.id, newStage.id);
-        
+
         // Dupliquer les sous-stages
         for (const subStage of stage.subStages) {
           const newSubStage = this.subStageRepository.create({
@@ -803,7 +868,7 @@ private async updateTransitions(
           });
           await queryRunner.manager.save(newSubStage);
         }
-        
+
         // Dupliquer la configuration du stage
         if (stage.config) {
           const newConfig = this.stageConfigRepository.create({
@@ -812,28 +877,28 @@ private async updateTransitions(
             allowDiligences: stage.config.allowDiligences,
             allowInvoices: stage.config.allowInvoices,
             allowHearings: stage.config.allowHearings,
-            documentTypesAllowed: stage.config.documentTypesAllowed 
-                ? JSON.stringify(stage.config.documentTypesAllowed) 
-                : null,
-            diligenceConfig: stage.config.diligenceConfig 
-                ? JSON.stringify(stage.config.diligenceConfig) 
-                : null,
-            hearingConfig: stage.config.hearingConfig 
-                ? JSON.stringify(stage.config.hearingConfig) 
-                : null,
-            invoiceConfig: stage.config.invoiceConfig 
-                ? JSON.stringify(stage.config.invoiceConfig) 
-                : null,
+            documentTypesAllowed: stage.config.documentTypesAllowed
+              ? JSON.stringify(stage.config.documentTypesAllowed)
+              : null,
+            diligenceConfig: stage.config.diligenceConfig
+              ? JSON.stringify(stage.config.diligenceConfig)
+              : null,
+            hearingConfig: stage.config.hearingConfig
+              ? JSON.stringify(stage.config.hearingConfig)
+              : null,
+            invoiceConfig: stage.config.invoiceConfig
+              ? JSON.stringify(stage.config.invoiceConfig)
+              : null,
           });
           await queryRunner.manager.save(newConfig);
         }
       }
-      
+
       // Dupliquer les transitions
       for (const transition of original.transitions || []) {
         const newFromStageId = stageIdMap.get(transition.fromStageId);
         const newToStageId = stageIdMap.get(transition.toStageId);
-        
+
         if (newFromStageId && newToStageId) {
           const newTransition = this.transitionRepository.create({
             templateId: newTemplate.id,
@@ -852,12 +917,12 @@ private async updateTransitions(
           await queryRunner.manager.save(newTransition);
         }
       }
-      
+
       // Dupliquer les cycles
       for (const cycle of original.cycles || []) {
         const newFromStageId = stageIdMap.get(cycle.fromStageId);
         const newToStageId = stageIdMap.get(cycle.toStageId);
-        
+
         if (newFromStageId && newToStageId) {
           const newCycle = this.cycleRepository.create({
             templateId: newTemplate.id,
@@ -870,13 +935,15 @@ private async updateTransitions(
           await queryRunner.manager.save(newCycle);
         }
       }
-      
+
       await queryRunner.commitTransaction();
       return this.findOne(newTemplate.id);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       console.error('Error duplicating template:', error);
-      throw new BadRequestException(`Failed to duplicate template: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to duplicate template: ${error.message}`,
+      );
     } finally {
       await queryRunner.release();
     }
@@ -934,9 +1001,7 @@ private async updateTransitions(
       if (!template) {
         throw new NotFoundException(`Template with ID ${id} not found`);
       }
-      if (
-        template.lifecycleStatus !== ProcedureTemplateLifecycle.PUBLISHED
-      ) {
+      if (template.lifecycleStatus !== ProcedureTemplateLifecycle.PUBLISHED) {
         throw new BadRequestException(
           'Seule une version publiée peut être retirée',
         );
@@ -1073,10 +1138,7 @@ private async updateTransitions(
     }
 
     for (const cycle of cycles) {
-      if (
-        !stageIds.has(cycle.fromStageId) ||
-        !stageIds.has(cycle.toStageId)
-      ) {
+      if (!stageIds.has(cycle.fromStageId) || !stageIds.has(cycle.toStageId)) {
         errors.push(`cycle ${cycle.id} vers une étape étrangère`);
       }
       if (!Number.isInteger(cycle.maxLoops) || cycle.maxLoops < 1) {
@@ -1095,7 +1157,9 @@ private async updateTransitions(
         if (visited.has(current)) continue;
         visited.add(current);
         for (const target of outgoing.get(current) ?? []) queue.push(target);
-        for (const cycle of cycles.filter((item) => item.fromStageId === current)) {
+        for (const cycle of cycles.filter(
+          (item) => item.fromStageId === current,
+        )) {
           queue.push(cycle.toStageId);
         }
       }
@@ -1187,18 +1251,14 @@ private async updateTransitions(
     return requirements.map((requirement) => ({
       id: requirement.id?.trim() || randomUUID(),
       type: requirement.type as ProcedureRequirementType,
-      ...(requirement.label?.trim()
-        ? { label: requirement.label.trim() }
-        : {}),
+      ...(requirement.label?.trim() ? { label: requirement.label.trim() } : {}),
       ...(requirement.documentTypeId
         ? { documentTypeId: requirement.documentTypeId }
         : {}),
       ...(requirement.taskId?.trim()
         ? { taskId: requirement.taskId.trim() }
         : {}),
-      ...(requirement.field?.trim()
-        ? { field: requirement.field.trim() }
-        : {}),
+      ...(requirement.field?.trim() ? { field: requirement.field.trim() } : {}),
       ...(requirement.approvalCount
         ? { approvalCount: requirement.approvalCount }
         : {}),
@@ -1265,10 +1325,11 @@ private async updateTransitions(
       // Map ID temporaire (ancien stage ID) → ID réel (nouveau stage ID)
       const stageIdMap = new Map<string, string>();
 
-      // 2. Copier les stages et sous-stages
-      const sourceStages = [...(source.stages ?? [])];
-      // Trier par ordre
-      sourceStages.sort((a, b) => a.order - b.order);
+      // 2. Copier les stages et sous-stages (les étapes système — ex:
+      // "Ouverture" runtime — ne sont jamais copiées dans les templates dérivés)
+      const sourceStages = (source.stages ?? [])
+        .filter((sourceStage) => !sourceStage.isSystem)
+        .sort((a, b) => a.order - b.order);
 
       for (const sourceStage of sourceStages) {
         const stage = this.stageRepository.create({
@@ -1293,9 +1354,7 @@ private async updateTransitions(
             name: sourceSubStage.name,
             description: sourceSubStage.description,
             isMandatory: sourceSubStage.isMandatory,
-            requirements: this.cloneRequirements(
-              sourceSubStage.requirements,
-            ),
+            requirements: this.cloneRequirements(sourceSubStage.requirements),
           });
           await queryRunner.manager.save(subStage);
         }
@@ -1341,8 +1400,8 @@ private async updateTransitions(
   }
 
   /**
-  * Sérialise un objet en JSON string
-  */
+   * Sérialise un objet en JSON string
+   */
   private serializeJson(value: any): string | null {
     if (value === null || value === undefined) {
       return null;
@@ -1358,8 +1417,8 @@ private async updateTransitions(
   }
 
   /**
-  * Désérialise un JSON string en objet
-  */
+   * Désérialise un JSON string en objet
+   */
   private deserializeJson(value: string | null): any {
     if (!value || typeof value !== 'string') {
       return value;
@@ -1370,5 +1429,4 @@ private async updateTransitions(
       return value;
     }
   }
-
 }

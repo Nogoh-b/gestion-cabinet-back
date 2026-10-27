@@ -54,19 +54,34 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
   // ── Hooks à surcharger dans la classe fille ─────────────────────────────
 
   /** Appelé AVANT l'insertion en base. Peut modifier l'entité. */
-  protected async onBeforeCreate(entity: T, event: InsertEvent<T>): Promise<void> {}
+  protected async onBeforeCreate(
+    entity: T,
+    event: InsertEvent<T>,
+  ): Promise<void> {}
 
   /** Appelé APRÈS l'insertion réussie. L'entité a son id définitif. */
-  protected async onAfterCreate(entity: T, event: InsertEvent<T>): Promise<void> {}
+  protected async onAfterCreate(
+    entity: T,
+    event: InsertEvent<T>,
+  ): Promise<void> {}
 
   /** Appelé AVANT la mise à jour. Peut modifier les champs. */
-  protected async onBeforeUpdate(entity: Partial<T>, event: UpdateEvent<T>): Promise<void> {}
+  protected async onBeforeUpdate(
+    entity: Partial<T>,
+    event: UpdateEvent<T>,
+  ): Promise<void> {}
 
   /** Appelé APRÈS la mise à jour réussie. */
-  protected async onAfterUpdate(entity: Partial<T>, event: UpdateEvent<T>): Promise<void> {}
+  protected async onAfterUpdate(
+    entity: Partial<T>,
+    event: UpdateEvent<T>,
+  ): Promise<void> {}
 
   /** Appelé APRÈS la suppression (hard delete). */
-  protected async onAfterRemove(entity: T, event: RemoveEvent<T>): Promise<void> {}
+  protected async onAfterRemove(
+    entity: T,
+    event: RemoveEvent<T>,
+  ): Promise<void> {}
 
   // ── Implémentation TypeORM (ne pas surcharger) ───────────────────────────
 
@@ -80,10 +95,14 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
 
   async afterInsert(event: InsertEvent<T>): Promise<void> {
     const entityId = (event.entity as any)?.id ?? '?';
-    this.logger.log(`▶ afterInsert déclenché | entité=${this.listenTo().name} | id=${entityId}`);
+    this.logger.log(
+      `▶ afterInsert déclenché | entité=${this.listenTo().name} | id=${entityId}`,
+    );
     try {
       await this.onAfterCreate(event.entity, event);
-      this.logger.log(`✅ afterInsert terminé | entité=${this.listenTo().name} | id=${entityId}`);
+      this.logger.log(
+        `✅ afterInsert terminé | entité=${this.listenTo().name} | id=${entityId}`,
+      );
     } catch (err) {
       this.logger.error(`afterInsert: ${err.message}`, err.stack);
     }
@@ -92,9 +111,9 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
   async beforeUpdate(event: UpdateEvent<T>): Promise<void> {
     try {
       await this.onBeforeUpdate(
-        ((event.entity as Partial<T>) ??
+        (event.entity as Partial<T>) ??
           (event.databaseEntity as Partial<T>) ??
-          ({} as Partial<T>)),
+          ({} as Partial<T>),
         event,
       );
     } catch (err) {
@@ -103,16 +122,21 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
   }
 
   async afterUpdate(event: UpdateEvent<T>): Promise<void> {
-    const entityId = (event.entity as any)?.id ?? (event.databaseEntity as any)?.id ?? '?';
-    this.logger.log(`▶ afterUpdate déclenché | entité=${this.listenTo().name} | id=${entityId}`);
+    const entityId =
+      (event.entity as any)?.id ?? (event.databaseEntity as any)?.id ?? '?';
+    this.logger.log(
+      `▶ afterUpdate déclenché | entité=${this.listenTo().name} | id=${entityId}`,
+    );
     try {
       await this.onAfterUpdate(
-        ((event.entity as Partial<T>) ??
+        (event.entity as Partial<T>) ??
           (event.databaseEntity as Partial<T>) ??
-          ({} as Partial<T>)),
+          ({} as Partial<T>),
         event,
       );
-      this.logger.log(`✅ afterUpdate terminé | entité=${this.listenTo().name} | id=${entityId}`);
+      this.logger.log(
+        `✅ afterUpdate terminé | entité=${this.listenTo().name} | id=${entityId}`,
+      );
     } catch (err) {
       this.logger.error(`afterUpdate: ${err.message}`, err.stack);
     }
@@ -133,14 +157,17 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
    * Ne couvre pas les relations ManyToMany (utiliser hasRelationChanged pour ça).
    */
   protected getChangedColumns(event: UpdateEvent<T>): string[] {
-    return (event.updatedColumns ?? []).map(col => col.propertyName);
+    return (event.updatedColumns ?? []).map((col) => col.propertyName);
   }
 
   /**
    * Vérifie si une colonne scalaire spécifique a changé.
    * Exemple : this.hasColumnChanged(event, 'status')
    */
-  protected hasColumnChanged(event: UpdateEvent<T>, propertyName: string): boolean {
+  protected hasColumnChanged(
+    event: UpdateEvent<T>,
+    propertyName: string,
+  ): boolean {
     return this.getChangedColumns(event).includes(propertyName);
   }
 
@@ -157,9 +184,12 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
    * portés par l'event, mais ne doit pas être considérée comme exhaustive.
    * Exemple : this.hasRelationChanged(event, 'collaborators')
    */
-  protected hasRelationChanged(event: UpdateEvent<T>, relationName: string): boolean {
+  protected hasRelationChanged(
+    event: UpdateEvent<T>,
+    relationName: string,
+  ): boolean {
     return (event.updatedRelations ?? []).some(
-      rel => rel.propertyName === relationName,
+      (rel) => rel.propertyName === relationName,
     );
   }
 
@@ -172,7 +202,10 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
    *   const statusChange = changes.find(c => c.field === 'status');
    *   if (statusChange) sendStatusEmail(statusChange.oldValue, statusChange.newValue);
    */
-  protected getFieldChanges(event: UpdateEvent<T>, fields: string[]): FieldChange[] {
+  protected getFieldChanges(
+    event: UpdateEvent<T>,
+    fields: string[],
+  ): FieldChange[] {
     const changes: FieldChange[] = [];
     for (const field of fields) {
       if (this.hasColumnChanged(event, field)) {

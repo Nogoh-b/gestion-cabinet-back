@@ -37,6 +37,12 @@ export interface DispatchPayload {
   title: string;
   content: string;
   link?: string;
+  /**
+   * Lien affiché au client (application + e-mail) : `link` pointe vers le
+   * back-office, inaccessible à un compte client. Par défaut, déduit de
+   * l'entité (cf. `portalLinkFor`).
+   */
+  clientLink?: string;
   audience: DispatchAudience;
   entity?: { type: string; id: number | string };
   changes?: Record<string, { from: any; to: any }>;
@@ -81,9 +87,15 @@ export class NotificationDispatcher {
    * les effets de bord.
    */
   async dispatch(
-    payload: DispatchPayload,
+    input: DispatchPayload,
     options: { throwOnError?: boolean } = {},
   ): Promise<void> {
+    // Compte du portail : retrouvé via la fiche client quand `user_id` manque,
+    // pour que le client reçoive aussi la notification dans l'application.
+    const payload: DispatchPayload = {
+      ...input,
+      audience: await this.withResolvedClientUser(input.audience),
+    };
     this.logger.log(
       `🚀 dispatch(${payload.event}) début | title="${payload.title}" | entity=${payload.entity?.type}#${payload.entity?.id}`,
     );
@@ -93,7 +105,9 @@ export class NotificationDispatcher {
     try {
       // 1. Résolution des destinataires employés (avocat + collabs + admins)
       const employeeIds = await this.resolveEmployeeIds(payload.audience);
-      this.logger.log(`  ├─ [1/5] resolveEmployeeIds → ${employeeIds.size} employé(s)`);
+      this.logger.log(
+        `  ├─ [1/5] resolveEmployeeIds → ${employeeIds.size} employé(s)`,
+      );
       const clientChannels = await this.resolveClientChannels(
         payload.audience.client,
         payload.event,
@@ -105,53 +119,80 @@ export class NotificationDispatcher {
       }
 
       // 2. Filtrage par préférences utilisateur
-      const channelsByUser = await this.resolveChannels(employeeIds, payload.event);
+      const channelsByUser = await this.resolveChannels(
+        employeeIds,
+        payload.event,
+      );
       const channelsSummary = Array.from(channelsByUser.entries())
         .map(([id, ch]) => `user#${id}: in_app=${ch.in_app} email=${ch.email}`)
         .join(', ');
-      this.logger.log(`  ├─ [2/5] resolveChannels → ${channelsByUser.size} utilisateur(s) [${channelsSummary}]`);
+      this.logger.log(
+        `  ├─ [2/5] resolveChannels → ${channelsByUser.size} utilisateur(s) [${channelsSummary}]`,
+      );
 
-      // 3. In-app bulk pour les utilisateurs qui ont in_app=true
+      // 3. In-app bulk pour les utilisateurs qui ont in_app=true. Le client
+      //    reçoit sa propre notification : son lien mène à l'espace client.
       const inAppRecipients = Array.from(channelsByUser.entries())
         .filter(([, ch]) => ch.in_app)
         .map(([id]) => id);
-      if (
+      const clientInAppId =
         payload.audience.client?.notify &&
         payload.audience.client.user_id &&
         clientChannels?.in_app
-      ) {
-        inAppRecipients.push(payload.audience.client.user_id);
-      }
-      const dedupedInAppRecipients = Array.from(new Set(inAppRecipients));
+          ? payload.audience.client.user_id
+          : null;
+      const staffInAppRecipients = Array.from(new Set(inAppRecipients)).filter(
+        (id) => id !== clientInAppId,
+      );
+      const dedupedInAppRecipients = [
+        ...staffInAppRecipients,
+        ...(clientInAppId ? [clientInAppId] : []),
+      ];
 
       if (dedupedInAppRecipients.length > 0) {
-        this.logger.log(`  ├─ [3/5] createBulk in-app → ${dedupedInAppRecipients.length} destinataire(s) : [${dedupedInAppRecipients.join(', ')}]`);
-        try {
-          await this.notificationService.createBulk(
-            {
-              user_ids: dedupedInAppRecipients,
-              type: payload.event as any,
-              title: payload.title,
-              content: payload.content,
-              data: {
-                entity: payload.entity,
-                changes: payload.changes,
+        this.logger.log(
+          `  ├─ [3/5] createBulk in-app → ${dedupedInAppRecipients.length} destinataire(s) : [${dedupedInAppRecipients.join(', ')}]`,
+        );
+        const batches: Array<{ ids: number[]; link?: string }> = [];
+        if (staffInAppRecipients.length) {
+          batches.push({ ids: staffInAppRecipients, link: payload.link });
+        }
+        if (clientInAppId) {
+          batches.push({
+            ids: [clientInAppId],
+            link: this.clientLinkOf(payload),
+          });
+        }
+        for (const batch of batches) {
+          try {
+            await this.notificationService.createBulk(
+              {
+                user_ids: batch.ids,
+                type: payload.event as any,
+                title: payload.title,
+                content: payload.content,
+                data: {
+                  entity: payload.entity,
+                  changes: payload.changes,
               },
-              link: payload.link,
-              priority: 'NORMAL',
-            },
-            payload.audience.lawyer_id ?? 1,
-          );
-          this.logger.log(`  │  ✅ createBulk in-app OK`);
-        } catch (err) {
-          this.logger.error(
-            `  │  ❌ In-app createBulk a échoué : ${(err as Error).message}`,
-            (err as Error).stack,
-          );
-          if (options.throwOnError) throw err;
+                link: batch.link,
+                priority: 'NORMAL',
+              },
+              payload.audience.lawyer_id ?? 1,
+            );
+            this.logger.log(`  │  ✅ createBulk in-app OK`);
+          } catch (err) {
+            this.logger.error(
+              `  │  ❌ In-app createBulk a échoué : ${(err as Error).message}`,
+              (err as Error).stack,
+            );
+            if (options.throwOnError) throw err;
+          }
         }
       } else {
-        this.logger.log(`  ├─ [3/5] in-app → aucun destinataire (préférences ou pas de cible)`);
+        this.logger.log(
+          `  ├─ [3/5] in-app → aucun destinataire (préférences ou pas de cible)`,
+        );
       }
 
       // 4. E-mails employés (préférence email=true) — adresses lookup individuels
@@ -160,31 +201,37 @@ export class NotificationDispatcher {
         .map(([id]) => id);
 
       if (emailEmployeeIds.length > 0) {
-        this.logger.log(`  ├─ [4/5] sendEmailsTo employés → ${emailEmployeeIds.length} utilisateur(s) : [${emailEmployeeIds.join(', ')}]`);
+        this.logger.log(
+          `  ├─ [4/5] sendEmailsTo employés → ${emailEmployeeIds.length} utilisateur(s) : [${emailEmployeeIds.join(', ')}]`,
+        );
         await this.sendEmailsTo(
           emailEmployeeIds,
           payload,
           options.throwOnError,
         );
       } else {
-        this.logger.log(`  ├─ [4/5] emails employés → aucun (préférences ou pas de cible)`);
+        this.logger.log(
+          `  ├─ [4/5] emails employés → aucun (préférences ou pas de cible)`,
+        );
       }
 
       // 5. E-mail client (uniquement si la case est cochée)
       const client = payload.audience.client;
       if (client?.notify) {
         if (clientChannels && !clientChannels.email) {
-          this.logger.log(`  ├─ [5/5] email client → désactivé par préférences utilisateur`);
-        } else {
-          this.logger.log(`  ├─ [5/5] sendClientEmail → client user_id=${client.user_id} email=${client.email ?? '?'}`);
-          await this.sendClientEmail(
-            client,
-            payload,
-            options.throwOnError,
+          this.logger.log(
+            `  ├─ [5/5] email client → désactivé par préférences utilisateur`,
           );
+        } else {
+          this.logger.log(
+            `  ├─ [5/5] sendClientEmail → client user_id=${client.user_id} email=${client.email ?? '?'}`,
+          );
+          await this.sendClientEmail(client, payload, options.throwOnError);
         }
       } else {
-        this.logger.log(`  ├─ [5/5] email client → non notifié (notify_client=false ou absent)`);
+        this.logger.log(
+          `  ├─ [5/5] email client → non notifié (notify_client=false ou absent)`,
+        );
       }
 
       this.logger.log(`✅ dispatch(${payload.event}) terminé avec succès`);
@@ -200,6 +247,58 @@ export class NotificationDispatcher {
 
   async dispatchStrict(payload: DispatchPayload): Promise<void> {
     return this.dispatch(payload, { throwOnError: true });
+  }
+
+  /**
+   * Complète `audience.client.user_id` avec le compte du portail rattaché à la
+   * fiche client (`users.customer_id`). Sans compte actif, l'audience est
+   * inchangée (e-mail seul, comme avant).
+   */
+  private async withResolvedClientUser(
+    audience: DispatchAudience,
+  ): Promise<DispatchAudience> {
+    const client = audience.client;
+    if (!client?.notify || client.user_id || !client.customer_id) {
+      return audience;
+    }
+    try {
+      const account = await this.userRepo.findOne({
+        where: { customer: { id: client.customer_id }, status: 1 as any },
+        select: ['id', 'email'],
+      });
+      if (!account) return audience;
+      return {
+        ...audience,
+        client: {
+          ...client,
+          user_id: account.id,
+          email: client.email ?? account.email,
+        },
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Compte client introuvable pour customer#${client.customer_id} : ${(err as Error).message}`,
+      );
+      return audience;
+    }
+  }
+
+  /** Lien destiné au client : explicite, sinon déduit de l'entité concernée. */
+  private clientLinkOf(payload: DispatchPayload): string {
+    return payload.clientLink ?? portalLinkFor(payload.entity);
+  }
+
+  /** Lien cliquable depuis un e-mail : les chemins relatifs sont préfixés. */
+  private absoluteLink(link?: string): string {
+    if (!link || !link.startsWith('/')) return link ?? '';
+    const base = (
+      process.env.APP_FRONTEND_URL ||
+      process.env.FRONTEND_URL ||
+      ''
+    )
+      .trim()
+      .replace(/\/$/, '');
+    return base ? `${base}${link}` : link;
   }
 
   // ── Résolution des templates mail ──────────────────────────────────────────
@@ -218,6 +317,7 @@ export class NotificationDispatcher {
       [NotifiableEvent.COLLABORATOR_REMOVED]: 'collaborator_removed',
       [NotifiableEvent.AUDIENCE_CREATED]: 'audience_created',
       [NotifiableEvent.AUDIENCE_HELD]: 'audience_held',
+      [NotifiableEvent.AUDIENCE_CANCELLED]: 'audience_cancelled',
       [NotifiableEvent.AUDIENCE_UPDATED]: 'audience_updated',
       [NotifiableEvent.AUDIENCE_REMINDER]: 'audience_reminder',
       [NotifiableEvent.FACTURE_CREATED]: 'facture_created',
@@ -245,7 +345,7 @@ export class NotificationDispatcher {
     const context = {
       title: payload.title,
       content: payload.content,
-      link: payload.link ?? '',
+      link: this.absoluteLink(payload.link),
       entity: payload.entity,
       changes: payload.changes,
       recipient_type: audience,
@@ -257,15 +357,18 @@ export class NotificationDispatcher {
 
       for (const code of templateCodes) {
         try {
-          const rendered = await this.mailTemplateService.renderOrCreateSystemDefault(
-            code,
-            context,
-          );
+          const rendered =
+            await this.mailTemplateService.renderOrCreateSystemDefault(
+              code,
+              context,
+            );
           this.logger.log(`  |  Template "${code}" rendu avec succes`);
           return rendered;
         } catch (err) {
           if ((err as Error).message.includes('introuvable')) continue;
-          this.logger.warn(`  |  Template "${code}" erreur rendu : ${(err as Error).message}.`);
+          this.logger.warn(
+            `  |  Template "${code}" erreur rendu : ${(err as Error).message}.`,
+          );
         }
       }
     }
@@ -275,18 +378,23 @@ export class NotificationDispatcher {
       subject: payload.title,
       html:
         `<h2>${escapeHtml(payload.title)}</h2><p>${escapeHtml(payload.content)}</p>` +
-        (payload.link ? `<p><a href="${payload.link}">Ouvrir</a></p>` : ''),
+        (payload.link
+          ? `<p><a href="${this.absoluteLink(payload.link)}">Ouvrir</a></p>`
+          : ''),
     };
   }
 
   // ── Résolution des cibles ─────────────────────────────────────────────────
 
-  private async resolveEmployeeIds(audience: DispatchAudience): Promise<Set<number>> {
+  private async resolveEmployeeIds(
+    audience: DispatchAudience,
+  ): Promise<Set<number>> {
     const ids = new Set<number>();
     if (audience.lawyer_id) ids.add(audience.lawyer_id);
     for (const c of audience.collaborator_ids ?? []) if (c) ids.add(c);
 
-    const adminIds = audience.admin_ids_override ?? (await this.resolveAdminIds());
+    const adminIds =
+      audience.admin_ids_override ?? (await this.resolveAdminIds());
     for (const a of adminIds) ids.add(a);
 
     this.logger.log(
@@ -388,7 +496,9 @@ export class NotificationDispatcher {
       `  │  emails employés résolus → users=[${users.map((u) => `${u.id}:${u.email ?? 'sans-email'}`).join(', ')}]`,
     );
     if (recipients.length === 0) {
-      this.logger.warn(`  │  aucun e-mail employé exploitable pour ${payload.event}`);
+      this.logger.warn(
+        `  │  aucun e-mail employé exploitable pour ${payload.event}`,
+      );
       return;
     }
 
@@ -439,8 +549,15 @@ export class NotificationDispatcher {
       `  │  client notifiable → user_id=${client.user_id ?? '-'} | email=${to} | notify=${client.notify}`,
     );
 
-    // Rendu du template mail (DB ou fallback HTML)
-    const { subject, html } = await this.renderEmail(payload, 'client');
+    // Rendu du template mail (DB ou fallback HTML) — lien vers l'espace client
+    const { subject, html } = await this.renderEmail(
+      // Sans compte du portail, aucun lien : l'espace client leur est fermé.
+      {
+        ...payload,
+        link: client.user_id ? this.clientLinkOf(payload) : undefined,
+      },
+      'client',
+    );
     this.logger.log(`  │  envoi mail client → subject="${subject}" | to=${to}`);
 
     try {
@@ -473,6 +590,22 @@ export class NotificationDispatcher {
   }
 }
 
+/** Page de l'espace client correspondant à une entité (repli : accueil). */
+function portalLinkFor(entity?: { type: string; id: number | string }): string {
+  switch (entity?.type) {
+    case 'dossier':
+      return `/espace-client/dossiers/${entity.id}`;
+    case 'facture':
+      return `/espace-client/factures/${entity.id}`;
+    case 'paiement':
+      return '/espace-client/factures';
+    case 'client_message':
+      return '/espace-client/messages';
+    default:
+      return '/espace-client';
+  }
+}
+
 /** Échappement HTML minimal pour le fallback. */
 function escapeHtml(s: string): string {
   return String(s)
@@ -482,4 +615,3 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '"')
     .replace(/'/g, '&#39;');
 }
-

@@ -1,13 +1,22 @@
-import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
-import { Reflector } from "@nestjs/core";
-import { PERMISSIONS_KEY } from "src/core/decorators/permissions.decorator";
-import { UsersService } from "src/modules/iam/user/user.service";
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  Optional,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { PERMISSIONS_KEY } from 'src/core/decorators/permissions.decorator';
+import { ActivitiesUserService } from 'src/modules/iam/activities-user/activities-user.service';
+import { UsersService } from 'src/modules/iam/user/user.service';
+import { PLATFORM_PERMISSION_CODES } from 'src/modules/iam/constants/iam.constants';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(
-    private reflector: Reflector,
-    private userService: UsersService,
+    private readonly reflector: Reflector,
+    private readonly userService: UsersService,
+    @Optional()
+    private readonly audit?: ActivitiesUserService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -15,24 +24,53 @@ export class PermissionsGuard implements CanActivate {
       PERMISSIONS_KEY,
       [context.getHandler(), context.getClass()],
     );
-
     if (!requiredPermissions) return true;
 
-    const { user } = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest();
+    const { user } = request;
     if (!user) return false;
 
-    // Bypass admin : le rôle admin a accès à toutes les routes sans vérification
-    if (user.role === 'admin') return true;
+    // Les codes plateforme (gestion des cabinets, catalogue des plans) ne sont
+    // JAMAIS accordés à un utilisateur de cabinet, même admin ou SUPER_ADMIN :
+    // ces opérations relèvent exclusivement de l'espace `/platform`.
+    const requiresPlatform = requiredPermissions.some((permission) =>
+      PLATFORM_PERMISSION_CODES.includes(permission),
+    );
 
-    // Priorité 1 : permissions embarquées dans le JWT (0 appel DB)
-    // Priorité 2 : fallback DB pour les tokens émis avant la migration
+    if (!requiresPlatform && user.role === 'admin') return true;
+
     const userPermissionCodes: string[] = Array.isArray(user.permissions)
       ? user.permissions
-      : (await this.userService.getUserPermissions(user.userId ?? user.id)).map((p: any) => p.code);
+      : (await this.userService.getUserPermissions(user.userId ?? user.id)).map(
+          (p: any) => p.code,
+        );
+    const allowed =
+      !requiresPlatform &&
+      (userPermissionCodes.includes('SUPER_ADMIN') ||
+        requiredPermissions.every((permission) =>
+          userPermissionCodes.includes(permission),
+        ));
 
-    return (
-      userPermissionCodes.includes('SUPER_ADMIN') ||
-      requiredPermissions.every((perm) => userPermissionCodes.includes(perm))
-    );
+    if (!allowed && this.audit) {
+      const path = String(request?.originalUrl ?? request?.url ?? '');
+      await this.audit.record({
+        tenantId: user.tenantId,
+        userId: user.userId ?? user.id,
+        action: 'access_denied',
+        resource: path.split('?')[0].split('/').filter(Boolean).pop() ?? null,
+        resourceId: request?.params?.id ?? request?.params?.userId ?? null,
+        method: request?.method ?? null,
+        path: path.slice(0, 255),
+        statusCode: 403,
+        ip: request?.ip ?? request?.socket?.remoteAddress ?? null,
+        summary: 'Tentative d’accès sans droit suffisant',
+        authorizationResult: 'denied',
+        requiredPermissions,
+        grantedPermissions: userPermissionCodes,
+        riskLevel: 'high',
+        errorMessage: 'Droit requis absent',
+      });
+    }
+    return allowed;
   }
 }

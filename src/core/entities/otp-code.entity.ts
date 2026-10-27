@@ -6,7 +6,6 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-
 @Entity('otp_codes')
 export class OtpCode {
   @PrimaryGeneratedColumn()
@@ -33,10 +32,19 @@ export class OtpCode {
   @Column({ type: 'varchar', length: 10, comment: 'MOMO ou OM' })
   provider: string;
 
-  @Column({ type: 'varchar', length: 50, comment: 'Code du compte épargne concerné' })
+  @Column({
+    type: 'varchar',
+    length: 50,
+    comment: 'Code du compte épargne concerné',
+  })
   savingsAccountCode: string;
 
-  @Column({ type: 'varchar', length: 50, nullable : true, comment: 'Code du compte épargne concerné' })
+  @Column({
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+    comment: 'Code du compte épargne concerné',
+  })
   targetSavingsAccountCode: string;
 
   @CreateDateColumn()
@@ -45,9 +53,6 @@ export class OtpCode {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-
-
-
 
 @Entity('otp_online_link')
 export class OtpOnlineLink {
@@ -66,10 +71,19 @@ export class OtpOnlineLink {
   @Column({ default: false })
   used: boolean;
 
-  @Column({ type: 'varchar', length: 50, comment: 'Code du compte épargne concerné' })
+  @Column({
+    type: 'varchar',
+    length: 50,
+    comment: 'Code du compte épargne concerné',
+  })
   savingsAccountCode: string;
 
-  @Column({ type: 'varchar', length: 50, nullable:true, comment: 'Identifiant unique dans le système COTI' })
+  @Column({
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+    comment: 'Identifiant unique dans le système COTI',
+  })
   cotiCustomerCode: string;
 
   @CreateDateColumn()

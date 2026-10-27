@@ -2,8 +2,6 @@ import { config } from 'dotenv';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 
-
-
 // Charger les variables d'environnement
 config();
 
@@ -17,7 +15,7 @@ const dataSource = new DataSource({
   database: process.env.DB_NAME || 'core',
   entities: [
     join(__dirname, 'modules', '**', '*.entity.{ts,js}'),
-    join(__dirname, '**', '*.entity.{ts,js}')
+    join(__dirname, '**', '*.entity.{ts,js}'),
   ],
   migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
   migrationsTableName: 'migrations',
@@ -26,8 +24,8 @@ const dataSource = new DataSource({
   // Options spécifiques MySQL pour le Cameroun
   extra: {
     charset: 'utf8mb4',
-    timezone: '+01:00' // Heure du Cameroun (WAT)
-  }
+    timezone: '+01:00', // Heure du Cameroun (WAT)
+  },
 });
 
 // Vérifier la connexion

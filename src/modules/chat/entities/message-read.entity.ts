@@ -1,10 +1,15 @@
 // src/chat/entities/message.entity.ts
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+} from 'typeorm';
 
 import { Message } from './messages.entity';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
-
 
 // message-read.entity.ts
 
@@ -13,7 +18,7 @@ export class MessageRead extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => Message, message => message.reads, {
+  @ManyToOne(() => Message, (message) => message.reads, {
     onDelete: 'CASCADE',
   })
   message: Message;

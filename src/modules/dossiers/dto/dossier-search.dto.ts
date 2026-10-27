@@ -1,7 +1,12 @@
 // src/modules/dossiers/dto/dossier-search.dto.ts
 import {
-  IsOptional, IsString, IsEnum, IsDateString,
-  IsNumber, Min, Max
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsDateString,
+  IsNumber,
+  Min,
+  Max,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -9,12 +14,17 @@ import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 export class DossierSearchDto extends PaginationParamsDto {
-  @ApiPropertyOptional({ description: 'Terme de recherche général (client, avocat, etc.)' })
+  @ApiPropertyOptional({
+    description: 'Terme de recherche général (client, avocat, etc.)',
+  })
   @IsOptional()
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ enum: DossierStatus, description: 'Statut du dossier' })
+  @ApiPropertyOptional({
+    enum: DossierStatus,
+    description: 'Statut du dossier',
+  })
   @IsOptional()
   @IsEnum(DossierStatus)
   status?: DossierStatus;
@@ -39,12 +49,16 @@ export class DossierSearchDto extends PaginationParamsDto {
   @IsNumber()
   procedure_subtype_id?: number;
 
-  @ApiPropertyOptional({ description: 'Filtrer à partir de cette date (YYYY-MM-DD)' })
+  @ApiPropertyOptional({
+    description: 'Filtrer à partir de cette date (YYYY-MM-DD)',
+  })
   @IsOptional()
   @IsDateString()
   date_from?: string;
 
-  @ApiPropertyOptional({ description: 'Filtrer jusqu’à cette date (YYYY-MM-DD)' })
+  @ApiPropertyOptional({
+    description: 'Filtrer jusqu’à cette date (YYYY-MM-DD)',
+  })
   @IsOptional()
   @IsDateString()
   date_to?: string;
@@ -54,7 +68,12 @@ export class DossierSearchDto extends PaginationParamsDto {
   @IsString()
   jurisdiction?: string;
 
-  @ApiPropertyOptional({ description: 'Nombre maximum de résultats par page', example: 10, minimum: 1, maximum: 100 })
+  @ApiPropertyOptional({
+    description: 'Nombre maximum de résultats par page',
+    example: 10,
+    minimum: 1,
+    maximum: 100,
+  })
   @IsOptional()
   @Transform(({ value }) => parseInt(value))
   @IsNumber()
@@ -69,7 +88,10 @@ export class DossierSearchDto extends PaginationParamsDto {
   @Min(0)
   offset?: number = 0;*/
 
-  @ApiPropertyOptional({ description: 'Champ de tri (ex: created_at, status, etc.)', example: 'created_at' })
+  @ApiPropertyOptional({
+    description: 'Champ de tri (ex: created_at, status, etc.)',
+    example: 'created_at',
+  })
   @IsOptional()
   @IsString()
   sort_by?: string = 'created_at';

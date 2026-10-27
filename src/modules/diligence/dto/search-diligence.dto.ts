@@ -1,8 +1,19 @@
 // src/modules/diligences/dto/search-diligence.dto.ts
 import { Type } from 'class-transformer';
-import { IsDate, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsDate,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { DiligenceStatus, DiligenceType, DiligencePriority } from '../entities/diligence.entity';
+import {
+  DiligenceStatus,
+  DiligenceType,
+  DiligencePriority,
+} from '../entities/diligence.entity';
 
 export class DiligenceSearchDto {
   @ApiPropertyOptional({ description: 'Filtrer par titre (recherche texte)' })
@@ -15,7 +26,10 @@ export class DiligenceSearchDto {
   @IsInt()
   dossier_id?: number;
 
-  @ApiPropertyOptional({ example: 'b9d6c1dd-664c-4924-b359-fd77337da47e', required: false })
+  @ApiPropertyOptional({
+    example: 'b9d6c1dd-664c-4924-b359-fd77337da47e',
+    required: false,
+  })
   'sub_stage_id'?: string;
 
   @ApiPropertyOptional({ description: 'Filtrer par avocat assigné' })
@@ -28,12 +42,18 @@ export class DiligenceSearchDto {
   @IsEnum(DiligenceType)
   type?: DiligenceType;
 
-  @ApiPropertyOptional({ description: 'Filtrer par statut', enum: DiligenceStatus })
+  @ApiPropertyOptional({
+    description: 'Filtrer par statut',
+    enum: DiligenceStatus,
+  })
   @IsOptional()
   @IsEnum(DiligenceStatus)
   status?: DiligenceStatus;
 
-  @ApiPropertyOptional({ description: 'Filtrer par priorité', enum: DiligencePriority })
+  @ApiPropertyOptional({
+    description: 'Filtrer par priorité',
+    enum: DiligencePriority,
+  })
   @IsOptional()
   @IsEnum(DiligencePriority)
   priority?: DiligencePriority;

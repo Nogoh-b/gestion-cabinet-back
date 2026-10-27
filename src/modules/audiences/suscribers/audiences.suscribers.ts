@@ -4,7 +4,7 @@ import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 import { DataSource, InsertEvent, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 
 import { Audience } from '../entities/audience.entity';
 
@@ -25,6 +25,7 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super(dataSource, notificationDispatcher);
   }
@@ -93,6 +94,7 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     const audience = await this.load(Number(payload.audienceId));
     if (!audience) return;
     (audience as any).notify_client = payload.notifyClient === true;
+    this.emitWorkflowSourceEvent('created', audience);
     await this.onAfterCreate(audience);
   }
 
@@ -101,6 +103,8 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     audienceId: number;
     notifyClient?: boolean;
   }): Promise<void> {
+    const audience = await this.load(Number(payload.audienceId)).catch(() => null);
+    if (audience) this.emitWorkflowSourceEvent('held', audience);
     await this.dispatchHeld(
       Number(payload.audienceId),
       payload.notifyClient === true,
@@ -136,6 +140,8 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     audienceId: number;
     notifyClient?: boolean;
   }): Promise<void> {
+    const audience = await this.load(Number(payload.audienceId)).catch(() => null);
+    if (audience?.postponed_to) this.emitWorkflowSourceEvent('postponed', audience);
     await this.dispatchUpdated(
       Number(payload.audienceId),
       'Report d’audience',
@@ -153,6 +159,33 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
       'Annulation d’audience',
       payload.notifyClient === true,
     );
+  }
+
+  /**
+   * Émet l'événement source du case-workflow. Toujours appelé AVANT
+   * `this.notify(...)` : une exception ici (listener
+   * `case-workflow.source.*` synchrone en défaut, ou `EventEmitter2.emit`
+   * lui-même) ne doit jamais empêcher la notification métier de partir.
+   */
+  private emitWorkflowSourceEvent(
+    kind: 'created' | 'held' | 'postponed',
+    audience: Audience,
+  ): void {
+    try {
+      const dossierId = Number(audience.dossier_id ?? audience.dossier?.id);
+      const tenantId = Number(audience.tenant_id);
+      if (!dossierId || !tenantId) return;
+      this.eventEmitter.emit(`case-workflow.source.audience-${kind}`, {
+        tenantId,
+        dossierId,
+        audienceId: audience.id,
+      });
+    } catch (err) {
+      this.logger.error(
+        `emitWorkflowSourceEvent(audience-${kind}) a échoué pour l'audience ${audience.id} : ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+    }
   }
 
   private async dispatchHeld(

@@ -1,8 +1,17 @@
-import { Entity, Column, PrimaryGeneratedColumn, OneToMany, Unique } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  OneToMany,
+  Unique,
+} from 'typeorm';
 import { Stage } from './stage.entity';
 import { Transition } from './transition.entity';
 import { Cycle } from './cycle.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 export enum ProcedureTemplateLifecycle {
@@ -14,10 +23,11 @@ export enum ProcedureTemplateLifecycle {
 @Entity('procedure_templates')
 @BusinessTable({
   label: 'Modèles de procédure',
-  description: 'Modèles de procédure définissant les étapes, transitions et cycles pour différents types de procédures juridiques',
+  description:
+    'Modèles de procédure définissant les étapes, transitions et cycles pour différents types de procédures juridiques',
   icon: '📋',
   category: 'procedure',
-  ignored: false,
+  ignored: true,
 })
 @Unique(['tenant_id', 'familyId', 'version'])
 export class ProcedureTemplate extends BaseEntity {
@@ -84,7 +94,9 @@ export class ProcedureTemplate extends BaseEntity {
   @OneToMany(() => Stage, (stage) => stage.template, { cascade: true })
   stages: Stage[];
 
-  @OneToMany(() => Transition, (transition) => transition.template, { cascade: true })
+  @OneToMany(() => Transition, (transition) => transition.template, {
+    cascade: true,
+  })
   transitions: Transition[];
 
   @OneToMany(() => Cycle, (cycle) => cycle.template, { cascade: true })
@@ -94,5 +106,5 @@ export class ProcedureTemplate extends BaseEntity {
   // createdAt: Date;
 
   // @UpdateDateColumn({ name: 'updated_at' })
-  // updatedAt: Date; 
+  // updatedAt: Date;
 }

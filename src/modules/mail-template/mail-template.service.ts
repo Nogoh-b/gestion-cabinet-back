@@ -1,15 +1,20 @@
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as Handlebars from 'handlebars';
 import { MailTemplate } from './entities/mail-template.entity';
 import { CreateMailTemplateDto } from './dto/create-mail-template.dto';
 import { UpdateMailTemplateDto } from './dto/update-mail-template.dto';
-import { Cabinet, cabinetLogoToDataUri } from 'src/modules/cabinet/entities/cabinet.entity';
+import {
+  Cabinet,
+  cabinetLogoToDataUri,
+} from 'src/modules/cabinet/entities/cabinet.entity';
 import { logoFileToUrl } from 'src/modules/cabinet/cabinet-logo.util';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-import { buildNotificationTemplateByCode } from './notification-template.defaults';
-import { buildAuthTemplateByCode } from './auth-template.defaults';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
 
 export interface RenderedMail {
   subject: string;
@@ -28,9 +33,13 @@ export class MailTemplateService {
   // ── CRUD ────────────────────────────────────────────────────────────────
 
   async create(dto: CreateMailTemplateDto): Promise<MailTemplate> {
-    const existing = await this.repository.findOne({ where: { code: dto.code } });
+    const existing = await this.repository.findOne({
+      where: { code: dto.code },
+    });
     if (existing) {
-      throw new BadRequestException(`Un template avec le code "${dto.code}" existe déjà.`);
+      throw new BadRequestException(
+        `Un template avec le code "${dto.code}" existe déjà.`,
+      );
     }
     const tpl = this.repository.create({
       ...dto,
@@ -40,12 +49,39 @@ export class MailTemplateService {
     return this.repository.save(tpl);
   }
 
+  /**
+   * Les modèles sont partagés (@SharedAcrossTenants) : un cabinet lit ceux du
+   * référentiel global (tenant 1) en plus des siens, et chaque cabinet reçoit
+   * une copie des modèles globaux à sa création. Pour un même code, la copie
+   * du cabinet l'emporte : sans cela la liste montre chaque modèle en double
+   * et un code peut désigner le modèle global.
+   */
+  private preferOwn(rows: MailTemplate[]): MailTemplate[] {
+    if (!hasActiveTenant()) return rows;
+    const tenantId = getCurrentTenantId();
+    const byCode = new Map<string, MailTemplate>();
+    for (const row of rows) {
+      const kept = byCode.get(row.code);
+      if (!kept || (kept.tenant_id !== tenantId && row.tenant_id === tenantId)) {
+        byCode.set(row.code, row);
+      }
+    }
+    return rows.filter((row) => byCode.get(row.code) === row);
+  }
+
   async findAll(): Promise<MailTemplate[]> {
-    return this.repository.find({ order: { category: 'ASC', name: 'ASC' } });
+    return this.preferOwn(
+      await this.repository.find({ order: { category: 'ASC', name: 'ASC' } }),
+    );
   }
 
   async findActive(): Promise<MailTemplate[]> {
-    return this.repository.find({ where: { is_active: true }, order: { name: 'ASC' } });
+    return this.preferOwn(
+      await this.repository.find({
+        where: { is_active: true },
+        order: { name: 'ASC' },
+      }),
+    );
   }
 
   async findOne(id: number): Promise<MailTemplate> {
@@ -55,11 +91,24 @@ export class MailTemplateService {
   }
 
   async findByCode(code: string): Promise<MailTemplate | null> {
-    return this.repository.findOne({ where: { code } });
+    const [tpl] = this.preferOwn(await this.repository.find({ where: { code } }));
+    return tpl ?? null;
   }
 
   async update(id: number, dto: UpdateMailTemplateDto): Promise<MailTemplate> {
-    const tpl = await this.findOne(id);
+    let tpl = await this.findOne(id);
+    // Modèle global vu par un cabinet : on modifie la copie du cabinet (créée
+    // au besoin), jamais le référentiel. `save` réécrit tenant_id avec le
+    // cabinet courant et déplacerait sinon la ligne globale dans le cabinet.
+    if (hasActiveTenant() && tpl.tenant_id !== getCurrentTenantId()) {
+      const own = await this.findByCode(tpl.code);
+      if (own && own.tenant_id === getCurrentTenantId()) {
+        tpl = own;
+      } else {
+        const { id: _id, tenant_id: _tenant, created_at: _created, updated_at: _updated, deleted_at: _deleted, ...copy } = tpl as any;
+        tpl = this.repository.create(copy as Partial<MailTemplate>);
+      }
+    }
     Object.assign(tpl, dto);
     return this.repository.save(tpl);
   }
@@ -81,9 +130,12 @@ export class MailTemplateService {
    * (en-tête + pied de page) construit à partir des informations du cabinet
    * courant (logo, couleur, coordonnées).
    */
-  async render(code: string, context: Record<string, any> = {}): Promise<RenderedMail> {
+  async render(
+    code: string,
+    context: Record<string, any> = {},
+  ): Promise<RenderedMail> {
     const tpl = await this.findByCode(code);
-    if (!tpl) throw new NotFoundException(`Template "${code}" introuvable`);
+    if (!tpl || !tpl.is_active) throw new NotFoundException(`Template "${code}" indisponible`);
     return this.renderTemplate(tpl, context);
   }
 
@@ -91,17 +143,15 @@ export class MailTemplateService {
     code: string,
     context: Record<string, any> = {},
   ): Promise<RenderedMail> {
-    let tpl = await this.findByCode(code);
-
-    if (!tpl) {
-      tpl = await this.ensureSystemDefault(code);
-    }
-
-    if (!tpl) throw new NotFoundException(`Template "${code}" introuvable`);
-    return this.renderTemplate(tpl, context);
+    // Defaults are copied from the published profile at cabinet creation.
+    // A missing template may have been intentionally retired.
+    return this.render(code, context);
   }
 
-  async preview(id: number, context: Record<string, any> = {}): Promise<RenderedMail> {
+  async preview(
+    id: number,
+    context: Record<string, any> = {},
+  ): Promise<RenderedMail> {
     const tpl = await this.findOne(id);
     return this.renderTemplate(tpl, context);
   }
@@ -121,15 +171,13 @@ export class MailTemplateService {
     return { subject, html };
   }
 
-  private async ensureSystemDefault(code: string): Promise<MailTemplate | null> {
-    const defaults = buildNotificationTemplateByCode(code) ?? buildAuthTemplateByCode(code);
-    if (!defaults) return null;
-
-    try {
-      return await this.repository.save(this.repository.create(defaults));
-    } catch {
-      return this.findByCode(code);
-    }
+  /**
+   * Corps HTML rédigé hors modèle (compétence « Envoyer un e-mail » du chat)
+   * habillé comme les modèles : en-tête et pied de page du cabinet courant.
+   */
+  async wrapForCabinet(bodyHtml: string): Promise<string> {
+    const brand = this.buildBrandContext(await this.getCurrentCabinet());
+    return this.wrapWithLayout(bodyHtml, brand);
   }
 
   private async getCurrentCabinet(): Promise<Cabinet | null> {
@@ -154,7 +202,9 @@ export class MailTemplateService {
       },
       cabinetName,
       // URL hébergée en priorité (affichable en e-mail), repli data-URI.
-      logoUrl: logoFileToUrl(cabinet?.logo_file) ?? cabinetLogoToDataUri(cabinet?.logo, cabinet?.logo_mime),
+      logoUrl:
+        logoFileToUrl(cabinet?.logo_file) ??
+        cabinetLogoToDataUri(cabinet?.logo, cabinet?.logo_mime),
       brandColor: cabinet?.brand_color ?? '#1d4ed8',
       contactEmail,
       contactPhone,
@@ -166,7 +216,10 @@ export class MailTemplateService {
   }
 
   /** Habillage HTML : en-tête (logo/nom) + corps + pied de page (coordonnées). */
-  private wrapWithLayout(body: string, brand: ReturnType<typeof this.buildBrandContext>): string {
+  private wrapWithLayout(
+    body: string,
+    brand: ReturnType<typeof this.buildBrandContext>,
+  ): string {
     const header = `
       <div style="background:${brand.brandColor};padding:24px;text-align:center;">
         ${

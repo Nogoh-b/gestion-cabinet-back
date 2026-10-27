@@ -23,9 +23,7 @@ import { PayrollContributionsService } from './payroll-contributions.service';
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PayrollContributionsController {
-  constructor(
-    private readonly service: PayrollContributionsService,
-  ) {}
+  constructor(private readonly service: PayrollContributionsService) {}
 
   private actor(user: any) {
     return {
@@ -37,10 +35,7 @@ export class PayrollContributionsController {
   @Post()
   @RequirePermissions('manage_payroll_rates')
   @ApiOperation({ summary: 'Créer une nouvelle version brouillon' })
-  create(
-    @Body() dto: CreatePayrollContributionDto,
-    @CurrentUser() user: any,
-  ) {
+  create(@Body() dto: CreatePayrollContributionDto, @CurrentUser() user: any) {
     return this.service.create(dto, this.actor(user));
   }
 
@@ -81,10 +76,7 @@ export class PayrollContributionsController {
   @Post(':id/publish')
   @RequirePermissions('manage_payroll_rates')
   @ApiOperation({ summary: 'Publier et figer une version du barème' })
-  publish(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: any,
-  ) {
+  publish(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.publish(id, this.actor(user));
   }
 
@@ -102,10 +94,7 @@ export class PayrollContributionsController {
   @Delete(':id')
   @RequirePermissions('manage_payroll_rates')
   @ApiOperation({ summary: 'Supprimer uniquement un brouillon inutilisé' })
-  remove(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: any,
-  ) {
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.remove(id, this.actor(user));
   }
 }

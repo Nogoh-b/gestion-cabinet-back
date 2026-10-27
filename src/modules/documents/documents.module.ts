@@ -2,17 +2,6 @@ import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CabinetModule } from '../cabinet/cabinet.module';
 
-
-
-
-
-
-
-
-
-
-
-
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentCategoryModule } from '../document-category/document-category.module';
 import { DossiersModule } from '../dossiers/dossiers.module';
@@ -20,6 +9,7 @@ import { IamModule } from '../iam/iam.module';
 import { DocumentCustomerController } from './document-customer/document-customer.controller';
 import { DocumentCustomerService } from './document-customer/document-customer.service';
 import { DocumentCustomer } from './document-customer/entities/document-customer.entity';
+import { DocumentCustomerVersion } from './document-customer/entities/document-customer-version.entity';
 import { DocumentTypeController } from './document-type/document-type.controller';
 import { DocumentTypeService } from './document-type/document-type.service';
 import { DocumentType } from './document-type/entities/document-type.entity';
@@ -32,21 +22,14 @@ import { DocumentVersion } from './document-customer/entities/document-version.e
 import { DocumentVersionService } from './document-customer/document-version.service';
 import { AntivirusScannerService } from './document-customer/antivirus-scanner.service';
 
-
-
-
-
-
-
-
-
-
-
-
-
 @Module({
   imports: [
-    TypeOrmModule.forFeature([DocumentType, DocumentCustomer, DocumentVersion]),
+    TypeOrmModule.forFeature([
+      DocumentType,
+      DocumentCustomer,
+      DocumentVersion,
+      DocumentCustomerVersion,
+    ]),
     DocumentCategoryModule,
     forwardRef(() => CustomerModule),
     forwardRef(() => DossiersModule),
@@ -56,7 +39,22 @@ import { AntivirusScannerService } from './document-customer/antivirus-scanner.s
     PlansModule,
   ],
   controllers: [DocumentTypeController, DocumentCustomerController],
-  providers: [DocumentTypeService, DocumentCustomerService, DocumentVersionService, AntivirusScannerService, DocumentStatsService, DocumentTypeStatsService, DocumentCustomerSubscriber],
-  exports: [DocumentTypeService, DocumentCustomerService, DocumentVersionService, AntivirusScannerService, DocumentStatsService, TypeOrmModule],
+  providers: [
+    DocumentTypeService,
+    DocumentCustomerService,
+    DocumentVersionService,
+    AntivirusScannerService,
+    DocumentStatsService,
+    DocumentTypeStatsService,
+    DocumentCustomerSubscriber,
+  ],
+  exports: [
+    DocumentTypeService,
+    DocumentCustomerService,
+    DocumentVersionService,
+    AntivirusScannerService,
+    DocumentStatsService,
+    TypeOrmModule,
+  ],
 })
 export class DocumentsModule {}

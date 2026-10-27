@@ -1,15 +1,27 @@
 // region.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Country } from '../../country/entities/country.entity';
 import { Division } from '../../divivion/entities/divivion.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('region')
 @BusinessTable({
   label: 'Régions',
   description: 'Régions administratives des pays.',
   icon: '🗺️',
-  category: 'geographie'
+  category: 'geographie',
 })
 export class Region {
   @PrimaryGeneratedColumn()
@@ -18,7 +30,7 @@ export class Region {
     description: 'Identifiant unique de la région',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -28,7 +40,7 @@ export class Region {
     description: 'Nom officiel de la région',
     example: 'Île-de-France, Littoral, Centre',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   name: string;
 
@@ -38,7 +50,7 @@ export class Region {
     description: 'Code unique de la région',
     example: 'IDF, LT, CE',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   code: string;
 
@@ -48,7 +60,7 @@ export class Region {
     description: 'Identifiant du pays parent',
     importance: 'low',
     group: 'relation',
-    ignored: true
+    ignored: true,
   })
   country_id: number;
 
@@ -58,7 +70,7 @@ export class Region {
     label: 'Pays',
     description: 'Pays auquel appartient la région',
     importance: 'high',
-    group: 'relation'
+    group: 'relation',
   })
   country: Country;
 
@@ -68,7 +80,7 @@ export class Region {
     description: 'Population estimée de la région',
     unit: 'habitants',
     importance: 'low',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   population: string;
 
@@ -82,7 +94,7 @@ export class Region {
     format: 'date',
     importance: 'low',
     group: 'audit',
-    ignored: true
+    ignored: true,
   })
   created_at: Date;
 
@@ -93,7 +105,7 @@ export class Region {
     format: 'date',
     importance: 'low',
     group: 'audit',
-    ignored: true
+    ignored: true,
   })
   updated_at: Date;
 }

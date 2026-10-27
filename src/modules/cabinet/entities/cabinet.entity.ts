@@ -1,4 +1,9 @@
 import { Plan } from 'src/modules/plans/entities/plan.entity';
+import type {
+  FontSize,
+  SidebarStyle,
+  ThemeName,
+} from 'src/modules/settings/appearance.constants';
 import {
   Column,
   CreateDateColumn,
@@ -11,12 +16,24 @@ import {
 
 import { logoFileToUrl } from '../cabinet-logo.util';
 
-
 export type CabinetStatus = 'active' | 'trial' | 'suspended';
-export type CabinetPlan   =
-  | 'free' | 'avocat' | 'cabinet' | 'firme'
+/**
+ * Origine d'une suspension :
+ *  - payment_required : paiement initial/renouvellement non encore réglé ;
+ *  - expired          : abonnement arrivé à échéance ;
+ *  - manual           : décision de la plateforme (jamais levée automatiquement).
+ */
+export type CabinetSuspensionReason = 'payment_required' | 'expired' | 'manual';
+export type CabinetPlan =
+  | 'free'
+  | 'avocat'
+  | 'cabinet'
+  | 'firme'
   // legacy
-  | 'starter' | 'pro' | 'business' | 'enterprise';
+  | 'starter'
+  | 'pro'
+  | 'business'
+  | 'enterprise';
 
 @Entity('cabinets')
 export class Cabinet {
@@ -34,6 +51,12 @@ export class Cabinet {
 
   @Column()
   name: string;
+
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  reference_profile_id: string | null;
+
+  @Column({ length: 150, default: 'Cabinet - Tous les collaborateurs' })
+  default_chat_group_name: string;
 
   @Column({ default: 'trial' })
   status: CabinetStatus;
@@ -56,6 +79,18 @@ export class Cabinet {
 
   @Column({ type: 'datetime', nullable: true })
   trial_ends_at: Date | null;
+
+  @Column({ type: 'varchar', length: 30, nullable: true, name: 'suspension_reason' })
+  suspension_reason: CabinetSuspensionReason | null;
+
+  @Column({ type: 'datetime', nullable: true, name: 'suspended_at' })
+  suspended_at: Date | null;
+
+  @Column({ type: 'int', nullable: true, name: 'suspended_by_admin_id' })
+  suspended_by_admin_id: number | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true, name: 'suspension_note' })
+  suspension_note: string | null;
 
   // ── Branding / coordonnées (utilisés dans les en-têtes/pieds d'e-mail) ─────
   // NOTE: ces champs constituent la source de configuration UNIQUE du cabinet
@@ -88,10 +123,20 @@ export class Cabinet {
   @Column({ type: 'varchar', length: 20, nullable: true, name: 'brand_color' })
   brand_color: string | null;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'contact_email' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'contact_email',
+  })
   contact_email: string | null;
 
-  @Column({ type: 'varchar', length: 50, nullable: true, name: 'contact_phone' })
+  @Column({
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+    name: 'contact_phone',
+  })
   contact_phone: string | null;
 
   @Column({ type: 'text', nullable: true })
@@ -110,23 +155,35 @@ export class Cabinet {
 
   // ── Apparence (anciennement app_settings) ─────────────────────────────────
 
-  /** 🎨 Thème nommé (palette claire). Ignoré en mode sombre. */
-  @Column({
-    type: 'enum',
-    enum: ['ocean', 'silver', 'yellow', 'forest', 'sunset', 'rose'],
-    default: 'ocean',
-  })
-  theme_name: 'ocean' | 'silver' | 'yellow' | 'forest' | 'sunset' | 'rose';
+  // L'apparence est personnelle (`user_settings`) : les champs ci-dessous sont
+  // les DÉFAUTS copiés sur chaque nouveau membre du cabinet.
 
-  /** Polices configurables (clés de FONTS côté front). */
-  @Column({ length: 50, default: 'inter', name: 'font_ui' })
+  /** 🎨 Thème nommé par défaut (voir THEME_NAMES). */
+  @Column({ type: 'varchar', length: 20, default: 'midnight' })
+  theme_name: ThemeName;
+
+  /** Polices par défaut (clés de FONTS côté front). */
+  @Column({ length: 50, default: 'outfit', name: 'font_ui' })
   font_ui: string;
 
-  @Column({ length: 50, default: 'inter', name: 'font_heading' })
+  @Column({ length: 50, default: 'outfit', name: 'font_heading' })
   font_heading: string;
 
   @Column({ length: 50, default: 'jetbrains_mono', name: 'font_mono' })
   font_mono: string;
+
+  /** Taille de texte par défaut des nouveaux membres. */
+  @Column({ type: 'varchar', length: 5, default: 'lg', name: 'default_font_size' })
+  default_font_size: FontSize;
+
+  /** Style de sidebar par défaut des nouveaux membres. */
+  @Column({
+    type: 'varchar',
+    length: 10,
+    default: 'tinted',
+    name: 'default_sidebar_style',
+  })
+  default_sidebar_style: SidebarStyle;
 
   // ── Informations légales (anciennement app_settings) ──────────────────────
 
@@ -136,7 +193,12 @@ export class Cabinet {
   @Column({ type: 'varchar', length: 100, nullable: true })
   nina: string | null;
 
-  @Column({ type: 'varchar', length: 100, nullable: true, name: 'bank_account' })
+  @Column({
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+    name: 'bank_account',
+  })
   bank_account: string | null;
 
   // ── Configuration régionale (anciennement app_settings) ───────────────────
@@ -151,7 +213,12 @@ export class Cabinet {
   currency: string;
 
   /** Symbole affiché (ex : 'FCFA', '€', '$'). Null = utiliser le code ISO. */
-  @Column({ type: 'varchar', length: 20, nullable: true, name: 'currency_symbol' })
+  @Column({
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+    name: 'currency_symbol',
+  })
   currency_symbol: string | null;
 
   /** Position du symbole par rapport au montant : avant ou après. */
@@ -168,11 +235,21 @@ export class Cabinet {
   currency_decimals: number;
 
   /** Séparateur de milliers (ex : ' ', '.', ','). */
-  @Column({ type: 'varchar', length: 5, default: ' ', name: 'currency_thousands_sep' })
+  @Column({
+    type: 'varchar',
+    length: 5,
+    default: ' ',
+    name: 'currency_thousands_sep',
+  })
   currency_thousands_sep: string;
 
   /** Séparateur décimal (ex : ',', '.'). */
-  @Column({ type: 'varchar', length: 5, default: ',', name: 'currency_decimal_sep' })
+  @Column({
+    type: 'varchar',
+    length: 5,
+    default: ',',
+    name: 'currency_decimal_sep',
+  })
   currency_decimal_sep: string;
 
   // ── Numérotation (anciennement app_settings) ──────────────────────────────
@@ -230,6 +307,7 @@ export class Cabinet {
    *  "{PREFIX}{YYYY}-{NNNN}"   → DOS-2026-0001  (défaut)
    *  "{YYYY}/{NNNN}"           → 2026/0001
    *  "{NNNN}/{YYYY}"           → 0001/2026
+   *  "{YY}{MM}{DD}-{NNNN}"     → 260922-0001
    */
   @Column({
     type: 'varchar',
@@ -244,7 +322,13 @@ export class Cabinet {
    * Cameroun, 20 pour la France, 0 si exonéré). Peut être surchargé par
    * facture.
    */
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, name: 'default_tva_rate' })
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    name: 'default_tva_rate',
+  })
   default_tva_rate: number;
 
   // ── Horaires (anciennement app_settings) ──────────────────────────────────
@@ -284,19 +368,40 @@ export class Cabinet {
   // ── Frais d'ouverture de dossier ──────────────────────────────────────────
 
   /** Active la création automatique d'une facture à l'ouverture d'un dossier. */
-  @Column({ type: 'boolean', default: false, name: 'dossier_opening_fee_enabled' })
+  @Column({
+    type: 'boolean',
+    default: false,
+    name: 'dossier_opening_fee_enabled',
+  })
   dossier_opening_fee_enabled: boolean;
 
   /** Montant HT des frais d'ouverture de dossier. */
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'dossier_opening_fee' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+    name: 'dossier_opening_fee',
+  })
   dossier_opening_fee: number;
 
   /** Taux de TVA appliqué aux frais d'ouverture (ex : 19.25 pour le Cameroun). */
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, name: 'dossier_opening_fee_tva' })
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    name: 'dossier_opening_fee_tva',
+  })
   dossier_opening_fee_tva: number;
 
   /** Libellé qui apparaîtra sur la facture d'ouverture. */
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'dossier_opening_fee_label' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'dossier_opening_fee_label',
+  })
   dossier_opening_fee_label: string | null;
 
   @Column({ type: 'longtext', nullable: true, name: 'payslip_template' })
@@ -308,11 +413,58 @@ export class Cabinet {
   @Column({ type: 'longtext', nullable: true, name: 'dossier_template' })
   dossier_template: string | null;
 
+  // ── Configuration IA (par cabinet) ───────────────────────────────────────
+  /**
+   * Configuration IA du cabinet — JSON nullable.
+   * Stocke le provider actif et les credentials par provider.
+   * Exemple :
+   * {
+   *   "active_provider": "meta",
+   *   "providers": {
+   *     "deepseek": { "base_url": "https://api.deepseek.com", "api_key": "sk-...", "model": "deepseek-v4-flash" },
+   *     "meta":     { "base_url": "https://api.meta.ai", "api_key": "LLM_...", "model": "muse-spark-1.3-contributor" },
+   *     "freellm":  { "base_url": "https://freellm.bisoft-solutions.com/v1", "api_key": "freellmapi-...", "model": "multi-models" }
+   *   }
+   * }
+   * Si null → fallback sur les variables d'environnement (comportement historique).
+   */
+  @Column({ type: 'json', nullable: true, name: 'ai_config' })
+  ai_config: AiCabinetConfig | null;
+
+  @Column({ type: 'json', nullable: true, name: 'billing_account_mapping' })
+  billing_account_mapping: Record<string, string> | null;
+
+  /** Mots ajoutés au correcteur d'orthographe des éditeurs par les membres du cabinet. */
+  @Column({ type: 'json', nullable: true, name: 'custom_dictionary' })
+  custom_dictionary: string[] | null;
+
   @CreateDateColumn()
   created_at: Date;
 
   @UpdateDateColumn()
   updated_at: Date;
+}
+
+/** Configuration IA stockée par cabinet (colonne `ai_config`). */
+export interface AiCabinetConfig {
+  selection_origin?: 'platform' | 'cabinet';
+  active_provider?: string;
+  providers?: Record<string, AiProviderConfig>;
+  /** Raccourci legacy / simple : provider actif si `providers` non utilisé. */
+  base_url?: string;
+  api_key?: string;
+  model?: string;
+}
+
+export interface AiProviderConfig {
+  label?: string;
+  base_url?: string;
+  api_key?: string;
+  model?: string;
+  is_custom?: boolean;
+  fast_model?: string;
+  quality_model?: string;
+  streaming_model?: string;
 }
 
 // ── Helpers logo (blob ⇄ data-URI) ───────────────────────────────────────────

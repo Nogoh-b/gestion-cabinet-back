@@ -1,5 +1,11 @@
 // src/chat/entities/attachment.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  CreateDateColumn,
+} from 'typeorm';
 import { Message } from './messages.entity';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Exclude, Expose } from 'class-transformer';
@@ -9,7 +15,7 @@ export enum AttachmentType {
   DOCUMENT = 'document',
   VIDEO = 'video',
   AUDIO = 'audio',
-  FILE = 'file'
+  FILE = 'file',
 }
 
 export enum ChatAttachmentSecurityStatus {
@@ -37,7 +43,7 @@ export class Attachment extends BaseEntity {
   @Column({
     type: 'enum',
     enum: AttachmentType,
-    default: AttachmentType.FILE
+    default: AttachmentType.FILE,
   })
   fileType: AttachmentType;
 
@@ -55,8 +61,6 @@ export class Attachment extends BaseEntity {
   @Exclude()
   thumbnailPath: string | null;
 
-
-
   @Column({ name: 'thumbnailUrl', type: 'varchar', nullable: true })
   @Exclude()
   legacyThumbnailUrl: string | null; // Pour les images/vidéos
@@ -64,7 +68,11 @@ export class Attachment extends BaseEntity {
   @Column({ default: false })
   isUploaded: boolean;
 
-  @ManyToOne(() => Message, message => message.attachments, {
+  /** Employé ayant téléversé le fichier : lui seul peut le joindre à un message. */
+  @Column({ name: 'uploaded_by_id', type: 'int', nullable: true })
+  uploadedById: number | null;
+
+  @ManyToOne(() => Message, (message) => message.attachments, {
     onDelete: 'CASCADE',
     nullable: true,
   })
@@ -72,9 +80,6 @@ export class Attachment extends BaseEntity {
 
   @Column({ name: 'conversation_id', type: 'int', nullable: true })
   conversationId: number | null;
-
-  @Column({ name: 'uploaded_by_id', type: 'int', nullable: true })
-  uploadedById: number | null;
 
   @Column({
     name: 'storage_key',

@@ -7,7 +7,6 @@ import { CreateRessourceTypeDto } from './dto/create-ressource-type.dto';
 import { UpdateRessourceTypeDto } from './dto/update-ressource-type.dto';
 import { RessourceType } from './entities/ressource-type.entity';
 
-
 @Injectable()
 export class RessourceTypeService extends BaseService<RessourceType> {
   constructor(
@@ -41,7 +40,10 @@ export class RessourceTypeService extends BaseService<RessourceType> {
     await this.repository.remove(item);
   }
 
-  async update(id: number, dto: UpdateRessourceTypeDto): Promise<RessourceType> {
+  async update(
+    id: number,
+    dto: UpdateRessourceTypeDto,
+  ): Promise<RessourceType> {
     // 1. Charge l’entité existante
     const ressource_type = await this.repository.findOne({ where: { id } });
     if (!ressource_type) {

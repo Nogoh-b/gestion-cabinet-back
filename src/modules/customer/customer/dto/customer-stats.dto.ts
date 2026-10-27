@@ -1,38 +1,38 @@
 // src/modules/customer/customer/dto/customer-stats.dto.ts
 
-import { BaseStatsDto, DistributionItem } from "src/core/types/base-stats.dto";
+import { BaseStatsDto, DistributionItem } from 'src/core/types/base-stats.dto';
 
 export class CustomerStatsDto extends BaseStatsDto {
   // Vue d'ensemble
   active: number;
   inactive: number;
   blocked: number;
-  
+
   particuliers: number;
   professionnels: number;
   entreprises: number;
-  
+
   // Distributions
   byType: DistributionItem[];
   byStatus: DistributionItem[];
   byCity: DistributionItem[];
   byBranch: DistributionItem[];
-  
+
   // Statistiques dossiers
   dossierStats: CustomerDossierStatsDto;
-  
+
   // Statistiques financières
   financialStats: CustomerFinancialStatsDto;
-  
+
   // Nouveaux clients
   newCustomersTrend: NewCustomersTrendDto[];
-  
+
   // Top clients
   topClients: TopClientDto[];
-  
+
   // Clients récents
   recentCustomers: RecentCustomerDto[];
-  
+
   // Clients sans dossier
   customersWithoutDossier: CustomerWithoutDossierDto[];
 }

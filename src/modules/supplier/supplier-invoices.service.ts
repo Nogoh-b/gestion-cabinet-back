@@ -25,6 +25,9 @@ import {
 } from './entities/supplier-invoice.entity';
 import { Branch } from '../agencies/branch/entities/branch.entity';
 import { SupplierEvidenceStorageService } from './supplier-evidence-storage.service';
+import { CaseBillingService } from '../case-workflow/services/case-billing.service';
+import { Dossier } from '../dossiers/entities/dossier.entity';
+import { DossierAction } from '../case-workflow/entities/dossier-action.entity';
 
 export interface SupplierInvoiceActor {
   userId?: number | null;
@@ -51,6 +54,7 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
     private readonly outboxService: OutboxService,
     private readonly auditService: AuditService,
     private readonly evidenceStorage: SupplierEvidenceStorageService,
+    private readonly caseBillingService: CaseBillingService,
   ) {
     super(repository, paginationService);
   }
@@ -70,6 +74,7 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
   ): Promise<SupplierInvoice> {
     this.assertAmounts(dto);
     this.assertDates(dto.invoice_date, dto.due_date);
+    await this.assertBillingRelations(dto);
     const supplier = await this.supplierRepo.findOne({
       where: {
         id: dto.supplier_id,
@@ -168,6 +173,11 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
         'Seule une facture fournisseur reçue peut être modifiée',
       );
     }
+    await this.assertBillingRelations({
+      dossier_id: dto.dossier_id ?? invoice.dossier_id ?? undefined,
+      action_id: dto.action_id ?? invoice.action_id ?? undefined,
+      is_rebillable: dto.is_rebillable ?? invoice.is_rebillable,
+    });
     const merged = {
       amount_ht: dto.amount_ht ?? Number(invoice.amount_ht),
       amount_tva: dto.amount_tva ?? Number(invoice.amount_tva),
@@ -257,6 +267,12 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
       const saved = await manager
         .getRepository(SupplierInvoice)
         .save(invoice);
+      await this.caseBillingService.syncSupplierInvoiceToBillableItem(
+        manager,
+        saved,
+        actorId,
+        true,
+      );
       const audit = await this.auditService.append(manager, {
         actorId,
         action: 'supplier_invoice.approved',
@@ -517,5 +533,46 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
       paymentMethod: invoice.payment_method,
       paymentReference: invoice.payment_reference,
     };
+  }
+
+  /** Dépense refacturable : dossier obligatoire, action rattachée à ce dossier. */
+  private async assertBillingRelations(dto: {
+    dossier_id?: number;
+    action_id?: string;
+    is_rebillable?: boolean;
+  }): Promise<void> {
+    const tenantId = getCurrentTenantId();
+    if (dto.is_rebillable && !dto.dossier_id) {
+      throw new BadRequestException(
+        'Un dossier est obligatoire pour refacturer une facture fournisseur',
+      );
+    }
+    if (!dto.dossier_id && dto.action_id) {
+      throw new BadRequestException(
+        'Un dossier est obligatoire pour associer une action',
+      );
+    }
+    if (dto.dossier_id) {
+      const dossier = await this.dataSource.getRepository(Dossier).findOne({
+        where: { id: dto.dossier_id, tenant_id: tenantId },
+      });
+      if (!dossier) throw new NotFoundException('Dossier non trouvé');
+    }
+    if (dto.action_id) {
+      const action = await this.dataSource
+        .getRepository(DossierAction)
+        .findOne({
+          where: {
+            id: dto.action_id,
+            dossier_id: dto.dossier_id!,
+            tenant_id: tenantId,
+          },
+        });
+      if (!action) {
+        throw new BadRequestException(
+          'L’action associée n’appartient pas au dossier sélectionné',
+        );
+      }
+    }
   }
 }

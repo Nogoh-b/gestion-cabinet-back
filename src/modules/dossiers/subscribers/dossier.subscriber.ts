@@ -2,27 +2,25 @@ import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
-import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
-import { Conversation } from 'src/modules/chat/entities/conversation.entity';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
-import { DataSource, In, InsertEvent, Repository, UpdateEvent } from 'typeorm';
+import { DataSource, InsertEvent, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { OnEvent } from '@nestjs/event-emitter';
 
 import { Dossier } from '../entities/dossier.entity';
+import { DossierChatSyncService } from '../dossier-chat-sync.service';
 
 /**
  * Subscriber métier pour l'entité Dossier.
  *
  * Effets gérés automatiquement :
- *  1. Création d'un dossier → crée la conversation de suivi de groupe
- *     et l'associe via dossier.conversation_id.
- *     L'avocat référent est ajouté comme participant initial.
+ *  1. Création d'un dossier → crée son chat (avocat référent,
+ *     collaborateurs, auteur) et l'associe via dossier.conversation_id.
  *
- *  2. Mise à jour des collaborateurs → synchronise la conversation.
- *     Tout collaborateur ajouté au dossier est automatiquement
- *     intégré comme participant de la conversation.
+ *  2. Mise à jour → le chat est réaligné sur les membres du dossier
+ *     (ajouts et retraits, cf. DossierChatSyncService).
+ *
+ *  Les notifications sont émises après commit depuis l'outbox.
  *
  * Pour ajouter un nouvel effet de bord :
  *   - Surcharge onAfterCreate ou onAfterUpdate
@@ -33,8 +31,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
-    @InjectRepository(Employee)
-    private readonly employeeRepo: Repository<Employee>,
+    private readonly dossierChatSync: DossierChatSyncService,
   ) {
     super(dataSource, notificationDispatcher);
   }
@@ -58,7 +55,14 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     entity: Dossier,
     event: InsertEvent<Dossier>,
   ): Promise<void> {
-    await this.createConversation(entity, event);
+    try {
+      await this.createConversation(entity, event);
+    } catch (err) {
+      this.logger.error(
+        `createConversation a échoué pour le dossier ${entity.dossier_number} : ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+    }
   }
 
   @OnEvent('outbox.dossier.created')
@@ -116,7 +120,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
         },
         lawyer_id: dossier.lawyer_id ?? null,
         collaborator_ids: (dossier.collaborators ?? [])
-          .map((c) => (c as any).user_id ?? (c as any).user?.id)
+          .map((c) => (c as any).user_id ?? (c as any).user?.id ?? c.id)
           .filter(Boolean),
       },
       entity: { type: 'dossier', id: dossier.id },
@@ -128,59 +132,21 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     });
   }
 
+  /**
+   * Chat du dossier (avocat, collaborateurs, auteur). Via event.manager →
+   * même transaction que l'insertion : un rollback annule aussi la
+   * conversation (pas d'orphelin).
+   */
   private async createConversation(
     entity: Dossier,
     event: InsertEvent<Dossier>,
   ): Promise<void> {
-    const participants: Employee[] = [];
-    const seen = new Set<number>();
-
-    // Avocat référent
-    if (entity.lawyer_id) {
-      const lawyer = await this.employeeRepo.findOne({
-        where: { id: entity.lawyer_id as any },
-      });
-      if (lawyer) {
-        participants.push(lawyer);
-        seen.add(lawyer.id);
-      }
-    }
-
-    // Collaborateurs du dossier (rattachés sur l'entité avant l'insert).
-    const collaboratorIds = (entity.collaborators ?? [])
-      .map((c) => c?.id)
-      .filter((id): id is number => !!id && !seen.has(id));
-    if (collaboratorIds.length) {
-      const collaborators = await this.employeeRepo.find({
-        where: { id: In(collaboratorIds) },
-      });
-      participants.push(...collaborators);
-    }
-
-    // Enregistrée via event.manager → même transaction que l'insertion du
-    // dossier : un rollback annule aussi la conversation (pas d'orphelin).
-    const convRepo = event.manager.getRepository(Conversation);
-    const conversation = convRepo.create({
-      name: `Dossier ${entity.dossier_number}`,
-      isGroup: true,
-      participants,
-      tenant_id: entity.tenant_id,
+    const result = await this.dossierChatSync.sync(entity.id, event.manager, {
+      notifyAdded: false,
     });
-    const saved = await convRepo.save(conversation);
-
-    await event.manager
-      .createQueryBuilder()
-      .update(Dossier)
-      .set({ conversation_id: saved.id })
-      .where('id = :id', { id: entity.id })
-      .execute();
-
-    entity.conversation_id = saved.id;
-
-    this.logger.log(
-      `Conversation #${saved.id} créée (${participants.length} participant(s)) et liée au dossier ${entity.dossier_number}`,
-    );
+    if (result) entity.conversation_id = result.conversationId;
   }
+
 
   // ────────────────────────────────────────────────────────────────────────────
   // MISE À JOUR
@@ -196,8 +162,15 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     entity: Partial<Dossier>,
     event: UpdateEvent<Dossier>,
   ): Promise<void> {
-    void entity;
-    void event;
+    const dossierId = entity.id ?? event.databaseEntity?.id;
+    if (!dossierId) return;
+    try {
+      await this.dossierChatSync.sync(dossierId, event.manager);
+    } catch (err) {
+      this.logger.error(
+        `Synchro du chat du dossier #${dossierId} : ${(err as Error).message}`,
+      );
+    }
   }
 
   @OnEvent('outbox.dossier.activated')

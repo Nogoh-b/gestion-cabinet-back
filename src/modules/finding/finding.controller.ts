@@ -10,7 +10,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { In } from 'typeorm';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
@@ -98,28 +103,20 @@ export class FindingsController {
   @Get()
   @RequirePermissions('view_diligence_findings')
   async findAll(@CurrentUser() user: any) {
-    return this.findingsService.findAll(
-      await this.accessibleDossierIds(user),
-    );
+    return this.findingsService.findAll(await this.accessibleDossierIds(user));
   }
 
   @Post()
   @RequirePermissions('create_diligence_finding')
   @ApiResponse({ status: 201, type: FindingResponseDto })
-  async create(
-    @Body() dto: CreateFindingDto,
-    @CurrentUser() user: any,
-  ) {
+  async create(@Body() dto: CreateFindingDto, @CurrentUser() user: any) {
     await this.assertDiligenceAccess(
       dto.diligence_id,
       user,
       'write',
       'create_diligence_finding',
     );
-    return this.findingsService.create(
-      dto,
-      this.actorId(user),
-    );
+    return this.findingsService.create(dto, this.actorId(user));
   }
 
   @Get(':id')
@@ -128,12 +125,7 @@ export class FindingsController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: any,
   ) {
-    await this.assertFindingAccess(
-      id,
-      user,
-      'read',
-      'view_diligence_findings',
-    );
+    await this.assertFindingAccess(id, user, 'read', 'view_diligence_findings');
     return this.findingsService.findOne(id);
   }
 
@@ -144,12 +136,7 @@ export class FindingsController {
     @Body() dto: UpdateFindingDto,
     @CurrentUser() user: any,
   ) {
-    await this.assertFindingAccess(
-      id,
-      user,
-      'write',
-      'edit_diligence_finding',
-    );
+    await this.assertFindingAccess(id, user, 'write', 'edit_diligence_finding');
     return this.findingsService.update(id, dto, this.actorId(user));
   }
 
@@ -174,12 +161,7 @@ export class FindingsController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: any,
   ) {
-    await this.assertFindingAccess(
-      id,
-      user,
-      'write',
-      'edit_diligence_finding',
-    );
+    await this.assertFindingAccess(id, user, 'write', 'edit_diligence_finding');
     return this.findingsService.startAnalysis(id, this.actorId(user));
   }
 
@@ -189,16 +171,8 @@ export class FindingsController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: any,
   ) {
-    await this.assertFindingAccess(
-      id,
-      user,
-      'write',
-      'edit_diligence_finding',
-    );
-    return this.findingsService.validate(
-      id,
-      this.actorId(user),
-    );
+    await this.assertFindingAccess(id, user, 'write', 'edit_diligence_finding');
+    return this.findingsService.validate(id, this.actorId(user));
   }
 
   @Post(':id/resolve')
@@ -207,12 +181,7 @@ export class FindingsController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: any,
   ) {
-    await this.assertFindingAccess(
-      id,
-      user,
-      'write',
-      'edit_diligence_finding',
-    );
+    await this.assertFindingAccess(id, user, 'write', 'edit_diligence_finding');
     return this.findingsService.resolve(id, this.actorId(user));
   }
 
@@ -223,12 +192,7 @@ export class FindingsController {
     @Body('comment') comment: string | undefined,
     @CurrentUser() user: any,
   ) {
-    await this.assertFindingAccess(
-      id,
-      user,
-      'write',
-      'edit_diligence_finding',
-    );
+    await this.assertFindingAccess(id, user, 'write', 'edit_diligence_finding');
     return this.findingsService.waive(id, comment, this.actorId(user));
   }
 

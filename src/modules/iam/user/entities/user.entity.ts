@@ -1,10 +1,16 @@
 // user.entity.ts
-import { Exclude, Expose } from 'class-transformer';
+import { Exclude } from 'class-transformer';
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import {
+  joinFullName,
+  splitFullName,
+} from 'src/core/shared/utils/full-name.util';
+import {
+  BeforeInsert,
+  BeforeUpdate,
   Entity,
   PrimaryGeneratedColumn,
   Column,
@@ -16,9 +22,11 @@ import {
 import { UserRoleAssignment } from '../../user-role-assignment/entities/user-role-assignment.entity';
 import { Finding } from 'src/modules/finding/entities/finding.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
-
 
 @Entity('user')
 @BusinessTable({
@@ -32,19 +40,20 @@ export class User extends BaseEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
-    description: 'Identifiant unique de l\'utilisateur, qui est le même que employée',
+    description:
+      "Identifiant unique de l'utilisateur, qui est le même que employée",
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
   @Column({ length: 45, unique: false })
   @BusinessColumn({
-    label: 'Nom d\'utilisateur',
+    label: "Nom d'utilisateur",
     description: 'Identifiant de connexion',
     importance: 'high',
-    group: 'authentification'
+    group: 'authentification',
   })
   username: string;
 
@@ -53,17 +62,17 @@ export class User extends BaseEntity {
     label: 'Statut',
     description: 'BD: 1=Actif, 0=Inactif. En SQL utiliser le nombre.',
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   status: number;
 
   @Column({ length: 45, nullable: true })
   @BusinessColumn({
     label: 'Email',
-    description: 'Adresse email de l\'utilisateur',
+    description: "Adresse email de l'utilisateur",
     format: 'email',
     importance: 'critical',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   email: string;
 
@@ -73,7 +82,7 @@ export class User extends BaseEntity {
     description: 'Token pour notifications push',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   fcmToken: string;
 
@@ -92,17 +101,23 @@ export class User extends BaseEntity {
   roleAssignments: UserRoleAssignment[];
 
   @Column({
-    type: 'enum',
-    enum: UserRole,
-    default: UserRole.AVOCAT
+    type: 'varchar',
+    length: 64,
+    default: UserRole.AVOCAT,
   })
   @BusinessColumn({
     label: 'Rôle',
-    description: "BD: 'admin', 'avocat', 'secretaire', 'client', 'stagiaire', 'huissier'.",
+    description:
+      "BD: 'admin', 'avocat', 'collaborateur', 'comptable', 'secretaire', 'client', 'stagiaire', 'huissier'.",
     importance: 'critical',
-    group: 'authentification'
+    group: 'authentification',
   })
-  role: UserRole;
+  role: string;
+
+  get base_role(): string {
+    if (['admin', 'client'].includes(this.role)) return this.role;
+    return this.roleAssignments?.find(a => a.status === 1)?.role?.base_role || this.role;
+  }
 
   @OneToOne(() => Employee, (employee) => employee.user, {
     cascade: true,
@@ -116,7 +131,7 @@ export class User extends BaseEntity {
     label: 'Nom',
     description: 'Nom de famille',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   last_name: string;
 
@@ -125,9 +140,25 @@ export class User extends BaseEntity {
     label: 'Prénom',
     description: 'Prénom',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   first_name: string;
+
+  /**
+   * Nom et prénom en un seul champ — saisi directement par les formulaires de
+   * création (collaborateur, client). `first_name`/`last_name` restent la
+   * source lue par l'existant (recherche, tri, exports, module IA) : ils sont
+   * synchronisés automatiquement avec `full_name` par `syncNameFields()`
+   * ci-dessous, à chaque création ou mise à jour via `save()`.
+   */
+  @Column({ name: 'full_name', length: 91, nullable: false })
+  @BusinessColumn({
+    label: 'Nom complet',
+    description: 'Nom et prénom de l\'utilisateur, en un seul champ',
+    importance: 'critical',
+    group: 'identification',
+  })
+  full_name: string;
 
   @Column({ name: 'is_online', default: true })
   is_online: boolean;
@@ -135,7 +166,7 @@ export class User extends BaseEntity {
   @Column({
     name: 'lastSeen',
     type: 'timestamp',
-    default: () => 'CURRENT_TIMESTAMP'
+    default: () => 'CURRENT_TIMESTAMP',
   })
   lastSeen?: string | null;
 
@@ -145,10 +176,9 @@ export class User extends BaseEntity {
     label: 'Client associé',
     description: 'Client associé à cet utilisateur (cas des comptes clients)',
     importance: 'medium',
-    group: 'relation'
+    group: 'relation',
   })
   customer: Customer;
-
 
   @OneToMany(() => Dossier, (dossier) => dossier.lawyer)
   managed_dossiers: Dossier[];
@@ -162,13 +192,37 @@ export class User extends BaseEntity {
   @OneToMany(() => Finding, (finding) => finding.validated_by)
   validated_findings: Finding[];
 
-
-  @Expose()
-  get full_name(): string {
-    return `${this.first_name} ${this.last_name}`;
-  }
-
   get specialization(): string | null {
     return this.employee?.specialization || null;
+  }
+
+  /**
+   * Synchronise `full_name` et `first_name`/`last_name` à chaque création ou
+   * mise à jour passant par `save()` (ce que font tous les services actuels
+   * via `repository.create()` + `save()`).
+   *
+   * `full_name` est la source de vérité quand il est renseigné et que
+   * first_name/last_name ne le sont pas encore (formulaire à champ unique) ;
+   * sinon on reconstruit `full_name` depuis first_name/last_name, pour que
+   * les écritures legacy (qui ne connaissent que ces deux colonnes) restent
+   * cohérentes.
+   *
+   * Limite connue : un `repository.update(id, partial)` direct (sans charger
+   * puis sauvegarder l'entité) contourne ce hook — seuls les flux create/save
+   * sont couverts, ce qui suffit pour les formulaires de création visés ici.
+   */
+  @BeforeInsert()
+  @BeforeUpdate()
+  syncNameFields() {
+    const hasFullName = !!this.full_name?.trim();
+    const hasSplitNames = !!this.first_name?.trim() && !!this.last_name?.trim();
+
+    if (hasFullName && !hasSplitNames) {
+      const { first_name, last_name } = splitFullName(this.full_name);
+      this.first_name = first_name || this.first_name || '';
+      this.last_name = last_name || this.last_name || this.full_name.trim();
+    } else if (!hasFullName) {
+      this.full_name = joinFullName(this.first_name, this.last_name);
+    }
   }
 }

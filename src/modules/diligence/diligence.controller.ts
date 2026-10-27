@@ -44,7 +44,9 @@ export class DiligencesController {
 
   @Get('stats')
   @RequirePermissions('view_diligences')
-  @ApiOperation({ summary: 'Obtenir les statistiques des diligences accessibles' })
+  @ApiOperation({
+    summary: 'Obtenir les statistiques des diligences accessibles',
+  })
   async getStats(
     @Query('startDate') startDate: string | undefined,
     @Query('endDate') endDate: string | undefined,
@@ -139,10 +141,7 @@ export class DiligencesController {
 
   @Post()
   @RequirePermissions('create_diligence')
-  async create(
-    @Body() dto: CreateDiligenceDto,
-    @CurrentUser() user: any,
-  ) {
+  async create(@Body() dto: CreateDiligenceDto, @CurrentUser() user: any) {
     await this.resourcePolicy.assertDossierAccess(
       dto.dossier_id,
       user,
@@ -186,10 +185,7 @@ export class DiligencesController {
 
   @Post(':id/start')
   @RequirePermissions('edit_diligence')
-  async start(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: any,
-  ) {
+  async start(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     await this.assertDiligenceAccess(id, user, 'write', 'edit_diligence');
     return this.diligencesService.start(id, this.actorId(user));
   }
@@ -211,12 +207,7 @@ export class DiligencesController {
     @Body('recommendations') recommendations: string | undefined,
     @CurrentUser() user: any,
   ) {
-    await this.assertDiligenceAccess(
-      id,
-      user,
-      'write',
-      'complete_diligence',
-    );
+    await this.assertDiligenceAccess(id, user, 'write', 'complete_diligence');
     return this.diligencesService.complete(
       id,
       recommendations,

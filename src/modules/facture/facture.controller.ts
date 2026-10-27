@@ -42,6 +42,9 @@ import { SearchFactureDto } from './dto/search-facture.dto';
 import { UpdateFactureDto } from './dto/update-facture.dto';
 import { FactureService } from './facture.service';
 import { FactureStatsService } from './facture-stats.service';
+import { SendFactureEmailDto } from './dto/send-facture-email.dto';
+import { CaseBillingService } from '../case-workflow/services/case-billing.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import {
   CreateCreditNoteDto,
   InvoiceDispositionDto,
@@ -56,6 +59,7 @@ export class FactureController {
     private readonly factureService: FactureService,
     private readonly statsService: FactureStatsService,
     private readonly resourcePolicy: ResourcePolicyService,
+    private readonly billingService: CaseBillingService,
   ) {}
 
   private actor(user: any): ResourceActor {
@@ -427,5 +431,37 @@ export class FactureController {
       }
     }
     return result;
+  }
+
+  @Get(':id/included-actions')
+  @RequirePermissions('view_factures')
+  @ApiOperation({
+    summary: 'Actions incluses dans le forfait pour la facture (annexe 0€)',
+    description:
+      "Aucune écriture ni BillableItem : lecture seule des DossierAction COMPLETED avec billing_decision=INCLUDED_IN_PACKAGE. N'impacte pas les totaux.",
+  })
+  async includedActions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    await this.assertInvoiceAccess(id, user, 'read', 'view_factures');
+    return this.billingService.getIncludedActionsForFacture(
+      id,
+      getCurrentTenantId(),
+    );
+  }
+
+  @Post(':id/envoyer')
+  @RequirePermissions('email_facture')
+  @ApiOperation({ summary: 'Envoyer une facture par e-mail' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Facture envoyée' })
+  async sendByEmail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SendFactureEmailDto,
+    @CurrentUser() user: any,
+  ) {
+    await this.assertInvoiceAccess(id, user, 'write', 'email_facture');
+    return this.factureService.sendFactureByEmail(id, dto?.email);
   }
 }

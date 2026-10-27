@@ -143,6 +143,23 @@ export class ExpenseLinesController {
     return this.response(await this.service.update(id, dto));
   }
 
+  @Post(':id/approve-without-receipt')
+  @RequirePermissions('manage_billable_items')
+  @ApiOperation({
+    summary: 'Autoriser exceptionnellement un débours sans justificatif',
+  })
+  approveWithoutReceipt(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('reason') reason: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.service.approveWithoutReceipt(
+      id,
+      Number(user?.userId ?? user?.id),
+      reason,
+    );
+  }
+
   @Delete(':id')
   @RequirePermissions('edit_expense_report')
   @ApiOperation({ summary: 'Supprimer une ligne de dépense' })

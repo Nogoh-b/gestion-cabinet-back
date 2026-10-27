@@ -31,8 +31,10 @@ export class ConversationMessage extends BaseEntity {
   metadata?: Record<string, any>;
 
   // created_at hérité de BaseEntity → pas de redéclaration
-  get createdAt(): Date { return this.created_at; }
+  get createdAt(): Date {
+    return this.created_at;
+  }
 
-  @ManyToOne(() => Conversation, conv => conv.messages)
+  @ManyToOne(() => Conversation, (conv) => conv.messages)
   conversation: Conversation;
 }

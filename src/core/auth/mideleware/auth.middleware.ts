@@ -7,22 +7,22 @@ export class AuthMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
     console.log('AuthMiddleware executed');
     const authHeader = req.headers['authorization'];
-    
+
     if (!authHeader) {
       return res.status(401).json({
         statusCode: 401,
         message: 'Authorization header is required',
-        error: authHeader
+        error: authHeader,
       });
     }
 
     const [bearer, token] = authHeader.split(' ');
-    
+
     if (bearer !== 'Bearer' || !token) {
       return res.status(401).json({
         statusCode: 401,
         message: 'Invalid authorization format. Expected: Bearer <token>',
-        error: 'Unauthorized'
+        error: 'Unauthorized',
       });
     }
 

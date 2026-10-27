@@ -1,3 +1,4 @@
+import { ReferenceDataModule } from '../reference-data/reference-data.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
@@ -10,6 +11,7 @@ import { EmailsModule } from 'src/core/shared/emails/emails.module';
 
 @Module({
   imports: [
+    ReferenceDataModule,
     // La configuration cabinet vit désormais dans la table `cabinets`.
     TypeOrmModule.forFeature([Cabinet, UserSettings]),
     EmailsModule,

@@ -23,25 +23,29 @@ export class TenantInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest();
+    // Priorité : JWT (utilisateur connecté) → middleware (header/subdomain/path).
+    // Aucun repli sur un cabinet par défaut : si ni le JWT ni la résolution
+    // n'ont donné de tenant, aucun contexte n'est activé (les routes publiques
+    // n'accèdent pas aux données métier).
     const tenantId: number | undefined =
-      request.user?.tenantId ??
-      (request as any)['resolvedTenantId'];
+      request.user?.tenantId ?? (request as any)['resolvedTenantId'];
 
     if (!tenantId) {
       return next.handle();
     }
 
-    // Tout le traitement de la requête (guards, pipes, service, réponse)
-    // s'exécute dans ce contexte → TenantContext.getTenantId() retourne
-    // le bon tenantId partout, pour toute la durée de la requête.
     return new Observable((observer) => {
-      this.tenantContext.run(tenantId, () => {
-        next.handle().subscribe({
-          next:     (value) => observer.next(value),
-          error:    (err)   => observer.error(err),
-          complete: ()      => observer.complete(),
-        });
-      });
+      this.tenantContext.run(
+        tenantId,
+        () => {
+          next.handle().subscribe({
+            next: (value) => observer.next(value),
+            error: (err) => observer.error(err),
+            complete: () => observer.complete(),
+          });
+        },
+        true,
+      );
     });
   }
 }

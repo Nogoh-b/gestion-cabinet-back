@@ -1,5 +1,18 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
@@ -39,9 +52,8 @@ export class DocumentCategoryController {
     @Query() searchParams?: SearchCriteria,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.service.searchWithTransformer(
+    return this.service.searchOwnFirst(
       searchParams as SearchCriteria,
-      DocumentCategoryResponseDto,
       paginationParams,
     );
   }
@@ -59,7 +71,7 @@ export class DocumentCategoryController {
   @RequirePermissions('MANAGE_DOCUMENT_CATEGORIES')
   async update(
     @Param('id') id: number,
-    @Body() dto: UpdateDocumentCategoryDto
+    @Body() dto: UpdateDocumentCategoryDto,
   ) {
     return this.service.update(id, dto);
   }

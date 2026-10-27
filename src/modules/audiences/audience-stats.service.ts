@@ -7,6 +7,14 @@ import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service
 import { AudienceStatsDto } from './dto/audience-stats.dto';
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
 
+/**
+ * MariaDB stocke cet enum numérique en texte ('0','1','2','3'). Un paramètre
+ * LIÉ numérique est interprété comme un INDEX d'enum (0 → valeur d'erreur '')
+ * et ne renvoie donc jamais aucune ligne : la valeur doit être liée sous
+ * forme de chaîne. Les littéraux SQL (`status = 0`) ne sont pas concernés.
+ */
+const audienceStatusValue = (status: AudienceStatus): string => String(status);
+
 @Injectable()
 export class AudienceStatsService extends BaseStatsService<Audience> {
   constructor(
@@ -25,6 +33,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       byDossier,
       evolution,
       upcoming,
+      upcomingTotal,
       pastStats,
       monthlyTrend,
       weeklyDist,
@@ -36,30 +45,34 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       this.getDistributionByDossier(filters),
       this.getEvolution(filters, 'starts_at_utc'),
       this.getUpcomingAudiences(filters),
-      this.getPastAudiencesStats(filters),  
+      this.getUpcomingAudiencesCount(filters),
+      this.getPastAudiencesStats(filters),
       this.getMonthlyTrend(filters),
       this.getWeeklyDistribution(filters),
     ]);
 
     return {
       total,
-      scheduled: byStatus.find(s => s.name === 'Planifiée')?.value || 0,
-      held: byStatus.find(s => s.name === 'Tenue')?.value || 0,
-      postponed: byStatus.find(s => s.name === 'Reportée')?.value || 0,
-      cancelled: byStatus.find(s => s.name === 'Annulée')?.value || 0,
+      scheduled: byStatus.find((s) => s.name === 'Planifiée')?.value || 0,
+      held: byStatus.find((s) => s.name === 'Tenue')?.value || 0,
+      postponed: byStatus.find((s) => s.name === 'Reportée')?.value || 0,
+      cancelled: byStatus.find((s) => s.name === 'Annulée')?.value || 0,
       byStatus,
       byType,
       byJurisdiction,
       byDossier,
       evolution,
       upcomingAudiences: upcoming,
+      upcomingAudiencesTotal: upcomingTotal,
       pastAudiences: pastStats,
       monthlyTrend,
       weeklyDistribution: weeklyDist,
     };
   }
 
-  private async getDistributionByStatus(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByStatus(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .select('audience.status', 'status')
@@ -85,7 +98,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       [AudienceStatus.CANCELLED]: '#ef4444',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: statusLabels[r.status] || 'Inconnu',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -94,7 +107,9 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     }));
   }
 
-  private async getDistributionByType(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByType(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .select('audience.audience_type', 'type')
@@ -108,14 +123,16 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.type || 'Non spécifié',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
     }));
   }
 
-  private async getDistributionByJurisdiction(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByJurisdiction(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .leftJoin('audience.jurisdiction', 'jurisdiction')
@@ -131,14 +148,16 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.name || 'Inconnue',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
     }));
   }
 
-  private async getDistributionByDossier(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByDossier(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .leftJoin('audience.dossier', 'dossier')
@@ -154,7 +173,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.dossierNumber || 'Dossier inconnu',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -177,15 +196,17 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
         'client',
       ])
       .where('audience.starts_at_utc >= :now', { now: new Date() })
-      .andWhere('audience.status = :status', { status: AudienceStatus.SCHEDULED })
+      .andWhere('audience.status = :status', {
+        status: audienceStatusValue(AudienceStatus.SCHEDULED),
+      })
       .orderBy('audience.starts_at_utc', 'ASC')
-      .limit(10);
+      .limit(50);
 
     this.applyFilters(query, filters, 'audience');
 
     const results = await query.getMany();
 
-    return results.map(a => ({
+    return results.map((a) => ({
       id: a.id,
       // title: a.title,
       date: a.starts_at_utc,
@@ -196,30 +217,50 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     }));
   }
 
+  /**
+   * Volumétrie des audiences à venir, indépendante du plafond de
+   * `getUpcomingAudiences` : le tableau de bord en affiche 5 et indique
+   * combien d'autres sont programmées.
+   */
+  private async getUpcomingAudiencesCount(
+    filters?: StatsFilterDto,
+  ): Promise<number> {
+    const query = this.audienceRepository
+      .createQueryBuilder('audience')
+      .where('audience.starts_at_utc >= :now', { now: new Date() })
+      .andWhere('audience.status = :status', {
+        status: audienceStatusValue(AudienceStatus.SCHEDULED),
+      });
+
+    this.applyFilters(query, filters, 'audience');
+    return query.getCount();
+  }
+
   private async getPastAudiencesStats(filters?: StatsFilterDto): Promise<any> {
-      const query = this.audienceRepository
-        .createQueryBuilder('audience')
-        .select('COUNT(*)', 'total')
-        .addSelect(
-          'SUM(CASE WHEN audience.status = :held THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)',
-          'successRate',
-        )
-        .where('audience.starts_at_utc < :now', { now: new Date() })
-        .setParameter('held', AudienceStatus.HELD);
+    const query = this.audienceRepository
+      .createQueryBuilder('audience')
+      .select('COUNT(*)', 'total')
+      .addSelect(
+        'SUM(CASE WHEN audience.status = :held THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)',
+        'successRate',
+      )
+      .where('audience.starts_at_utc < :now', { now: new Date() })
+      .setParameter('held', audienceStatusValue(AudienceStatus.HELD));
 
-      this.applyFilters(query, filters, 'audience');
+    this.applyFilters(query, filters, 'audience');
 
-      const result = await query.getRawOne();
+    const result = await query.getRawOne();
 
-      return {
-        total: parseInt(result?.total || 0),
-        averageDuration: 0, // Valeur par défaut
-        successRate: Math.round(parseFloat(result?.successRate || 0)),
-      };
+    return {
+      total: parseInt(result?.total || 0),
+      averageDuration: 0, // Valeur par défaut
+      successRate: Math.round(parseFloat(result?.successRate || 0)),
+    };
   }
 
   private async getMonthlyTrend(filters?: StatsFilterDto): Promise<any[]> {
-    const { startDate = this.getDefaultStartDate(), endDate = new Date() } = filters || {};
+    const { startDate = this.getDefaultStartDate(), endDate = new Date() } =
+      filters || {};
 
     const query = this.audienceRepository
       .createQueryBuilder('audience')
@@ -237,8 +278,8 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
         end: endDate,
       })
       .setParameters({
-        scheduled: AudienceStatus.SCHEDULED,
-        held: AudienceStatus.HELD,
+        scheduled: audienceStatusValue(AudienceStatus.SCHEDULED),
+        held: audienceStatusValue(AudienceStatus.HELD),
       })
       .groupBy("DATE_FORMAT(audience.starts_at_utc, '%Y-%m')")
       .orderBy('month', 'ASC');
@@ -248,7 +289,9 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     return query.getRawMany();
   }
 
-  private async getWeeklyDistribution(filters?: StatsFilterDto): Promise<any[]> {
+  private async getWeeklyDistribution(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .select('DAYNAME(audience.starts_at_utc)', 'dayOfWeek')
@@ -273,7 +316,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       Sunday: 'Dimanche',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       dayOfWeek: dayNames[r.dayOfWeek] || r.dayOfWeek,
       count: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),

@@ -1,7 +1,10 @@
 // entities/procedure-instance.entity.ts
 
 import { Expose } from 'class-transformer';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import {
   Entity,
@@ -24,23 +27,23 @@ import { StageVisit } from './stage-visit.entity';
 import { Stage } from './stage.entity';
 import { Task } from './task.entity';
 
-
 @Entity('procedure_instances')
 @BusinessTable({
   label: 'Instances de procédure',
-  description: 'Instance d\'exécution d\'un modèle de procédure. C\'est le cœur du workflow : une instance représente le suivi concret d\'un dossier à travers ses étapes et sous-étapes, avec l\'état d\'avancement réel.',
+  description:
+    "Instance d'exécution d'un modèle de procédure. C'est le cœur du workflow : une instance représente le suivi concret d'un dossier à travers ses étapes et sous-étapes, avec l'état d'avancement réel.",
   icon: '⚙️',
   category: 'procedure',
-  ignored: false,
+  ignored: true,
 })
 export class ProcedureInstance extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
     label: 'Identifiant',
-    description: 'Identifiant unique de l\'instance de procédure (format UUID)',
+    description: "Identifiant unique de l'instance de procédure (format UUID)",
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: string;
 
@@ -50,7 +53,7 @@ export class ProcedureInstance extends TenantEntity {
     description: 'Identifiant du modèle de procédure utilisé',
     importance: 'high',
     group: 'relation',
-    ignored: true
+    ignored: true,
   })
   templateId: string;
 
@@ -70,38 +73,44 @@ export class ProcedureInstance extends TenantEntity {
   @JoinColumn({ name: 'templateId' })
   @BusinessColumn({
     label: 'Modèle',
-    description: 'Modèle de procédure qui définit la structure (étapes, sous-étapes, transitions)',
+    description:
+      'Modèle de procédure qui définit la structure (étapes, sous-étapes, transitions)',
     importance: 'critical',
-    group: 'relation'
+    group: 'relation',
   })
   template: ProcedureTemplate;
 
   @Column()
   @BusinessColumn({
     label: 'Titre',
-    description: 'Titre ou description de l\'instance de procédure',
+    description: "Titre ou description de l'instance de procédure",
     example: 'Procédure contentieuse - Dossier Dupont',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   title: string;
 
-  @Column({ type: 'enum', enum: InstanceStatus, default: InstanceStatus.ACTIVE })
+  @Column({
+    type: 'enum',
+    enum: InstanceStatus,
+    default: InstanceStatus.ACTIVE,
+  })
   @BusinessColumn({
     label: 'Statut',
-    description: "BD: 'active'=En cours, 'suspended'=Suspendue, 'closed'=Fermée, 'abandoned'=Abandonnée, 'completed'=Terminée, 'paused'=En pause, 'in_progress'=En progression.",
+    description:
+      "BD: 'active'=En cours, 'suspended'=Suspendue, 'closed'=Fermée, 'abandoned'=Abandonnée, 'completed'=Terminée, 'paused'=En pause, 'in_progress'=En progression.",
     importance: 'critical',
-    group: 'état'
+    group: 'état',
   })
   status: InstanceStatus;
 
   @Column()
   @BusinessColumn({
     label: 'Étape courante',
-    description: 'Identifiant de l\'étape actuellement active',
+    description: "Identifiant de l'étape actuellement active",
     importance: 'high',
     group: 'relation',
-    ignored: true
+    ignored: true,
   })
   currentStageId: string;
 
@@ -109,16 +118,18 @@ export class ProcedureInstance extends TenantEntity {
   @JoinColumn({ name: 'currentStageId' })
   @BusinessColumn({
     label: 'Étape actuelle',
-    description: 'Étape du workflow dans laquelle se trouve l\'instance',
+    description: "Étape du workflow dans laquelle se trouve l'instance",
     importance: 'critical',
-    group: 'état'
+    group: 'état',
   })
   currentStage: Stage;
 
   @OneToMany(() => Decision, (decision) => decision.instance, { cascade: true })
   decisions: Decision[];
 
-  @OneToMany(() => HistoryEntry, (history) => history.instance, { cascade: true })
+  @OneToMany(() => HistoryEntry, (history) => history.instance, {
+    cascade: true,
+  })
   history: HistoryEntry[];
 
   @OneToMany(() => Task, (task) => task.instance, { cascade: true })
@@ -139,19 +150,19 @@ export class ProcedureInstance extends TenantEntity {
     label: 'Documents',
     description: 'Documents associés à cette instance de procédure',
     importance: 'medium',
-    group: 'relation'
+    group: 'relation',
   })
   documents: DocumentCustomer[];
-
 
   // ==================== GETTERS MÉTIER (exposés à l'IA) ====================
 
   @Expose()
   @BusinessColumn({
     label: 'Total sous-étapes',
-    description: 'Nombre total de sous-étapes dans le modèle (toutes étapes confondues)',
+    description:
+      'Nombre total de sous-étapes dans le modèle (toutes étapes confondues)',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get totalSubStagesCount(): number {
     if (!this.template?.stages) return 0;
@@ -165,12 +176,14 @@ export class ProcedureInstance extends TenantEntity {
     label: 'Sous-étapes obligatoires total',
     description: 'Nombre total de sous-étapes obligatoires',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get totalMandatorySubStagesCount(): number {
     if (!this.template?.stages) return 0;
     return this.template.stages.reduce((total, stage) => {
-      return total + (stage.subStages?.filter(ss => ss.isMandatory)?.length || 0);
+      return (
+        total + (stage.subStages?.filter((ss) => ss.isMandatory)?.length || 0)
+      );
     }, 0);
   }
 
@@ -179,7 +192,7 @@ export class ProcedureInstance extends TenantEntity {
     label: 'Sous-étapes complétées',
     description: 'Nombre de sous-étapes déjà terminées',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get completedSubStagesCount(): number {
     return this.getAllCompletedSubStageIds().size;
@@ -202,15 +215,17 @@ export class ProcedureInstance extends TenantEntity {
     label: 'Sous-étapes obligatoires complétées',
     description: 'Nombre de sous-étapes obligatoires déjà terminées',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get completedMandatorySubStagesCount(): number {
     if (!this.template?.stages) return 0;
     const completedIds = this.getAllCompletedSubStageIds();
-    const mandatorySubStageIds = this.template.stages.flatMap(stage =>
-      stage.subStages?.filter(ss => ss.isMandatory).map(ss => ss.id) || []
+    const mandatorySubStageIds = this.template.stages.flatMap(
+      (stage) =>
+        stage.subStages?.filter((ss) => ss.isMandatory).map((ss) => ss.id) ||
+        [],
     );
-    return mandatorySubStageIds.filter(id => completedIds.has(id)).length;
+    return mandatorySubStageIds.filter((id) => completedIds.has(id)).length;
   }
 
   @Expose()
@@ -218,7 +233,7 @@ export class ProcedureInstance extends TenantEntity {
     label: 'Sous-étapes restantes',
     description: 'Nombre de sous-étapes encore à traiter',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get remainingSubStagesCount(): number {
     return this.totalSubStagesCount - this.completedSubStagesCount;
@@ -229,31 +244,47 @@ export class ProcedureInstance extends TenantEntity {
     label: 'Sous-étapes obligatoires restantes',
     description: 'Nombre de sous-étapes obligatoires encore à traiter',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get remainingMandatorySubStagesCount(): number {
-    return this.totalMandatorySubStagesCount - this.completedMandatorySubStagesCount;
+    return (
+      this.totalMandatorySubStagesCount - this.completedMandatorySubStagesCount
+    );
+  }
+
+  /**
+   * Étapes réelles du template, triées par ordre, en excluant les étapes
+   * techniques `isSystem` (ex: le stage runtime "Ouverture") qui ne doivent
+   * jamais compter dans la progression ni la position courante.
+   */
+  private getSortedRealStages(): Stage[] {
+    return (this.template?.stages ?? [])
+      .filter((s) => !s.isSystem)
+      .sort((a, b) => a.order - b.order);
   }
 
   @Expose()
   @BusinessColumn({
     label: 'Total sous-étapes à compléter',
-    description: 'Nombre total de sous-étapes (obligatoires des étapes passées + toutes des étapes courantes/futures)',
+    description:
+      'Nombre total de sous-étapes (obligatoires des étapes passées + toutes des étapes courantes/futures)',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get totalSubStagesToCompleteCount(): number {
-    if (!this.template?.stages) return 0;
-    const sortedStages = [...this.template.stages].sort((a, b) => a.order - b.order);
-    const currentStageIndex = sortedStages.findIndex(stage => stage.id === this.currentStageId);
+    const sortedStages = this.getSortedRealStages();
+    if (sortedStages.length === 0) return 0;
+    const currentStageIndex = sortedStages.findIndex(
+      (stage) => stage.id === this.currentStageId,
+    );
     const completedIds = this.getAllCompletedSubStageIds();
     let total = 0;
     for (let i = 0; i < sortedStages.length; i++) {
       const stage = sortedStages[i];
       const stageSubStages = stage.subStages || [];
       if (i < currentStageIndex) {
-        const mandatoryNotCompleted = stageSubStages.filter(ss => 
-          ss.isMandatory && !completedIds.has(ss.id)
+        const mandatoryNotCompleted = stageSubStages.filter(
+          (ss) => ss.isMandatory && !completedIds.has(ss.id),
         ).length;
         total += mandatoryNotCompleted;
       } else {
@@ -266,23 +297,28 @@ export class ProcedureInstance extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Sous-étapes complétées (progression)',
-    description: 'Nombre de sous-étapes complétées selon la logique de progression',
+    description:
+      'Nombre de sous-étapes complétées selon la logique de progression',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get completedSubStagesToCompleteCount(): number {
-    if (!this.template?.stages) return 0;
-    const sortedStages = [...this.template.stages].sort((a, b) => a.order - b.order);
-    const currentStageIndex = sortedStages.findIndex(stage => stage.id === this.currentStageId);
+    const sortedStages = this.getSortedRealStages();
+    if (sortedStages.length === 0) return 0;
+    const currentStageIndex = sortedStages.findIndex(
+      (stage) => stage.id === this.currentStageId,
+    );
     const completedIds = this.getAllCompletedSubStageIds();
     let completed = 0;
     for (let i = 0; i < sortedStages.length; i++) {
       const stage = sortedStages[i];
       const stageSubStages = stage.subStages || [];
       if (i < currentStageIndex) {
-        completed += stageSubStages.filter(ss => ss.isMandatory).length;
+        completed += stageSubStages.filter((ss) => ss.isMandatory).length;
       } else if (i === currentStageIndex) {
-        completed += stageSubStages.filter(ss => completedIds.has(ss.id)).length;
+        completed += stageSubStages.filter((ss) =>
+          completedIds.has(ss.id),
+        ).length;
       }
     }
     return completed;
@@ -295,7 +331,7 @@ export class ProcedureInstance extends TenantEntity {
     unit: '%',
     format: 'percentage',
     importance: 'critical',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get progressPercentage(): number {
     const total = this.totalSubStagesToCompleteCount;
@@ -306,19 +342,24 @@ export class ProcedureInstance extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Étape courante terminée',
-    description: 'True = toutes les sous-étapes obligatoires de l\'étape actuelle sont complétées',
+    description:
+      "True = toutes les sous-étapes obligatoires de l'étape actuelle sont complétées",
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   get isCurrentStageCompleted(): boolean {
     if (!this.currentStageId || !this.template?.stages) return false;
     const currentStageFromTemplate = this.template.stages.find(
-      s => s.id === this.currentStageId
+      (s) => s.id === this.currentStageId,
     );
     if (!currentStageFromTemplate?.subStages) return false;
-    const completedIds = this.getCompletedSubStageIdsForStage(this.currentStageId);
-    const mandatorySubStages = currentStageFromTemplate.subStages.filter(ss => ss.isMandatory);
-    return mandatorySubStages.every(ss => completedIds.has(ss.id));
+    const completedIds = this.getCompletedSubStageIdsForStage(
+      this.currentStageId,
+    );
+    const mandatorySubStages = currentStageFromTemplate.subStages.filter(
+      (ss) => ss.isMandatory,
+    );
+    return mandatorySubStages.every((ss) => completedIds.has(ss.id));
   }
 
   @Expose()
@@ -326,7 +367,7 @@ export class ProcedureInstance extends TenantEntity {
     label: 'Toutes sous-étapes obligatoires complétées',
     description: 'True = toutes les sous-étapes obligatoires sont complétées',
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   get areAllMandatorySubStagesCompleted(): boolean {
     return this.remainingMandatorySubStagesCount === 0;
@@ -337,7 +378,7 @@ export class ProcedureInstance extends TenantEntity {
     label: 'Instance terminée',
     description: 'True = toutes les sous-étapes obligatoires sont complétées',
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   get isFullyCompleted(): boolean {
     return this.areAllMandatorySubStagesCompleted;
@@ -346,19 +387,20 @@ export class ProcedureInstance extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Dernière étape',
-    description: 'True = l\'instance est à la dernière étape de la procédure',
+    description: "True = l'instance est à la dernière étape de la procédure",
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   get isOnLastStage(): boolean {
     if (!this.template?.stages || !this.currentStage) return false;
-    const sortedStages = [...this.template.stages].sort((a, b) => a.order - b.order);
+    const sortedStages = this.getSortedRealStages();
     const currentStageOrder = this.currentStage.order;
-    const maxOrder = Math.max(...sortedStages.map(s => s.order));
+    const maxOrder = Math.max(...sortedStages.map((s) => s.order));
     if (currentStageOrder === maxOrder) return true;
-    const hasOutgoingTransitions = this.template.transitions?.some(
-      t => t.fromStageId === this.currentStageId
-    ) ?? false;
+    const hasOutgoingTransitions =
+      this.template.transitions?.some(
+        (t) => t.fromStageId === this.currentStageId,
+      ) ?? false;
     if (!hasOutgoingTransitions) return true;
     return false;
   }
@@ -366,51 +408,61 @@ export class ProcedureInstance extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Toutes sous-étapes étape courante complétées',
-    description: 'True = toutes les sous-étapes (y compris optionnelles) de l\'étape courante sont complétées',
+    description:
+      "True = toutes les sous-étapes (y compris optionnelles) de l'étape courante sont complétées",
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   get areAllCurrentStageSubStagesCompleted(): boolean {
     if (!this.template?.stages) return true;
     const currentStageFromTemplate = this.template.stages.find(
-      s => s.id === this.currentStageId
+      (s) => s.id === this.currentStageId,
     );
     if (!currentStageFromTemplate?.subStages) return false;
-    const completedIds = this.getCompletedSubStageIdsForStage(this.currentStageId);
-    return currentStageFromTemplate.subStages.every(ss => completedIds.has(ss.id));
+    const completedIds = this.getCompletedSubStageIdsForStage(
+      this.currentStageId,
+    );
+    return currentStageFromTemplate.subStages.every((ss) =>
+      completedIds.has(ss.id),
+    );
   }
 
   @Expose()
   @BusinessColumn({
     label: 'Peut être terminée',
-    description: 'True = toutes les sous-étapes obligatoires sont complétées et l\'instance est active',
+    description:
+      "True = toutes les sous-étapes obligatoires sont complétées et l'instance est active",
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   get canBeCompleted(): boolean {
-    return this.areAllMandatorySubStagesCompleted && this.status === InstanceStatus.ACTIVE;
+    return (
+      this.areAllMandatorySubStagesCompleted &&
+      this.status === InstanceStatus.ACTIVE
+    );
   }
 
   @Expose()
   @BusinessColumn({
     label: 'Étapes traversées',
-    description: 'Nombre d\'étapes distinctes déjà parcourues',
+    description: "Nombre d'étapes distinctes déjà parcourues",
     importance: 'medium',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get stagesTraversedCount(): number {
     if (!this.stageVisits) return 0;
-    const uniqueStageIds = new Set(this.stageVisits.map(v => v.stageId));
+    const uniqueStageIds = new Set(this.stageVisits.map((v) => v.stageId));
     return uniqueStageIds.size;
   }
 
   @Expose()
   @BusinessColumn({
     label: 'Durée totale',
-    description: 'Temps total écoulé depuis la création de l\'instance (en jours)',
+    description:
+      "Temps total écoulé depuis la création de l'instance (en jours)",
     unit: 'jours',
     importance: 'medium',
-    group: 'dates'
+    group: 'dates',
   })
   get totalDurationInDays(): number | null {
     if (!this.created_at) return null;
@@ -422,10 +474,10 @@ export class ProcedureInstance extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Date de completion',
-    description: 'Date à laquelle l\'instance a été terminée',
+    description: "Date à laquelle l'instance a été terminée",
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   get completedAt(): Date | null {
     if (this.status === InstanceStatus.COMPLETED && this.updated_at) {
@@ -439,7 +491,7 @@ export class ProcedureInstance extends TenantEntity {
     label: 'Statut libellé',
     description: 'Libellé lisible du statut',
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   get status_label(): string {
     const labels = {
@@ -453,9 +505,10 @@ export class ProcedureInstance extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Avancement étape courante',
-    description: 'Progression détaillée de l\'étape actuelle (total, complétées, obligatoires, pourcentage)',
+    description:
+      "Progression détaillée de l'étape actuelle (total, complétées, obligatoires, pourcentage)",
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get currentStageProgress(): {
     total: number;
@@ -465,62 +518,91 @@ export class ProcedureInstance extends TenantEntity {
     percentage: number;
   } {
     if (!this.currentStageId || !this.template?.stages) {
-      return { total: 0, completed: 0, mandatoryTotal: 0, mandatoryCompleted: 0, percentage: 0 };
+      return {
+        total: 0,
+        completed: 0,
+        mandatoryTotal: 0,
+        mandatoryCompleted: 0,
+        percentage: 0,
+      };
     }
     const currentStageFromTemplate = this.template.stages.find(
-      s => s.id === this.currentStageId
+      (s) => s.id === this.currentStageId,
     );
     if (!currentStageFromTemplate?.subStages) {
-      return { total: 0, completed: 0, mandatoryTotal: 0, mandatoryCompleted: 0, percentage: 0 };
+      return {
+        total: 0,
+        completed: 0,
+        mandatoryTotal: 0,
+        mandatoryCompleted: 0,
+        percentage: 0,
+      };
     }
     const currentStageVisit = this.stageVisits
-      ?.filter(v => v.stageId === this.currentStageId)
+      ?.filter((v) => v.stageId === this.currentStageId)
       .sort((a, b) => b.visitNumber - a.visitNumber)[0];
     if (!currentStageVisit) {
-      return { total: 0, completed: 0, mandatoryTotal: 0, mandatoryCompleted: 0, percentage: 0 };
+      return {
+        total: 0,
+        completed: 0,
+        mandatoryTotal: 0,
+        mandatoryCompleted: 0,
+        percentage: 0,
+      };
     }
     const allSubStages = currentStageFromTemplate.subStages;
-    const mandatorySubStages = allSubStages.filter(ss => ss.isMandatory);
-    const completedAll = allSubStages.filter(ss => 
-      currentStageVisit.subStageVisits?.some(sv => 
-        sv.subStageId === ss.id && sv.isCompleted === true
-      )
+    const mandatorySubStages = allSubStages.filter((ss) => ss.isMandatory);
+    const completedAll = allSubStages.filter((ss) =>
+      currentStageVisit.subStageVisits?.some(
+        (sv) => sv.subStageId === ss.id && sv.isCompleted === true,
+      ),
     ).length;
-    const completedMandatory = mandatorySubStages.filter(ss => 
-      currentStageVisit.subStageVisits?.some(sv => 
-        sv.subStageId === ss.id && sv.isCompleted === true
-      )
+    const completedMandatory = mandatorySubStages.filter((ss) =>
+      currentStageVisit.subStageVisits?.some(
+        (sv) => sv.subStageId === ss.id && sv.isCompleted === true,
+      ),
     ).length;
     return {
       total: allSubStages.length,
       completed: completedAll,
       mandatoryTotal: mandatorySubStages.length,
       mandatoryCompleted: completedMandatory,
-      percentage: mandatorySubStages.length > 0
-        ? Math.round((completedMandatory / mandatorySubStages.length) * 100)
-        : 100
+      percentage:
+        mandatorySubStages.length > 0
+          ? Math.round((completedMandatory / mandatorySubStages.length) * 100)
+          : 100,
     };
   }
 
   @Expose()
   @BusinessColumn({
     label: 'Sous-étapes obligatoires restantes',
-    description: 'Liste détaillée des sous-étapes obligatoires encore à traiter',
+    description:
+      'Liste détaillée des sous-étapes obligatoires encore à traiter',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
-  get remainingMandatorySubStages(): Array<{ stageName: string; subStageName: string; subStageId: string }> {
+  get remainingMandatorySubStages(): Array<{
+    stageName: string;
+    subStageName: string;
+    subStageId: string;
+  }> {
     if (!this.template?.stages) return [];
     const completedIds = this.getAllCompletedSubStageIds();
-    const remaining: Array<{ stageName: string; subStageName: string; subStageId: string }> = [];
+    const remaining: Array<{
+      stageName: string;
+      subStageName: string;
+      subStageId: string;
+    }> = [];
     for (const stage of this.template.stages) {
-      const mandatorySubStages = stage.subStages?.filter(ss => ss.isMandatory) || [];
+      const mandatorySubStages =
+        stage.subStages?.filter((ss) => ss.isMandatory) || [];
       for (const subStage of mandatorySubStages) {
         if (!completedIds.has(subStage.id)) {
           remaining.push({
             stageName: stage.name,
             subStageName: subStage.name,
-            subStageId: subStage.id
+            subStageId: subStage.id,
           });
         }
       }
@@ -533,13 +615,15 @@ export class ProcedureInstance extends TenantEntity {
   private getCurrentStageVisit(stageId?: string): StageVisit | undefined {
     const targetStageId = stageId || this.currentStageId;
     if (!targetStageId) return undefined;
-    return this.stageVisits?.filter(v => v.stageId === targetStageId)
+    return this.stageVisits
+      ?.filter((v) => v.stageId === targetStageId)
       .sort((a, b) => b.visitNumber - a.visitNumber)[0];
   }
 
   private getCompletedSubStageIdsForStage(stageId: string): Set<string> {
     const completed = new Set<string>();
-    const stageVisits = this.stageVisits?.filter(v => v.stageId === stageId) || [];
+    const stageVisits =
+      this.stageVisits?.filter((v) => v.stageId === stageId) || [];
     for (const visit of stageVisits) {
       if (visit.subStageVisits) {
         for (const subVisit of visit.subStageVisits) {
@@ -587,7 +671,7 @@ export class ProcedureInstance extends TenantEntity {
     }
   }
 
-    /**
+  /**
    * Version améliorée de isOnLastStage avec plus de critères
    * Pour une détection plus précise dans des workflows complexes
    */
@@ -598,24 +682,37 @@ export class ProcedureInstance extends TenantEntity {
     confidence: 'high' | 'medium' | 'low';
   } {
     if (!this.template?.stages || !this.currentStage) {
-      return { isLast: false, reason: 'Template ou stage courant manquant', confidence: 'low' };
+      return {
+        isLast: false,
+        reason: 'Template ou stage courant manquant',
+        confidence: 'low',
+      };
     }
 
-    const sortedStages = [...this.template.stages].sort((a, b) => a.order - b.order);
+    const sortedStages = this.getSortedRealStages();
     const currentStageOrder = this.currentStage.order;
-    const maxOrder = Math.max(...sortedStages.map(s => s.order));
+    const maxOrder = Math.max(...sortedStages.map((s) => s.order));
     // Critère 1: Ordre maximum
     if (currentStageOrder === maxOrder) {
-      return { isLast: true, reason: 'Ordre maximum atteint', confidence: 'high' };
+      return {
+        isLast: true,
+        reason: 'Ordre maximum atteint',
+        confidence: 'high',
+      };
     }
 
     // Critère 2: Pas de transitions sortantes
-    const outgoingTransitions = this.template.transitions?.filter(
-      t => t.fromStageId === this.currentStageId
-    ) ?? [];
+    const outgoingTransitions =
+      this.template.transitions?.filter(
+        (t) => t.fromStageId === this.currentStageId,
+      ) ?? [];
 
     if (outgoingTransitions.length === 0) {
-      return { isLast: true, reason: 'Aucune transition sortante définie', confidence: 'high' };
+      return {
+        isLast: true,
+        reason: 'Aucune transition sortante définie',
+        confidence: 'high',
+      };
     }
 
     // Une entité ne possède pas le contexte métier nécessaire pour évaluer
@@ -624,15 +721,18 @@ export class ProcedureInstance extends TenantEntity {
     if (outgoingTransitions.every((transition) => transition.condition)) {
       return {
         isLast: false,
-        reason: 'Transitions conditionnelles à évaluer par le moteur de workflow',
+        reason:
+          'Transitions conditionnelles à évaluer par le moteur de workflow',
         confidence: 'low',
       };
     }
 
     // Critère 4: Toutes les transitions mènent à des étapes déjà visitées
-    const allTransitionsToVisitedStages = outgoingTransitions.every(t => {
-      const hasVisited = this.stageVisits?.some(v => v.stageId === t.toStageId);
-      const toStage = this.template.stages?.find(s => s.id === t.toStageId);
+    const allTransitionsToVisitedStages = outgoingTransitions.every((t) => {
+      const hasVisited = this.stageVisits?.some(
+        (v) => v.stageId === t.toStageId,
+      );
+      const toStage = this.template.stages?.find((s) => s.id === t.toStageId);
       // Si c'est une étape avec ordre inférieur, on considère qu'on peut y retourner
       return hasVisited || (toStage && toStage.order < currentStageOrder);
     });
@@ -640,26 +740,36 @@ export class ProcedureInstance extends TenantEntity {
     if (allTransitionsToVisitedStages) {
       return {
         isLast: true,
-        reason: 'Toutes les transitions mènent à des étapes déjà visitées ou antérieures',
-        confidence: 'medium'
+        reason:
+          'Toutes les transitions mènent à des étapes déjà visitées ou antérieures',
+        confidence: 'medium',
       };
     }
 
     // Critère 5: Vérifier si l'étape courante a été visitée plusieurs fois sans progression
-    const currentStageVisits = this.stageVisits?.filter(v => v.stageId === this.currentStageId) || [];
+    const currentStageVisits =
+      this.stageVisits?.filter((v) => v.stageId === this.currentStageId) || [];
     if (currentStageVisits.length > 2) {
-      const lastVisit = currentStageVisits.sort((a, b) => b.visitNumber - a.visitNumber)[0];
-      const hasProgressInLastVisit = lastVisit?.subStageVisits?.some(sv => sv.isCompleted) ?? false;
-      
+      const lastVisit = currentStageVisits.sort(
+        (a, b) => b.visitNumber - a.visitNumber,
+      )[0];
+      const hasProgressInLastVisit =
+        lastVisit?.subStageVisits?.some((sv) => sv.isCompleted) ?? false;
+
       if (!hasProgressInLastVisit && currentStageVisits.length >= 3) {
         return {
           isLast: true,
-          reason: 'Multiples visites sans progression, probablement étape terminale',
-          confidence: 'medium'
+          reason:
+            'Multiples visites sans progression, probablement étape terminale',
+          confidence: 'medium',
         };
       }
     }
 
-    return { isLast: false, reason: 'Des transitions vers de nouvelles étapes existent', confidence: 'high' };
+    return {
+      isLast: false,
+      reason: 'Des transitions vers de nouvelles étapes existent',
+      confidence: 'high',
+    };
   }
 }

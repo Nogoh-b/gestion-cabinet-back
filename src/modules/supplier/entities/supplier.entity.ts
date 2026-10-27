@@ -1,14 +1,17 @@
 import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    ManyToOne,
-    JoinColumn,
-    OneToMany,
-    Index,
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
+  Index,
 } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { SupplierInvoice } from './supplier-invoice.entity';
 
@@ -30,7 +33,8 @@ export enum SupplierCategory {
 })
 @BusinessTable({
   label: 'Fournisseurs',
-  description: 'Répertoire des fournisseurs du cabinet (internet, électricité, fournitures, huissiers, logiciels, loyer, etc.).',
+  description:
+    'Répertoire des fournisseurs du cabinet (internet, électricité, fournitures, huissiers, logiciels, loyer, etc.).',
   icon: '🏢',
   category: 'tiers',
 })
@@ -65,7 +69,12 @@ export class Supplier extends TenantEntity {
   })
   company_name: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'contact_name' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'contact_name',
+  })
   @BusinessColumn({
     label: 'Nom du contact',
     description: 'Personne à contacter chez le fournisseur',
@@ -117,7 +126,8 @@ export class Supplier extends TenantEntity {
   @Column({ type: 'enum', enum: SupplierCategory })
   @BusinessColumn({
     label: 'Catégorie',
-    description: "BD: 'internet', 'electricity', 'rent', 'supplies', 'software', 'bailiff', 'insurance', 'maintenance', 'other'.",
+    description:
+      "BD: 'internet', 'electricity', 'rent', 'supplies', 'software', 'bailiff', 'insurance', 'maintenance', 'other'.",
     importance: 'high',
     group: 'identification',
   })
@@ -135,7 +145,7 @@ export class Supplier extends TenantEntity {
   @Column({ type: 'int', nullable: true, name: 'branch_id' })
   @BusinessColumn({
     label: 'Agence concernée',
-    description: 'Identifiant de l\'agence',
+    description: "Identifiant de l'agence",
     importance: 'medium',
     group: 'relation',
     ignored: true,
@@ -154,5 +164,4 @@ export class Supplier extends TenantEntity {
 
   @OneToMany(() => SupplierInvoice, (invoice) => invoice.supplier)
   invoices: SupplierInvoice[];
-
 }

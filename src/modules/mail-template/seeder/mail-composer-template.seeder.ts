@@ -15,18 +15,21 @@ import { findOneForTenant } from 'src/core/tenant/seeder-helper';
  * is_system: false → l'utilisateur peut les modifier / supprimer.
  */
 export default class MailComposerTemplateSeeder implements Seeder {
-  public async run(dataSource: DataSource, _fm: SeederFactoryManager): Promise<any> {
+  public async run(
+    dataSource: DataSource,
+    _fm: SeederFactoryManager,
+  ): Promise<any> {
     const repo = dataSource.getRepository(MailTemplate);
 
     const templates: Partial<MailTemplate>[] = [
-
       // ── DOSSIER — disponibles par défaut (sans sous-ressource) ─────────────
 
       {
         code: 'composer_dossier_suivi',
         name: '📁 Suivi de dossier',
         category: 'dossier',
-        description: 'Message de suivi général adressé au client sur l\'avancement de son dossier.',
+        description:
+          "Message de suivi général adressé au client sur l'avancement de son dossier.",
         subject: 'Dossier {{dossier.numero}} — Point de situation',
         body_html: `
 <h2 style="margin-top:0;color:#1f2937;">Suivi de votre dossier</h2>
@@ -63,8 +66,13 @@ export default class MailComposerTemplateSeeder implements Seeder {
 <p>N'hésitez pas à nous contacter pour tout renseignement complémentaire.</p>
 <p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`,
         variables: JSON.stringify([
-          'dossier.numero', 'dossier.objet', 'dossier.statut', 'dossier.etape',
-          'dossier.prochaine_audience', 'client.nom', 'cabinet.nom',
+          'dossier.numero',
+          'dossier.objet',
+          'dossier.statut',
+          'dossier.etape',
+          'dossier.prochaine_audience',
+          'client.nom',
+          'cabinet.nom',
         ]),
         is_system: false,
         is_active: true,
@@ -72,9 +80,10 @@ export default class MailComposerTemplateSeeder implements Seeder {
 
       {
         code: 'composer_dossier_etape',
-        name: '🔄 Changement d\'étape',
+        name: "🔄 Changement d'étape",
         category: 'dossier',
-        description: 'Informe le client d\'un changement d\'étape ou de statut dans son dossier.',
+        description:
+          "Informe le client d'un changement d'étape ou de statut dans son dossier.",
         subject: 'Mise à jour — Dossier {{dossier.numero}}',
         body_html: `
 <h2 style="margin-top:0;color:#1f2937;">Mise à jour de votre dossier</h2>
@@ -95,8 +104,14 @@ export default class MailComposerTemplateSeeder implements Seeder {
 
 <p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`,
         variables: JSON.stringify([
-          'dossier.numero', 'dossier.statut', 'dossier.etape', 'dossier.partie_adverse',
-          'dossier.prochaine_audience', 'client.nom', 'cabinet.nom', 'brandColor',
+          'dossier.numero',
+          'dossier.statut',
+          'dossier.etape',
+          'dossier.partie_adverse',
+          'dossier.prochaine_audience',
+          'client.nom',
+          'cabinet.nom',
+          'brandColor',
         ]),
         is_system: false,
         is_active: true,
@@ -108,7 +123,8 @@ export default class MailComposerTemplateSeeder implements Seeder {
         code: 'composer_facture_emission',
         name: '🧾 Envoi de facture',
         category: 'billing',
-        description: 'Transmet une facture au client avec les détails de paiement.',
+        description:
+          'Transmet une facture au client avec les détails de paiement.',
         subject: 'Facture {{facture.numero}} — {{cabinet.nom}}',
         body_html: `
 <h2 style="margin-top:0;color:#1f2937;">Votre facture</h2>
@@ -142,8 +158,15 @@ export default class MailComposerTemplateSeeder implements Seeder {
 <p>Pour tout renseignement, contactez-nous à <a href="mailto:{{cabinet.email}}">{{cabinet.email}}</a>.</p>
 <p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`,
         variables: JSON.stringify([
-          'facture.numero', 'facture.date', 'facture.echeance', 'facture.montant_ttc',
-          'facture.type', 'client.nom', 'dossier.numero', 'cabinet.nom', 'cabinet.email',
+          'facture.numero',
+          'facture.date',
+          'facture.echeance',
+          'facture.montant_ttc',
+          'facture.type',
+          'client.nom',
+          'dossier.numero',
+          'cabinet.nom',
+          'cabinet.email',
         ]),
         is_system: false,
         is_active: true,
@@ -153,7 +176,8 @@ export default class MailComposerTemplateSeeder implements Seeder {
         code: 'composer_facture_relance',
         name: '⚠️ Relance paiement',
         category: 'billing',
-        description: 'Relance un client pour une facture impayée ou partiellement réglée.',
+        description:
+          'Relance un client pour une facture impayée ou partiellement réglée.',
         subject: 'Relance — Facture {{facture.numero}} en attente de règlement',
         body_html: `
 <h2 style="margin-top:0;color:#dc2626;">Relance de paiement</h2>
@@ -190,9 +214,15 @@ export default class MailComposerTemplateSeeder implements Seeder {
 {{#if cabinet.email}}<a href="mailto:{{cabinet.email}}">{{cabinet.email}}</a>{{/if}}
 {{#if cabinet.telephone}} · {{cabinet.telephone}}{{/if}}</p>`,
         variables: JSON.stringify([
-          'facture.numero', 'facture.montant_ttc', 'facture.montant_paye',
-          'facture.reste_a_payer', 'facture.echeance',
-          'client.nom', 'cabinet.nom', 'cabinet.email', 'cabinet.telephone',
+          'facture.numero',
+          'facture.montant_ttc',
+          'facture.montant_paye',
+          'facture.reste_a_payer',
+          'facture.echeance',
+          'client.nom',
+          'cabinet.nom',
+          'cabinet.email',
+          'cabinet.telephone',
         ]),
         is_system: false,
         is_active: true,
@@ -204,7 +234,8 @@ export default class MailComposerTemplateSeeder implements Seeder {
         code: 'composer_audience_convocation',
         name: '⚖️ Convocation audience',
         category: 'audience',
-        description: 'Convoque ou informe le client de la tenue d\'une audience.',
+        description:
+          "Convoque ou informe le client de la tenue d'une audience.",
         subject: 'Audience du {{audience.date}} — Dossier {{dossier.numero}}',
         body_html: `
 <h2 style="margin-top:0;color:#1f2937;">Convocation à une audience</h2>
@@ -251,9 +282,16 @@ export default class MailComposerTemplateSeeder implements Seeder {
 <p>Veuillez vous présenter à l'heure indiquée, muni de votre pièce d'identité.</p>
 <p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`,
         variables: JSON.stringify([
-          'audience.date', 'audience.heure', 'audience.juridiction',
-          'audience.salle', 'audience.juge', 'audience.notes',
-          'client.nom', 'dossier.numero', 'dossier.objet', 'cabinet.nom',
+          'audience.date',
+          'audience.heure',
+          'audience.juridiction',
+          'audience.salle',
+          'audience.juge',
+          'audience.notes',
+          'client.nom',
+          'dossier.numero',
+          'dossier.objet',
+          'cabinet.nom',
         ]),
         is_system: false,
         is_active: true,
@@ -263,8 +301,10 @@ export default class MailComposerTemplateSeeder implements Seeder {
         code: 'composer_audience_rappel',
         name: '🔔 Rappel audience (veille)',
         category: 'audience',
-        description: 'Rappel envoyé la veille ou quelques jours avant une audience.',
-        subject: 'Rappel — Audience demain {{audience.date}} à {{audience.heure}}',
+        description:
+          'Rappel envoyé la veille ou quelques jours avant une audience.',
+        subject:
+          'Rappel — Audience demain {{audience.date}} à {{audience.heure}}',
         body_html: `
 <h2 style="margin-top:0;color:#1f2937;">Rappel d'audience</h2>
 <p>Bonjour <strong>{{client.nom}}</strong>,</p>
@@ -282,8 +322,14 @@ export default class MailComposerTemplateSeeder implements Seeder {
 {{#if audience.notes}}<p><em>{{audience.notes}}</em></p>{{/if}}
 <p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`,
         variables: JSON.stringify([
-          'audience.date', 'audience.heure', 'audience.juridiction', 'audience.salle', 'audience.notes',
-          'client.nom', 'dossier.numero', 'cabinet.nom',
+          'audience.date',
+          'audience.heure',
+          'audience.juridiction',
+          'audience.salle',
+          'audience.notes',
+          'client.nom',
+          'dossier.numero',
+          'cabinet.nom',
         ]),
         is_system: false,
         is_active: true,
@@ -295,7 +341,8 @@ export default class MailComposerTemplateSeeder implements Seeder {
         code: 'composer_diligence_notification',
         name: '🔍 Info diligence client',
         category: 'dossier',
-        description: 'Informe le client du lancement ou de l\'avancement d\'une diligence.',
+        description:
+          "Informe le client du lancement ou de l'avancement d'une diligence.",
         subject: 'Diligence — {{diligence.titre}} (Dossier {{dossier.numero}})',
         body_html: `
 <h2 style="margin-top:0;color:#1f2937;">Information sur une diligence</h2>
@@ -341,9 +388,16 @@ export default class MailComposerTemplateSeeder implements Seeder {
 
 <p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`,
         variables: JSON.stringify([
-          'diligence.titre', 'diligence.description', 'diligence.type',
-          'diligence.statut', 'diligence.priorite', 'diligence.date_limite', 'diligence.avocat',
-          'client.nom', 'dossier.numero', 'cabinet.nom',
+          'diligence.titre',
+          'diligence.description',
+          'diligence.type',
+          'diligence.statut',
+          'diligence.priorite',
+          'diligence.date_limite',
+          'diligence.avocat',
+          'client.nom',
+          'dossier.numero',
+          'cabinet.nom',
         ]),
         is_system: false,
         is_active: true,
@@ -355,7 +409,8 @@ export default class MailComposerTemplateSeeder implements Seeder {
         code: 'composer_document_partage',
         name: '📄 Partage de document',
         category: 'dossier',
-        description: 'Notifie le client qu\'un document est disponible dans son espace.',
+        description:
+          "Notifie le client qu'un document est disponible dans son espace.",
         subject: 'Document disponible — {{document.nom}}',
         body_html: `
 <h2 style="margin-top:0;color:#1f2937;">Nouveau document disponible</h2>
@@ -377,8 +432,14 @@ export default class MailComposerTemplateSeeder implements Seeder {
    <a href="mailto:{{cabinet.email}}">{{cabinet.email}}</a>.</p>
 <p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`,
         variables: JSON.stringify([
-          'document.nom', 'document.type', 'document.date', 'document.statut',
-          'client.nom', 'dossier.numero', 'cabinet.nom', 'cabinet.email',
+          'document.nom',
+          'document.type',
+          'document.date',
+          'document.statut',
+          'client.nom',
+          'dossier.numero',
+          'cabinet.nom',
+          'cabinet.email',
         ]),
         is_system: false,
         is_active: true,
@@ -393,7 +454,7 @@ export default class MailComposerTemplateSeeder implements Seeder {
         name: '👥 Affectation de dossier (interne)',
         category: 'dossier',
         audience: 'collaborator',
-        description: 'Informe un collaborateur qu\'un dossier lui est confié.',
+        description: "Informe un collaborateur qu'un dossier lui est confié.",
         subject: '[Interne] Dossier {{dossier.numero}} vous est confié',
         body_html: `
 <h2 style="margin-top:0;color:#1f2937;">Nouveau dossier à traiter</h2>
@@ -422,7 +483,11 @@ export default class MailComposerTemplateSeeder implements Seeder {
 <p>Merci de prendre connaissance du dossier dès que possible.</p>
 <p>— {{cabinet.nom}}</p>`,
         variables: JSON.stringify([
-          'dossier.numero', 'dossier.objet', 'dossier.statut', 'client.nom', 'cabinet.nom',
+          'dossier.numero',
+          'dossier.objet',
+          'dossier.statut',
+          'client.nom',
+          'cabinet.nom',
         ]),
         is_system: false,
         is_active: true,
@@ -433,8 +498,10 @@ export default class MailComposerTemplateSeeder implements Seeder {
         name: '⚖️ Brief audience (interne)',
         category: 'audience',
         audience: 'collaborator',
-        description: 'Transmet à un collaborateur les informations d\'une audience à couvrir.',
-        subject: '[Interne] Audience {{audience.date}} — Dossier {{dossier.numero}}',
+        description:
+          "Transmet à un collaborateur les informations d'une audience à couvrir.",
+        subject:
+          '[Interne] Audience {{audience.date}} — Dossier {{dossier.numero}}',
         body_html: `
 <h2 style="margin-top:0;color:#1f2937;">Audience à couvrir</h2>
 <p>Bonjour,</p>
@@ -454,9 +521,17 @@ export default class MailComposerTemplateSeeder implements Seeder {
 {{#if audience.notes}}<p><strong>Consignes :</strong> {{audience.notes}}</p>{{/if}}
 <p>— {{cabinet.nom}}</p>`,
         variables: JSON.stringify([
-          'audience.date', 'audience.heure', 'audience.juridiction', 'audience.salle',
-          'audience.juge', 'audience.notes', 'dossier.numero', 'dossier.objet',
-          'client.nom', 'cabinet.nom', 'brandColor',
+          'audience.date',
+          'audience.heure',
+          'audience.juridiction',
+          'audience.salle',
+          'audience.juge',
+          'audience.notes',
+          'dossier.numero',
+          'dossier.objet',
+          'client.nom',
+          'cabinet.nom',
+          'brandColor',
         ]),
         is_system: false,
         is_active: true,
@@ -467,7 +542,8 @@ export default class MailComposerTemplateSeeder implements Seeder {
         name: '🔔 Relance diligence (interne)',
         category: 'dossier',
         audience: 'collaborator',
-        description: 'Relance un collaborateur sur une diligence en attente ou en retard.',
+        description:
+          'Relance un collaborateur sur une diligence en attente ou en retard.',
         subject: '[Interne] Diligence à finaliser — {{diligence.titre}}',
         body_html: `
 <h2 style="margin-top:0;color:#dc2626;">Diligence en attente</h2>
@@ -498,8 +574,11 @@ export default class MailComposerTemplateSeeder implements Seeder {
 <p>Merci de mettre à jour son avancement dès que possible.</p>
 <p>— {{cabinet.nom}}</p>`,
         variables: JSON.stringify([
-          'diligence.titre', 'diligence.statut', 'diligence.date_limite',
-          'dossier.numero', 'cabinet.nom',
+          'diligence.titre',
+          'diligence.statut',
+          'diligence.date_limite',
+          'dossier.numero',
+          'cabinet.nom',
         ]),
         is_system: false,
         is_active: true,
@@ -512,7 +591,8 @@ export default class MailComposerTemplateSeeder implements Seeder {
         name: '✅ Clôture de dossier',
         category: 'dossier',
         audience: 'client',
-        description: 'Informe le client de la clôture de son dossier et du résultat obtenu.',
+        description:
+          'Informe le client de la clôture de son dossier et du résultat obtenu.',
         subject: 'Clôture de votre dossier {{dossier.numero}}',
         body_html: `
 <h2 style="margin-top:0;color:#16a34a;">Votre dossier est clôturé</h2>
@@ -530,7 +610,11 @@ export default class MailComposerTemplateSeeder implements Seeder {
    à votre disposition pour toute nouvelle demande.</p>
 <p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`,
         variables: JSON.stringify([
-          'dossier.numero', 'dossier.objet', 'dossier.resultat', 'client.nom', 'cabinet.nom',
+          'dossier.numero',
+          'dossier.objet',
+          'dossier.resultat',
+          'client.nom',
+          'cabinet.nom',
         ]),
         is_system: false,
         is_active: true,
@@ -559,7 +643,12 @@ export default class MailComposerTemplateSeeder implements Seeder {
 <p>En cas d'empêchement, merci de nous prévenir à l'avance.</p>
 <p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`,
         variables: JSON.stringify([
-          'rdv.date', 'rdv.heure', 'rdv.lieu', 'client.nom', 'cabinet.nom', 'brandColor',
+          'rdv.date',
+          'rdv.heure',
+          'rdv.lieu',
+          'client.nom',
+          'cabinet.nom',
+          'brandColor',
         ]),
         is_system: false,
         is_active: true,
@@ -577,13 +666,13 @@ export default class MailComposerTemplateSeeder implements Seeder {
         // Met à jour le corps HTML et les variables si le template existe déjà
         // (utile pour les mises à jour de développement).
         Object.assign(existing, {
-          name:      data.name,
-          subject:   data.subject,
+          name: data.name,
+          subject: data.subject,
           body_html: data.body_html,
           variables: data.variables,
           description: data.description,
-          audience:  data.audience,
-          category:  data.category,
+          audience: data.audience,
+          category: data.category,
           is_system: data.is_system,
           is_active: data.is_active,
         });

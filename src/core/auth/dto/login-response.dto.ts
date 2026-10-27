@@ -11,9 +11,9 @@ export class LoginResponseDto {
     example: {
       id: 1,
       username: 'admin',
-      roles: ['ADMIN']
+      roles: ['ADMIN'],
     },
-    description: 'Informations utilisateur'
+    description: 'Informations utilisateur',
   })
   user: {
     id: number;

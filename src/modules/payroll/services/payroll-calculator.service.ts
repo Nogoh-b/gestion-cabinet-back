@@ -78,7 +78,9 @@ export class PayrollCalculatorService {
    * Calcule les totaux d'un bulletin à partir de ses lignes.
    * Une ligne sans `amount` valide est traitée comme 0.
    */
-  computeTotals(lines: Array<Pick<PayslipLine, 'line_type' | 'amount' | 'is_taxable'>>): PayslipTotals {
+  computeTotals(
+    lines: Array<Pick<PayslipLine, 'line_type' | 'amount' | 'is_taxable'>>,
+  ): PayslipTotals {
     const safe = (v: any) => {
       const n = Number(v);
       return Number.isFinite(n) ? n : 0;
@@ -94,7 +96,8 @@ export class PayrollCalculatorService {
       if (this.isEarning(line)) {
         gross += amount;
         if (line.is_taxable) taxable += amount;
-        if (line.line_type === PayslipLineType.INTERNAL_COMMISSION) commissions += amount;
+        if (line.line_type === PayslipLineType.INTERNAL_COMMISSION)
+          commissions += amount;
       } else if (
         line.line_type === PayslipLineType.DEDUCTION ||
         line.line_type === PayslipLineType.ADVANCE_RECOVERY
@@ -175,7 +178,9 @@ export class PayrollCalculatorService {
     return {
       employeeDeductions,
       employerCharges,
-      totalEmployee: round(employeeDeductions.reduce((s, e) => s + e.amount, 0)),
+      totalEmployee: round(
+        employeeDeductions.reduce((s, e) => s + e.amount, 0),
+      ),
       totalEmployer: round(employerCharges.reduce((s, e) => s + e.amount, 0)),
     };
   }

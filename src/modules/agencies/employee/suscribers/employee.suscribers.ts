@@ -1,7 +1,10 @@
-
-
-
-import { DataSource, EntitySubscriberInterface, EventSubscriber, InsertEvent, UpdateEvent } from 'typeorm';
+import {
+  DataSource,
+  EntitySubscriberInterface,
+  EventSubscriber,
+  InsertEvent,
+  UpdateEvent,
+} from 'typeorm';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
 import { Employee } from '../entities/employee.entity';
 
@@ -26,8 +29,7 @@ export class EmployeeSubscriber implements EntitySubscriberInterface<Employee> {
   async afterInsert(event: InsertEvent<Employee>) {
     console.log('AFTER INSERT Employee ', event.entity);
     // await this.employeeService.sendEmails(event.entity.id, event.manager);
-    return
-
+    return;
   }
 
   async beforeUpdate(event: UpdateEvent<Employee>) {

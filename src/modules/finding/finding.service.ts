@@ -1,15 +1,29 @@
 // src/modules/findings/findings.service.ts
 import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { DataSource, EntityManager, Repository, In } from 'typeorm';
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { CreateFindingDto } from './dto/create-finding.dto';
 import { UpdateFindingDto } from './dto/update-finding.dto';
 import { FindingResponseDto } from './dto/response-finding.dto';
-import { Finding, FindingStatus, FindingSeverity } from './entities/finding.entity';
+import {
+  Finding,
+  FindingStatus,
+  FindingSeverity,
+} from './entities/finding.entity';
 import { DiligencesService } from '../diligence/diligence.service';
 import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
 import { AuditService } from 'src/core/audit/audit.service';
@@ -21,7 +35,7 @@ export class FindingsService extends BaseServiceV1<Finding> {
     @InjectRepository(Finding)
     protected readonly repository: Repository<Finding>,
     protected readonly paginationService: PaginationServiceV1,
-   @Inject(forwardRef(() => DiligencesService))
+    @Inject(forwardRef(() => DiligencesService))
     private readonly diligencesService: DiligencesService,
     private readonly documentCustomerService: DocumentCustomerService,
     private readonly dataSource: DataSource,
@@ -36,9 +50,26 @@ export class FindingsService extends BaseServiceV1<Finding> {
    */
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      searchFields: ['title', 'description', 'impact', 'recommendation', 'legal_basis'],
-      exactMatchFields: ['severity', 'status', 'category', 'diligence_id', 'created_by_id'],
-      dateRangeFields: ['due_date', 'validated_at', 'resolved_at', 'created_at'],
+      searchFields: [
+        'title',
+        'description',
+        'impact',
+        'recommendation',
+        'legal_basis',
+      ],
+      exactMatchFields: [
+        'severity',
+        'status',
+        'category',
+        'diligence_id',
+        'created_by_id',
+      ],
+      dateRangeFields: [
+        'due_date',
+        'validated_at',
+        'resolved_at',
+        'created_at',
+      ],
       relationFields: ['diligence', 'document', 'created_by', 'validated_by'],
     };
   }
@@ -50,14 +81,20 @@ export class FindingsService extends BaseServiceV1<Finding> {
     // Vérifier que la diligence existe
     const diligence = await this.diligencesService.findOne(dto.diligence_id);
     if (!diligence) {
-      throw new NotFoundException(`Diligence avec ID ${dto.diligence_id} non trouvée`);
+      throw new NotFoundException(
+        `Diligence avec ID ${dto.diligence_id} non trouvée`,
+      );
     }
 
     // Vérifier que le document existe (si fourni)
     if (dto.document_id) {
-      const document = await this.documentCustomerService.findOne(dto.document_id);
+      const document = await this.documentCustomerService.findOne(
+        dto.document_id,
+      );
       if (!document) {
-        throw new NotFoundException(`Document avec ID ${dto.document_id} non trouvé`);
+        throw new NotFoundException(
+          `Document avec ID ${dto.document_id} non trouvé`,
+        );
       }
       if (
         Number((document as any).dossier_id) !==
@@ -129,9 +166,9 @@ export class FindingsService extends BaseServiceV1<Finding> {
         'created_by',
         'validated_by',
       ],
-      order: { 
+      order: {
         severity: 'DESC',
-        created_at: 'DESC' 
+        created_at: 'DESC',
       },
     });
   }
@@ -203,9 +240,13 @@ export class FindingsService extends BaseServiceV1<Finding> {
       dto.document_id !== currentFinding.document?.id
     ) {
       if (dto.document_id) {
-        const document = await this.documentCustomerService.findOne(dto.document_id);
+        const document = await this.documentCustomerService.findOne(
+          dto.document_id,
+        );
         if (!document) {
-          throw new NotFoundException(`Document avec ID ${dto.document_id} non trouvé`);
+          throw new NotFoundException(
+            `Document avec ID ${dto.document_id} non trouvé`,
+          );
         }
         if (
           Number((document as any).dossier_id) !==
@@ -256,7 +297,7 @@ export class FindingsService extends BaseServiceV1<Finding> {
       });
       if (nextDocument !== undefined) {
         finding.document = nextDocument as any;
-        finding.document_id = nextDocument?.id ?? null as any;
+        finding.document_id = nextDocument?.id ?? (null as any);
       }
 
       const saved = await manager.save(finding);
@@ -346,42 +387,32 @@ export class FindingsService extends BaseServiceV1<Finding> {
    * ✅ Valider un finding
    */
   async validate(id: number, userId: number): Promise<Finding> {
-    return this.transition(
-      id,
-      userId,
-      'finding.validated',
-      (finding) => {
-        if (
-          ![FindingStatus.IDENTIFIED, FindingStatus.IN_ANALYSIS].includes(
-            finding.status,
-          )
-        ) {
-          throw new BadRequestException(
-            'Seul un constat identifié ou en analyse peut être validé',
-          );
-        }
-        finding.validate(userId);
-      },
-    );
+    return this.transition(id, userId, 'finding.validated', (finding) => {
+      if (
+        ![FindingStatus.IDENTIFIED, FindingStatus.IN_ANALYSIS].includes(
+          finding.status,
+        )
+      ) {
+        throw new BadRequestException(
+          'Seul un constat identifié ou en analyse peut être validé',
+        );
+      }
+      finding.validate(userId);
+    });
   }
 
   /**
    * 🔄 Marquer un finding comme résolu
    */
   async resolve(id: number, actorId: number): Promise<Finding> {
-    return this.transition(
-      id,
-      actorId,
-      'finding.resolved',
-      (finding) => {
-        if (finding.status !== FindingStatus.VALIDATED) {
-          throw new BadRequestException(
-            'Seul un constat validé peut être marqué comme résolu',
-          );
-        }
-        finding.resolve();
-      },
-    );
+    return this.transition(id, actorId, 'finding.resolved', (finding) => {
+      if (finding.status !== FindingStatus.VALIDATED) {
+        throw new BadRequestException(
+          'Seul un constat validé peut être marqué comme résolu',
+        );
+      }
+      finding.resolve();
+    });
   }
 
   /**
@@ -442,7 +473,9 @@ export class FindingsService extends BaseServiceV1<Finding> {
       .addSelect('COUNT(finding.id)', 'count');
 
     if (diligenceId) {
-      queryBuilder.where('finding.diligence_id = :diligenceId', { diligenceId });
+      queryBuilder.where('finding.diligence_id = :diligenceId', {
+        diligenceId,
+      });
     }
     if (dossierIds) {
       if (dossierIds.length === 0) {
@@ -454,10 +487,10 @@ export class FindingsService extends BaseServiceV1<Finding> {
         );
       }
     }
+    // Isolation multi-tenant.
+    addTenantCondition(queryBuilder, 'finding');
 
-    const result = await queryBuilder
-      .groupBy('finding.severity')
-      .getRawMany();
+    const result = await queryBuilder.groupBy('finding.severity').getRawMany();
 
     return result;
   }
@@ -472,12 +505,14 @@ export class FindingsService extends BaseServiceV1<Finding> {
       .addSelect('COUNT(finding.id)', 'count');
 
     if (diligenceId) {
-      queryBuilder.where('finding.diligence_id = :diligenceId', { diligenceId });
+      queryBuilder.where('finding.diligence_id = :diligenceId', {
+        diligenceId,
+      });
     }
+    // Isolation multi-tenant.
+    addTenantCondition(queryBuilder, 'finding');
 
-    const result = await queryBuilder
-      .groupBy('finding.status')
-      .getRawMany();
+    const result = await queryBuilder.groupBy('finding.status').getRawMany();
 
     return result;
   }
@@ -492,12 +527,14 @@ export class FindingsService extends BaseServiceV1<Finding> {
       .addSelect('COUNT(finding.id)', 'count');
 
     if (diligenceId) {
-      queryBuilder.where('finding.diligence_id = :diligenceId', { diligenceId });
+      queryBuilder.where('finding.diligence_id = :diligenceId', {
+        diligenceId,
+      });
     }
+    // Isolation multi-tenant.
+    addTenantCondition(queryBuilder, 'finding');
 
-    const result = await queryBuilder
-      .groupBy('finding.category')
-      .getRawMany();
+    const result = await queryBuilder.groupBy('finding.category').getRawMany();
 
     return result;
   }
@@ -507,29 +544,45 @@ export class FindingsService extends BaseServiceV1<Finding> {
    */
   async getDiligenceSummary(diligenceId: number): Promise<any> {
     const findings = await this.findByDiligence(diligenceId);
-    
+
     const summary = {
       total: findings.length,
       bySeverity: {
-        critical: findings.filter(f => f.severity === FindingSeverity.CRITICAL).length,
-        high: findings.filter(f => f.severity === FindingSeverity.HIGH).length,
-        medium: findings.filter(f => f.severity === FindingSeverity.MEDIUM).length,
-        low: findings.filter(f => f.severity === FindingSeverity.LOW).length,
-        info: findings.filter(f => f.severity === FindingSeverity.INFO).length,
+        critical: findings.filter(
+          (f) => f.severity === FindingSeverity.CRITICAL,
+        ).length,
+        high: findings.filter((f) => f.severity === FindingSeverity.HIGH)
+          .length,
+        medium: findings.filter((f) => f.severity === FindingSeverity.MEDIUM)
+          .length,
+        low: findings.filter((f) => f.severity === FindingSeverity.LOW).length,
+        info: findings.filter((f) => f.severity === FindingSeverity.INFO)
+          .length,
       },
       byStatus: {
-        identified: findings.filter(f => f.status === FindingStatus.IDENTIFIED).length,
-        in_analysis: findings.filter(f => f.status === FindingStatus.IN_ANALYSIS).length,
-        validated: findings.filter(f => f.status === FindingStatus.VALIDATED).length,
-        resolved: findings.filter(f => f.status === FindingStatus.RESOLVED).length,
-        waived: findings.filter(f => f.status === FindingStatus.WAIVED).length,
+        identified: findings.filter(
+          (f) => f.status === FindingStatus.IDENTIFIED,
+        ).length,
+        in_analysis: findings.filter(
+          (f) => f.status === FindingStatus.IN_ANALYSIS,
+        ).length,
+        validated: findings.filter((f) => f.status === FindingStatus.VALIDATED)
+          .length,
+        resolved: findings.filter((f) => f.status === FindingStatus.RESOLVED)
+          .length,
+        waived: findings.filter((f) => f.status === FindingStatus.WAIVED)
+          .length,
       },
       totalRiskAmount: findings
-        .filter(f => f.estimated_risk_amount)
+        .filter((f) => f.estimated_risk_amount)
         .reduce((sum, f) => sum + (f.estimated_risk_amount || 0), 0),
       criticalFindings: findings
-        .filter(f => f.severity === FindingSeverity.CRITICAL && f.status !== FindingStatus.RESOLVED)
-        .map(f => ({
+        .filter(
+          (f) =>
+            f.severity === FindingSeverity.CRITICAL &&
+            f.status !== FindingStatus.RESOLVED,
+        )
+        .map((f) => ({
           id: f.id,
           title: f.title,
           due_date: f.due_date,

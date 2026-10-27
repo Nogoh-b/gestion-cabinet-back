@@ -1,8 +1,18 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+
 import { ExercicesService } from '../services/exercices.service';
 import { CloseExerciceDto } from '../dto/close-exercice.dto';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
@@ -39,7 +49,9 @@ export class ExercicesController {
 
   @Patch(':id/cloturer')
   @RequirePermissions('close_exercice')
-  @ApiOperation({ summary: 'Clôturer un exercice (verrouille toutes ses écritures)' })
+  @ApiOperation({
+    summary: 'Clôturer un exercice (verrouille toutes ses écritures)',
+  })
   cloturer(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CloseExerciceDto,

@@ -6,7 +6,6 @@ import { PassportStrategy } from '@nestjs/passport';
 
 import { AuthService } from '../auth.service';
 
-
 @Injectable()
 export class LocalStrategy extends PassportStrategy(Strategy) {
   constructor(private authService: AuthService) {
@@ -17,7 +16,11 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
     super({ passReqToCallback: true });
   }
 
-  async validate(req: Request, username: string, password: string): Promise<any> {
+  async validate(
+    req: Request,
+    username: string,
+    password: string,
+  ): Promise<any> {
     // resolvedTenantId est posé par TenantResolverMiddleware avant les guards
     const tenantId = (req as any)['resolvedTenantId'] as number | undefined;
     if (!tenantId) {
@@ -25,7 +28,9 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
     }
     const user = await this.authService.validateUser(username, password, tenantId);
     if (!user) {
-      throw new UnauthorizedException('Identifiants invalides (email, mot de passe ou cabinet)');
+      throw new UnauthorizedException(
+        'Identifiants invalides (email, mot de passe ou cabinet)',
+      );
     }
     return user;
   }

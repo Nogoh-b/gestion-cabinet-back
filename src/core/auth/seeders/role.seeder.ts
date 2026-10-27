@@ -1,15 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
 import { Permission } from 'src/modules/iam/permission/entities/permission.entity';
 import { RolePermission } from 'src/modules/iam/role-permission/entities/role-permission.entity';
 import { findOneForTenant } from 'src/core/tenant/seeder-helper';
-import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
+import {
+  getCurrentTenantId,
+  hasActiveTenant,
+} from 'src/core/tenant/tenant.context';
 
 // ─── Configuration des rôles cabinet (miroir du front roles.permissions.ts) ─────
 
-const ROLES_CONFIG: {
+export const ROLES_CONFIG: {
   code: string;
   name: string;
   description: string;
@@ -23,59 +26,175 @@ const ROLES_CONFIG: {
     isSystemRole: true,
     permissions: [
       // Dossiers
-      'view_dossiers', 'create_dossier', 'edit_dossier', 'delete_dossier', 'assign_dossier', 'view_dossier_confidential',
+      'view_dossiers',
+      'create_dossier',
+      'edit_dossier',
+      'delete_dossier',
+      'assign_dossier',
+      'view_dossier_confidential',
+      'view_dossier_actions',
+      'create_dossier_action',
+      'update_dossier_action',
+      'manage_action_catalog',
+      'view_billable_items',
+      'manage_billable_items',
+      'generate_invoice_from_items',
+      'close_dossier',
+      'reopen_dossier',
+      'migrate_dossier_workflow',
       // Audiences
-      'view_audiences', 'create_audience', 'edit_audience', 'delete_audience', 'cancel_audience',
-      'export_audience', 'confirm_audience', 'postpone_audience', 'mark_audience_held',
-      'schedule_audience_under_48h',
+      'view_audiences',
+      'create_audience',
+      'edit_audience',
+      'delete_audience',
+      'cancel_audience',
+      'export_audience',
+      'confirm_audience',
+      'postpone_audience',
+      'mark_audience_held',
       // Factures & Finances
-      'view_factures', 'create_facture', 'edit_facture', 'delete_facture', 'view_financial_reports', 'manage_payments',
-      'archive_facture', 'print_facture', 'email_facture', 'download_facture',
-      'create_paiement', 'edit_paiement', 'delete_paiement',
+      'view_factures',
+      'manage_invoice_settings',
+      'create_facture',
+      'edit_facture',
+      'delete_facture',
+      'view_financial_reports',
+      'manage_payments',
+      'archive_facture',
+      'print_facture',
+      'email_facture',
+      'download_facture',
+      'create_paiement',
+      'edit_paiement',
+      'delete_paiement',
       // Clients
-      'view_clients', 'create_client', 'edit_client', 'delete_client', 'import_clients', 'export_clients',
+      'view_clients',
+      'create_client',
+      'edit_client',
+      'delete_client',
+      'import_clients',
+      'export_clients',
       // Documents
-      'view_documents', 'upload_document', 'edit_document', 'delete_document', 'sign_document', 'share_document',
-      'archive_document', 'validate_document', 'reject_document', 'download_document', 'restore_document',
+      'view_documents',
+      'upload_document',
+      'edit_document',
+      'delete_document',
+      'sign_document',
+      'share_document',
+      'archive_document',
+      'validate_document',
+      'reject_document',
+      'download_document',
+      'restore_document',
       // Agenda
-      'view_agenda', 'create_event', 'edit_event', 'delete_event', 'view_all_agendas',
+      'view_agenda',
+      'create_event',
+      'edit_event',
+      'delete_event',
+      'view_all_agendas',
       // Diligences
-      'view_diligences', 'create_diligence', 'edit_diligence', 'delete_diligence',
-      'generate_diligence_report', 'download_diligence_report', 'complete_diligence', 'assign_diligence',
-      'view_diligence_findings', 'create_diligence_finding', 'edit_diligence_finding', 'delete_diligence_finding',
-      'attach_document_to_diligence', 'add_diligence_note',
+      'view_diligences',
+      'create_diligence',
+      'edit_diligence',
+      'delete_diligence',
+      'generate_diligence_report',
+      'download_diligence_report',
+      'complete_diligence',
+      'assign_diligence',
+      'view_diligence_findings',
+      'create_diligence_finding',
+      'edit_diligence_finding',
+      'delete_diligence_finding',
+      'attach_document_to_diligence',
+      'add_diligence_note',
       // Utilisateurs & Administration
-      'view_users', 'create_user', 'edit_user', 'delete_user', 'manage_roles', 'view_audit_logs', 'manage_settings',
+      'view_users',
+      'view_user_directory',
+      'create_user',
+      'edit_user',
+      'delete_user',
+      'manage_roles',
+      'view_audit_logs',
+      'manage_settings',
       'manage_subscription',
-      'use_ai_assistant',
-      'override_dossier_closure',
-      'manage_procedure_templates', 'apply_procedure_transition', 'approve_procedure_requirement',
       // Modèles PDF
-      'view_pdf_templates', 'create_pdf_template', 'edit_pdf_template', 'delete_pdf_template',
+      'view_pdf_templates',
+      'create_pdf_template',
+      'edit_pdf_template',
+      'delete_pdf_template',
+      // Modèles de mails (mêmes rôles que les modèles PDF)
+      'view_mail_templates',
+      'create_mail_template',
+      'edit_mail_template',
+      'delete_mail_template',
       // Communications
-      'view_messages', 'send_message', 'delete_message', 'view_all_messages',
-      'send_notification', 'broadcast_notification',
+      'view_messages',
+      'send_message',
+      'delete_message',
+      'view_all_messages',
       // Rapports
-      'view_reports', 'create_reports', 'export_reports', 'view_dashboard', 'view_analytics',
+      'view_reports',
+      'create_reports',
+      'export_reports',
+      'view_dashboard',
+      'view_analytics',
       // Apporteurs
-      'view_referrers', 'create_referrer', 'edit_referrer', 'delete_referrer',
-      'view_dossier_referrals', 'create_dossier_referral', 'edit_dossier_referral', 'delete_dossier_referral',
-      'view_referral_commissions', 'create_referral_commission', 'edit_referral_commission',
-      'validate_referral_commission', 'pay_referral_commission',
+      'view_referrers',
+      'create_referrer',
+      'edit_referrer',
+      'delete_referrer',
+      'view_dossier_referrals',
+      'create_dossier_referral',
+      'edit_dossier_referral',
+      'delete_dossier_referral',
+      'view_referral_commissions',
+      'create_referral_commission',
+      'edit_referral_commission',
+      'validate_referral_commission',
+      'pay_referral_commission',
       // Paie
-      'view_payroll', 'view_payroll_periods', 'create_payroll_period', 'edit_payroll_period', 'close_payroll_period',
-      'view_payslips', 'view_own_payslip', 'generate_payslip', 'edit_payslip',
-      'validate_payslip', 'pay_payslip', 'manage_payroll_rates',
-      'download_payslip', 'email_payslip',
+      'view_payroll',
+      'view_payroll_periods',
+      'create_payroll_period',
+      'edit_payroll_period',
+      'close_payroll_period',
+      'view_payslips',
+      'generate_payslip',
+      'edit_payslip',
+      'download_payslip',
+      'email_payslip',
+      // Demandes des collaborateurs
+      'request_leave',
+      'request_salary_advance',
+      'view_employee_requests',
+      'manage_employee_requests',
       // Dépenses
-      'view_expenses', 'view_suppliers', 'create_supplier', 'edit_supplier', 'delete_supplier',
-      'view_supplier_invoices', 'create_supplier_invoice', 'edit_supplier_invoice', 'delete_supplier_invoice',
-      'validate_supplier_invoice', 'pay_supplier_invoice',
-      'view_expense_reports', 'create_expense_report', 'edit_expense_report', 'delete_expense_report',
-      'validate_expense_report', 'reimburse_expense_report',
+      'view_expenses',
+      'view_suppliers',
+      'create_supplier',
+      'edit_supplier',
+      'delete_supplier',
+      'view_supplier_invoices',
+      'create_supplier_invoice',
+      'edit_supplier_invoice',
+      'delete_supplier_invoice',
+      'validate_supplier_invoice',
+      'pay_supplier_invoice',
+      'view_expense_reports',
+      'create_expense_report',
+      'edit_expense_report',
+      'delete_expense_report',
+      'validate_expense_report',
+      'reimburse_expense_report',
       // Comptabilité (accès complet)
-      'view_accounting', 'create_ecriture', 'edit_ecriture', 'delete_ecriture',
-      'manage_chart_of_accounts', 'open_exercice', 'close_exercice', 'view_accounting_reports',
+      'view_accounting',
+      'create_ecriture',
+      'edit_ecriture',
+      'delete_ecriture',
+      'manage_chart_of_accounts',
+      'open_exercice',
+      'close_exercice',
+      'view_accounting_reports',
     ],
   },
 
@@ -86,35 +205,191 @@ const ROLES_CONFIG: {
     isSystemRole: true,
     permissions: [
       // Dossiers
-      'view_dossiers', 'create_dossier', 'edit_dossier', 'assign_dossier', 'view_dossier_confidential',
-      'apply_procedure_transition', 'approve_procedure_requirement',
+      'view_dossiers',
+      'create_dossier',
+      'edit_dossier',
+      'assign_dossier',
+      // `view_dossier_confidential` est volontairement réservé à l'admin :
+      // un dossier confidentiel ne s'ouvre à un avocat que par autorisation
+      // nominative (table dossier_access_grant).
+      'view_dossier_actions',
+      'create_dossier_action',
+      'update_dossier_action',
+      'view_billable_items',
+      'manage_billable_items',
+      'close_dossier',
+      'reopen_dossier',
       // Audiences
-      'view_audiences', 'create_audience', 'edit_audience', 'delete_audience', 'cancel_audience',
-      'export_audience', 'confirm_audience', 'postpone_audience', 'mark_audience_held',
+      'view_audiences',
+      'create_audience',
+      'edit_audience',
+      'delete_audience',
+      'cancel_audience',
+      'export_audience',
+      'confirm_audience',
+      'postpone_audience',
+      'mark_audience_held',
       // Clients
-      'view_clients', 'create_client', 'edit_client', 'import_clients',
+      'view_clients',
+      'create_client',
+      'edit_client',
+      'import_clients',
       // Documents
-      'view_documents', 'upload_document', 'edit_document', 'sign_document', 'share_document',
-      'archive_document', 'validate_document', 'reject_document', 'download_document', 'restore_document',
+      'view_documents',
+      'upload_document',
+      'edit_document',
+      'sign_document',
+      'share_document',
+      'archive_document',
+      'validate_document',
+      'reject_document',
+      'download_document',
+      'restore_document',
       // Agenda
-      'view_agenda', 'create_event', 'edit_event', 'delete_event',
+      'view_agenda',
+      'create_event',
+      'edit_event',
+      'delete_event',
       // Diligences
-      'view_diligences', 'create_diligence', 'edit_diligence', 'delete_diligence',
-      'generate_diligence_report', 'download_diligence_report', 'complete_diligence', 'assign_diligence',
-      'view_diligence_findings', 'create_diligence_finding', 'edit_diligence_finding', 'delete_diligence_finding',
-      'attach_document_to_diligence', 'add_diligence_note',
+      'view_diligences',
+      'create_diligence',
+      'edit_diligence',
+      'delete_diligence',
+      'generate_diligence_report',
+      'download_diligence_report',
+      'complete_diligence',
+      'assign_diligence',
+      'view_diligence_findings',
+      'create_diligence_finding',
+      'edit_diligence_finding',
+      'delete_diligence_finding',
+      'attach_document_to_diligence',
+      'add_diligence_note',
       // Communications
-      'view_messages', 'send_message', 'delete_message',
+      'view_messages',
+      'send_message',
+      'delete_message',
       // Rapports
-      'view_reports', 'view_dashboard',
+      'view_reports',
+      'view_dashboard',
       // Apporteurs
-      'view_referrers', 'view_dossier_referrals', 'create_dossier_referral',
+      'view_referrers',
+      'view_dossier_referrals',
+      'create_dossier_referral',
       // Paie (consultation)
-      'view_payroll', 'view_own_payslip', 'download_payslip',
+      'view_payroll',
+      'view_payroll_periods',
+      'view_payslips',
+      'download_payslip',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
+      'view_user_directory',
       // Dépenses (consultation + notes de frais)
-      'view_expenses', 'view_suppliers', 'view_supplier_invoices', 'view_expense_reports', 'create_expense_report',
+      'view_expenses',
+      'view_suppliers',
+      'view_supplier_invoices',
+      'view_expense_reports',
+      'create_expense_report',
       // Comptabilité (consultation)
-      'view_accounting', 'view_accounting_reports',
+      'view_accounting',
+      'view_accounting_reports',
+      'view_user_directory',
+    ],
+  },
+
+  {
+    code: 'collaborateur',
+    name: 'Collaborateur',
+    description: 'Traitement des dossiers sous la responsabilite des avocats',
+    isSystemRole: true,
+    permissions: [
+      'view_dossiers',
+      'edit_dossier',
+      'view_dossier_actions',
+      'create_dossier_action',
+      'update_dossier_action',
+      'view_billable_items',
+      'view_audiences',
+      'create_audience',
+      'edit_audience',
+      'export_audience',
+      'confirm_audience',
+      'postpone_audience',
+      'mark_audience_held',
+      'view_clients',
+      'view_documents',
+      'upload_document',
+      'edit_document',
+      'download_document',
+      'validate_document',
+      'reject_document',
+      'view_agenda',
+      'create_event',
+      'edit_event',
+      'view_diligences',
+      'create_diligence',
+      'edit_diligence',
+      'complete_diligence',
+      'view_diligence_findings',
+      'create_diligence_finding',
+      'edit_diligence_finding',
+      'attach_document_to_diligence',
+      'add_diligence_note',
+      'view_messages',
+      'send_message',
+      'view_reports',
+      'view_dashboard',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
+      'view_user_directory',
+    ],
+  },
+
+  {
+    code: 'comptable',
+    name: 'Comptable',
+    description: 'Facturation, paiements et comptabilite du cabinet',
+    isSystemRole: true,
+    permissions: [
+      'view_dossiers',
+      'view_dossier_actions',
+      'view_billable_items',
+      'manage_billable_items',
+      'generate_invoice_from_items',
+      'view_factures',
+      'create_facture',
+      'edit_facture',
+      'manage_invoice_settings',
+      'view_financial_reports',
+      'manage_payments',
+      'archive_facture',
+      'print_facture',
+      'email_facture',
+      'download_facture',
+      'create_paiement',
+      'edit_paiement',
+      'delete_paiement',
+      'view_clients',
+      'view_reports',
+      'view_dashboard',
+      'view_analytics',
+      'view_expenses',
+      'view_suppliers',
+      'view_supplier_invoices',
+      'view_expense_reports',
+      'view_accounting',
+      'create_ecriture',
+      'edit_ecriture',
+      'manage_chart_of_accounts',
+      'open_exercice',
+      'close_exercice',
+      'view_accounting_reports',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
+      'view_user_directory',
     ],
   },
 
@@ -125,44 +400,112 @@ const ROLES_CONFIG: {
     isSystemRole: true,
     permissions: [
       // Dossiers
-      'view_dossiers', 'edit_dossier',
+      'view_dossiers',
+      'create_dossier',
+      'edit_dossier',
+      'view_dossier_actions',
+      'create_dossier_action',
+      'update_dossier_action',
+      'view_billable_items',
+      'manage_billable_items',
+      'generate_invoice_from_items',
       // Audiences
-      'view_audiences', 'create_audience', 'edit_audience', 'delete_audience', 'cancel_audience',
-      'export_audience', 'confirm_audience', 'postpone_audience', 'mark_audience_held',
+      'view_audiences',
+      'create_audience',
+      'edit_audience',
+      'delete_audience',
+      'cancel_audience',
+      'export_audience',
+      'confirm_audience',
+      'postpone_audience',
+      'mark_audience_held',
       // Factures
-      'view_factures', 'create_facture', 'edit_facture',
-      'archive_facture', 'print_facture', 'email_facture', 'download_facture',
-      'create_paiement', 'edit_paiement',
+      'view_factures',
+      'create_facture',
+      'edit_facture',
+      'manage_invoice_settings',
+      'archive_facture',
+      'print_facture',
+      'email_facture',
+      'download_facture',
+      'create_paiement',
+      'edit_paiement',
       // Clients
-      'view_clients', 'create_client', 'edit_client', 'import_clients', 'export_clients',
+      'view_clients',
+      'create_client',
+      'edit_client',
+      'import_clients',
+      'export_clients',
       // Documents
-      'view_documents', 'upload_document', 'edit_document', 'share_document',
-      'archive_document', 'download_document', 'restore_document',
+      'view_documents',
+      'upload_document',
+      'edit_document',
+      'share_document',
+      'archive_document',
+      'download_document',
+      'restore_document',
       // Agenda
-      'view_agenda', 'create_event', 'edit_event', 'delete_event',
+      'view_agenda',
+      'create_event',
+      'edit_event',
+      'delete_event',
       // Diligences
-      'view_diligences', 'create_diligence', 'edit_diligence',
+      'view_diligences',
+      'create_diligence',
+      'edit_diligence',
       'download_diligence_report',
-      'view_diligence_findings', 'create_diligence_finding',
-      'attach_document_to_diligence', 'add_diligence_note',
+      'view_diligence_findings',
+      'create_diligence_finding',
+      'attach_document_to_diligence',
+      'add_diligence_note',
       // Communications
-      'view_messages', 'send_message',
+      'view_messages',
+      'send_message',
       // Rapports
       'view_reports',
+      'view_dashboard',
       // Apporteurs
-      'view_referrers', 'create_referrer', 'edit_referrer',
-      'view_dossier_referrals', 'create_dossier_referral', 'edit_dossier_referral',
-      'view_referral_commissions', 'create_referral_commission',
+      'view_referrers',
+      'create_referrer',
+      'edit_referrer',
+      'view_dossier_referrals',
+      'create_dossier_referral',
+      'edit_dossier_referral',
+      'view_referral_commissions',
+      'create_referral_commission',
       // Paie (gestion complète)
-      'view_payroll', 'view_payroll_periods', 'create_payroll_period', 'edit_payroll_period', 'close_payroll_period',
-      'view_payslips', 'view_own_payslip', 'generate_payslip', 'edit_payslip',
-      'pay_payslip', 'download_payslip', 'email_payslip',
+      'view_payroll',
+      'view_payroll_periods',
+      'create_payroll_period',
+      'edit_payroll_period',
+      'close_payroll_period',
+      'view_payslips',
+      'generate_payslip',
+      'download_payslip',
+      'email_payslip',
+      // Demandes des collaborateurs
+      'request_leave',
+      'request_salary_advance',
+      'view_employee_requests',
+      'manage_employee_requests',
       // Dépenses
-      'view_expenses', 'view_suppliers', 'create_supplier', 'edit_supplier',
-      'view_supplier_invoices', 'create_supplier_invoice', 'edit_supplier_invoice',
-      'view_expense_reports', 'create_expense_report', 'edit_expense_report',
+      'view_expenses',
+      'view_suppliers',
+      'create_supplier',
+      'edit_supplier',
+      'view_supplier_invoices',
+      'create_supplier_invoice',
+      'edit_supplier_invoice',
+      'view_expense_reports',
+      'create_expense_report',
+      'edit_expense_report',
       // Comptabilité (gestion courante)
-      'view_accounting', 'create_ecriture', 'edit_ecriture', 'open_exercice', 'view_accounting_reports',
+      'view_accounting',
+      'create_ecriture',
+      'edit_ecriture',
+      'open_exercice',
+      'view_accounting_reports',
+      'view_user_directory',
     ],
   },
 
@@ -174,24 +517,42 @@ const ROLES_CONFIG: {
     permissions: [
       // Dossiers
       'view_dossiers',
+      'view_dossier_actions',
       // Audiences
-      'view_audiences', 'export_audience',
+      'view_audiences',
+      'export_audience',
       // Factures (lecture)
-      'view_factures', 'download_facture', 'print_facture',
+      'view_factures',
+      'download_facture',
+      'print_facture',
       // Documents
-      'view_documents', 'upload_document', 'edit_document', 'sign_document', 'share_document',
-      'archive_document', 'download_document', 'restore_document',
+      'view_documents',
+      'upload_document',
+      'edit_document',
+      'sign_document',
+      'share_document',
+      'archive_document',
+      'download_document',
+      'restore_document',
       // Agenda
       'view_agenda',
       // Diligences
-      'view_diligences', 'view_diligence_findings', 'download_diligence_report',
+      'view_diligences',
+      'view_diligence_findings',
+      'download_diligence_report',
       'attach_document_to_diligence',
       // Communications
-      'view_messages', 'send_message',
-      // Paie personnelle
-      'view_payroll', 'view_own_payslip', 'download_payslip',
+      'view_messages',
+      'send_message',
       // Dépenses (lecture)
-      'view_expenses', 'view_expense_reports',
+      'view_expenses',
+      'view_expense_reports',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
+      'view_user_directory',
+      // Tableau de bord (accès par défaut pour tous)
+      'view_dashboard',
     ],
   },
 
@@ -203,19 +564,88 @@ const ROLES_CONFIG: {
     permissions: [
       // Dossiers (lecture)
       'view_dossiers',
+      'view_dossier_actions',
+      'create_dossier_action',
+      'update_dossier_action',
       // Audiences (lecture)
-      'view_audiences', 'export_audience',
+      'view_audiences',
+      'export_audience',
       // Documents
-      'view_documents', 'upload_document',
+      'view_documents',
+      'upload_document',
       // Agenda
       'view_agenda',
       // Diligences (contribution limitée)
-      'view_diligences', 'view_diligence_findings', 'create_diligence_finding',
-      'add_diligence_note', 'download_diligence_report',
+      'view_diligences',
+      'view_diligence_findings',
+      'create_diligence_finding',
+      'add_diligence_note',
+      'download_diligence_report',
       // Communications
-      'view_messages', 'send_message',
-      // Paie personnelle
-      'view_payroll', 'view_own_payslip', 'download_payslip',
+      'view_messages',
+      'send_message',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
+      'view_user_directory',
+      // Tableau de bord (accès par défaut pour tous)
+      'view_dashboard',
+    ],
+  },
+
+  {
+    code: 'support',
+    name: 'Personnel de support',
+    description: 'Appui logistique et administratif, sans accès financier',
+    isSystemRole: true,
+    permissions: [
+      // Dossiers (lecture seule)
+      'view_dossiers',
+      'view_dossier_actions',
+      // Audiences (lecture)
+      'view_audiences',
+      'export_audience',
+      // Clients (lecture)
+      'view_clients',
+      // Documents
+      'view_documents',
+      'upload_document',
+      'download_document',
+      // Agenda
+      'view_agenda',
+      'create_event',
+      'edit_event',
+      // Diligences (lecture)
+      'view_diligences',
+      'view_diligence_findings',
+      // Communications
+      'view_messages',
+      'send_message',
+      // Tableau de bord
+      'view_dashboard',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
+      'view_user_directory',
+    ],
+  },
+
+  {
+    code: 'apporteur_affaire',
+    name: "Apporteur d'affaire",
+    description:
+      'Consultation de ses propres apports et commissions uniquement',
+    isSystemRole: true,
+    permissions: [
+      'view_dashboard',
+      'view_messages',
+      'send_message',
+      // Apporteurs : uniquement la consultation de ses apports/commissions
+      'view_dossier_referrals',
+      'view_referral_commissions',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
     ],
   },
 
@@ -228,36 +658,36 @@ const ROLES_CONFIG: {
       // Dossiers (lecture propres dossiers)
       'view_dossiers',
       // Factures
-      'view_factures', 'download_facture', 'print_facture',
+      'view_factures',
+      'download_facture',
+      'print_facture',
       // Audiences
       'export_audience',
       // Documents
-      'view_documents', 'sign_document', 'download_document',
+      'view_documents',
+      'sign_document',
+      'download_document',
       // Agenda
       'view_agenda',
       // Diligences (consultation)
-      'view_diligences', 'view_diligence_findings', 'download_diligence_report',
+      'view_diligences',
+      'view_diligence_findings',
+      'download_diligence_report',
       // Communications
-      'view_messages', 'send_message',
+      'view_messages',
+      'send_message',
+      // Paie (consultation propres bulletins)
+      'view_payslips',
+      'download_payslip',
       // Apporteurs (consultation)
       'view_referral_commissions',
+      // Tableau de bord (accès par défaut pour tous)
+      'view_dashboard',
     ],
   },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-
-const SECURITY_REQUIRED_PERMISSIONS_BY_ROLE: Record<string, string[]> = {
-  admin: [
-    'manage_procedure_templates',
-    'apply_procedure_transition',
-    'approve_procedure_requirement',
-  ],
-  avocat: [
-    'apply_procedure_transition',
-    'approve_procedure_requirement',
-  ],
-};
 
 @Injectable()
 export class RoleSeeder {
@@ -272,7 +702,72 @@ export class RoleSeeder {
     private readonly rolePermissionRepo: Repository<RolePermission>,
   ) {}
 
-  async seed() {
+  /**
+   * Rattrapage one-shot pour les tenants créés AVANT l'introduction de
+   * `view_dashboard` (défaut pour tous), `view_user_directory` (annuaire des
+   * selects) et `manage_invoice_settings` (config facturation).
+   *
+   * Le top-up standard de `seed()` ne couvre que les codes tout juste créés :
+   * si la permission existait déjà, les rôles existants ne la reçoivent pas.
+   * Cette méthode accorde explicitement les 3 codes aux rôles système qui les
+   * prévoient dans `ROLES_CONFIG`, sans toucher aux autres liens (les retraits
+   * manuels faits via l'UI sont préservés pour tout le reste).
+   */
+  async backfillDefaultPermissions() {
+    const codes = [
+      'view_dashboard',
+      'view_user_directory',
+      'manage_invoice_settings',
+    ];
+    this.logger.log(
+      `Rattrapage permissions par défaut : ${codes.join(', ')}…`,
+    );
+    for (const config of ROLES_CONFIG) {
+      const wanted = config.permissions.filter((c) => codes.includes(c));
+      if (!wanted.length) continue;
+      const role = await findOneForTenant(this.roleRepo, 'code', config.code);
+      if (!role) continue;
+      const qb = this.permissionRepo
+        .createQueryBuilder('p')
+        .where('p.code IN (:...codes)', { codes: wanted });
+      if (hasActiveTenant()) {
+        qb.andWhere('p.tenant_id = :tid', { tid: getCurrentTenantId() });
+      }
+      const permissions = await qb.getMany();
+      let grantedCount = 0;
+      for (const permission of permissions) {
+        const alreadyLinked = await this.rolePermissionRepo.findOneBy({
+          role_id: role!.id,
+          permission_id: permission.id,
+        });
+        if (alreadyLinked) continue;
+        await this.rolePermissionRepo.save(
+          this.rolePermissionRepo.create({
+            role_id: role!.id,
+            permission_id: permission.id,
+            status: 1,
+          }),
+        );
+        grantedCount++;
+      }
+      if (grantedCount) {
+        this.logger.log(
+          `Rôle "${config.code}" : ${grantedCount} permission(s) de rattrapage accordée(s).`,
+        );
+      }
+    }
+    this.logger.log('Rattrapage permissions par défaut terminé.');
+  }
+
+  /**
+   * @param newlyCreatedPermissionCodes — codes de permission tout juste créés
+   * par `PermissionSeeder.seed()` dans le même appel (voir son retour). Pour
+   * les rôles DÉJÀ existants, seuls ces codes-là sont accordés automatiquement
+   * (aucun admin n'a pu les configurer manuellement puisqu'ils n'existaient
+   * pas avant) — tout le reste des permissions déjà présentes reste sous le
+   * contrôle exclusif des modifications manuelles faites via l'UI.
+   */
+  async seed(newlyCreatedPermissionCodes: string[] = []) {
     this.logger.log('Seeding roles & role-permissions...');
 
     for (const config of ROLES_CONFIG) {
@@ -293,31 +788,65 @@ export class RoleSeeder {
         this.logger.log(`Rôle créé : ${config.code}`);
       }
 
-      // 2. N'assigner les permissions par défaut QUE pour les nouveaux rôles.
-      //    Pour les rôles existants, les modifications manuelles (via l'UI) sont
-      //    la source de vérité — on ne les écrase jamais au redémarrage.
-      if (
-        !isNew &&
-        !(SECURITY_REQUIRED_PERMISSIONS_BY_ROLE[config.code]?.length)
-      ) {
-        this.logger.log(`Rôle "${config.code}" : déjà existant, permissions non modifiées.`);
+      // 2. Pour un rôle existant : top-up additif, uniquement les permissions
+      //    tout juste créées (jamais celles déjà en base, potentiellement
+      //    désactivées volontairement par un admin).
+      if (!isNew) {
+        const topUpCodes = config.permissions.filter((c) =>
+          newlyCreatedPermissionCodes.includes(c),
+        );
+        if (!topUpCodes.length) {
+          this.logger.log(
+            `Rôle "${config.code}" : déjà existant, rien de nouveau à accorder.`,
+          );
+          continue;
+        }
+
+        const qbTopUp = this.permissionRepo
+          .createQueryBuilder('p')
+          .where('p.code IN (:...codes)', { codes: topUpCodes });
+        if (hasActiveTenant()) {
+          qbTopUp.andWhere('p.tenant_id = :tid', {
+            tid: getCurrentTenantId(),
+          });
+        }
+        const topUpPermissions = await qbTopUp.getMany();
+
+        let grantedCount = 0;
+        for (const permission of topUpPermissions) {
+          const alreadyLinked = await this.rolePermissionRepo.findOneBy({
+            role_id: role!.id,
+            permission_id: permission.id,
+          });
+          if (alreadyLinked) continue;
+          await this.rolePermissionRepo.save(
+            this.rolePermissionRepo.create({
+              role_id: role!.id,
+              permission_id: permission.id,
+              status: 1,
+            }),
+          );
+          grantedCount++;
+        }
+
+        this.logger.log(
+          `Rôle "${config.code}" (existant) : ${grantedCount} nouvelle(s) permission(s) accordée(s) (${topUpCodes.join(', ')}).`,
+        );
         continue;
       }
 
       // 3. Récupérer les permissions du tenant courant (QueryBuilder exact)
-      const permissionCodes = isNew
-        ? config.permissions
-        : SECURITY_REQUIRED_PERMISSIONS_BY_ROLE[config.code];
-      const qb = this.permissionRepo.createQueryBuilder('p')
-        .where('p.code IN (:...codes)', { codes: permissionCodes });
+      const qb = this.permissionRepo
+        .createQueryBuilder('p')
+        .where('p.code IN (:...codes)', { codes: config.permissions });
       if (hasActiveTenant()) {
         qb.andWhere('p.tenant_id = :tid', { tid: getCurrentTenantId() });
       }
       const permissions = await qb.getMany();
 
       const foundCodes = permissions.map((p) => p.code);
-      const missingCodes = permissionCodes.filter(
-        (code) => !foundCodes.includes(code),
+      const missingCodes = config.permissions.filter(
+        (c) => !foundCodes.includes(c),
       );
       if (missingCodes.length) {
         this.logger.warn(
@@ -327,21 +856,13 @@ export class RoleSeeder {
 
       // 4. Assigner les permissions par défaut au nouveau rôle
       for (const permission of permissions) {
-        const existing = await this.rolePermissionRepo.findOne({
-          where: {
-            role_id: role!.id,
+        await this.rolePermissionRepo.save(
+          this.rolePermissionRepo.create({
+            role_id: role?.id,
             permission_id: permission.id,
-          },
-        });
-        if (!existing) {
-          await this.rolePermissionRepo.save(
-            this.rolePermissionRepo.create({
-              role_id: role!.id,
-              permission_id: permission.id,
-              status: 1,
-            }),
-          );
-        }
+            status: 1,
+          }),
+        );
       }
 
       this.logger.log(

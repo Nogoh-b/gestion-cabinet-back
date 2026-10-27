@@ -24,7 +24,12 @@ export class SingleCustomerStatsDto {
     total: number;
     actifs: number;
     clos: number;
-    parStatut: Array<{ name: string; value: number; percentage: number; color?: string }>;
+    parStatut: Array<{
+      name: string;
+      value: number;
+      percentage: number;
+      color?: string;
+    }>;
     recents: Array<{
       id: number;
       numero: string;
@@ -78,7 +83,12 @@ export class SingleCustomerStatsDto {
     montantPaye: number;
     montantImpaye: number;
     tauxRecouvrement: number;
-    parStatut: Array<{ name: string; value: number; montant: number; percentage: number }>;
+    parStatut: Array<{
+      name: string;
+      value: number;
+      montant: number;
+      percentage: number;
+    }>;
     recentes: Array<{
       id: string;
       numero: string;

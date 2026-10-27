@@ -3,7 +3,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import { InvoiceTypeCategory, TaxRate } from '../entities/invoice-type.entity';
 
-
 export class InvoiceTypeResponseDto {
   @ApiProperty()
   @Expose()
@@ -86,7 +85,7 @@ export class InvoiceTypeResponseDto {
       [InvoiceTypeCategory.EXPENSES]: 'Frais',
       [InvoiceTypeCategory.ADVANCE]: 'Acompte',
       [InvoiceTypeCategory.SETTLEMENT]: 'Règlement',
-      [InvoiceTypeCategory.OTHER]: 'Autre'
+      [InvoiceTypeCategory.OTHER]: 'Autre',
     };
     return categoryLabels[obj.category] || 'Inconnu';
   })
@@ -99,7 +98,7 @@ export class InvoiceTypeResponseDto {
       [TaxRate.ZERO]: '0%',
       [TaxRate.REDUCED]: '5.5%',
       [TaxRate.INTERMEDIATE]: '10%',
-      [TaxRate.STANDARD]: '20%'
+      [TaxRate.STANDARD]: '20%',
     };
     return rateLabels[obj.default_tax_rate] || '0%';
   })
@@ -127,7 +126,7 @@ export class InvoiceTypeResponseDto {
     if (obj.metadata?.default_price) {
       return new Intl.NumberFormat('fr-FR', {
         style: 'currency',
-        currency: 'EUR'
+        currency: 'EUR',
       }).format(obj.metadata.default_price);
     }
     return 'Non défini';
@@ -136,6 +135,6 @@ export class InvoiceTypeResponseDto {
 
   @ApiProperty()
   @Expose()
-  @Transform(({ obj }) => obj.metadata?.vat_exempt ? 'Exonéré' : 'Taxable')
+  @Transform(({ obj }) => (obj.metadata?.vat_exempt ? 'Exonéré' : 'Taxable'))
   vat_status_label: string;
 }

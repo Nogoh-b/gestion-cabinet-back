@@ -5,11 +5,15 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsObject,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreatePdfTemplateDto {
-  @ApiProperty({ example: 'facture_comptable', description: 'Code unique du modèle' })
+  @ApiProperty({
+    example: 'facture_comptable',
+    description: 'Code unique du modèle',
+  })
   @IsString()
   @IsNotEmpty()
   code: string;
@@ -19,12 +23,15 @@ export class CreatePdfTemplateDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ example: 'facture', description: 'Type d\'entité concernée' })
+  @ApiProperty({ example: 'facture', description: "Type d'entité concernée" })
   @IsString()
   @IsNotEmpty()
   entity_type: string;
 
-  @ApiPropertyOptional({ example: 'comptable', description: 'Variante du modèle' })
+  @ApiPropertyOptional({
+    example: 'comptable',
+    description: 'Variante du modèle',
+  })
   @IsString()
   @IsOptional()
   variant?: string;
@@ -44,7 +51,10 @@ export class CreatePdfTemplateDto {
   @IsNotEmpty()
   body_html: string;
 
-  @ApiPropertyOptional({ description: 'Liste JSON des variables', example: '["numero","client.full_name"]' })
+  @ApiPropertyOptional({
+    description: 'Liste JSON des variables',
+    example: '["numero","client.full_name"]',
+  })
   @IsString()
   @IsOptional()
   variables?: string;
@@ -59,7 +69,10 @@ export class CreatePdfTemplateDto {
   @IsOptional()
   paper_size?: string;
 
-  @ApiPropertyOptional({ example: 'inter', description: 'Clé de police (FONTS front)' })
+  @ApiPropertyOptional({
+    example: 'inter',
+    description: 'Clé de police (FONTS front)',
+  })
   @IsString()
   @IsOptional()
   font_family?: string;
@@ -73,6 +86,11 @@ export class CreatePdfTemplateDto {
   @IsInt()
   @IsOptional()
   footer_block_id?: number;
+
+  @ApiPropertyOptional({ description: 'Mise en page : font_size, line_height, margins, page_numbers' })
+  @IsObject()
+  @IsOptional()
+  layout_options?: { font_size?: number | null; line_height?: number | null; margins?: 'narrow' | 'normal' | 'wide' | null; page_numbers?: boolean } | null;
 
   @ApiPropertyOptional()
   @IsBoolean()

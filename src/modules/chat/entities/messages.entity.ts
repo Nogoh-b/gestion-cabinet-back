@@ -1,6 +1,14 @@
 // src/chat/entities/message.entity.ts
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+} from 'typeorm';
 
 import { Conversation } from './conversation.entity';
 import { Expose } from 'class-transformer';
@@ -10,7 +18,7 @@ import { ChatReferenceDto } from '../dto/create-conversation.dto';
 
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 @Entity()
-export class Message extends BaseEntity{
+export class Message extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -18,17 +26,16 @@ export class Message extends BaseEntity{
   content: string;
 
   @ManyToOne(() => Employee)
-  sender: Employee; 
+  sender: Employee;
 
-  @ManyToOne(() => Conversation, conversation => conversation.messages, {
+  @ManyToOne(() => Conversation, (conversation) => conversation.messages, {
     eager: true,
   })
   @JoinColumn({ name: 'conversationId' })
   conversation: Conversation;
 
-
   // Nouvelle relation avec les attachments
-  @OneToMany(() => Attachment, attachment => attachment.message, {
+  @OneToMany(() => Attachment, (attachment) => attachment.message, {
     cascade: true,
     eager: true, // Charge automatiquement les pièces jointes avec le message
   })
@@ -40,10 +47,8 @@ export class Message extends BaseEntity{
   @Column({ type: 'json', nullable: true })
   references?: ChatReferenceDto[];
 
-
-  @OneToMany(() => MessageRead, read => read.message)
+  @OneToMany(() => MessageRead, (read) => read.message)
   reads: MessageRead[];
-
 
   @CreateDateColumn()
   createdAt: Date;
@@ -57,15 +62,14 @@ export class Message extends BaseEntity{
       return false;
     }
 
-    return this.reads.every(r => r.isRead === true);
+    return this.reads.every((r) => r.isRead === true);
   }
 
   @Expose()
-   get sender_name(): string {
+  get sender_name(): string {
     return this.sender.user?.full_name || '';
   }
 
-  
   // Nouveaux champs exposés pour les attachments
   @Expose()
   get attachmentsCount(): number {
@@ -74,17 +78,19 @@ export class Message extends BaseEntity{
 
   @Expose()
   get hasImages(): boolean {
-    return this.attachments?.some(a => a.fileType === 'image') || false;
+    return this.attachments?.some((a) => a.fileType === 'image') || false;
   }
 
   @Expose()
   get hasDocuments(): boolean {
-    return this.attachments?.some(a => a.fileType === 'document') || false;
+    return this.attachments?.some((a) => a.fileType === 'document') || false;
   }
 
   // Méthode utilitaire pour vérifier si le message est vide (pas de contenu et pas de pièces jointes)
   @Expose()
   get isEmpty(): boolean {
-    return !this.content && (!this.attachments || this.attachments.length === 0);
+    return (
+      !this.content && (!this.attachments || this.attachments.length === 0)
+    );
   }
 }

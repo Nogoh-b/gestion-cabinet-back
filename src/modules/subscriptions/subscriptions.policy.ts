@@ -57,7 +57,10 @@ export function hasTrial(plan: Plan | null): boolean {
   );
 }
 
-export function planPriceForCycle(plan: Plan | null, cycle: BillingCycle): number {
+export function planPriceForCycle(
+  plan: Plan | null,
+  cycle: BillingCycle,
+): number {
   if (!plan) return 0;
   if (cycle === 'yearly') {
     return Number(plan.price_yearly ?? 0) || 0;
@@ -145,7 +148,10 @@ export function resolveRenewalPeriod(
 }
 
 /** Nombre de jours restants avant `ends_at` (arrondi au supérieur). null = illimité. */
-export function daysRemaining(endsAt: Date | null, now: Date = new Date()): number | null {
+export function daysRemaining(
+  endsAt: Date | null,
+  now: Date = new Date(),
+): number | null {
   if (!endsAt) return null;
   const ms = new Date(endsAt).getTime() - now.getTime();
   return Math.ceil(ms / (1000 * 60 * 60 * 24));

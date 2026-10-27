@@ -2,7 +2,8 @@ import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginat
 import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -10,6 +11,8 @@ import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { Plan } from './entities/plan.entity';
 import { PlanQuotaService } from './plan-quota.service';
+import { AiCreditsService } from './ai-credits/ai-credits.service';
+import { withoutCreditAllowance } from './ai-credits/ai-credits';
 
 @Injectable()
 export class PlansService extends BaseServiceV1<Plan> {
@@ -20,6 +23,8 @@ export class PlansService extends BaseServiceV1<Plan> {
     @InjectRepository(Cabinet)
     private cabinetRepo: Repository<Cabinet>,
     private readonly quotaService: PlanQuotaService,
+    private readonly aiCredits: AiCreditsService,
+    @Optional() private readonly appEvents?: EventEmitter2,
   ) {
     super(repository, paginationService);
   }
@@ -37,8 +42,13 @@ export class PlansService extends BaseServiceV1<Plan> {
     return this.repository.find({ order: { name: 'ASC' } });
   }
 
+  /** Plans proposés aux cabinets : sans le nombre de crédits IA du forfait. */
   async findActive(): Promise<Plan[]> {
-    return this.repository.find({ where: { is_active: true }, order: { name: 'ASC' } });
+    const plans = await this.repository.find({
+      where: { is_active: true },
+      order: { name: 'ASC' },
+    });
+    return plans.map((plan) => withoutCreditAllowance(plan));
   }
 
   async findByCode(code: string): Promise<Plan | null> {
@@ -65,16 +75,22 @@ export class PlansService extends BaseServiceV1<Plan> {
   /**
    * Assigne un plan à un cabinet.
    */
-  async assignPlanToCabinet(cabinetId: number, planId: number): Promise<Cabinet> {
+  async assignPlanToCabinet(
+    cabinetId: number,
+    planId: number,
+  ): Promise<Cabinet> {
     const [cabinet, plan] = await Promise.all([
       this.cabinetRepo.findOne({ where: { id: cabinetId } }),
       this.findOne(planId),
     ]);
-    if (!cabinet) throw new NotFoundException(`Cabinet #${cabinetId} non trouvé`);
+    if (!cabinet)
+      throw new NotFoundException(`Cabinet #${cabinetId} non trouvé`);
 
     cabinet.plan_id = plan.id;
-    cabinet.plan   = plan.code as any; // synchro champ legacy
-    return this.cabinetRepo.save(cabinet);
+    cabinet.plan = plan.code as any; // synchro champ legacy
+    const saved = await this.cabinetRepo.save(cabinet);
+    this.appEvents?.emit('ai.config.changed', { tenantId: cabinetId });
+    return saved;
   }
 
   /**
@@ -83,7 +99,7 @@ export class PlansService extends BaseServiceV1<Plan> {
    */
   async getQuotaStatus(cabinetId: number): Promise<any> {
     // Comptages directs via requêtes SQL tenant-scoped
-    const [employees, clients, dossiers, storage] = await Promise.all([
+    const [employees, clients, dossiers, storage, aiStatus] = await Promise.all([
       this.cabinetRepo.manager.query(
         'SELECT COUNT(*) as cnt FROM employee WHERE tenant_id = ?',
         [cabinetId],
@@ -100,15 +116,19 @@ export class PlansService extends BaseServiceV1<Plan> {
         'SELECT COALESCE(SUM(file_size), 0) as total FROM document_customer WHERE tenant_id = ?',
         [cabinetId],
       ),
+      // Crédits IA du mois : pourcentages seulement (jamais de crédits ni de montants).
+      this.aiCredits.status(cabinetId),
     ]);
 
     const counts = {
       employees: Number(employees[0]?.cnt ?? 0),
-      clients:   Number(clients[0]?.cnt ?? 0),
-      dossiers:  Number(dossiers[0]?.cnt ?? 0),
+      clients: Number(clients[0]?.cnt ?? 0),
+      dossiers: Number(dossiers[0]?.cnt ?? 0),
       storageBytes: Number(storage[0]?.total ?? 0),
     };
 
-    return this.quotaService.getUsageStatus(cabinetId, counts);
+    const usage = await this.quotaService.getUsageStatus(cabinetId, counts, aiStatus);
+    // Le cabinet ne voit que des pourcentages : jamais le nombre de crédits du forfait.
+    return { ...usage, plan: withoutCreditAllowance(usage.plan) };
   }
 }

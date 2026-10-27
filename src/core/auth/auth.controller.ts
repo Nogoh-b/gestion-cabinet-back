@@ -10,7 +10,9 @@ import {
   Res,
   UseGuards,
   Request,
+  ValidationPipe,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Request as ExpressRequest, Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger'; // Ajouter
@@ -18,12 +20,14 @@ import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { Public } from '../decorators/public.decorator';
+import { AllowClient } from '../decorators/allow-client.decorator';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { SetPasswordDto } from './dto/set-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import {
   clearPasswordResetCookie,
   clearSessionCookies,
@@ -53,6 +57,7 @@ export class AuthController {
   @Public()
   @UseGuards(LocalAuthGuard)
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 tentatives / minute
   async login(
     @Request() req,
     @Res({ passthrough: true }) response: Response,
@@ -65,6 +70,7 @@ export class AuthController {
   @Public()
   @Post('verify-mfa')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 vérifications / minute
   @ApiOperation({ summary: 'Vérifier le code de connexion (MFA)' })
   async verifyMfa(
     @Body() body: { email: string; otp: string },
@@ -109,6 +115,7 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @AllowClient()
   @Get('profile')
   @ApiBearerAuth('access_token')
   async getProfile(@Request() req) {
@@ -121,6 +128,7 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @AllowClient()
   @Get('me/permissions')
   @ApiOperation({ summary: 'Récupérer les permissions de l\'utilisateur connecté' })
   async getMyPermissions(@Request() req) {
@@ -149,6 +157,7 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @AllowClient()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(
@@ -164,6 +173,7 @@ export class AuthController {
   @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 demandes / minute
   @ApiOperation({ summary: 'Demander la réinitialisation du mot de passe' })
   @ApiResponse({ status: 200, description: 'Email envoyé avec succès' })
   async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
@@ -173,6 +183,7 @@ export class AuthController {
   @Public()
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 vérifications / minute
   @ApiOperation({ summary: 'Vérifier le code OTP' })
   @ApiResponse({ status: 200, description: 'Code vérifié avec succès' })
   async verifyOTP(
@@ -189,6 +200,7 @@ export class AuthController {
   @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 réinitialisations / minute
   @ApiOperation({ summary: 'Réinitialiser le mot de passe' })
   @ApiResponse({ status: 200, description: 'Mot de passe réinitialisé' })
   async resetPassword(
@@ -212,9 +224,36 @@ export class AuthController {
     return this.attachSession(response, result);
   }
 
+  /** Changement de mot de passe de l'utilisateur connecté (ancien mot de passe requis). */
+  @UseGuards(JwtAuthGuard)
+  @AllowClient()
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 tentatives / minute
+  @ApiOperation({ summary: 'Changer son mot de passe' })
+  @ApiResponse({ status: 200, description: 'Mot de passe modifié' })
+  @ApiResponse({
+    status: 400,
+    description: 'Mot de passe actuel incorrect ou nouveau mot de passe invalide',
+  })
+  async changePassword(
+    @Request() req,
+    // Aucune ValidationPipe globale : on valide le DTO ici.
+    @Body(new ValidationPipe({ whitelist: true }))
+    changePasswordDto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(
+      req.user.userId ?? req.user.id,
+      req.user.tenantId,
+      changePasswordDto.current_password,
+      changePasswordDto.new_password,
+    );
+  }
+
   @Public()
   @Post('set-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 créations / minute
   @ApiOperation({ summary: 'Créer le mot de passe (invitation)' })
   @ApiResponse({ status: 200, description: 'Mot de passe créé' })
   async setPassword(

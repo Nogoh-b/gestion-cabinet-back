@@ -2,27 +2,67 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Subscription } from './entities/subscription.entity';
 import { SubscriptionPayment } from './entities/subscription-payment.entity';
+import { SubscriptionEvent } from './entities/subscription-event.entity';
+import { SubscriptionEventsService } from './subscription-events.service';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { Plan } from '../plans/entities/plan.entity';
 import { SubscriptionsService } from './subscriptions.service';
 import { SubscriptionsController } from './subscriptions.controller';
 import { PaymentGatewayService } from './payment/payment-gateway.service';
 import { TestPaymentProvider } from './payment/test-payment.provider';
-import { PAYMENT_PROVIDER } from './payment/payment-provider.interface';
+import { PaymentMethod } from './payment/entities/payment-method.entity';
+import { PaymentWebhookEvent } from './payment/entities/payment-webhook-event.entity';
+import { PaymentMethodsService } from './payment/payment-methods.service';
+import { PaymentProviderRegistry } from './payment/payment-provider.registry';
+import { PaymentWebhooksService } from './payment/payment-webhooks.service';
+import { PaymentWebhooksController } from './payment/payment-webhooks.controller';
+import { CinetPayProvider } from './payment/providers/cinetpay.provider';
+import { NotchPayProvider } from './payment/providers/notchpay.provider';
+import { StripeProvider } from './payment/providers/stripe.provider';
+import { ReceiptService } from './billing/receipt.service';
+import { BillingNotifierService } from './billing/billing-notifier.service';
+import { Coupon, CouponRedemption } from './coupons/coupon.entity';
+import { CouponsService } from './coupons/coupons.service';
+import { PlansModule } from '../plans/plans.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Subscription, SubscriptionPayment, Cabinet, Plan]),
+    PlansModule,
+    TypeOrmModule.forFeature([
+      Subscription,
+      SubscriptionPayment,
+      SubscriptionEvent,
+      PaymentMethod,
+      PaymentWebhookEvent,
+      Coupon,
+      CouponRedemption,
+      Cabinet,
+      Plan,
+    ]),
   ],
-  controllers: [SubscriptionsController],
+  controllers: [SubscriptionsController, PaymentWebhooksController],
   providers: [
     SubscriptionsService,
+    SubscriptionEventsService,
     PaymentGatewayService,
+    PaymentMethodsService,
+    PaymentProviderRegistry,
+    PaymentWebhooksService,
     TestPaymentProvider,
-    // Passerelle active. Brancher une vraie passerelle = remplacer cette ligne
-    // (ex: useClass: CinetPayProvider) ou choisir via une factory env.
-    { provide: PAYMENT_PROVIDER, useExisting: TestPaymentProvider },
+    CinetPayProvider,
+    NotchPayProvider,
+    StripeProvider,
+    ReceiptService,
+    BillingNotifierService,
+    CouponsService,
   ],
-  exports: [SubscriptionsService],
+  exports: [
+    SubscriptionsService,
+    SubscriptionEventsService,
+    PaymentMethodsService,
+    PaymentProviderRegistry,
+    ReceiptService,
+    CouponsService,
+  ],
 })
 export class SubscriptionsModule {}

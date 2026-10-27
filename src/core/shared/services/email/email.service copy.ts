@@ -6,7 +6,6 @@ import { MailerService } from '@nestjs-modules/mailer';
 import { Injectable, Logger } from '@nestjs/common';
 import { SendMailOptions } from '../../interfaces/send-mail.interface';
 
-
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -27,7 +26,7 @@ export class EmailService {
         to: options.to,
         subject: options.subject,
         attachments: options.attachments,
-        html: options.message, 
+        html: options.message,
       });
       this.logger.log(`Email sent to ${options.to}`);
       return true;
@@ -48,24 +47,31 @@ export class EmailService {
 
   async sendPasswordResetEmail(to: string, message: string): Promise<boolean> {
     return this.sendMail({
-
       to,
       subject: 'Bienvenue sur notre plateforme !',
       message,
       context: {
         name: '',
-        message
+        message,
       },
     });
   }
 
-    async sendMail1({ to, subject, templatePath, context }: {
+  async sendMail1({
+    to,
+    subject,
+    templatePath,
+    context,
+  }: {
     to: string;
     subject: string;
     templatePath: string;
     context: Record<string, any>;
   }) {
-    const template = fs.readFileSync(path.join(__dirname, 'templates', templatePath), 'utf-8');
+    const template = fs.readFileSync(
+      path.join(__dirname, 'templates', templatePath),
+      'utf-8',
+    );
     const message = this.renderTemplate(template, context);
 
     // Appel à un service de mail ici (ex: nodemailer, MailerService...)
@@ -73,7 +79,10 @@ export class EmailService {
     return { to, subject, message };
   }
 
-  private renderTemplate(template: string, context: Record<string, any>): string {
+  private renderTemplate(
+    template: string,
+    context: Record<string, any>,
+  ): string {
     return template.replace(/{{\s*(\w+)\s*}}/g, (_, key) => context[key] ?? '');
   }
 }

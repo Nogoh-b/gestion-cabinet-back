@@ -23,7 +23,12 @@ export class AnalysisResponseDto {
    * Le frontend affiche un tableau étiqueté par ensemble. `results`/`sqlQuery`
    * restent renseignés (premier ensemble + requêtes concaténées) pour rétro-compat.
    */
-  resultSets?: Array<{ title: string; sqlQuery: string; data: any[]; rowCount: number }>;
+  resultSets?: Array<{
+    title: string;
+    sqlQuery: string;
+    data: any[];
+    rowCount: number;
+  }>;
 
   /**
    * true quand une demande READ est trop ambigue ou incomprise pour generer
@@ -71,6 +76,8 @@ export interface ReadClarificationContext {
   reason: string;
   question: string;
   options: ReadClarificationOption[];
+  /** Mode de la réponse choisie (écriture : le choix précise la cible d'une modification). */
+  intentMode?: 'write';
 }
 
 export interface WritePlan {
@@ -81,18 +88,39 @@ export interface WritePlan {
 }
 
 export interface WriteOperation {
-  operation: 'INSERT' | 'UPDATE' | 'DELETE';
+  operation: 'INSERT' | 'UPDATE' | 'DELETE' | 'ACTION';
   entity: string;
+  /**
+   * ACTION : action métier à déclencher (« envoyer_facture »…, cf.
+   * AiActionRegistry) sur l'enregistrement visé ; `fields` porte ses paramètres.
+   */
+  action?: string;
   entityId?: string | number;
+  /**
+   * UPDATE sans identifiant connu : valeurs ACTUELLES des colonnes qui désignent
+   * l'enregistrement (ex: { start_date, end_date, label }). Résolu en entityId à
+   * l'exécution ; 0 ou plusieurs correspondances → précision demandée à l'utilisateur.
+   */
+  match?: Record<string, any>;
+  /**
+   * UPDATE avec `match` : appliquer `fields` à TOUS les enregistrements
+   * correspondants (« passe toutes les audiences du dossier à… »).
+   */
+  all?: boolean;
   fields: Record<string, any>;
   tempId?: string;
   dependsOn?: string[];
-  humanReadable: string;    // Description lisible pour confirmation
+  humanReadable: string; // Description lisible pour confirmation
   /**
-   * Configuration de résolution des dépendances pour cette opération.
-   * Permet de contrôler comment les références (FK) sont résolues :
-   * - strict : (défaut) bloque en cas d'ambiguïté
-   * - best_effort : prend automatiquement le meilleur score
+   * Pièces jointes dont viennent les données de l'opération (création à partir
+   * de fichiers) : le chat classe ensuite chaque fichier dans le dossier créé
+   * à partir de lui. Ignoré à l'exécution.
+   */
+  sourceFiles?: string[];
+  /**
+   * Ancienne configuration de résolution, gardée pour les plans enregistrés.
+   * Sans effet : les références sont résolues de façon déterministe
+   * (identifiant, ou correspondance exacte et unique, sinon choix utilisateur).
    */
   resolveConfig?: {
     mode?: 'strict' | 'best_effort';

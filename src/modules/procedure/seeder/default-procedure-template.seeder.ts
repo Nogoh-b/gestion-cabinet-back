@@ -34,7 +34,11 @@ const DEFAULT_STAGES: Array<{
       { order: 1, name: 'Analyse préliminaire', isMandatory: true },
       { order: 2, name: 'Vérification de recevabilité', isMandatory: true },
       { order: 3, name: 'Ouverture formelle du dossier', isMandatory: true },
-      { order: 4, name: 'Notification des parties adverses', isMandatory: false },
+      {
+        order: 4,
+        name: 'Notification des parties adverses',
+        isMandatory: false,
+      },
       { order: 5, name: 'Constitution du dossier', isMandatory: true },
     ],
   },
@@ -44,12 +48,16 @@ const DEFAULT_STAGES: Array<{
     canBeSkipped: false,
     canBeReentered: true,
     subStages: [
-      { order: 0, name: 'Échange d\'écritures / conclusions', isMandatory: true },
+      {
+        order: 0,
+        name: "Échange d'écritures / conclusions",
+        isMandatory: true,
+      },
       { order: 1, name: 'Production des pièces', isMandatory: true },
-      { order: 2, name: 'Demandes d\'expertises', isMandatory: false },
+      { order: 2, name: "Demandes d'expertises", isMandatory: false },
       { order: 3, name: 'Auditions / interrogatoires', isMandatory: false },
       { order: 4, name: 'Débats oraux / écrits', isMandatory: true },
-      { order: 5, name: 'Clôture de l\'instruction', isMandatory: true },
+      { order: 5, name: "Clôture de l'instruction", isMandatory: true },
     ],
   },
   {
@@ -71,11 +79,19 @@ const DEFAULT_STAGES: Array<{
     canBeSkipped: false,
     canBeReentered: true,
     subStages: [
-      { order: 0, name: 'Obtention de la formule exécutoire', isMandatory: true },
+      {
+        order: 0,
+        name: 'Obtention de la formule exécutoire',
+        isMandatory: true,
+      },
       { order: 1, name: 'Mesures pécuniaires', isMandatory: false },
       { order: 2, name: 'Mesures non pécuniaires', isMandatory: false },
-      { order: 3, name: 'Suivi de l\'exécution', isMandatory: true },
-      { order: 4, name: 'Gestion des incidents d\'exécution', isMandatory: false },
+      { order: 3, name: "Suivi de l'exécution", isMandatory: true },
+      {
+        order: 4,
+        name: "Gestion des incidents d'exécution",
+        isMandatory: false,
+      },
     ],
   },
   {
@@ -84,7 +100,11 @@ const DEFAULT_STAGES: Array<{
     canBeSkipped: false,
     canBeReentered: false,
     subStages: [
-      { order: 0, name: 'Vérification de l\'extinction des obligations', isMandatory: true },
+      {
+        order: 0,
+        name: "Vérification de l'extinction des obligations",
+        isMandatory: true,
+      },
       { order: 1, name: 'Règlement des frais et dépens', isMandatory: true },
       { order: 2, name: 'Archivage du dossier', isMandatory: true },
       { order: 3, name: 'Information finale des parties', isMandatory: true },
@@ -99,105 +119,105 @@ export default class DefaultProcedureTemplateSeeder implements Seeder {
     _factoryManager: SeederFactoryManager,
   ): Promise<any> {
     return dataSource.transaction(async (manager) => {
-    const templateRepo = manager.getRepository(ProcedureTemplate);
-    const stageRepo = manager.getRepository(Stage);
-    const subStageRepo = manager.getRepository(SubStage);
-    const transitionRepo = manager.getRepository(Transition);
+      const templateRepo = manager.getRepository(ProcedureTemplate);
+      const stageRepo = manager.getRepository(Stage);
+      const subStageRepo = manager.getRepository(SubStage);
+      const transitionRepo = manager.getRepository(Transition);
 
-    let template = await findOneForTenant(
-      templateRepo,
-      'name',
-      DEFAULT_PROCEDURE_TEMPLATE_NAME,
-    );
-
-    if (!template) {
-      template = await templateRepo.save(
-        templateRepo.create({
-          familyId: randomUUID(),
-          name: DEFAULT_PROCEDURE_TEMPLATE_NAME,
-          description:
-            'Template générique 5 étapes utilisé quand le sous-type de procédure n\'a pas de template propre. ' +
-            'Toutes les transitions sont permises.',
-          version: 1,
-          lifecycleStatus: ProcedureTemplateLifecycle.DRAFT,
-          publishedAt: null,
-          retiredAt: null,
-          contentHash: null,
-        }),
+      let template = await findOneForTenant(
+        templateRepo,
+        'name',
+        DEFAULT_PROCEDURE_TEMPLATE_NAME,
       );
-      console.log(`✅ Template par défaut créé (ID: ${template.id})`);
 
-      const savedStages: Stage[] = [];
-      for (const stageData of DEFAULT_STAGES) {
-        const stage = await stageRepo.save(
-          stageRepo.create({
-            order: stageData.order,
-            name: stageData.name,
-            description: stageData.name,
-            canBeSkipped: stageData.canBeSkipped,
-            canBeReentered: stageData.canBeReentered,
-            templateId: template.id,
+      if (!template) {
+        template = await templateRepo.save(
+          templateRepo.create({
+            familyId: randomUUID(),
+            name: DEFAULT_PROCEDURE_TEMPLATE_NAME,
+            description:
+              "Template générique 5 étapes utilisé quand le sous-type de procédure n'a pas de template propre. " +
+              'Toutes les transitions sont permises.',
+            version: 1,
+            lifecycleStatus: ProcedureTemplateLifecycle.DRAFT,
+            publishedAt: null,
+            retiredAt: null,
+            contentHash: null,
           }),
         );
-        savedStages.push(stage);
+        console.log(`✅ Template par défaut créé (ID: ${template.id})`);
 
-        for (const ssData of stageData.subStages) {
-          await subStageRepo.save(
-            subStageRepo.create({
-              order: ssData.order,
-              name: ssData.name,
-              description: ssData.name,
-              isMandatory: ssData.isMandatory,
-              requirements: [],
-              stageId: stage.id,
+        const savedStages: Stage[] = [];
+        for (const stageData of DEFAULT_STAGES) {
+          const stage = await stageRepo.save(
+            stageRepo.create({
+              order: stageData.order,
+              name: stageData.name,
+              description: stageData.name,
+              canBeSkipped: stageData.canBeSkipped,
+              canBeReentered: stageData.canBeReentered,
+              templateId: template.id,
             }),
           );
+          savedStages.push(stage);
+
+          for (const ssData of stageData.subStages) {
+            await subStageRepo.save(
+              subStageRepo.create({
+                order: ssData.order,
+                name: ssData.name,
+                description: ssData.name,
+                isMandatory: ssData.isMandatory,
+                requirements: [],
+                stageId: stage.id,
+              }),
+            );
+          }
+          console.log(
+            `  📍 Stage "${stage.name}" — ${stageData.subStages.length} sous-étape(s)`,
+          );
+        }
+
+        let transitionCount = 0;
+        for (let i = 0; i < savedStages.length; i++) {
+          for (let j = 0; j < savedStages.length; j++) {
+            if (i === j) continue;
+            const isDefault = j === i + 1;
+            await transitionRepo.save(
+              transitionRepo.create({
+                fromStageId: savedStages[i].id,
+                toStageId: savedStages[j].id,
+                type: 'manual',
+                label: isDefault ? null : `Aller vers ${savedStages[j].name}`,
+                isDefault,
+                requiresDecision: true,
+                requiresValidation: false,
+                templateId: template.id,
+                expectsUserInput: false,
+                userInputs: null,
+                preTransitionActions: null,
+                postTransitionActions: null,
+                onTransition: null,
+              } as any),
+            );
+            transitionCount += 1;
+          }
         }
         console.log(
-          `  📍 Stage "${stage.name}" — ${stageData.subStages.length} sous-étape(s)`,
+          `  🔄 ${transitionCount} parcours créés avant normalisation des retours bornés`,
+        );
+      } else {
+        console.log(
+          `⏩ Template par défaut déjà présent (ID: ${template.id}) — vérification de la publication`,
         );
       }
 
-      let transitionCount = 0;
-      for (let i = 0; i < savedStages.length; i++) {
-        for (let j = 0; j < savedStages.length; j++) {
-          if (i === j) continue;
-          const isDefault = j === i + 1;
-          await transitionRepo.save(
-            transitionRepo.create({
-              fromStageId: savedStages[i].id,
-              toStageId: savedStages[j].id,
-              type: 'manual',
-              label: isDefault ? null : `Aller vers ${savedStages[j].name}`,
-              isDefault,
-              requiresDecision: true,
-              requiresValidation: false,
-              templateId: template.id,
-              expectsUserInput: false,
-              userInputs: null,
-              preTransitionActions: null,
-              postTransitionActions: null,
-              onTransition: null,
-            } as any),
-          );
-          transitionCount += 1;
-        }
-      }
-      console.log(
-        `  🔄 ${transitionCount} parcours créés avant normalisation des retours bornés`,
+      const published = await publishSeededProcedureTemplate(
+        manager,
+        template!.id,
       );
-    } else {
-      console.log(
-        `⏩ Template par défaut déjà présent (ID: ${template.id}) — vérification de la publication`,
-      );
-    }
-
-    const published = await publishSeededProcedureTemplate(
-      manager,
-      template!.id,
-    );
-    console.log(`🎉 Template générique publié : "${published.name}"`);
-    return published;
+      console.log(`🎉 Template générique publié : "${published.name}"`);
+      return published;
     });
   }
 }

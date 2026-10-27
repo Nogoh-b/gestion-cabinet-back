@@ -3,6 +3,11 @@ import { AsyncLocalStorage } from 'async_hooks';
 
 interface TenantStore {
   tenantId: number;
+  // true si le tenant a été EXPLICITEMENT résolu (JWT, header, sous-domaine,
+  // path). false (ou absent) si valeur de repli par défaut. Permet aux
+  // consommateurs (patch Repository, stratégies) de distinguer un vrai tenant
+  // d'un fallback de sécurité afin d'appliquer un comportement fail-closed.
+  explicit?: boolean;
 }
 
 /**
@@ -14,6 +19,11 @@ const _storage = new AsyncLocalStorage<TenantStore>();
 /**
  * Fonction module-level : retourne le tenantId courant sans injection NestJS.
  * Utilisée par TenantRepositoryPatch pour filtrer les requêtes TypeORM.
+ *
+ * ATTENTION : retourne 1 par défaut (tenant système) si aucun contexte actif.
+ * Pour distinguer un tenant réellement résolu d'un fallback, utiliser
+ * getExplicitTenantId() qui retourne undefined quand aucune résolution
+ * explicite n'a eu lieu.
  */
 export function getCurrentTenantId(): number {
   const tenantId = _storage.getStore()?.tenantId;
@@ -21,6 +31,18 @@ export function getCurrentTenantId(): number {
     throw new Error('Aucun contexte cabinet actif');
   }
   return tenantId;
+}
+
+/**
+ * Retourne le tenantId UNIQUEMENT s'il a été explicitement résolu (JWT,
+ * header, sous-domaine, path). Renvoie undefined sinon — utile pour appliquer
+ * un comportement fail-closed plutôt que de retomber silencieusement sur le
+ * tenant système (1).
+ */
+export function getExplicitTenantId(): number | undefined {
+  const store = _storage.getStore();
+  if (!store?.explicit) return undefined;
+  return store.tenantId;
 }
 
 /**
@@ -32,14 +54,11 @@ export function hasActiveTenant(): boolean {
 }
 
 /** Exécute une tâche technique (worker, scheduler) dans un cabinet explicite. */
-export function runWithTenantContext<T>(
-  tenantId: number,
-  fn: () => T,
-): T {
+export function runWithTenantContext<T>(tenantId: number, fn: () => T): T {
   if (!Number.isInteger(tenantId) || tenantId <= 0) {
     throw new Error('Contexte cabinet technique invalide');
   }
-  return _storage.run({ tenantId }, fn);
+  return _storage.run({ tenantId, explicit: true }, fn);
 }
 
 /**
@@ -59,9 +78,23 @@ export function runWithTenantContext<T>(
 export class TenantContext {
   private readonly storage = _storage;
 
-  /** Exécute fn() dans un contexte lié au tenantId donné */
-  run<T>(tenantId: number, fn: () => T): T {
-    return runWithTenantContext(tenantId, fn);
+  /**
+   * Exécute fn() dans un contexte lié au tenantId donné.
+   * @param tenantId  Identifiant du cabinet (entier strictement positif).
+   * @param fn        Fonction à exécuter dans le contexte.
+   * @param explicit  true (défaut) si le tenant a été résolu explicitement
+   *                  (JWT, header...). Passer false pour un fallback par défaut.
+   */
+  run<T>(tenantId: number, fn: () => T, explicit = true): T {
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      throw new Error('Contexte cabinet invalide');
+    }
+    return this.storage.run({ tenantId, explicit }, fn);
+  }
+
+  /** Exécute fn() SANS contexte tenant (accès global hors requête HTTP). */
+  runWithoutTenant<T>(fn: () => T): T {
+    return this.storage.run(undefined as any, fn);
   }
 
   /** Retourne le tenantId du contexte courant. Échoue hors contexte. */
@@ -71,6 +104,11 @@ export class TenantContext {
       throw new Error('Aucun contexte cabinet actif');
     }
     return tenantId;
+  }
+
+  /** Retourne le tenantId seulement s'il est explicitement résolu. */
+  getExplicitTenantId(): number | undefined {
+    return getExplicitTenantId();
   }
 
   /** Retourne true si un contexte tenant est actif */

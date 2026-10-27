@@ -1,16 +1,24 @@
 // src/core/common/guards/suspended-cabinet.guard.ts
 //
 // Guard qui bloque l'accès si le cabinet est en statut 'suspended'.
-// Retourne 403 Forbidden sur toutes les API sauf les routes marquées @Public().
+// Retourne 403 Forbidden sur les API protégées, sauf les routes @Public() ou
+// explicitement marquées @AllowSuspended().
 //
 // Ce guard doit être appliqué APRÈS JwtAuthGuard (qui vérifie l'auth) et
 // APRES le TenantResolverMiddleware (qui résout resolvedTenantId).
 import { IS_PUBLIC_KEY } from 'src/core/decorators/public.decorator';
 import { ALLOW_SUSPENDED_CABINET_KEY } from 'src/core/decorators/allow-suspended-cabinet.decorator';
+import { ALLOW_SUSPENDED_KEY } from 'src/core/decorators/allow-suspended.decorator';
+import { IS_PLATFORM_KEY } from 'src/core/decorators/platform.decorator';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { SubscriptionsService } from 'src/modules/subscriptions/subscriptions.service';
 import { Repository } from 'typeorm';
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -31,16 +39,32 @@ export class SuspendedCabinetGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     // 1. Routes publiques → laisser passer (login, onboarding, resolve...)
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (isPublic) return true;
-
-    const allowSuspended = this.reflector.getAllAndOverride<boolean>(
-      ALLOW_SUSPENDED_CABINET_KEY,
-      [context.getHandler(), context.getClass()],
+    const metadataTargets = [context.getHandler(), context.getClass()];
+    const isPublic = this.reflector.getAllAndOverride<boolean>(
+      IS_PUBLIC_KEY,
+      metadataTargets,
     );
+    if (isPublic) return true;
+    // Espace plateforme : aucun cabinet courant, rien à bloquer.
+    if (
+      this.reflector.getAllAndOverride<boolean>(
+        IS_PLATFORM_KEY,
+        metadataTargets,
+      )
+    ) {
+      return true;
+    }
+    // Deux décorateurs coexistent (@AllowSuspended de main,
+    // @AllowSuspendedCabinet de la refonte) : l'un ou l'autre suffit.
+    const allowSuspended =
+      this.reflector.getAllAndOverride<boolean>(
+        ALLOW_SUSPENDED_KEY,
+        metadataTargets,
+      ) ||
+      this.reflector.getAllAndOverride<boolean>(
+        ALLOW_SUSPENDED_CABINET_KEY,
+        metadataTargets,
+      );
     if (allowSuspended) return true;
 
     // 2. Récupérer l'ID du tenant (cabinet)
@@ -71,7 +95,7 @@ export class SuspendedCabinetGuard implements CanActivate {
       select: ['id', 'status'],
     });
 
-    if (cabinet?.status === 'suspended') {
+    if (cabinet?.status === 'suspended' && !allowSuspended) {
       throw new ForbiddenException('Cabinet suspendu — abonnement expiré');
     }
 
