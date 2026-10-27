@@ -6,6 +6,7 @@ import {
   htmlToMarkup,
   inlineMarkup,
   parseSectionedAnswer,
+  readDocumentHtml,
   templateVariableNames,
 } from './document-markup';
 import {
@@ -135,6 +136,104 @@ Le bailleur donne à bail **le local** situé à *Douala*, __sans réserve__.
     const html = documentHtml(markup);
     expect(documentHtml(htmlToMarkup(html))).toBe(html);
     expect(htmlToMarkup('<p style="text-align: justify">Texte&nbsp;<em>libre</em></p>')).toBe('[[justifie]] Texte *libre*');
+  });
+
+  it('garde images, couleurs, retraits et tableaux fusionnés d’un document repris', () => {
+    const image = '<img src="data:image/png;base64,AAAA" style="width: 50%; height: auto">';
+    const merged = '<table><tbody><tr><td colspan="2">Fusion</td></tr></tbody></table>';
+    const html = [
+      `<p style="text-align: center">${image}</p>`,
+      '<p data-caption="" style="text-align:center;"><em>Figure 1 – Plan des lieux</em></p>',
+      '<p style="margin-left: 36pt; line-height: 1.5">Texte <span style="color: #b91c1c">en rouge</span> et <strong>gras</strong></p>',
+      merged,
+      '<table style="min-width: 50px"><colgroup><col style="width: 120px"><col style="min-width: 25px"></colgroup><tbody><tr><td style="background-color: #fef9c3">A</td><td>B</td></tr></tbody></table>',
+      '<div data-page-break=""></div>',
+      '<p>Fin</p>',
+    ].join('');
+    const { markup, keep } = readDocumentHtml(html, { keep: true });
+    expect(markup).toBe([
+      '[[centre]] [[image 1]]',
+      '[[legende]] Figure 1 – Plan des lieux',
+      '[[f3]] Texte [[s1]]en rouge[[/s1]] et **gras**',
+      '[[tableau 2]]',
+      '[[f1]]\n| [[f2]] A | B |',
+      '[[saut de page]]',
+      'Fin',
+    ].join('\n\n'));
+    // L'IA reformule le texte et recopie les repères : tout est remis à l'identique.
+    const revised = documentHtml(markup.replace('Texte', 'Nouveau texte').replace('Fin', '[[droite]] [[f3]] Fin'), keep);
+    expect(revised).toContain(`<p style="text-align:center;">${image}</p>`);
+    expect(revised).toContain('<p data-caption="" style="text-align:center;"><em>Figure 1 – Plan des lieux</em></p>');
+    expect(revised).toContain('<p style="margin-left: 36pt; line-height: 1.5">Nouveau texte <span style="color: #b91c1c">en rouge</span> et <strong>gras</strong></p>');
+    expect(revised).toContain(merged);
+    expect(revised).toContain('<table style="width:100%;"><colgroup><col style="width: 120px"><col style="min-width: 25px"></colgroup><tbody><tr><td style="background-color: #fef9c3">A</td><td>B</td></tr></tbody></table>');
+    expect(revised).toContain('<div data-page-break=""></div>');
+    expect(revised).toContain('<p style="text-align:right; margin-left: 36pt; line-height: 1.5">Fin</p>');
+  });
+
+  it('referme un passage oublié et retire les repères inventés ou sans document repris', () => {
+    const { keep } = readDocumentHtml('<p><span style="color: red">rouge</span></p><p><img src="data:image/png;base64,AAAA"></p>', { keep: true });
+    expect(documentHtml('Texte [[s1]]rouge\nsuite', keep)).toBe('<p>Texte <span style="color: red">rouge<br/>suite</span></p>');
+    expect(documentHtml('A [[s9]]b[[/s9]] [[image 7]] [[f4]]', keep)).toBe('<p>A b  [[f4]]</p>');
+    expect(documentHtml('[[tableau 2]]\n\nTexte [[s1]]x[[/s1]] [[image 1]]')).toBe('<p>Texte x </p>');
+    // Lecture simple (modèle, pièce) : ni images ni repères.
+    expect(htmlToMarkup('<p><span style="color: red">rouge</span> <img src="x.png"></p>')).toBe('rouge');
+  });
+
+  it('écrit graphiques et schémas en blocs que l’IA peut modifier, image reprise s’ils n’ont pas changé', () => {
+    const spec = {
+      type: 'bar', title: 'Honoraires', unit: 'FCFA', xKey: 'label', xLabel: 'Mois',
+      series: [{ key: 's0', label: 'Facturé' }], data: [{ label: 'Janvier', s0: 1500 }, { label: 'Février', s0: 2000 }],
+    };
+    const chart = `<img src="data:image/png;base64,CHART" data-chart="${JSON.stringify(spec).replace(/"/g, '&quot;')}">`;
+    const diagram = '<img src="data:image/png;base64,FLOW" data-diagram="flowchart TD\nA[&quot;Mise en demeure&quot;] --&gt; B[&quot;Assignation&quot;]">';
+    const { markup, keep } = readDocumentHtml(`<p style="text-align:center">${chart}</p><p>${diagram}</p>`, { keep: true });
+    expect(markup).toBe(`[[graphique barres | titre=Honoraires | unite=FCFA]]
+| Mois | Facturé |
+|---|---|
+| Janvier | 1500 |
+| Février | 2000 |
+[[/graphique]]
+
+[[schema]]
+flowchart TD
+A["Mise en demeure"] --> B["Assignation"]
+[[/schema]]`);
+    // Inchangés : les images d'origine (déjà dessinées) reviennent.
+    expect(documentHtml(markup, keep)).toBe(`<p style="text-align:center;">${chart}</p>\n<p style="text-align:center;">${diagram}</p>`);
+    // Modifiés : nouvelles données, image à dessiner par le navigateur.
+    const changed = documentHtml(markup.replace('| Février | 2000 |', '| Février | 2 500,50 |\n| Mars | 900 |').replace('B["Assignation"]', 'B["Audience"]'), keep);
+    const data = JSON.parse(/data-chart="([^"]*)"/.exec(changed)![1].replace(/&quot;/g, '"'));
+    expect(data.data).toEqual([{ label: 'Janvier', s0: 1500 }, { label: 'Février', s0: 2500.5 }, { label: 'Mars', s0: 900 }]);
+    expect(changed).not.toContain('CHART');
+    expect(changed).toContain('<img data-diagram="flowchart TD\nA[&quot;Mise en demeure&quot;] --&gt; B[&quot;Audience&quot;]" alt="Schéma" style="width: 75%; height: auto">');
+    // HTML de l'éditeur : « > » laissé tel quel dans l'attribut.
+    expect(htmlToMarkup('<p><img src="data:image/png;base64,FLOW" alt="Schéma" data-diagram="flowchart LR\nA --> B"></p><p>Suite</p>'))
+      .toBe('[[schema]]\nflowchart LR\nA --> B\n[[/schema]]\n\nSuite');
+  });
+
+  it('crée graphique, schéma, légende et saut de page depuis un document rédigé', () => {
+    const html = documentHtml(`[[graphique camembert | titre=Répartition]]
+| Poste | Part |
+| Honoraires | 70 |
+| Frais | 30 |
+[[/graphique]]
+[[legende]] Figure 1 – **Répartition** des coûts
+
+\`\`\`mermaid
+timeline
+  2026 : Assignation
+\`\`\`
+
+[[saut de page]]
+Suite`);
+    expect(html).toContain('data-chart="{&quot;type&quot;:&quot;pie&quot;,&quot;title&quot;:&quot;Répartition&quot;');
+    expect(html).toContain('<p data-caption="" style="text-align:center;"><em>Figure 1 – <strong>Répartition</strong> des coûts</em></p>');
+    expect(html).toContain('<img data-diagram="timeline\n  2026 : Assignation" alt="Schéma"');
+    expect(html).toContain('<div data-page-break=""></div>\n<p>Suite</p>');
+    // Un graphique sans chiffres n'est pas rendu ; le texte d'un schéma est échappé.
+    expect(documentHtml('[[graphique barres]]\n| A |\n[[/graphique]]')).toBe('');
+    expect(documentHtml('[[schema]]\n<img onerror=x>\n[[/schema]]')).toContain('data-diagram="&lt;img onerror=x&gt;"');
   });
 
   it('liste et remplit les variables des modèles', () => {
