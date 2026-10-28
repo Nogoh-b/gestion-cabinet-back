@@ -132,33 +132,159 @@ export function inlineMarkup(text: string): string {
     .replace(/(^|[^\w{])_(?=[^\s_])([^_\n]*?[^\s_])_(?![\w}])/g, '$1<em>$2</em>');
 }
 
+// ── Couleur, surlignage et taille écrits par l'IA ───────────────────────────
+
+/** Couleurs du texte par leur nom (celles de l'éditeur), sinon `#rrggbb`. */
+const TEXT_COLORS: Record<string, string> = {
+  rouge: '#dc2626', bordeaux: '#9f1239', orange: '#ea580c', jaune: '#ca8a04', vert: '#16a34a',
+  bleu: '#2563eb', marine: '#1e3a8a', violet: '#7c3aed', rose: '#db2777', marron: '#92400e',
+  gris: '#6b7280', noir: '#111827',
+};
+const HIGHLIGHT_COLORS: Record<string, string> = {
+  jaune: '#fef08a', vert: '#bbf7d0', bleu: '#bfdbfe', rose: '#fbcfe8', orange: '#fed7aa', rouge: '#fecaca', gris: '#e5e7eb', violet: '#ddd6fe',
+};
+const COLOR_VALUE = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/i;
+
+/** Couleur demandée (nom ou code), seulement sous une forme sûre ; null sinon. */
+function colorOf(value: string, names: Record<string, string>): string | null {
+  const wanted = value.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return names[wanted] ?? (COLOR_VALUE.test(wanted) ? wanted.replace(/\s+/g, '') : null);
+}
+
 /**
- * Repères en ligne remis en HTML : passages mis en forme (refermés dans le
- * bloc même si l'IA a oublié la fin) et images. Sans document repris, ou pour
- * un repère inconnu (inventé), le repère est seulement retiré.
+ * Polices de l'éditeur (miroir de EDITOR_FONTS côté front) : clé de mise en
+ * page (`font_family`, null = Arial par défaut), nom affiché, famille CSS.
+ */
+const DOCUMENT_FONTS: Array<{ key: string | null; label: string; family: string }> = [
+  { key: null, label: 'Arial', family: 'Arial' },
+  { key: null, label: 'Times New Roman', family: 'Times New Roman' },
+  ...[
+    ['inter', 'Inter'], ['geist', 'Geist'], ['plus_jakarta_sans', 'Plus Jakarta Sans'], ['manrope', 'Manrope'],
+    ['figtree', 'Figtree'], ['rubik', 'Rubik'], ['poppins', 'Poppins'], ['nunito', 'Nunito'], ['dm_sans', 'DM Sans'],
+    ['outfit', 'Outfit'], ['raleway', 'Raleway'], ['montserrat', 'Montserrat'], ['space_grotesk', 'Space Grotesk'],
+    ['bebas_neue', 'Bebas Neue'], ['barlow', 'Barlow'], ['josefin_sans', 'Josefin Sans'], ['lora', 'Lora'],
+    ['merriweather', 'Merriweather'], ['playfair_display', 'Playfair Display'], ['cormorant', 'Cormorant Garamond'],
+    ['eb_garamond', 'EB Garamond'], ['libre_baskerville', 'Libre Baskerville'],
+  ].map(([key, label]) => ({ key, label, family: label })),
+];
+
+/** Noms des polices proposées à l'IA. */
+export const DOCUMENT_FONT_NAMES = DOCUMENT_FONTS.map((font) => font.label);
+
+/** Polices possibles pour tout le document (mise en page : Arial et Times n'y sont pas proposées). */
+export const LAYOUT_FONT_NAMES = DOCUMENT_FONTS.filter((font) => font.key).map((font) => font.label);
+
+/** Police demandée (nom, approximatif) parmi celles de l'éditeur ; null sinon. */
+export function documentFont(value: string): { key: string | null; label: string; family: string } | null {
+  const wanted = value.trim().replace(/^["']|["']$/g, '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[s_-]+/g, ' ');
+  if (!wanted) return null;
+  const fold = (text: string) => text.toLowerCase().replace(/[s_-]+/g, ' ');
+  return DOCUMENT_FONTS.find((font) => fold(font.label) === wanted || fold(font.key ?? '') === wanted)
+    ?? DOCUMENT_FONTS.find((font) => fold(font.label).startsWith(wanted) || (wanted.length > 3 && fold(font.label).includes(wanted)))
+    ?? (/^times/.test(wanted) ? DOCUMENT_FONTS[1] : null);
+}
+
+/** Balise ouvrante d'un passage `[[couleur …]]`, `[[surligne …]]`, `[[taille …]]` (null si la valeur n'est pas permise). */
+function styledOpen(kind: string, value: string): { open: string; tag: string } | null {
+  if (kind === 'police') {
+    const font = documentFont(value);
+    return font ? { open: `<span data-text-style="" style="font-family: '${font.family}'">`, tag: 'span' } : null;
+  }
+  if (kind === 'couleur') {
+    const color = colorOf(value, TEXT_COLORS);
+    return color ? { open: `<span style="color: ${color}">`, tag: 'span' } : null;
+  }
+  if (kind === 'surligne') {
+    const color = colorOf(value || 'jaune', HIGHLIGHT_COLORS);
+    return color ? { open: `<mark data-color="${color}" style="background-color: ${color}">`, tag: 'mark' } : null;
+  }
+  const size = Math.round(Number(value.replace(',', '.').replace(/\s*pt$/i, '')));
+  return size >= 6 && size <= 72 ? { open: `<span data-text-style="" style="font-size: ${size}pt">`, tag: 'span' } : null;
+}
+
+/**
+ * Titre encadré de la page (hors du texte) sous forme de balisage : « # TITRE »,
+ * en couleur si elle est donnée — l'IA le lit et le modifie comme une ligne.
+ */
+export function frameTitleLine(title: string, color?: string | null): string {
+  const text = title.replace(/\s+/g, ' ').trim();
+  const safe = color ? colorOf(color, TEXT_COLORS) : null;
+  return `# ${safe ? `[[couleur ${safe}]]${text}[[/couleur]]` : text}`;
+}
+
+/**
+ * Première ligne « # … » du balisage rendu par l'IA, lue comme le titre
+ * encadré : son texte (sans balisage) et sa couleur ; null si le document ne
+ * commence pas par un titre de niveau 1. `body` : le reste du balisage.
+ */
+export function readFrameTitle(markup: string): { text: string; color: string | null; body: string } | null {
+  const lines = String(markup ?? '').replace(/\r\n?/g, '\n').split('\n');
+  const index = lines.findIndex((line) => line.trim());
+  const heading = index >= 0 ? /^\s*(?:\[\[[^\]]*\]\]\s*)*#(?!#)\s+(.*)$/.exec(lines[index]) : null;
+  if (!heading) return null;
+  const color = /\[\[\s*couleur\s*[:=]?\s*([^\]]+?)\s*\]\]/i.exec(heading[1])?.[1];
+  const text = heading[1]
+    .replace(/\[\[[^\]]*\]\]/g, '')
+    .replace(/\*\*|__|(?<![\w])\*(?![\s*])|(?<=\S)\*(?![\w])/g, '')
+    .replace(/\s+#+\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return null;
+  return { text, color: color ? colorOf(color, TEXT_COLORS) : null, body: lines.slice(index + 1).join('\n') };
+}
+
+const STYLED_KIND = (kind: string) => {
+  const folded = kind.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return folded.startsWith('couleur') ? 'couleur' : folded.startsWith('surlign') ? 'surligne' : folded.startsWith('police') ? 'police' : 'taille';
+};
+
+/**
+ * Repères en ligne remis en HTML : passages repris du document (`[[sN]]`),
+ * couleur, surlignage et taille écrits par l'IA, images. Un passage ouvert
+ * est refermé à la fin du bloc si l'IA a oublié la fin ; un repère inconnu
+ * (inventé) ou une valeur non permise est seulement retiré.
  */
 function restoreInline(html: string, keep?: MarkupKeep): string {
-  const open: number[] = [];
-  const close = (ids: number[]) => ids.reverse().map((id) => `</${keep!.spans[id - 1].tag}>`).join('');
-  const out = html.replace(/\[\[\s*(\/?)s(\d+)\s*\]\]|\[\[\s*image\s+(\d+)\s*\]\]/gi, (_match, closing: string, span?: string, image?: string) => {
+  const open: Array<{ id: string; tag: string }> = [];
+  const close = (entries: Array<{ tag: string }>) => entries.reverse().map((entry) => `</${entry.tag}>`).join('');
+  const closeTo = (id: string) => {
+    const at = open.map((entry) => entry.id).lastIndexOf(id);
+    return at < 0 ? '' : close(open.splice(at));
+  };
+  const token = /\[\[\s*(\/?)s(\d+)\s*\]\]|\[\[\s*image\s+(\d+)\s*\]\]|\[\[\s*(\/?)\s*(couleur|surlign[eé]|taille|police)(?:\s*[:=]?\s*([^\]]*?))?\s*\]\]/gi;
+  const out = html.replace(token, (_match, closing: string, span?: string, image?: string, styledClosing?: string, kind?: string, value?: string) => {
     if (image) {
       const block = keep?.blocks[Number(image) - 1] ?? '';
       return /^<img\b/i.test(block) ? block : '';
     }
+    if (kind) {
+      const id = STYLED_KIND(kind);
+      if (styledClosing) return closeTo(id);
+      const styled = styledOpen(id, value ?? '');
+      if (!styled) return '';
+      open.push({ id, tag: styled.tag });
+      return styled.open;
+    }
     const id = Number(span);
     if (!keep?.spans[id - 1]) return '';
     if (!closing) {
-      open.push(id);
+      open.push({ id: `s${id}`, tag: keep.spans[id - 1].tag });
       return keep.spans[id - 1].open;
     }
-    const at = open.lastIndexOf(id);
-    return at < 0 ? '' : close(open.splice(at));
+    return closeTo(`s${id}`);
   });
   return out + (open.length ? close(open) : '');
 }
 
 /** Lignes d'un bloc en HTML (sauts de ligne gardés), repères remis. */
-const blockInline = (lines: string[], keep?: MarkupKeep) => restoreInline(lines.map(inlineMarkup).join('<br/>'), keep);
+/**
+ * Repères de balisage restés dans le texte (fermeture inventée « [[/centre]] »,
+ * marqueur mal placé) : retirés, jamais affichés dans le document.
+ */
+const STRAY_MARKER = /\[\[\s*\/?\s*(?:centre|centré|center|droite|gauche|justifi\w*|l[ée]gende|saut de page|f\d+|s\d+|image\s+\d+|tableau\s+\d+|graphique[^\]]*|sch[ée]ma|couleur[^\]]*|surlign\w*[^\]]*|taille[^\]]*|police[^\]]*)\s*\]\]|\[\[\s*\/\s*$/gi;
+
+const blockInline = (lines: string[], keep?: MarkupKeep) =>
+  restoreInline(lines.map(inlineMarkup).join('<br/>'), keep).replace(STRAY_MARKER, '');
 
 const LIST_ITEM = /^\s*(?:[-•*]|(\d+)[.)])\s+(.*)$/;
 const TABLE_LINE = /^\s*\|.*\|\s*$/;
@@ -472,6 +598,32 @@ function alignMarker(attributes: string): string {
 /** Passages mis en forme (couleur, police, taille, surlignage, lien, exposant) : repères `[[sN]]…[[/sN]]`. */
 const STYLED_INLINE = /<(span|mark|a|sup|sub|s|del|font)\b([^>]*)>((?:(?!<(?:span|mark|a|sup|sub|s|del|font)\b)[\s\S])*?)<\/\1>/gi;
 
+/**
+ * Passage qui n'a qu'une couleur, un surlignage ou une taille (ce que
+ * l'éditeur écrit) → « couleur #dc2626 », « surligne #fef08a », « taille 16 » ;
+ * null pour toute autre mise en forme (gardée par repère `[[sN]]`).
+ */
+function readableStyle(tag: string, attributes: string): string | null {
+  const style = attributeOf(attributes, 'style') ?? '';
+  const rules = style.split(';').map((rule) => rule.trim()).filter(Boolean);
+  const others = attributes
+    .replace(/(?:^|\s)style\s*=\s*("[^"]*"|'[^']*')/i, '')
+    .replace(/(?:^|\s)data-(?:color|text-style)\s*=\s*("[^"]*"|'[^']*')/gi, '')
+    .replace(/(?:^|\s)data-text-style(?=\s|$)/gi, '')
+    .trim();
+  if (others || rules.length !== 1) return null;
+  const [property, ...rest] = rules[0].split(':');
+  const value = rest.join(':').trim();
+  const name = tag.toLowerCase();
+  if (name === 'span' && /^color$/i.test(property.trim()) && colorOf(value, {})) return `couleur ${value.replace(/\s+/g, '')}`;
+  if (name === 'mark' && /^background(-color)?$/i.test(property.trim()) && colorOf(value, {})) return `surligne ${value.replace(/\s+/g, '')}`;
+  const size = /^([\d.]+)pt$/i.exec(value)?.[1];
+  if (name === 'span' && /^font-size$/i.test(property.trim()) && size) return `taille ${Number(size)}`;
+  const font = /^font-family$/i.test(property.trim()) ? documentFont(value.split(',')[0]) : null;
+  if (name === 'span' && font) return `police ${font.label}`;
+  return null;
+}
+
 /** Repère d'un bloc repris à part (graphique, schéma, saut de page) le temps de la conversion. */
 const LATE = /⟦(\d+)⟧/g;
 
@@ -526,6 +678,9 @@ export function readDocumentHtml(html: string, options: { keep?: boolean } = {})
   // Passages mis en forme, du plus intérieur au plus extérieur.
   for (let pass = 0; pass < 12; pass++) {
     const next = text.replace(STYLED_INLINE, (_match, tag: string, attributes: string, inner: string) => {
+      // Couleur, surlignage ou taille seuls : écrits en clair, que l'IA lit et change.
+      const readable = readableStyle(tag, attributes);
+      if (readable) return `[[${readable}]]${inner}[[/${readable.split(' ')[0]}]]`;
       if (!keeping || !attributes.trim()) return inner;
       keep.spans.push({ open: `<${tag.toLowerCase()}${attributes}>`, tag: tag.toLowerCase() });
       const id = keep.spans.length;

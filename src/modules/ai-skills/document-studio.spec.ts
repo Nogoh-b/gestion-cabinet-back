@@ -154,7 +154,7 @@ Le bailleur donne à bail **le local** situé à *Douala*, __sans réserve__.
     expect(markup).toBe([
       '[[centre]] [[image 1]]',
       '[[legende]] Figure 1 – Plan des lieux',
-      '[[f3]] Texte [[s1]]en rouge[[/s1]] et **gras**',
+      '[[f3]] Texte [[couleur #b91c1c]]en rouge[[/couleur]] et **gras**',
       '[[tableau 2]]',
       '[[f1]]\n| [[f2]] A | B |',
       '[[saut de page]]',
@@ -171,10 +171,33 @@ Le bailleur donne à bail **le local** situé à *Douala*, __sans réserve__.
     expect(revised).toContain('<p style="text-align:right; margin-left: 36pt; line-height: 1.5">Fin</p>');
   });
 
+  it('écrit couleur, surlignage et taille demandés à l’IA, et les relit en clair', () => {
+    expect(documentHtml("# [[couleur rouge]]LETTRE D'ASSIGNATION EN JUSTICE[[/couleur]]"))
+      .toBe('<h1 style="text-align:center;"><span style="color: #dc2626">LETTRE D\'ASSIGNATION EN JUSTICE</span></h1>');
+    expect(documentHtml('Le [[surligne]]délai[[/surligne]] de [[taille 14]]**huit jours**[[/taille]] et [[couleur #1e3a8a]]bleu'))
+      .toBe('<p>Le <mark data-color="#fef08a" style="background-color: #fef08a">délai</mark> de <span data-text-style="" style="font-size: 14pt"><strong>huit jours</strong></span> et <span style="color: #1e3a8a">bleu</span></p>');
+    // Valeur non permise : repère retiré, texte gardé.
+    expect(documentHtml('[[couleur red;background:url(x)]]a[[/couleur]] [[taille 400]]b[[/taille]]')).toBe('<p>a b</p>');
+    // HTML de l'éditeur → balisage lisible, puis retour identique.
+    const editor = '<p>Texte <span style="color: #dc2626">rouge</span>, <mark data-color="#bbf7d0" style="background-color: #bbf7d0">vert</mark>, <span data-text-style="" style="font-size: 16pt">grand</span></p>';
+    const { markup, keep } = readDocumentHtml(editor, { keep: true });
+    expect(markup).toBe('Texte [[couleur #dc2626]]rouge[[/couleur]], [[surligne #bbf7d0]]vert[[/surligne]], [[taille 16]]grand[[/taille]]');
+    expect(documentHtml(markup, keep)).toBe(editor);
+  });
+
+  it('écrit une police de l’éditeur sur un passage, et retire les repères inventés par l’IA', () => {
+    expect(documentHtml('Texte en [[police Lora]]Lora[[/police]] et [[police times]]Times[[/police]] et [[police Comic]]x[[/police]]'))
+      .toBe('<p>Texte en <span data-text-style="" style="font-family: \'Lora\'">Lora</span> et <span data-text-style="" style="font-family: \'Times New Roman\'">Times</span> et x</p>');
+    const editor = '<p><span data-text-style="" style="font-family: \'Merriweather\'">Serif</span></p>';
+    expect(htmlToMarkup(editor)).toBe('[[police Merriweather]]Serif[[/police]]');
+    // Fermetures d'alignement inventées, repère coupé : jamais affichés.
+    expect(documentHtml('[[centre]] **TRIBUNAL**[[/centre]]\n\n# Titre[[/droite]] [[/')).toBe('<p style="text-align:center;"><strong>TRIBUNAL</strong></p>\n<h1 style="text-align:center;">Titre </h1>');
+  });
+
   it('referme un passage oublié et retire les repères inventés ou sans document repris', () => {
     const { keep } = readDocumentHtml('<p><span style="color: red">rouge</span></p><p><img src="data:image/png;base64,AAAA"></p>', { keep: true });
     expect(documentHtml('Texte [[s1]]rouge\nsuite', keep)).toBe('<p>Texte <span style="color: red">rouge<br/>suite</span></p>');
-    expect(documentHtml('A [[s9]]b[[/s9]] [[image 7]] [[f4]]', keep)).toBe('<p>A b  [[f4]]</p>');
+    expect(documentHtml('A [[s9]]b[[/s9]] [[image 7]] [[f4]]', keep)).toBe('<p>A b  </p>');
     expect(documentHtml('[[tableau 2]]\n\nTexte [[s1]]x[[/s1]] [[image 1]]')).toBe('<p>Texte x </p>');
     // Lecture simple (modèle, pièce) : ni images ni repères.
     expect(htmlToMarkup('<p><span style="color: red">rouge</span> <img src="x.png"></p>')).toBe('rouge');
@@ -369,6 +392,55 @@ PIECES: 1`;
     expect(prompt).toContain('# CONTRAT');
     expect(draft.studio!.html).toContain('<h2>Confidentialité</h2>');
     expect(draft).toMatchObject({ fileName: 'Contrat de bail - DOS-2026-0001', templateId: 40, templateName: 'Contrat de bail' });
+  });
+
+  it('applique une mise en forme générale : police et taille du document, tableau, sans demander de précision', async () => {
+    const context = ctx({
+      question: 'met en forme police tailles, tableau et graphique',
+      references: [],
+      params: { revise: { html: '<p>Monsieur Talla contre Madame Nono.</p>', mode: 'document', title: '', name: 'Assignation', layout: { orientation: 'portrait', paper_size: 'a4', font_family: null, header_block_id: null, footer_block_id: null } } },
+    });
+    (context.llm.draft as jest.Mock).mockResolvedValue('| Partie | Nom |\n|---|---|\n| Demandeur | Talla |\n\nMonsieur Talla contre Madame Nono.\n\n===NOTES===\nTITRE: Assignation\nPOLICE: Merriweather\nTAILLE: 12');
+    const draft = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templatesMock() as any).run(context));
+    const prompt = (context.llm.draft as jest.Mock).mock.calls[0][0];
+    expect(prompt).toContain('sans demander de précision');
+    expect(prompt).toContain('[[police Lora]]');
+    expect(prompt).toContain('POLICE: <une de : Inter');
+    expect(draft.studio!.layout).toMatchObject({ font_family: 'merriweather', font_size: 12 });
+    expect(draft.studio!.html).toContain('<table');
+    // Police indisponible pour tout le document (Times) : la mise en page ne change pas.
+    (context.llm.draft as jest.Mock).mockResolvedValue('Texte\n\n===NOTES===\nPOLICE: Times New Roman\nTAILLE: 40');
+    const second = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templatesMock() as any).run(context));
+    expect(second.studio!.layout).toMatchObject({ font_family: null });
+    expect(second.studio!.layout!.font_size).toBeUndefined();
+  });
+
+  it('met en couleur le titre encadré (mise en page) et les titres du texte', async () => {
+    const context = ctx({
+      question: "LETTRE D'ASSIGNATION EN JUSTICE doit être de couleur rouge, et les grands titres aussi",
+      references: [],
+      params: {
+        revise: {
+          html: "<h2>OBJET : LETTRE D'ASSIGNATION EN JUSTICE</h2><p>Madame, Monsieur,</p>",
+          mode: 'document',
+          title: "LETTRE D'ASSIGNATION EN JUSTICE",
+          name: "Lettre d'assignation",
+          layout: { orientation: 'portrait', paper_size: 'a4', font_family: null, header_block_id: null, footer_block_id: null },
+        },
+      },
+    });
+    (context.llm.draft as jest.Mock).mockResolvedValue(
+      "# [[couleur rouge]]LETTRE D'ASSIGNATION EN JUSTICE[[/couleur]]\n\n## [[couleur rouge]]OBJET : LETTRE D'ASSIGNATION EN JUSTICE[[/couleur]]\n\nMadame, Monsieur,\n\n===NOTES===\nTITRE: Lettre",
+    );
+    const draft = draftOf(await new RedigerDocumentSkill(targetsMock() as any, templatesMock() as any).run(context));
+    const prompt = (context.llm.draft as jest.Mock).mock.calls[0][0];
+    // L'IA voit le titre encadré comme première ligne, et sait le colorer.
+    expect(prompt).toContain("\"\"\"\n# LETTRE D'ASSIGNATION EN JUSTICE\n\n## OBJET");
+    expect(prompt).toContain('[[couleur rouge]]texte[[/couleur]]');
+    // Le titre encadré prend la couleur ; il n'est pas répété dans le texte.
+    expect(draft.studio!.title).toBe("LETTRE D'ASSIGNATION EN JUSTICE");
+    expect(draft.studio!.layout).toMatchObject({ title_color: '#dc2626', orientation: 'portrait' });
+    expect(draft.studio!.html).toBe("<h2><span style=\"color: #dc2626\">OBJET : LETTRE D'ASSIGNATION EN JUSTICE</span></h2>\n<p>Madame, Monsieur,</p>");
   });
 });
 

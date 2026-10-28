@@ -184,6 +184,8 @@ export interface StudioLayout {
   line_height?: number | null;
   margins?: 'narrow' | 'normal' | 'wide' | null;
   page_numbers?: boolean;
+  /** Couleur du titre encadré (#rrggbb), absente : noir. */
+  title_color?: string | null;
 }
 
 /** Modèle PDF intégré à une compétence (mêmes champs que `pdf_templates`). */
