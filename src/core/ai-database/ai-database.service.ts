@@ -132,6 +132,7 @@ import { BaseWriteHandler } from './write/base-write-handler';
 import { outerJoinRetry } from './outer-join-fallback';
 import { extractPdfText } from './pdf-text';
 import { injectTenantFilter } from './tenant-injection';
+import { buildAiScopedTables } from './ai-scoped-tables';
 import {
   NumericEnumColumns,
   numericEnumColumnsFromMetadata,
@@ -436,6 +437,8 @@ interface AiRequestMetrics {
   reasoningKwargs?: Record<string, unknown>;
   /** Cabinet + utilisateur : clé de la mémoire des enregistrements affichés. */
   memoryKey?: string;
+  /** Utilisateur de la requête : filtre de ses tables personnelles (notifications…). */
+  scopeUserId?: number;
   /** Enregistrements lus pendant CETTE requête (remplacent les précédents). */
   displayedRecords?: DisplayedRecord[];
   /** Indices de sources calculés avant la classification (mode auto). */
@@ -703,6 +706,8 @@ export class AiDatabaseService implements OnModuleInit {
       status: 'started',
       modelMode: 'fast',
       memoryKey,
+      // memoryKey = « cabinet:utilisateur » (displayedRecordsKey).
+      scopeUserId: Number(memoryKey?.split(':')[1]) || undefined,
     };
 
     // Origine de la config (cabinet ou ENV) : le mode (rapide/équilibré/précis)
@@ -1485,7 +1490,8 @@ ${schema}`;
 
 REGLE TENANT OBLIGATOIRE :
 Cette session appartient au cabinet tenant_id = ${tenantId}.
-Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
+Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.
+Exceptions sans tenant_id (filtrees automatiquement, aucun WHERE de cabinet a ecrire) : cabinets, subscriptions, subscription_payments, plans.`;
   }
 
   private buildReadDomainRulesBlock(): string {
@@ -9736,6 +9742,12 @@ ${facts.slice(0, 9000)}`
       fournisseur: ['supplier'],
       referrer: ['referrer', 'dossier_referral'],
       apporteur: ['referrer', 'dossier_referral'],
+      // @cabinet : la ligne du cabinet courant (et son abonnement).
+      cabinet: ['cabinets', 'subscriptions', 'plans'],
+      subscription: ['subscriptions', 'plans', 'subscription_payments'],
+      abonnement: ['subscriptions', 'plans', 'subscription_payments'],
+      notification: ['notifications'],
+      role: ['user_role', 'role_permission', 'permission'],
     };
 
     return [
@@ -10551,14 +10563,21 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
    *
    * Idempotent : si la condition existe déjà pour un alias, elle n'est pas dupliquée.
    */
-  private injectTenantConditions(sql: string, tenantId: number): string {
-    if (!tenantId || tenantId === 1) return sql; // tenant 1 = accès global (admin)
+  private injectTenantConditions(sql: string, tenantId: number | null): string {
+    // tenant 1 = accès global (admin) pour les tables à tenant_id ; les tables
+    // sans tenant_id (cabinets, abonnements) et personnelles restent filtrées.
+    const metrics = this.metricsStorage?.getStore();
     const injected = injectTenantFilter(sql, {
-      tenantId,
+      tenantId: tenantId ?? 0,
       tenantTables: this.getTenantTables(),
       sharedTables: this.getSharedTenantTables(),
+      scopedTables: buildAiScopedTables({
+        tenantId,
+        userId: metrics?.userProfile?.userId ?? metrics?.scopeUserId ?? null,
+        email: metrics?.userProfile?.email,
+      }),
     });
-    if (injected === sql && !/\btenant_id\b/i.test(sql)) {
+    if (tenantId && tenantId !== 1 && injected === sql && !/\btenant_id\b/i.test(sql)) {
       this.logger.warn(
         `[Tenant] ⚠️ Aucune table tenant détectée dans la requête — injection impossible`,
       );
@@ -10578,7 +10597,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     const tenantRule = `
     ⚠️ RÈGLE TENANT OBLIGATOIRE (ne jamais ignorer) :
     Cette session appartient au cabinet avec tenant_id = ${tenantId}.
-    CHAQUE table métier possède une colonne tenant_id.
+    CHAQUE table métier possède une colonne tenant_id, sauf cabinets, subscriptions, subscription_payments et plans (filtrées automatiquement : aucun filtre tenant_id sur elles).
     Tu DOIS filtrer par tenant_id = ${tenantId} pour CHAQUE table mentionnée dans tes requêtes.
 
     Exemple CORRECT :
@@ -10759,12 +10778,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     );
 
     const activeTenantId = hasActiveTenant() ? getCurrentTenantId() : null;
-    if (activeTenantId && activeTenantId !== 1) {
-      preparedQuery = this.injectTenantConditions(
-        preparedQuery,
-        activeTenantId,
-      );
-    }
+    preparedQuery = this.injectTenantConditions(preparedQuery, activeTenantId);
 
     return preparedQuery;
   }

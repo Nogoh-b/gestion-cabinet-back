@@ -30,6 +30,7 @@ import { PlanFieldsService } from './plan-fields.service';
 import { AiAdminController } from './ai-admin.controller';
 import { CabinetAiSettingsService } from './cabinet-ai-settings.service';
 import { SettingsModule } from 'src/modules/settings/settings.module';
+import { CabinetWriteHandler } from 'src/modules/settings/cabinet-write.handler';
 import { AiContextConfig, AiContextSuggestion } from './entities/ai-context-config.entity';
 import { AiContextConfigService } from './ai-context-config.service';
 import { AiContextConfigController } from './ai-context-config.controller';
@@ -74,6 +75,8 @@ import { AudioTranscriptionService } from './audio-transcription.service';
     PlanFieldsService,
     AiQuotaGuard,
     AiContextConfigService,
+    // Écriture des infos du cabinet (s'enregistre dans WriteHandlerRegistry).
+    CabinetWriteHandler,
   ],
   exports: [
     AiDatabaseService,

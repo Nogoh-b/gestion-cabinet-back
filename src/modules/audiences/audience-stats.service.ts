@@ -1,7 +1,7 @@
 // src/modules/audiences/services/audience-stats.service.ts
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Audience, AudienceStatus } from './entities/audience.entity';
 import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service';
 import { AudienceStatsDto } from './dto/audience-stats.dto';
@@ -228,6 +228,13 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
   private async getUpcomingAudiencesCount(
     filters?: StatsFilterDto,
   ): Promise<number> {
+    return this.upcomingAudiencesQuery(filters).getCount();
+  }
+
+  /** Audiences programmées à partir d'aujourd'hui (compteur et liste). */
+  private upcomingAudiencesQuery(
+    filters?: StatsFilterDto,
+  ): SelectQueryBuilder<Audience> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .where('audience.audience_date >= CURDATE()')
@@ -235,8 +242,25 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
         status: audienceStatusValue(AudienceStatus.SCHEDULED),
       });
 
-    this.applyFilters(query, filters, 'audience');
-    return query.getCount();
+    return this.applyFilters(query, filters, 'audience');
+  }
+
+  /** Page de la liste des audiences à venir, la plus proche d'abord. */
+  async listUpcomingAudiences(
+    page: number,
+    limit: number,
+    filters?: StatsFilterDto,
+  ): Promise<[Audience[], number]> {
+    return this.upcomingAudiencesQuery(filters)
+      .leftJoinAndSelect('audience.dossier', 'dossier')
+      .leftJoinAndSelect('dossier.client', 'client')
+      .leftJoinAndSelect('audience.jurisdiction', 'jurisdiction')
+      .leftJoinAndSelect('audience.audience_type', 'audience_type')
+      .orderBy('audience.audience_date', 'ASC')
+      .addOrderBy('audience.audience_time', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
   }
 
   private async getPastAudiencesStats(filters?: StatsFilterDto): Promise<any> {

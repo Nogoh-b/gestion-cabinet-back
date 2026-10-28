@@ -25,6 +25,7 @@ import { LoginUserDto } from './dto/login-user.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { Public } from '../decorators/public.decorator';
 import { AllowClient } from '../decorators/allow-client.decorator';
+import { AllowSuspended } from '../decorators/allow-suspended.decorator';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { SetPasswordDto } from './dto/set-password.dto';
@@ -94,6 +95,9 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @AllowClient()
+  // Cabinet suspendu (paiement en attente) : la session doit rester lisible
+  // pour que l'administrateur atteigne l'écran de paiement.
+  @AllowSuspended()
   @Get('profile')
   @ApiBearerAuth('access_token')
   async getProfile(@Request() req) {
@@ -107,6 +111,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @AllowClient()
+  @AllowSuspended()
   @Get('me/permissions')
   @ApiOperation({
     summary: "Récupérer les permissions de l'utilisateur connecté",

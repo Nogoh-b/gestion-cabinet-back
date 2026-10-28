@@ -8,6 +8,7 @@ import { DocumentStatsService } from '../documents/document-customer/document-st
 import { FactureStatsService } from '../facture/facture-stats.service';
 import { CustomerStatsService } from '../customer/customer/customer-stats.service';
 import { EmployeeStatsService } from '../agencies/employee/employee-stats.service';
+import { DashboardWatchlistService } from './dashboard-watchlist.service';
 
 describe('DashboardService', () => {
   let service: DashboardService;
@@ -19,8 +20,10 @@ describe('DashboardService', () => {
   const factureStats = { getStats: jest.fn<() => Promise<any>>() };
   const customerStats = { getStats: jest.fn<() => Promise<any>>() };
   const employeeStats = { getStats: jest.fn<() => Promise<any>>() };
+  const watchlist = { countOverdueActions: jest.fn<() => Promise<number>>() };
 
   beforeEach(async () => {
+    watchlist.countOverdueActions.mockResolvedValue(0);
     dossierStats.getStats.mockResolvedValue(null);
     audienceStats.getStats.mockResolvedValue(null);
     diligenceStats.getStats.mockResolvedValue(null);
@@ -39,6 +42,7 @@ describe('DashboardService', () => {
         { provide: FactureStatsService, useValue: factureStats },
         { provide: CustomerStatsService, useValue: customerStats },
         { provide: EmployeeStatsService, useValue: employeeStats },
+        { provide: DashboardWatchlistService, useValue: watchlist },
       ],
     }).compile();
 

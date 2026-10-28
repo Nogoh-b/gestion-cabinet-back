@@ -893,6 +893,20 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  /** Pièce jointe mise à jour (transcription d'un vocal), pour les participants. */
+  async emitAttachmentUpdated(
+    conversationId: number,
+    messageId: number,
+    attachment: { id: number; transcript: string | null; transcriptStatus: string | null },
+  ): Promise<void> {
+    const participantIds =
+      await this.chatService.getParticipantIds(conversationId);
+    const payload = { conversationId, messageId, attachment };
+    for (const id of participantIds) {
+      this.server.to(`user_${id}`).emit('chat:attachment_updated', payload);
+    }
+  }
+
   /** La conversation apparaît dans la liste du membre ajouté. */
   emitConversationAdded(userId: number, conversation: ConversationSummary) {
     this.server

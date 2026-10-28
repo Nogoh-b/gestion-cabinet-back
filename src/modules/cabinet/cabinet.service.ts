@@ -16,6 +16,7 @@ import { Plan } from '../plans/entities/plan.entity';
 import {
   applyLogoInput,
   logoFileToUrl,
+  restoreLogoFile,
   writeLogoFile,
 } from './cabinet-logo.util';
 import { CreateCabinetDto } from './dto/create-cabinet.dto';
@@ -100,13 +101,20 @@ export class CabinetService implements OnModuleInit {
   /**
    * Pour chaque cabinet possédant un logo en blob mais sans fichier statique
    * (`logo_file` vide), écrit le fichier sous `uploads/cabinets/` et enregistre
-   * son chemin. Idempotent : ne fait rien si le fichier existe déjà.
+   * son chemin. Restaure aussi les fichiers disparus du disque (redéploiement
+   * sans volume persistant, nettoyage) : sans cela le logo s'affiche cassé
+   * alors que la base le contient. Idempotent.
    */
   private async backfillLogoFiles(): Promise<void> {
     const cabinets = await this.repo.find();
     for (const c of cabinets) {
-      if (c.logo_file) continue; // déjà migré
       if (!c.logo || !c.logo.length || !c.logo_mime) continue;
+      if (c.logo_file) {
+        if (restoreLogoFile(c.logo_file, c.logo)) {
+          this.logger.log(`✅ Logo cabinet #${c.id} restauré → ${c.logo_file}`);
+        }
+        continue;
+      }
       const relPath = writeLogoFile(c.id, c.logo, c.logo_mime);
       await this.repo.update(c.id, { logo_file: relPath });
       this.logger.log(

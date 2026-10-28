@@ -13,6 +13,7 @@ import { Plan } from './entities/plan.entity';
 import { PlanQuotaService } from './plan-quota.service';
 import { AiCreditsService } from './ai-credits/ai-credits.service';
 import { withoutCreditAllowance } from './ai-credits/ai-credits';
+import { readCabinetSidebarDisplay } from '../platform/settings/cabinet-sidebar.setting';
 
 @Injectable()
 export class PlansService extends BaseServiceV1<Plan> {
@@ -127,8 +128,11 @@ export class PlansService extends BaseServiceV1<Plan> {
       storageBytes: Number(storage[0]?.total ?? 0),
     };
 
-    const usage = await this.quotaService.getUsageStatus(cabinetId, counts, aiStatus);
+    const [usage, display] = await Promise.all([
+      this.quotaService.getUsageStatus(cabinetId, counts, aiStatus),
+      readCabinetSidebarDisplay(this.cabinetRepo.manager),
+    ]);
     // Le cabinet ne voit que des pourcentages : jamais le nombre de crédits du forfait.
-    return { ...usage, plan: withoutCreditAllowance(usage.plan) };
+    return { ...usage, plan: withoutCreditAllowance(usage.plan), display };
   }
 }

@@ -118,6 +118,13 @@ export class CreateDocumentCustomerDto {
   metadata?: string;
 
   @ApiPropertyOptional({
+    description: "Source HTML de l'éditeur interne (document rédigé dans le cabinet)",
+  })
+  @IsOptional()
+  @IsString()
+  content_html?: string;
+
+  @ApiPropertyOptional({
     description: 'ID de la sous-étape de visite associée',
   })
   @IsOptional()

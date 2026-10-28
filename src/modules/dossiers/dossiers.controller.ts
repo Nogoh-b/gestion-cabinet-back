@@ -30,6 +30,8 @@ import {
   ForbiddenException,
   Headers,
   BadRequestException,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 
@@ -63,6 +65,9 @@ import { DossierStatsDto } from './dto/dossier-stats.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { CaseWorkflowService } from '../case-workflow/services/case-workflow.service';
 import { DossierChatSyncService } from './dossier-chat-sync.service';
+import { DossierDeletionService } from './deletion/dossier-deletion.service';
+import { DeleteDossierDto } from './dto/delete-dossier.dto';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 @ApiTags('dossiers')
 @ApiBearerAuth()
@@ -75,6 +80,7 @@ export class DossiersController {
     private readonly accessGrantsService: DossierAccessGrantsService,
     private readonly caseWorkflowService: CaseWorkflowService,
     private readonly dossierChatSync: DossierChatSyncService,
+    private readonly deletionService: DossierDeletionService,
   ) {}
 
   /**
@@ -398,11 +404,37 @@ export class DossiersController {
     status: 400,
     description: 'Impossible de supprimer le dossier',
   })
-  remove(
+  async remove(
     @Param('id', ParseIntPipe) id: string,
     @CurrentUser() user: User,
-  ): Promise<void> {
-    return this.dossiersService.remove(+id, user);
+  ) {
+    // Dossier seul, en corbeille (restaurable depuis la console plateforme).
+    return this.deleteWithItems(id, { include: [] }, user);
+  }
+
+  @Get(':id/deletion-preview')
+  @RequirePermissions('delete_dossier')
+  @ApiOperation({ summary: 'Éléments liés à un dossier, avant suppression' })
+  async deletionPreview(@Param('id', ParseIntPipe) id: string) {
+    await this.dossiersService.ensureVisible(+id);
+    return this.deletionService.preview(getCurrentTenantId(), +id);
+  }
+
+  @Post(':id/delete')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('delete_dossier')
+  @ApiOperation({ summary: 'Supprimer un dossier et les éléments liés choisis (corbeille)' })
+  async deleteWithItems(
+    @Param('id', ParseIntPipe) id: string,
+    @Body() dto: DeleteDossierDto,
+    @CurrentUser() user: User,
+  ) {
+    await this.dossiersService.ensureVisible(+id);
+    return this.deletionService.delete(getCurrentTenantId(), +id, {
+      include: dto?.include ?? [],
+      mode: 'soft',
+      actor: user?.email || user?.full_name || `utilisateur #${user?.id ?? '?'}`,
+    });
   }
 
   @Get('collaborator/:collaboratorId')

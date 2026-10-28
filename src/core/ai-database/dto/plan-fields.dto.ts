@@ -29,6 +29,11 @@ export interface PlanFieldDescriptor {
   /** Valeur par défaut, vide ou champ technique : affiché sous « autres champs ». */
   secondary?: boolean;
   note?: string;
+  /**
+   * Modification d'un enregistrement : valeur actuelle lisible (« avant »),
+   * '' si le champ est vide. Absent quand elle n'est pas connue.
+   */
+  previous?: string;
   /** Corps de message enrichi : gras + liens et aperçu fidèle à l'envoi. */
   format?: 'email' | 'whatsapp';
 }

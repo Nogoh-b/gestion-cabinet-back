@@ -233,7 +233,11 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     return query.getCount();
   }
 
-  private async getUnpaidCount(filters?: StatsFilterDto): Promise<number> {
+  /**
+   * Factures émises restant à encaisser (envoyée, partiellement payée,
+   * impayée) : critère partagé par le compteur et la liste « À surveiller ».
+   */
+  private unpaidQuery(filters?: StatsFilterDto): SelectQueryBuilder<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .where('facture.status != :status', { status: StatutFacture.PAYEE })
@@ -243,8 +247,26 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .andWhere('facture.status != :cancelled', {
         cancelled: StatutFacture.ANNULEE,
       });
-    this.applyFilters(query, filters, 'facture');
-    return query.getCount();
+    return this.applyFilters(query, filters, 'facture');
+  }
+
+  private async getUnpaidCount(filters?: StatsFilterDto): Promise<number> {
+    return this.unpaidQuery(filters).getCount();
+  }
+
+  /** Page de la liste des factures impayées, échéance la plus ancienne d'abord. */
+  async listUnpaid(
+    page: number,
+    limit: number,
+    filters?: StatsFilterDto,
+  ): Promise<[Facture[], number]> {
+    return this.unpaidQuery(filters)
+      .leftJoinAndSelect('facture.client', 'client')
+      .leftJoinAndSelect('facture.dossier', 'dossier')
+      .orderBy('facture.dateEcheance', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
   }
 
   private async getOverdueCount(filters?: StatsFilterDto): Promise<number> {

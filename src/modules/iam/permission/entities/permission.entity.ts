@@ -1,3 +1,7 @@
+import {
+  BusinessColumn,
+  BusinessTable,
+} from 'src/core/decorators/business-metadata.decorator';
 // permission.entity.ts
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import {
@@ -16,17 +20,45 @@ import { RolePermission } from '../../role-permission/entities/role-permission.e
 // apparaît en double (ligne globale 1 + copie locale X).
 @Entity('permission')
 @Unique(['code', 'tenant_id'])
+@BusinessTable({
+  label: 'Droits',
+  description:
+    "Droits de l'application : code technique et description lisible (à afficher à l'utilisateur).",
+  category: 'iam',
+  readOnly: true,
+})
 export class Permission extends TenantEntity {
   @PrimaryGeneratedColumn({ unsigned: true, type: 'int' })
+  @BusinessColumn({
+    label: 'Identifiant',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   id: number;
 
   @Column({ length: 50 })
+  @BusinessColumn({
+    label: 'Code du droit',
+    description: 'Code technique du droit',
+  })
   code: string;
 
   @Column('text', { nullable: true })
+  @BusinessColumn({
+    label: 'Droit',
+    description: 'Libellé lisible du droit',
+    importance: 'critical',
+  })
   description: string;
 
   @Column({ type: 'tinyint', nullable: true, default: 1 })
+  @BusinessColumn({
+    label: 'Modifiable',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   canChange: number;
 
   @OneToMany(() => RolePermission, (rp) => rp.permission)

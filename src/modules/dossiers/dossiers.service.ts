@@ -897,6 +897,14 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     }
   }
 
+  /** Vérifie que le dossier existe et qu'il est visible pour l'utilisateur courant. */
+  async ensureVisible(id: number): Promise<void> {
+    const dossier = await this.dossierRepository.findOne({ where: { id }, select: ['id'] });
+    if (!dossier) {
+      throw new NotFoundException('Ce dossier est introuvable ou a déjà été supprimé.');
+    }
+  }
+
   async remove(id: number, user: User): Promise<void> {
     const dossier = await this.dossierRepository.findOne({ where: { id } });
 

@@ -1,6 +1,7 @@
 import { Controller, Get, UseGuards, Request } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { AllowSuspended } from 'src/core/decorators/allow-suspended.decorator';
 import { PlansService } from './plans.service';
 import { PlanQuotaService } from './plan-quota.service';
 
@@ -27,6 +28,7 @@ export class PlansController {
    */
   @Get('/quota/status')
   @UseGuards(JwtAuthGuard)
+  @AllowSuspended()
   @ApiOperation({ summary: "État d'utilisation du plan du cabinet courant" })
   async getMyQuotaStatus(@Request() req: any) {
     const cabinetId: number = req.user?.tenantId;

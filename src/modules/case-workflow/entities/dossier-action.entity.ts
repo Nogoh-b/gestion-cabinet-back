@@ -57,7 +57,7 @@ export class DossierAction extends TenantEntity {
   })
   dossier_id: number;
 
-  @Column({ name: 'definition_id', type: 'varchar' })
+  @Column({ name: 'definition_id', type: 'varchar', length: 36 })
   @BusinessColumn({
     label: 'Définition d’action',
     description: 'Identifiant de la définition versionnée de l’action.',
@@ -357,7 +357,7 @@ export class DossierActionDocumentLink extends TenantEntity {
   })
   id: string;
 
-  @Column({ name: 'action_id', type: 'varchar' })
+  @Column({ name: 'action_id', type: 'varchar', length: 36 })
   @BusinessColumn({
     label: 'Action',
     description: 'Identifiant de l’action concernée.',
@@ -422,7 +422,7 @@ export class DossierActionAudienceLink extends TenantEntity {
   })
   id: string;
 
-  @Column({ name: 'action_id', type: 'varchar' })
+  @Column({ name: 'action_id', type: 'varchar', length: 36 })
   @BusinessColumn({
     label: 'Action',
     description: 'Identifiant de l’action concernée.',
@@ -486,7 +486,7 @@ export class DossierActionRelation extends TenantEntity {
   })
   id: string;
 
-  @Column({ name: 'action_id', type: 'varchar' })
+  @Column({ name: 'action_id', type: 'varchar', length: 36 })
   @BusinessColumn({
     label: 'Action',
     description: 'Identifiant de l’action principale.',
@@ -499,7 +499,7 @@ export class DossierActionRelation extends TenantEntity {
   @JoinColumn({ name: 'action_id' })
   action: DossierAction;
 
-  @Column({ name: 'related_action_id', type: 'varchar' })
+  @Column({ name: 'related_action_id', type: 'varchar', length: 36 })
   @BusinessColumn({
     label: 'Action liée',
     description: 'Identifiant de l’autre action concernée.',

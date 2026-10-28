@@ -37,4 +37,8 @@ La page **Cabinet** (menu du compte, administrateur) définit l'**identité** du
 - Numéro de facture ou de dossier en double → ne saisissez pas le numéro à la main : laissez le champ vide.
 
 ## Depuis le chat
-Les paramètres du cabinet se règlent dans cette page, pas depuis le chat. Je peux en revanche vous dire où se règle chaque point et avec quel effet.
+- **Lire** : tout collaborateur peut demander une information du cabinet (« Quel est le RCCM du cabinet ? », « Quelle est notre devise ? », « Quels sont nos horaires ? »). Mentionnez `@cabinet` pour viser directement la fiche du cabinet.
+- **Modifier** : avec le droit « Gérer les paramètres » (`manage_settings`), demandez par exemple « Change l'adresse du cabinet en … » ou « Passe la TVA par défaut à 19,25 ». Une carte de confirmation montre chaque champ **avant / après** ; rien n'est enregistré sans votre confirmation. Sans ce droit, la modification est refusée.
+- Modifiables depuis le chat : identité (nom, slogan, téléphone, e-mail, site, adresse, pied de page des e-mails, couleur), informations légales (RCCM, NINA, compte bancaire), langue, format de date, devise et ses paramètres, TVA par défaut, numérotation, horaires, notifications et frais d'ouverture.
+- Restent dans cette page : le **logo**, l'**apparence par défaut**, la **configuration SMTP** et les **gabarits**. Le chat ne lit jamais la configuration SMTP ni les clés des fournisseurs IA.
+- Seul votre cabinet est concerné : le chat ne crée ni ne supprime de cabinet et ne voit pas les autres cabinets.

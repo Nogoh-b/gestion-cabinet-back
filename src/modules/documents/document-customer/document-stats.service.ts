@@ -1,7 +1,7 @@
 // src/modules/documents/document-customer/services/document-stats.service.ts
 import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service';
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
 import {
@@ -345,14 +345,36 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     return Math.round(parseFloat(result.avg || 0));
   }
 
-  private async getPendingCount(filters?: StatsFilterDto): Promise<number> {
+  /** Documents en attente de validation (compteur et liste « À surveiller »). */
+  private pendingQuery(
+    filters?: StatsFilterDto,
+  ): SelectQueryBuilder<DocumentCustomer> {
     const query = this.documentRepository
       .createQueryBuilder('document')
       .where('document.status = :status', {
         status: DocumentCustomerStatus.PENDING,
       });
-    this.applyFilters(query, filters, 'document');
-    return query.getCount();
+    return this.applyFilters(query, filters, 'document');
+  }
+
+  private async getPendingCount(filters?: StatsFilterDto): Promise<number> {
+    return this.pendingQuery(filters).getCount();
+  }
+
+  /** Page de la liste des documents en attente, le plus ancien d'abord. */
+  async listPending(
+    page: number,
+    limit: number,
+    filters?: StatsFilterDto,
+  ): Promise<[DocumentCustomer[], number]> {
+    return this.pendingQuery(filters)
+      .leftJoinAndSelect('document.dossier', 'dossier')
+      .leftJoinAndSelect('dossier.client', 'client')
+      .leftJoinAndSelect('document.document_type', 'type')
+      .orderBy('document.uploaded_at', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
   }
 
   private async getValidatedCount(filters?: StatsFilterDto): Promise<number> {

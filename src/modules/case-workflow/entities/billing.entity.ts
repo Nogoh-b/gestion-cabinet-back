@@ -822,7 +822,14 @@ export class InvoiceLine extends TenantEntity {
   // Note : pas de `length` ici — TypeORM aligne le type de la colonne FK sur la
   // PK réferencée (uuid) et MariaDB >= 10.7 refuse `length` sur uuid.
   // Le DDL réel (varchar(36)) est porté par la migration SQL.
-  @Column({ name: 'facture_id', type: 'varchar' })
+  // Doit correspondre exactement à factures.id (varchar(36) utf8mb4_bin), sinon errno 150 sur la FK.
+  @Column({
+    name: 'facture_id',
+    type: 'varchar',
+    length: 36,
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_bin',
+  })
   @BusinessColumn({
     label: 'Facture',
     description: 'Identifiant de la facture contenant cette ligne.',

@@ -16,6 +16,7 @@ import {
   WriteIntent,
 } from './interface/write-intent.interface';
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
+import { scopeCabinetOperations } from './ai-scoped-tables';
 import {
   ALL_MATCHING_TARGETS,
   AmbiguityException,
@@ -145,6 +146,12 @@ export class GenericWriteService {
     /** Progression affichée au fil des opérations (chat en streaming). */
     onProgress?: (progress: WritePlanProgress) => void,
   ): Promise<WriteResult[]> {
+    // `cabinets` n'a pas de tenant_id : l'opération vise toujours le cabinet
+    // courant (identifiant d'un autre cabinet refusé, création interdite).
+    writePlan = scopeCabinetOperations(
+      writePlan,
+      hasActiveTenant() ? getCurrentTenantId() : null,
+    );
     await this.assertReferencesInScope(writePlan);
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();

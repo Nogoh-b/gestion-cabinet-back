@@ -1,3 +1,7 @@
+import {
+  BusinessColumn,
+  BusinessTable,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import {
   Column,
@@ -13,14 +17,35 @@ import {
 
 @Entity('case_workflow_features')
 @Index('UQ_case_workflow_feature_tenant', ['tenant_id'], { unique: true })
+@BusinessTable({
+  label: 'Activation du parcours d’actions',
+  description:
+    'Activation du traitement orienté actions pour le cabinet (enabled) et choix par défaut des nouveaux dossiers.',
+  category: 'traitement',
+  readOnly: true,
+})
 export class CaseWorkflowFeature extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
+  @BusinessColumn({
+    label: 'Identifiant',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   id: string;
 
   @Column({ type: 'boolean', default: true })
+  @BusinessColumn({
+    label: 'Activé',
+    description: 'Parcours d’actions activé pour le cabinet',
+  })
   enabled: boolean;
 
   @Column({ name: 'default_for_new_dossiers', type: 'boolean', default: false })
+  @BusinessColumn({
+    label: 'Par défaut',
+    description: 'Appliqué par défaut aux nouveaux dossiers',
+  })
   default_for_new_dossiers: boolean;
 }
 
@@ -72,32 +97,89 @@ export class LegacyWorkflowMapping extends TenantEntity {
   'dossier_id',
   'occurred_at',
 ])
+@BusinessTable({
+  label: 'Journal du parcours',
+  description:
+    "Historique des événements du parcours de traitement d'un dossier (action créée, terminée, clôture…) : type d'événement, date.",
+  category: 'traitement',
+  readOnly: true,
+})
 export class CaseWorkflowEvent extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
+  @BusinessColumn({
+    label: 'Identifiant',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   id: string;
 
   @Column({ name: 'dossier_id', type: 'int' })
+  @BusinessColumn({
+    label: 'Dossier',
+    description: 'Dossier concerné (dossiers.id)',
+  })
   dossier_id: number;
 
   @Column({ name: 'event_type', length: 120 })
+  @BusinessColumn({
+    label: "Type d'événement",
+    description: "Nature de l'événement",
+    importance: 'critical',
+  })
   event_type: string;
 
   @Column({ name: 'aggregate_type', length: 80 })
+  @BusinessColumn({
+    label: 'Objet',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   aggregate_type: string;
 
   @Column({ name: 'aggregate_id', length: 80 })
+  @BusinessColumn({
+    label: 'Identifiant objet',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   aggregate_id: string;
 
   @Column({ name: 'actor_user_id', type: 'int', nullable: true })
+  @BusinessColumn({
+    label: 'Auteur',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   actor_user_id: number | null;
 
   @Column({ type: 'json' })
+  @BusinessColumn({
+    label: 'Données',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   payload: Record<string, unknown>;
 
   @Column({ name: 'occurred_at', type: 'datetime' })
+  @BusinessColumn({
+    label: 'Survenu le',
+    description: "Date de l'événement",
+    format: 'date',
+  })
   occurred_at: Date;
 
   @Column({ name: 'idempotency_key', length: 180 })
+  @BusinessColumn({
+    label: 'Clé',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   idempotency_key: string;
 }
 
@@ -130,11 +212,28 @@ export class CaseWorkflowOutbox extends TenantEntity {
 
 @Entity('dossier_closure_reviews')
 @Index('IDX_dossier_closure_review', ['tenant_id', 'dossier_id', 'created_at'])
+@BusinessTable({
+  label: 'Contrôles de clôture',
+  description:
+    "Vérifications faites avant la clôture d'un dossier : statut, points bloquants, avertissements, justification, date du contrôle.",
+  category: 'traitement',
+  readOnly: true,
+})
 export class DossierClosureReview extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
+  @BusinessColumn({
+    label: 'Identifiant',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   id: string;
 
   @Column({ name: 'dossier_id', type: 'int' })
+  @BusinessColumn({
+    label: 'Dossier',
+    description: 'Dossier contrôlé (dossiers.id)',
+  })
   dossier_id: number;
 
   @Column({
@@ -145,21 +244,47 @@ export class DossierClosureReview extends TenantEntity {
   status: ClosureReviewStatus;
 
   @Column({ type: 'json' })
+  @BusinessColumn({
+    label: 'Points bloquants',
+    description: 'Éléments empêchant la clôture',
+  })
   blockers: Array<Record<string, unknown>>;
 
   @Column({ type: 'json' })
+  @BusinessColumn({ label: 'Avertissements', description: 'Points à vérifier' })
   warnings: Array<Record<string, unknown>>;
 
   @Column({ type: 'json', nullable: true })
+  @BusinessColumn({
+    label: 'Résolutions',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   resolutions: Array<Record<string, unknown>> | null;
 
   @Column({ type: 'text', nullable: true })
+  @BusinessColumn({
+    label: 'Justification',
+    description: 'Justification de la clôture',
+  })
   justification: string | null;
 
   @Column({ name: 'actor_user_id', type: 'int' })
+  @BusinessColumn({
+    label: 'Contrôlé par',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   actor_user_id: number;
 
   @Column({ name: 'checked_at', type: 'datetime' })
+  @BusinessColumn({
+    label: 'Contrôlé le',
+    description: 'Date du contrôle',
+    format: 'date',
+  })
   checked_at: Date;
 }
 

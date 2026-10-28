@@ -14,7 +14,8 @@ export class DashboardOverviewDto {
   // Alertes et urgences - correspond à AlertsNotifications
   alerts: {
     dossiersUrgents: number;
-    diligencesEnRetard: number;
+    /** Actions de dossier (`dossier_actions`) ouvertes à échéance dépassée. */
+    actionsEnRetard: number;
     facturesImpayees: number;
     documentsEnAttente: number;
     audiencesAJour: number;

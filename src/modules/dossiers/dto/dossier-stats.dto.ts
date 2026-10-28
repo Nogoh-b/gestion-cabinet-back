@@ -25,6 +25,8 @@ export class DossierStatsDto extends BaseStatsDto {
   // Listes
   recentDossiers: RecentDossierDto[];
   urgentDossiers: UrgentDossierDto[];
+  /** Volumétrie réelle : `urgentDossiers` n'en montre que les 10 premiers. */
+  urgentDossiersTotal: number;
 }
 
 export class FinancialStatsDto {

@@ -48,6 +48,9 @@ import {
   PlatformCabinetAiCreditsController,
 } from './ai/platform-ai-credits.controller';
 import { PlatformAiController } from './ai/platform-ai.controller';
+import { PlatformSampleDataService } from './sample-data/platform-sample-data.service';
+import { PlatformCabinetDataController } from './sample-data/platform-cabinet-data.controller';
+import { DossierDeletionService } from '../dossiers/deletion/dossier-deletion.service';
 
 /**
  * Espace PLATEFORME (super admin) : comptes, rôles, audit, paramètres,
@@ -89,6 +92,7 @@ import { PlatformAiController } from './ai/platform-ai.controller';
     PlatformAiController,
     PlatformAiCreditsController,
     PlatformCabinetAiCreditsController,
+    PlatformCabinetDataController,
   ],
   providers: [
     PlatformJwtStrategy,
@@ -107,6 +111,9 @@ import { PlatformAiController } from './ai/platform-ai.controller';
     PlatformAiService,
     PlatformAiUsageService,
     PlatformReferenceAiService,
+    PlatformSampleDataService,
+    // Sans état (DataSource seule) : fourni ici pour ne pas importer DossiersModule.
+    DossierDeletionService,
   ],
   exports: [
     PlatformAuditService,

@@ -722,6 +722,9 @@ identifiant exact. Les liens « [DOS-2026-0004](/dossiers/94) » donnent aussi l
   UNE seule opération UPDATE avec "match" (critères communs, ex: {"dossier_id":94,"status":0}) et
   "all": true. Le système applique "fields" à chaque enregistrement correspondant du cabinet.
   Si les enregistrements cités ont des identifiants, préfère une opération par identifiant.
+- Infos du cabinet (nom, adresse, téléphone, RCCM, NINA, devise, TVA, numérotation, horaires…) :
+  entité "cabinets", UNE opération UPDATE sans "entityId" ni "match" (le cabinet courant est
+  toujours visé). Jamais d'INSERT ni de DELETE sur "cabinets".
 ${this.projectConfig?.promptDomainRules ? `\n${this.projectConfig.promptDomainRules}\n` : ''}
 ## 📤 FORMAT DE RÉPONSE JSON UNIQUEMENT
 

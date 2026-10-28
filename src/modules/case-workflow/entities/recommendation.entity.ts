@@ -43,7 +43,7 @@ export class RecommendationRule extends TenantEntity {
   @Column({ name: 'condition_json', type: 'json' })
   condition_json: Record<string, unknown>;
 
-  @Column({ name: 'action_definition_id', type: 'varchar' })
+  @Column({ name: 'action_definition_id', type: 'varchar', length: 36 })
   action_definition_id: string;
 
   @ManyToOne(() => ActionDefinition, { onDelete: 'RESTRICT' })
@@ -130,7 +130,7 @@ export class DossierRecommendation extends TenantEntity {
   })
   rule_version: number;
 
-  @Column({ name: 'action_definition_id', type: 'varchar' })
+  @Column({ name: 'action_definition_id', type: 'varchar', length: 36 })
   @BusinessColumn({
     label: 'Action recommandée',
     description: 'Identifiant de la définition de l’action proposée.',
