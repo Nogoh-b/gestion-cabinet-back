@@ -58,6 +58,7 @@ import {
   ReponseConclusionsSkill,
 } from './analysis.skills';
 import { TranscrireAudioSkill } from './transcription.skills';
+import { ProjetDecisionAudienceSkill, RapportAudienceSkill } from './audience-documents.skills';
 import {
   AnonymiserSkill,
   ConventionHonorairesSkill,
@@ -107,6 +108,8 @@ const SKILLS = [
   EtatImpayesSkill,
   ExportDossierSkill,
   CompteRenduAudienceSkill,
+  RapportAudienceSkill,
+  ProjetDecisionAudienceSkill,
   // Agenda & tâches
   ProgrammerAudienceSkill,
   ReporterAudienceSkill,
@@ -154,7 +157,8 @@ export class AiSkillsModule implements OnModuleInit {
       const target = findTarget(explicit, types) ?? findTarget(references, types);
       if (!target) return '';
       const info = await targets.load(target);
-      return `${info.label}\n${await targets.facts(info, user, question)}`;
+      // Transcription d'audience plus courte qu'en rédaction : une question n'en lit qu'une partie.
+      return `${info.label}\n${await targets.facts(info, user, question, { transcriptMax: 12_000 })}`;
     });
     // Brouillons (e-mail, WhatsApp, courrier) : références de la fiche à insérer.
     this.skills.registerReferencesProvider(async (references, user) => {

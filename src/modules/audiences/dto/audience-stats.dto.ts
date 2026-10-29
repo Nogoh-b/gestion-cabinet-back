@@ -4,6 +4,7 @@ import { BaseStatsDto, DistributionItem } from 'src/core/types/base-stats.dto';
 
 export class AudienceStatsDto extends BaseStatsDto {
   scheduled: number;
+  inProgress: number;
   held: number;
   postponed: number;
   cancelled: number;

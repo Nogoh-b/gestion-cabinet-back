@@ -9,6 +9,7 @@ export enum Permission {
   CREATE_DOSSIER = 'create_dossier',
   EDIT_DOSSIER = 'edit_dossier',
   DELETE_DOSSIER = 'delete_dossier',
+  EXPORT_DOSSIER = 'export_dossier',
   ASSIGN_DOSSIER = 'assign_dossier',
   VIEW_DOSSIER_CONFIDENTIAL = 'view_dossier_confidential',
   VIEW_DOSSIER_ACTIONS = 'view_dossier_actions',
@@ -32,6 +33,7 @@ export enum Permission {
   CONFIRM_AUDIENCE = 'confirm_audience',
   POSTPONE_AUDIENCE = 'postpone_audience',
   MARK_AUDIENCE_HELD = 'mark_audience_held',
+  RECORD_AUDIENCE = 'record_audience',
 
   // ── Factures & Finances ─────────────────────────────────────────────────
   VIEW_FACTURES = 'view_factures',

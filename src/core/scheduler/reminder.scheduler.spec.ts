@@ -1,4 +1,4 @@
-import { ReminderScheduler } from './reminder.scheduler';
+import { imminentAudienceAlert, ReminderScheduler } from './reminder.scheduler';
 import { DiligenceStatus } from 'src/modules/diligence/entities/diligence.entity';
 
 /** Journal d'envois en mémoire qui imite INSERT IGNORE + clé unique. */
@@ -122,5 +122,83 @@ describe('ReminderScheduler — diligences', () => {
       ]),
     );
     expect(byUser).toEqual({ 7: 1, 9: 2 });
+  });
+});
+
+describe('ReminderScheduler — audiences imminentes', () => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  /** Audience programmée `offsetMinutes` minutes après maintenant (heure locale). */
+  function audience(id: number, offsetMinutes: number) {
+    const at = new Date(Date.now() + offsetMinutes * 60_000);
+    return {
+      id,
+      audience_date: `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`,
+      audience_time: `${pad(at.getHours())}:${pad(at.getMinutes())}`,
+      room: 'B',
+      dossier_id: 200 + id,
+      dossier: { dossier_number: `DOS-${id}`, lawyer_id: 7, collaborators: [{ id: 8 }, { id: 7 }] },
+    };
+  }
+
+  function setupAudiences(audiences: any[]) {
+    const db = fakeDb();
+    const notifications = { createBulk: jest.fn().mockResolvedValue(undefined) };
+    const audienceRepo = { find: jest.fn().mockResolvedValue(audiences) };
+    const scheduler = new ReminderScheduler(
+      { find: jest.fn().mockResolvedValue([{ id: 25 }]) } as any,
+      audienceRepo as any,
+      { find: jest.fn().mockResolvedValue([]) } as any,
+      { find: jest.fn().mockResolvedValue([]) } as any,
+      notifications as any,
+      { run: (_id: number, fn: () => any) => fn() } as any,
+      db as any,
+    );
+    return { scheduler, notifications, audienceRepo };
+  }
+
+  it('imminentAudienceAlert : bientôt ≤ 30 min, non démarrée de 10 min à 2 h', () => {
+    expect(imminentAudienceAlert(31)).toBeNull();
+    expect(imminentAudienceAlert(30)).toBe('soon');
+    expect(imminentAudienceAlert(1)).toBe('soon');
+    expect(imminentAudienceAlert(0)).toBeNull();
+    expect(imminentAudienceAlert(-9)).toBeNull();
+    expect(imminentAudienceAlert(-10)).toBe('late');
+    expect(imminentAudienceAlert(-120)).toBe('late');
+    expect(imminentAudienceAlert(-121)).toBeNull();
+  });
+
+  it('prévient 30 min avant et 10 min après sans démarrage, une seule fois chacune', async () => {
+    const { scheduler, notifications, audienceRepo } = setupAudiences([
+      audience(1, 20),
+      audience(2, -15),
+      audience(3, 90),
+    ]);
+    await scheduler.runImminentAudienceAlerts();
+
+    // Statut envoyé en chaîne (colonne ENUM).
+    expect(audienceRepo.find.mock.calls[0][0].where.status).toBe('0');
+    // L'heure prévue est à la minute près : « 19 » ou « 20 min » selon les secondes.
+    const [soonTitle, lateTitle] = titles(notifications);
+    expect(titles(notifications)).toHaveLength(2);
+    expect(soonTitle).toMatch(/^Audience dans (19|20) min$/);
+    expect(lateTitle).toBe('Audience non démarrée');
+    const [soon, late] = notifications.createBulk.mock.calls.map((call: any[]) => call[0]);
+    expect(soon.user_ids).toEqual([7, 8]);
+    expect(soon.link).toBe('/audiences/1');
+    expect(soon.priority).toBe('HIGH');
+    expect(late.priority).toBe('URGENT');
+    expect(late.content).toContain("n'a pas été démarrée");
+
+    // Passage suivant (5 min plus tard, autre instance) : rien de nouveau.
+    notifications.createBulk.mockClear();
+    await scheduler.runImminentAudienceAlerts();
+    expect(notifications.createBulk).not.toHaveBeenCalled();
+  });
+
+  it('sans avocat ni collaborateur : aucune notification', async () => {
+    const lonely = { ...audience(1, 10), dossier: { dossier_number: 'DOS-1', lawyer_id: null, collaborators: [] } };
+    const { scheduler, notifications } = setupAudiences([lonely]);
+    await scheduler.runImminentAudienceAlerts();
+    expect(notifications.createBulk).not.toHaveBeenCalled();
   });
 });

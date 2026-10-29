@@ -170,6 +170,14 @@ export class AudienceResponseDto {
   @Expose()
   status: AudienceStatus;
 
+  @ApiProperty({ required: false, description: "Clic « Démarrer »" })
+  @Expose()
+  started_at?: Date | null;
+
+  @ApiProperty({ required: false, description: "Clic « Terminer »" })
+  @Expose()
+  ended_at?: Date | null;
+
   @ApiProperty({ example: "Notes importantes sur l'audience", required: false })
   @Expose()
   notes?: string;
@@ -382,6 +390,7 @@ export class AudienceResponseDto {
       [AudienceStatus.HELD]: 'Tenue',
       [AudienceStatus.POSTPONED]: 'Reportée',
       [AudienceStatus.CANCELLED]: 'Annulée',
+      [AudienceStatus.IN_PROGRESS]: 'En cours',
     };
     return statusLabels[obj.status] || 'Inconnu';
   })
@@ -475,6 +484,7 @@ export class AudienceListResponseDto {
       [AudienceStatus.HELD]: 'Tenue',
       [AudienceStatus.POSTPONED]: 'Reportée',
       [AudienceStatus.CANCELLED]: 'Annulée',
+      [AudienceStatus.IN_PROGRESS]: 'En cours',
     };
     return statusLabels[obj.status] || 'Inconnu';
   })

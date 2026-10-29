@@ -32,7 +32,47 @@ type AiUserLike = AiUserContext | string | number | undefined | null;
 const SUPER_ADMIN = 'SUPER_ADMIN';
 const PERMISSION_CACHE_TTL_MS = 10_000;
 
+/**
+ * Droit « tout collaborateur connecté » : la table est lisible sans code
+ * particulier (infos du cabinet, catalogue des plans), comme l'écran qui la
+ * montre. Le portail client n'atteint pas le chat (JwtAuthGuard + clients).
+ */
+export const AI_ANY_EMPLOYEE = '*';
+
 export const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
+  // Cabinet courant (une seule ligne, filtrée sur id = cabinet) : mêmes
+  // droits que Paramètres du cabinet. Ni création ni suppression.
+  cabinets: {
+    READ: AI_ANY_EMPLOYEE,
+    UPDATE: 'manage_settings',
+  },
+
+  // Abonnement (lecture seule : le paiement reste dans l'écran Abonnement).
+  subscriptions: { READ: 'manage_subscription' },
+  subscription_payments: { READ: 'manage_subscription' },
+  plans: { READ: AI_ANY_EMPLOYEE },
+
+  // Données personnelles : filtrées sur l'utilisateur courant (AI_SCOPED_TABLES).
+  user_settings: { READ: AI_ANY_EMPLOYEE },
+  notifications: { READ: AI_ANY_EMPLOYEE },
+  mails: { READ: 'view_messages' },
+
+  // Échanges avec les clients
+  client_messages: { READ: 'view_clients' },
+  customer_communication: { READ: 'view_clients' },
+
+  // Parcours d'actions : clôture et journal
+  dossier_closure_reviews: { READ: 'view_dossier_actions' },
+  case_workflow_events: { READ: 'view_dossier_actions' },
+  case_workflow_features: { READ: 'view_dossier_actions' },
+
+  // Partenaires du cabinet
+  partner: { READ: 'view_dossiers' },
+
+  // Congés des collaborateurs
+  // Lecture seule : une demande de congé suit son circuit de validation.
+  employee_leave: { READ: 'view_employee_requests' },
+
   // Dossiers
   dossiers: {
     READ: 'view_dossiers',
@@ -95,6 +135,13 @@ export const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
     INSERT: 'upload_document',
     UPDATE: 'edit_document',
     DELETE: 'delete_document',
+  },
+  // Versions : écrites par le remplacement de fichier, jamais par l'IA.
+  document_customer_versions: { READ: 'view_documents' },
+  // Fil de notes : mêmes droits que l'écran (lecture et ajout).
+  document_customer_notes: {
+    READ: 'view_documents',
+    INSERT: 'view_documents',
   },
   document_type: {
     READ: 'VIEW_DOCUMENT_TYPE',
@@ -290,7 +337,7 @@ export const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
     UPDATE: 'MANAGE_LOCATION',
     DELETE: 'MANAGE_LOCATION',
   },
-  district: {
+  districts: {
     READ: 'view_dossiers',
     INSERT: 'MANAGE_LOCATION',
     UPDATE: 'MANAGE_LOCATION',
@@ -426,30 +473,25 @@ export const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
     UPDATE: 'edit_user',
     DELETE: 'delete_user',
   },
-  user_role: {
-    READ: 'manage_roles',
-    INSERT: 'manage_roles',
-    UPDATE: 'manage_roles',
-    DELETE: 'manage_roles',
-  },
+  // Rôles et droits : consultation seulement (gestion dans Paramètres > Rôles).
+  user_role: { READ: 'manage_roles' },
   user_role_assignment: {
     READ: 'manage_roles',
     INSERT: 'manage_roles',
     UPDATE: 'manage_roles',
     DELETE: 'manage_roles',
   },
-  role_permission: {
-    READ: 'manage_roles',
-    INSERT: 'manage_roles',
-    UPDATE: 'manage_roles',
-    DELETE: 'manage_roles',
-  },
-  permission: {
-    READ: 'manage_roles',
-    INSERT: 'manage_roles',
-    UPDATE: 'manage_roles',
-    DELETE: 'manage_roles',
-  },
+  role_permission: { READ: 'manage_roles' },
+  permission: { READ: 'manage_roles' },
+};
+
+/**
+ * Colonnes jamais lues par l'IA, administrateur compris : secrets (mot de
+ * passe SMTP, clés des fournisseurs IA, mots de passe) et binaires.
+ */
+export const AI_SECRET_COLUMNS: Record<string, string[]> = {
+  cabinets: ['smtp_config', 'ai_config', 'logo'],
+  user: ['password'],
 };
 
 const SQL_KEYWORDS = new Set([
@@ -538,6 +580,22 @@ export class AiDatabasePermissionService {
     const tables = this.extractTablesFromSql(sqlQuery);
     await this.assertCanReadTables(user, tables);
 
+    // Secrets : refusés à tous, administrateur compris.
+    const secretCleaned = this.stripSqlLiterals(sqlQuery).toLowerCase();
+    const secrets = tables.flatMap((table) =>
+      (AI_SECRET_COLUMNS[table] ?? []).filter((column) =>
+        new RegExp(`\\b${column}\\b`).test(secretCleaned),
+      ),
+    );
+    if (secrets.length) {
+      this.logger.warn(
+        `Acces IA refuse (secrets): user=${this.getUserDebugId(user)} | ${secrets.join(', ')}`,
+      );
+      throw new ForbiddenException(
+        "Ces informations (identifiants SMTP, clés, mots de passe) ne sont pas accessibles depuis l'assistant.",
+      );
+    }
+
     // Colonnes financières de tables par ailleurs lisibles (budget d'un
     // dossier, salaire d'un collaborateur…) citées explicitement.
     const hidden = await this.getHiddenColumns(user, tables);
@@ -598,9 +656,11 @@ export class AiDatabasePermissionService {
     tables: string[],
   ): Promise<Map<string, string[]>> {
     const hidden = new Map<string, string[]>();
-    const concerned = this.normalizeTables(tables).filter(
-      (table) => AI_RESTRICTED_COLUMNS[table],
-    );
+    const normalized = this.normalizeTables(tables);
+    for (const table of normalized) {
+      if (AI_SECRET_COLUMNS[table]) hidden.set(table, [...AI_SECRET_COLUMNS[table]]);
+    }
+    const concerned = normalized.filter((table) => AI_RESTRICTED_COLUMNS[table]);
     if (!concerned.length) return hidden;
     const { codes: permissions, fullAccess } = await this.getUserAccess(user);
     if (fullAccess) return hidden;
@@ -608,7 +668,7 @@ export class AiDatabasePermissionService {
       const columns = Object.entries(AI_RESTRICTED_COLUMNS[table])
         .filter(([, codes]) => !codes.some((code) => permissions.has(code)))
         .map(([column]) => column);
-      if (columns.length) hidden.set(table, columns);
+      if (columns.length) hidden.set(table, [...(hidden.get(table) ?? []), ...columns]);
     }
     return hidden;
   }
@@ -769,7 +829,9 @@ export class AiDatabasePermissionService {
       })
       .filter(
         (requirement) =>
-          !requirement.permission || !permissions.has(requirement.permission),
+          !requirement.permission ||
+          (requirement.permission !== AI_ANY_EMPLOYEE &&
+            !permissions.has(requirement.permission)),
       );
   }
 

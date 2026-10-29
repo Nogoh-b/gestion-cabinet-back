@@ -13,6 +13,7 @@ import { ActivitiesUserService } from 'src/modules/iam/activities-user/activitie
 import { PlansService } from 'src/modules/plans/plans.service';
 import { SubscriptionsService } from 'src/modules/subscriptions/subscriptions.service';
 import { SubscriptionActor } from 'src/modules/subscriptions/subscription-events.service';
+import { readSidebarBadgesEnabled } from '../settings/cabinet-sidebar.setting';
 import { PlatformAuditContext } from '../audit/platform-audit.context';
 import { PlatformPrincipal } from '../common/platform-principal';
 import { PlatformMailerService } from '../common/platform-mailer.service';
@@ -460,6 +461,33 @@ export class PlatformCabinetsService {
       targetId: cabinetId,
       cabinetId,
       summary: `Nouveaux dossiers en ${v2 ? 'traitement orienté actions (V2)' : 'parcours historique'}`,
+      before,
+      after,
+    });
+    return after;
+  }
+
+  // ── Badges de la sidebar ──────────────────────────────────────────────────
+
+  async sidebarBadges(cabinetId: number) {
+    await this.ensureCabinet(cabinetId);
+    return { enabled: await readSidebarBadgesEnabled(this.db, cabinetId) };
+  }
+
+  /** Active ou coupe les badges de compteurs de la sidebar pour ce cabinet. */
+  async setSidebarBadges(cabinetId: number, enabled: boolean) {
+    const before = await this.sidebarBadges(cabinetId);
+    await this.db.query(
+      'UPDATE cabinets SET sidebar_badges_enabled = ? WHERE id = ?',
+      [enabled ? 1 : 0, cabinetId],
+    );
+    const after = { enabled };
+    PlatformAuditContext.set({
+      action: 'cabinet.sidebar_badges',
+      targetType: 'cabinet',
+      targetId: cabinetId,
+      cabinetId,
+      summary: `Badges de la sidebar ${enabled ? 'activés' : 'désactivés'}`,
       before,
       after,
     });

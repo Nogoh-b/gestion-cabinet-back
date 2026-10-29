@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-import { EntityManager } from 'typeorm';
+import { EntityManager, FindOptionsWhere } from 'typeorm';
+import { Dossier } from '../dossiers/entities/dossier.entity';
 import { Audience, AudienceStatus } from './entities/audience.entity';
 
 export interface PostponeAudienceInput {
@@ -94,4 +95,99 @@ export async function postponeAudienceWithManager(
     original,
     replacement: await repository.save(replacement),
   };
+}
+
+/** Portée de dossier du rôle de l'appelant ({} : aucune restriction). */
+export type AudienceDossierScope = FindOptionsWhere<Dossier>;
+
+async function loadScopedAudience(
+  manager: EntityManager,
+  audienceId: number,
+  scope: AudienceDossierScope,
+): Promise<Audience> {
+  const audience = await manager.getRepository(Audience).findOne({
+    where: {
+      id: audienceId,
+      tenant_id: getCurrentTenantId(),
+      // Un avocat n'agit que sur les audiences de ses dossiers.
+      ...(Object.keys(scope).length ? { dossier: scope } : {}),
+    },
+  });
+  if (!audience) {
+    throw new NotFoundException(`Audience ${audienceId} introuvable`);
+  }
+  return audience;
+}
+
+/** SCHEDULED → IN_PROGRESS : pose le statut « En cours » et `started_at`. */
+export async function startAudienceWithManager(
+  manager: EntityManager,
+  audienceId: number,
+  scope: AudienceDossierScope = {},
+  now: Date = new Date(),
+): Promise<Audience> {
+  const audience = await loadScopedAudience(manager, audienceId, scope);
+  if (audience.status === AudienceStatus.IN_PROGRESS) {
+    throw new BadRequestException(`Cette audience est déjà en cours.`);
+  }
+  if (audience.status !== AudienceStatus.SCHEDULED) {
+    throw new BadRequestException(
+      `Seule une audience programmée peut être démarrée (statut actuel : ${audience.status_label}).`,
+    );
+  }
+  // Pas de contrainte de date : une audience programmée peut être démarrée à tout moment.
+  applyAudienceStatusChange(audience, AudienceStatus.IN_PROGRESS, now);
+  return manager.getRepository(Audience).save(audience);
+}
+
+/** IN_PROGRESS → HELD : pose le statut « Tenue » et `ended_at`. */
+export async function finishAudienceWithManager(
+  manager: EntityManager,
+  audienceId: number,
+  scope: AudienceDossierScope = {},
+  now: Date = new Date(),
+): Promise<Audience> {
+  const audience = await loadScopedAudience(manager, audienceId, scope);
+  if (audience.status !== AudienceStatus.IN_PROGRESS) {
+    throw new BadRequestException(
+      `Seule une audience en cours peut être terminée (statut actuel : ${audience.status_label}).`,
+    );
+  }
+  applyAudienceStatusChange(audience, AudienceStatus.HELD, now);
+  return manager.getRepository(Audience).save(audience);
+}
+
+/**
+ * Règles d'entrée/sortie du statut « En cours », partagées par « Démarrer »,
+ * « Terminer » et la modification directe du statut (PATCH, outils IA) :
+ *   - on n'entre en cours que depuis « Programmée » ;
+ *   - sortir vers « Tenue » horodate la fin, revenir à « Programmée »
+ *     annule le démarrage ; les autres statuts restent libres.
+ */
+export function applyAudienceStatusChange(
+  audience: Audience,
+  next: AudienceStatus | string | number,
+  now: Date = new Date(),
+): void {
+  const target = Number(next) as AudienceStatus;
+  const current = Number(audience.status) as AudienceStatus;
+
+  if (target === AudienceStatus.IN_PROGRESS) {
+    if (current !== AudienceStatus.SCHEDULED) {
+      if (current === AudienceStatus.IN_PROGRESS) return;
+      throw new BadRequestException(
+        `Seule une audience programmée peut passer « en cours ».`,
+      );
+    }
+    audience.status = AudienceStatus.IN_PROGRESS;
+    audience.started_at = now;
+    audience.ended_at = null;
+    return;
+  }
+
+  if (current === AudienceStatus.IN_PROGRESS) {
+    if (target === AudienceStatus.HELD) audience.ended_at = now;
+    if (target === AudienceStatus.SCHEDULED) audience.started_at = null;
+    audience.status = target;
+  }
 }

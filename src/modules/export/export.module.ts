@@ -9,7 +9,11 @@ import { Audience } from '../audiences/entities/audience.entity';
 import { Diligence } from '../diligence/entities/diligence.entity';
 import { Step } from '../dossiers/entities/step.entity';
 import { IamModule } from '../iam/iam.module';
+import { PlansModule } from '../plans/plans.module';
+import { DossierExport } from './entities/dossier-export.entity';
+import { DossierExportStore } from './dossier-export.store';
 import { DossierExportService } from './dossier-export.service';
+import { DossierSqlExporter } from './dossier-sql.exporter';
 import { ExportController } from './export.controller';
 
 @Module({
@@ -22,10 +26,12 @@ import { ExportController } from './export.controller';
       Audience,
       Diligence,
       Step,
+      DossierExport,
     ]),
     IamModule, // PermissionsGuard a besoin des services IAM
+    PlansModule, // quota d'espace (PlanQuotaService)
   ],
   controllers: [ExportController],
-  providers: [DossierExportService],
+  providers: [DossierExportService, DossierExportStore, DossierSqlExporter],
 })
 export class ExportModule {}

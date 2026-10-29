@@ -63,6 +63,25 @@ async function bootstrap() {
   };
   app.use(express.json({ limit: '15mb', verify: keepRawBody }));
   app.use(express.urlencoded({ limit: '15mb', extended: true, verify: keepRawBody }));
+  // Erreurs du body-parser (avant Nest) : JSON en français au lieu de la page
+  // HTML d'Express (« PayloadTooLargeError »…).
+  app.use((err: any, _req: any, res: any, next: (e?: any) => void) => {
+    if (err?.type === 'entity.too.large') {
+      return res.status(413).json({
+        statusCode: 413,
+        message: 'Les données envoyées sont trop volumineuses (15 Mo maximum). Réduisez la taille du fichier.',
+        error: 'Payload Too Large',
+      });
+    }
+    if (err?.type === 'entity.parse.failed') {
+      return res.status(400).json({
+        statusCode: 400,
+        message: 'La requête envoyée est mal formée. Actualisez la page puis réessayez.',
+        error: 'Bad Request',
+      });
+    }
+    return next(err);
+  });
 
   // ── Sécurité : en-têtes HTTP via Helmet ──────────────────────────────────
   // Ajoute X-Content-Type-Options, X-Frame-Options (anti clickjacking),
@@ -88,9 +107,21 @@ async function bootstrap() {
   const uploadsStatic = express.static(UPLOADS_DIR, {
     index: false, // ne sert jamais d'index.html
     dotfiles: 'ignore', // ignore les fichiers cachés
-    setHeaders: (res) => {
-      res.setHeader('Content-Disposition', 'attachment');
+    setHeaders: (res, filePath) => {
       res.setHeader('X-Content-Type-Options', 'nosniff');
+      // Logos cabinet : affichés par le front (autre origine) et les e-mails.
+      // Helmet pose `Cross-Origin-Resource-Policy: same-origin`, ce qui empêche
+      // le navigateur d'afficher le logo dans un <img> du front.
+      const isLogo = /[\\/]uploads[\\/]cabinets[\\/][^\\/]+$/.test(filePath);
+      if (isLogo && !/\.svg$/i.test(filePath)) {
+        res.setHeader('Content-Disposition', 'inline');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        // Nom de fichier horodaté à chaque changement : cache sans risque.
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return;
+      }
+      if (isLogo) res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Content-Disposition', 'attachment');
       res.setHeader('Cache-Control', 'no-store');
     },
   });

@@ -6,7 +6,7 @@ import { DataSource } from 'typeorm';
 import { AiDatabasePermissionService } from 'src/core/ai-database/ai-database-permission.service';
 import type { WriteOperation, WritePlan } from 'src/core/ai-database/dto/analysis-response.dto';
 import type { AiSkillContext, AiSkillDefinition, AiSkillFollowUp, AiSkillHandler, AiSkillOutcome } from 'src/core/ai-database/skills/ai-skill.types';
-import { resolveSkillTarget } from 'src/core/ai-database/skills/skill-helpers';
+import { htmlToText, resolveSkillTarget } from 'src/core/ai-database/skills/skill-helpers';
 import { Permission } from 'src/core/enums/permission.enum';
 import { Audience } from '../audiences/entities/audience.entity';
 import { Dossier } from '../dossiers/entities/dossier.entity';
@@ -15,6 +15,7 @@ import { fcfa } from './claim-calculator';
 import { deadlineRulesPrompt, frDate, isoDate, parseIsoDate } from './legal-deadlines';
 import { deadlineOperations, deadlinesMarkdown, resolveDeadlines } from './legal-tools.skills';
 import {
+  AUDIENCE_TRANSCRIPT_RULES,
   draftJson,
   DRAFTING_RULES,
   isOutcome,
@@ -75,7 +76,8 @@ export class LectureJugementSkill implements AiSkillHandler {
     icon: 'gavel',
     category: 'analyse',
     permissions: [Permission.VIEW_DOSSIERS],
-    targets: ['dossier'],
+    // Audience : décision saisie, sinon dispositif prononcé lu dans la transcription de l'audience.
+    targets: ['dossier', 'audience'],
     placeholder: 'Joignez la décision (PDF ou photo) et mentionnez le @dossier ; précisez la date de signification si elle est connue',
     examples: ['Lis ce jugement signifié le 10/10/2026 pour @dossier'],
     keywords: ['jugement', 'décision', 'arrêt', 'ordonnance', 'dispositif', 'condamnation', 'recours', 'appel'],
@@ -86,12 +88,23 @@ export class LectureJugementSkill implements AiSkillHandler {
   constructor(private readonly targets: SkillTargetsService) {}
 
   async run(ctx: AiSkillContext): Promise<AiSkillOutcome> {
-    const source = sourceText(ctx);
+    const target = resolveSkillTarget(ctx, ['dossier', 'audience']);
+    const info = target ? await this.targets.load(target) : null;
+    let source = sourceText(ctx);
+    let heard = false;
+    if (!source && info?.type === 'audience') {
+      // Décision saisie sur l'audience, sinon ce qui a été prononcé à l'audience.
+      const saved = htmlToText(String(info.resource?.decision_text ?? '')).trim();
+      const recorded = saved ? null : await this.targets.audienceTranscript(info, ctx.user, 30_000);
+      if (saved) source = { text: saved, name: `décision saisie — ${info.label}` };
+      else if (recorded?.assembled.transcribed) {
+        source = { text: recorded.facts, name: `transcription de l'${info.label.charAt(0).toLowerCase()}${info.label.slice(1)}` };
+        heard = true;
+      }
+    }
     if (!source) {
       return { type: 'clarify', markdown: '❓ Joignez la décision (PDF, Word ou photo) ou mentionnez-la avec **@** › Documents, puis renvoyez la demande.' };
     }
-    const target = resolveSkillTarget(ctx, ['dossier']);
-    const info = target ? await this.targets.load(target) : null;
     ctx.status('⚖️ Lecture de la décision…');
     const draft = await draftJson<Record<string, any>>(ctx, `Tu es avocat (droit OHADA, Cameroun). Analyse cette décision de justice avec exactitude.
 
@@ -99,7 +112,7 @@ Règles de délais connues (code à utiliser pour les recours) :
 ${deadlineRulesPrompt()}
 
 Demande de l'utilisateur : ${ctx.question}
-${info ? `Dossier du cabinet : ${info.label} — client : ${customerName(info.client)}` : ''}
+${info ? `Dossier du cabinet : ${info.dossier ? `Dossier ${info.dossier.dossier_number}` : info.label}${info.type === 'audience' ? ` (${info.label})` : ''} — client : ${customerName(info.client)}` : ''}
 
 Décision (« ${source.name} ») :
 """
@@ -107,7 +120,9 @@ ${source.text.slice(0, 30000)}
 """
 
 ${DRAFTING_RULES}
-- Recopie fidèlement le dispositif (sans le réécrire) ; montants en nombres.
+${heard ? `${AUDIENCE_TRANSCRIPT_RULES}
+- La source est la transcription d'une audience, pas la décision écrite : "dispositif" ne reprend que ce qui a été prononcé comme décision (ou vide si rien ne l'est, par exemple en cas de renvoi ou de mise en délibéré) ; "points_attention" rappelle que la décision écrite doit être obtenue et cite les passages inaudibles ou manquants.
+` : ''}- Recopie fidèlement le dispositif (sans le réécrire) ; montants en nombres.
 - "recours" : les voies de recours ouvertes contre cette décision, avec le code de règle et la date de départ (date de signification si la demande ou la décision la donne, sinon date de la décision si le délai court du prononcé, sinon vide).
 
 Réponds UNIQUEMENT en JSON :
@@ -143,10 +158,10 @@ Réponds UNIQUEMENT en JSON :
     if (fields.appeal_deadline) fields.appeal_possibility = true;
     if (fields.cassation_deadline) fields.cassation_possibility = true;
     const operations: WriteOperation[] = [
-      { operation: 'UPDATE', entity: 'dossiers', entityId: info.dossier.id, fields, humanReadable: `Enregistrer la décision sur le ${info.label}` },
+      { operation: 'UPDATE', entity: 'dossiers', entityId: info.dossier.id, fields, humanReadable: `Enregistrer la décision sur le dossier ${info.dossier.dossier_number}` },
       ...deadlineOperations(info.dossier.id, lines),
     ];
-    const plan: WritePlan = { transaction: true, confidence: 1, humanReadable: `Enregistrer la décision et ses délais sur le ${info.label}`, operations };
+    const plan: WritePlan = { transaction: true, confidence: 1, humanReadable: `Enregistrer la décision et ses délais sur le dossier ${info.dossier.dossier_number}`, operations };
     return { type: 'plan', plan, markdown };
   }
 }

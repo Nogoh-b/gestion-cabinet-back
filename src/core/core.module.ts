@@ -47,7 +47,7 @@ import { PermissionSeeder } from './auth/seeders/permission.seeder';
 import { RoleSeeder } from './auth/seeders/role.seeder';
 import { JwtStrategy } from './auth/strategies/jwt.strategy';
 import { LocalStrategy } from './auth/strategies/local.strategy';
-import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
+import { AllExceptionsFilter } from './exceptions/all-exceptions.filter';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { databaseConfig } from './config/database.config';
 import { getJwtSecret } from './config/secrets';
@@ -152,7 +152,7 @@ import { RestrictedFieldsInterceptor } from './security/restricted-fields.interc
     ActivitiesUserService,
     PublicGuard,
     { provide: APP_GUARD, useClass: PublicGuard },
-    { provide: APP_FILTER, useClass: TypeOrmExceptionFilter },
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: QueryLoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },

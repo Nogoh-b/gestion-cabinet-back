@@ -37,6 +37,24 @@ import {
 
 import { DocumentType } from '../../document-type/entities/document-type.entity';
 
+/** internal = rédigé ou modifié dans l'éditeur du cabinet, imported = fichier déposé. */
+export type DocumentOrigin = 'internal' | 'imported';
+
+/** Origine déduite des métadonnées : « Rédiger » et le studio IA posent `source='ai_studio'`. */
+export function documentOriginFromMetadata(metadata: unknown): DocumentOrigin {
+  let meta: any = metadata;
+  if (typeof meta === 'string') {
+    try {
+      meta = JSON.parse(meta);
+    } catch {
+      meta = null;
+    }
+  }
+  return meta?.source === 'ai_studio' || meta?.source === 'editor'
+    ? 'internal'
+    : 'imported';
+}
+
 export enum DocumentCustomerStatus {
   PENDING = 0,
   ACCEPTED = 1,
@@ -249,6 +267,41 @@ export class DocumentCustomer extends BaseEntity {
   @ManyToOne(() => User)
   @JoinColumn({ name: 'uploaded_by_id' })
   uploaded_by: User;
+
+  @Column({ name: 'updated_by_id', type: 'int', nullable: true })
+  @BusinessColumn({
+    label: 'Modifié par',
+    description: "Identifiant de l'utilisateur qui a modifié le document en dernier",
+    importance: 'low',
+    group: 'audit',
+    ignored: true,
+  })
+  updated_by_id?: number | null;
+
+  @ManyToOne(() => User, { nullable: true, createForeignKeyConstraints: false })
+  @JoinColumn({ name: 'updated_by_id' })
+  updated_by?: User | null;
+
+  @Column({ type: 'enum', enum: ['internal', 'imported'], default: 'imported' })
+  @BusinessColumn({
+    label: 'Origine',
+    description:
+      "internal = rédigé ou modifié dans l'éditeur du cabinet (versions gérées en interne), imported = fichier déposé",
+    importance: 'medium',
+    group: 'versioning',
+  })
+  origin: DocumentOrigin;
+
+  /** Source HTML de l'éditeur interne (réédition sans perte), lue à la demande. */
+  @Column({ name: 'content_html', type: 'longtext', nullable: true, select: false })
+  @BusinessColumn({
+    label: 'Source HTML',
+    description: "Contenu de l'éditeur interne",
+    importance: 'low',
+    group: 'contenu',
+    ignored: true,
+  })
+  content_html?: string | null;
 
   @ManyToMany(() => Step, (step) => step.documents)
   @JoinTable({

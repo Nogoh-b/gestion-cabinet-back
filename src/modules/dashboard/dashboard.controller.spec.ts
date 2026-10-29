@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
+import { DashboardWatchlistService } from './dashboard-watchlist.service';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 
@@ -12,7 +13,10 @@ describe('DashboardController', () => {
     dashboardService.getOverview.mockReset();
     const module: TestingModule = await Test.createTestingModule({
       controllers: [DashboardController],
-      providers: [{ provide: DashboardService, useValue: dashboardService }],
+      providers: [
+        { provide: DashboardService, useValue: dashboardService },
+        { provide: DashboardWatchlistService, useValue: { list: jest.fn() } },
+      ],
     })
       // Les gardes (JWT, permissions) ont leurs propres tests.
       .overrideGuard(JwtAuthGuard)

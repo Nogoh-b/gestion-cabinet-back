@@ -1,5 +1,5 @@
 // document-customer-response.dto.ts
-import { Expose, Transform } from 'class-transformer';
+import { Exclude, Expose, Transform } from 'class-transformer';
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -145,6 +145,42 @@ export class DocumentCustomerResponseDto {
     last_name: string;
     full_name: string;
   };
+
+  @ApiPropertyOptional()
+  @Expose()
+  @Transform(({ obj }) => obj.updated_by_id ?? null)
+  updated_by_id?: number | null;
+
+  @ApiPropertyOptional()
+  @Expose()
+  // Sous-ensemble de l'utilisateur, comme uploaded_by (jamais l'entité entière).
+  @Transform(({ obj }) =>
+    obj.updated_by
+      ? {
+          id: obj.updated_by.id,
+          first_name: obj.updated_by.first_name,
+          last_name: obj.updated_by.last_name,
+          full_name: [obj.updated_by.first_name, obj.updated_by.last_name]
+            .filter(Boolean)
+            .join(' '),
+        }
+      : undefined,
+  )
+  updated_by?: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    full_name: string;
+  };
+
+  /** Lue par `GET /documents/:id/editor-content` uniquement (peut être lourde). */
+  @Exclude()
+  content_html?: string | null;
+
+  @ApiPropertyOptional({ enum: ['internal', 'imported'] })
+  @Expose()
+  @Transform(({ obj }) => obj.origin ?? 'imported')
+  origin?: 'internal' | 'imported';
 
   @ApiPropertyOptional()
   @Expose()

@@ -35,6 +35,7 @@ import {
   Res,
   NotFoundException,
   StreamableFile,
+  Delete,
 } from '@nestjs/common';
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 
@@ -49,6 +50,7 @@ import {
 } from '@nestjs/swagger';
 
 import { DocumentCustomerService } from './document-customer.service';
+import { DocumentNotesService } from './document-notes.service';
 import { DocumentStatsService } from './document-stats.service';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { KycSyncDto } from './dto/create-document-from-coti.dto';
@@ -65,6 +67,7 @@ export class DocumentCustomerController {
   constructor(
     private readonly service: DocumentCustomerService,
     private readonly statsService: DocumentStatsService,
+    private readonly notesService: DocumentNotesService,
   ) {}
 
   @Get('stats')
@@ -166,21 +169,84 @@ export class DocumentCustomerController {
   @Post(':id/versions')
   @RequirePermissions('edit_document', 'upload_document')
   @UseInterceptors(
-    FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }),
+    // fieldSize : la source HTML de l'éditeur (content_html) dépasse vite
+    // la limite de 1 Mo de multer pour un champ texte (images incluses).
+    FileInterceptor('file', {
+      limits: { fileSize: 50 * 1024 * 1024, fieldSize: 25 * 1024 * 1024 },
+    }),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Nouvelle version d’un document (même id)' })
   addVersion(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { comment?: string; source?: string; name?: string },
+    @Body()
+    body: { comment?: string; source?: string; name?: string; content_html?: string },
     @CurrentUser() user: User,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    const source =
+      body?.source === 'ai_studio' || body?.source === 'editor'
+        ? body.source
+        : 'upload';
     return this.service.addVersion(id, file, user?.id, {
-      source: body?.source === 'ai_studio' ? 'ai_studio' : 'upload',
+      source,
       comment: body?.comment?.slice(0, 2000) || undefined,
       name: body?.name?.slice(0, 250) || undefined,
+      content_html:
+        typeof body?.content_html === 'string' ? body.content_html : undefined,
     });
+  }
+
+  @Get(':id/editor-content')
+  @RequirePermissions('view_documents')
+  @ApiOperation({ summary: "Source HTML de l'éditeur interne (contenu de départ de Modifier)" })
+  editorContent(@Param('id', ParseIntPipe) id: number) {
+    return this.service.getEditorContent(id);
+  }
+
+  // ── Notes : fil de notes du document (auteur ou admin pour modifier) ──
+
+  @Get(':id/notes')
+  @RequirePermissions('view_documents')
+  @ApiOperation({ summary: "Fil de notes d'un document (plus récente en premier)" })
+  listNotes(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: User) {
+    return this.notesService.list(id, user as any);
+  }
+
+  @Post(':id/notes')
+  @RequirePermissions('view_documents')
+  @ApiConsumes('application/json')
+  @ApiOperation({ summary: 'Ajouter une note au document' })
+  addNote(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { content?: string },
+    @CurrentUser() user: User,
+  ) {
+    return this.notesService.create(id, body?.content, user as any);
+  }
+
+  @Patch(':id/notes/:noteId')
+  @RequirePermissions('view_documents')
+  @ApiConsumes('application/json')
+  @ApiOperation({ summary: "Modifier une note (son auteur ou un admin)" })
+  updateNote(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('noteId', ParseIntPipe) noteId: number,
+    @Body() body: { content?: string },
+    @CurrentUser() user: User,
+  ) {
+    return this.notesService.update(id, noteId, body?.content, user as any);
+  }
+
+  @Delete(':id/notes/:noteId')
+  @RequirePermissions('view_documents')
+  @ApiOperation({ summary: "Supprimer une note (son auteur ou un admin)" })
+  removeNote(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('noteId', ParseIntPipe) noteId: number,
+    @CurrentUser() user: User,
+  ) {
+    return this.notesService.remove(id, noteId, user as any);
   }
 
   @Post(':id/versions/:versionId/restore')
@@ -229,6 +295,7 @@ export class DocumentCustomerController {
     FileInterceptor('file', {
       limits: {
         fileSize: 50 * 1024 * 1024, // 50MB
+        fieldSize: 25 * 1024 * 1024, // content_html des documents rédigés
       },
     }),
   )

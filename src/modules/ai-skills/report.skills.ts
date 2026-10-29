@@ -9,7 +9,7 @@ import { normalizeActionName } from 'src/core/ai-database/write/ai-action.regist
 import { Permission } from 'src/core/enums/permission.enum';
 import { Audience } from '../audiences/entities/audience.entity';
 import { ReportsService } from '../reports/reports.service';
-import { DRAFTING_RULES, isOutcome, senderLine, targetOrClarify } from './skill-drafting';
+import { AUDIENCE_TRANSCRIPT_RULES, DRAFTING_RULES, isOutcome, senderLine, targetOrClarify } from './skill-drafting';
 import { customerName, SkillTargetsService, unpaidInvoices } from './skill-targets.service';
 
 const MONTHS = ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'];
@@ -322,8 +322,9 @@ Demande et notes de l'utilisateur : ${ctx.question}
 ${ctx.quote ? `Passage cité : ${ctx.quote.slice(0, 3000)}` : ''}
 
 ${DRAFTING_RULES}
+${AUDIENCE_TRANSCRIPT_RULES}
 - Commence par « Madame, Monsieur, » (ou le nom du client), structure : déroulement, décision ou renvoi, prochaines étapes pour le client.
-- Le déroulement, les arguments, la décision et la date de renvoi viennent UNIQUEMENT du procès-verbal, des notes ou des informations ci-dessus. Si rien ne les décrit, n'invente pas : indique la date et la juridiction de l'audience, dis que le détail des échanges et la décision seront communiqués dès que possible, et ne décris aucun débat.
+- Le déroulement, les arguments, la décision et la date de renvoi viennent UNIQUEMENT du procès-verbal, de la transcription de l'audience, des notes ou des informations ci-dessus. Le client lit un récit synthétique : ne recopie pas la transcription mot à mot, et indique sobrement si une partie de l'enregistrement est inaudible ou manquante. Si rien ne les décrit, n'invente pas : indique la date et la juridiction de l'audience, dis que le détail des échanges et la décision seront communiqués dès que possible, et ne décris aucun débat.
 - Termine par une formule de politesse puis la signature du rédacteur (nom et cabinet ; au nom du cabinet si le rédacteur n'est pas indiqué).`);
     const audienceRef = { type: 'audience', id: info.id, label: info.label };
     const date = info.resource?.audience_date ? new Date(info.resource.audience_date).toLocaleDateString('fr-FR') : '';

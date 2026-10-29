@@ -17,6 +17,15 @@ export enum AttachmentType {
   FILE = 'file',
 }
 
+export enum TranscriptStatus {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  DONE = 'done',
+  /** Aucune parole reconnue. */
+  EMPTY = 'empty',
+  FAILED = 'failed',
+}
+
 @Entity()
 export class Attachment extends BaseEntity {
   @PrimaryGeneratedColumn()
@@ -58,6 +67,19 @@ export class Attachment extends BaseEntity {
   /** Employé ayant téléversé le fichier : lui seul peut le joindre à un message. */
   @Column({ name: 'uploaded_by_id', type: 'int', nullable: true })
   uploadedById: number | null;
+
+  /** Transcription d'une pièce audio (vocal), produite après le téléversement. */
+  @Column({ type: 'text', nullable: true })
+  transcript: string | null;
+
+  /** null : pas de transcription prévue (fichier non audio ou format non lu). */
+  @Column({
+    name: 'transcript_status',
+    type: 'enum',
+    enum: TranscriptStatus,
+    nullable: true,
+  })
+  transcriptStatus: TranscriptStatus | null;
 
   @ManyToOne(() => Message, (message) => message.attachments, {
     onDelete: 'CASCADE',

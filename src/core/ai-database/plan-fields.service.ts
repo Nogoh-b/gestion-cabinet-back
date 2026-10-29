@@ -25,6 +25,8 @@ import { WriteHandlerRegistry } from './write/write-handler.registry';
 import { displayValue, PARENT_LINKS, resourceTitle } from './write/write-result-summary';
 import { GenericWriteService } from './generic-write.service';
 import { actionTargetTable, AiActionRegistry } from './write/ai-action.registry';
+import { scopeCabinetOperations } from './ai-scoped-tables';
+import { AI_SECRET_COLUMNS } from './ai-database-permission.service';
 
 type User = AiUserContext | string | number | undefined | null;
 
@@ -99,8 +101,13 @@ export class PlanFieldsService {
   ) {}
 
   async describePlan(user: User, plan: WritePlan): Promise<PlanFieldsResponse> {
-    const operations = (plan?.operations ?? []).slice(0, MAX_OPERATIONS);
-    await this.permissions.assertCanWritePlan(user, { ...plan, operations });
+    const sliced = (plan?.operations ?? []).slice(0, MAX_OPERATIONS);
+    await this.permissions.assertCanWritePlan(user, { ...plan, operations: sliced });
+    // Cabinet : la carte décrit (et compare à) la ligne du cabinet courant.
+    const { operations } = scopeCabinetOperations(
+      { operations: sliced },
+      hasActiveTenant() ? getCurrentTenantId() : null,
+    );
     const described: PlanOperationDescriptor[] = [];
     for (const [index, op] of operations.entries()) {
       described.push(await this.describeOperation(user, operations, index, op));
@@ -177,6 +184,9 @@ export class PlanFieldsService {
     const target = await this.describeTarget(op, meta).catch((error: Error) => {
       this.logger.debug(`Cible de l'opération ${index} non décrite : ${error.message}`);
       return undefined;
+    });
+    await this.addPreviousValues(op, meta, descriptors).catch((error: Error) => {
+      this.logger.debug(`Valeurs actuelles de l'opération ${index} non lues : ${error.message}`);
     });
     return {
       index,
@@ -298,6 +308,25 @@ export class PlanFieldsService {
     if (!op.all) return what ? `Élément correspondant à : ${what}` : undefined;
     const total = await this.writes?.countMatches(table, op.match).catch(() => undefined);
     return `Tous les éléments correspondants${total !== undefined ? ` (${total})` : ''}${what ? ` : ${what}` : ''}`;
+  }
+
+  /**
+   * Modification d'un enregistrement précis : valeur actuelle de chaque champ
+   * simple (`previous`), pour l'avant / après de la carte de confirmation.
+   */
+  private async addPreviousValues(op: WriteOperation, meta: EntityMetadata | undefined, descriptors: PlanFieldDescriptor[]): Promise<void> {
+    if (op.operation !== 'UPDATE' || !meta || op.entityId === undefined || op.entityId === null || op.entityId === '') return;
+    const row: any = await this.dataSource.getRepository(meta.target).findOne({ where: { id: op.entityId } as any });
+    if (!row) return;
+    const secrets = new Set(AI_SECRET_COLUMNS[meta.tableName] ?? []);
+    for (const descriptor of descriptors) {
+      if (descriptor.kind === 'reference' || descriptor.kind === 'multi') continue;
+      const column = meta.findColumnWithDatabaseName(descriptor.name) ?? meta.findColumnWithPropertyName(descriptor.name);
+      if (!column || secrets.has(column.databaseName)) continue;
+      const current = row[column.propertyName];
+      const known = descriptor.options?.find((option) => String(option.value) === String(current));
+      descriptor.previous = current === null || current === undefined || current === '' ? '' : known?.label ?? displayValue(current);
+    }
   }
 
   /** « Dossier DOS-2026-0039 — Trouble de jouissance » pour les parents d'une ligne. */

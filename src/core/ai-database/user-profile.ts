@@ -32,7 +32,12 @@ export interface UserProfileSnapshot {
   isAdmin: boolean;
   capabilities: Array<{ label: string; actions: string[] }>;
   denied: string[];
-  cabinet: { name: string; code: string } | null;
+  cabinet: {
+    name: string;
+    code: string;
+    /** Coordonnées et mentions légales (Paramètres du cabinet), si renseignées. */
+    details?: Array<{ label: string; value: string }>;
+  } | null;
   plan: {
     name: string;
     code: string;
@@ -245,7 +250,12 @@ export function renderUserProfileBlock(snapshot: UserProfileSnapshot | null | un
     );
     if (snapshot.denied.length) lines.push(`- Non accessible avec ce rôle : ${snapshot.denied.join(', ')}`);
   }
-  if (snapshot.cabinet) lines.push(`- Cabinet : ${snapshot.cabinet.name}`);
+  if (snapshot.cabinet) {
+    lines.push(`- Cabinet : ${snapshot.cabinet.name}`);
+    if (level === 'full' && snapshot.cabinet.details?.length) {
+      lines.push(`- Infos du cabinet : ${snapshot.cabinet.details.map((d) => `${d.label} ${d.value}`).join(' ; ')}`);
+    }
+  }
   if (snapshot.plan) {
     const excluded = snapshot.plan.excluded.length ? ` ; non inclus : ${snapshot.plan.excluded.join(', ')}` : '';
     lines.push(`- Plan : ${snapshot.plan.name} — inclut ${snapshot.plan.included.join(', ') || 'les modules de base'}${excluded}`);
@@ -316,6 +326,9 @@ export function buildSelfProfileAnswer(
     }
   } else if (topics.includes('cabinet') && snapshot.cabinet) {
     sections.push(`Vous êtes connecté au cabinet **${snapshot.cabinet.name}** (code \`${snapshot.cabinet.code}\`).`);
+    if (snapshot.cabinet.details?.length) {
+      sections.push(snapshot.cabinet.details.map((d) => `- ${d.label} : ${d.value}`).join('\n'));
+    }
   }
 
   if (topics.includes('rights')) sections.push(buildCapabilityAnswer(question, access));

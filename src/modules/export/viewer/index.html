@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Export de dossiers</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Le manifeste doit être chargé avant app.js ; les données de chaque dossier
+       (data/dossier-<id>.js) sont chargées par app.js à l'ouverture du dossier. -->
+  <script src="data/index.js"></script>
+</head>
+<body>
+  <header class="site-header no-print">
+    <div class="wrap">
+      <a class="brand" href="#/" id="brand">Export de dossiers</a>
+      <span class="brand-sub" id="brand-sub"></span>
+    </div>
+  </header>
+  <main class="wrap" id="app">
+    <noscript><p class="notice">Cette consultation hors-ligne nécessite JavaScript.</p></noscript>
+  </main>
+  <footer class="site-footer no-print">
+    <div class="wrap">Consultation hors-ligne &middot; aucune donnée n'est envoyée sur le réseau.</div>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

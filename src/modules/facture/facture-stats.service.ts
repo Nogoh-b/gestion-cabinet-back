@@ -1,4 +1,5 @@
 // src/modules/factures/services/facture-stats.service.ts
+import { enumValue } from 'src/core/shared/utils/enum-value';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
@@ -123,7 +124,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .where('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       });
     this.applyFilters(query, filters, 'facture');
     return query.getCount();
@@ -147,7 +148,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         end: endDate,
       })
       .andWhere(`${alias}.status != :cancelled`, {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       })
       .groupBy(`DATE(${alias}.${dateField})`)
       .orderBy('date', 'ASC');
@@ -170,7 +171,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .createQueryBuilder('facture')
       .select('SUM(facture.montantHT)', 'total')
       .where('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       });
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
@@ -182,7 +183,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .createQueryBuilder('facture')
       .select('SUM(facture.montantTTC)', 'total')
       .where('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       });
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
@@ -193,7 +194,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .select('SUM(facture.montantTTC)', 'total')
-      .where('facture.status = :status', { status: StatutFacture.PAYEE });
+      .where('facture.status = :status', { status: enumValue(StatutFacture.PAYEE) });
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
     return parseFloat(result.total || 0);
@@ -207,17 +208,17 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         'paiement',
         'paiement.status = :valide',
         {
-          valide: StatutPaiement.VALIDE,
+          valide: enumValue(StatutPaiement.VALIDE),
         },
       )
       .select(
         'SUM(facture.montantTTC - COALESCE(paiement.montant, 0))',
         'total',
       )
-      .where('facture.status != :status', { status: StatutFacture.PAYEE });
+      .where('facture.status != :status', { status: enumValue(StatutFacture.PAYEE) });
 
     query.andWhere('facture.status != :cancelled', {
-      cancelled: StatutFacture.ANNULEE,
+      cancelled: enumValue(StatutFacture.ANNULEE),
     });
 
     this.applyFilters(query, filters, 'facture');
@@ -228,23 +229,45 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getPaidCount(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .where('facture.status = :status', { status: StatutFacture.PAYEE });
+      .where('facture.status = :status', { status: enumValue(StatutFacture.PAYEE) });
     this.applyFilters(query, filters, 'facture');
     return query.getCount();
   }
 
-  private async getUnpaidCount(filters?: StatsFilterDto): Promise<number> {
+  /**
+   * Factures émises restant à encaisser (envoyée, partiellement payée,
+   * impayée) : critère partagé par le compteur et la liste « À surveiller ».
+   */
+  private unpaidQuery(filters?: StatsFilterDto): SelectQueryBuilder<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .where('facture.status != :status', { status: StatutFacture.PAYEE })
+      .where('facture.status != :status', { status: enumValue(StatutFacture.PAYEE) })
       .andWhere('facture.status != :brouillon', {
-        brouillon: StatutFacture.BROUILLON,
+        brouillon: enumValue(StatutFacture.BROUILLON),
       })
       .andWhere('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       });
-    this.applyFilters(query, filters, 'facture');
-    return query.getCount();
+    return this.applyFilters(query, filters, 'facture');
+  }
+
+  private async getUnpaidCount(filters?: StatsFilterDto): Promise<number> {
+    return this.unpaidQuery(filters).getCount();
+  }
+
+  /** Page de la liste des factures impayées, échéance la plus ancienne d'abord. */
+  async listUnpaid(
+    page: number,
+    limit: number,
+    filters?: StatsFilterDto,
+  ): Promise<[Facture[], number]> {
+    return this.unpaidQuery(filters)
+      .leftJoinAndSelect('facture.client', 'client')
+      .leftJoinAndSelect('facture.dossier', 'dossier')
+      .orderBy('facture.dateEcheance', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
   }
 
   private async getOverdueCount(filters?: StatsFilterDto): Promise<number> {
@@ -252,12 +275,12 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .where('facture.dateEcheance < :now', { now })
-      .andWhere('facture.status != :status', { status: StatutFacture.PAYEE })
+      .andWhere('facture.status != :status', { status: enumValue(StatutFacture.PAYEE) })
       .andWhere('facture.status != :brouillon', {
-        brouillon: StatutFacture.BROUILLON,
+        brouillon: enumValue(StatutFacture.BROUILLON),
       })
       .andWhere('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       });
     this.applyFilters(query, filters, 'facture');
     return query.getCount();
@@ -272,7 +295,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'total')
       .where('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       })
       .groupBy('facture.status');
 
@@ -328,7 +351,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'total')
       .where('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       })
       .groupBy('invoice_type.name');
 
@@ -369,7 +392,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .addSelect('SUM(facture.montantTTC)', 'total')
       .where('client.id IS NOT NULL')
       .andWhere('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       })
       .groupBy('client.id, client.first_name, client.last_name')
       .orderBy('total', 'DESC')
@@ -398,7 +421,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .addSelect('SUM(facture.montantTTC)', 'total')
       .where('dossier.id IS NOT NULL')
       .andWhere('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       })
       .groupBy('dossier.dossier_number')
       .orderBy('total', 'DESC')
@@ -447,7 +470,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         "CONCAT(client.first_name, ' ', client.last_name)",
       ])
       .where('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       })
       .orderBy('facture.montantTTC', 'DESC')
       .limit(1);
@@ -478,7 +501,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         'paiement',
         'paiement.status = :valide',
         {
-          valide: StatutPaiement.VALIDE,
+          valide: enumValue(StatutPaiement.VALIDE),
         },
       )
       .select([
@@ -491,12 +514,12 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         'paiement.montant',
       ])
       .where('facture.dateEcheance < :now', { now })
-      .andWhere('facture.status != :status', { status: StatutFacture.PAYEE })
+      .andWhere('facture.status != :status', { status: enumValue(StatutFacture.PAYEE) })
       .andWhere('facture.status != :brouillon', {
-        brouillon: StatutFacture.BROUILLON,
+        brouillon: enumValue(StatutFacture.BROUILLON),
       })
       .andWhere('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       });
 
     this.applyFilters(query, filters, 'facture');
@@ -577,13 +600,13 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         'totalPaid',
       )
       .addSelect('COUNT(*)', 'count')
-      .setParameter('paid', StatutFacture.PAYEE)
+      .setParameter('paid', enumValue(StatutFacture.PAYEE))
       .where('facture.dateFacture BETWEEN :start AND :end', {
         start: startDate,
         end: endDate,
       })
       .andWhere('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       })
       .groupBy("DATE_FORMAT(facture.dateFacture, '%Y-%m')")
       .orderBy('month', 'ASC');
@@ -628,15 +651,15 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         'paiement',
         'paiement.status = :valide',
         {
-          valide: StatutPaiement.VALIDE,
+          valide: enumValue(StatutPaiement.VALIDE),
         },
       )
-      .where('facture.status != :status', { status: StatutFacture.PAYEE })
+      .where('facture.status != :status', { status: enumValue(StatutFacture.PAYEE) })
       .andWhere('facture.status != :brouillon', {
-        brouillon: StatutFacture.BROUILLON,
+        brouillon: enumValue(StatutFacture.BROUILLON),
       })
       .andWhere('facture.status != :cancelled', {
-        cancelled: StatutFacture.ANNULEE,
+        cancelled: enumValue(StatutFacture.ANNULEE),
       })
       .orderBy('facture.dateEcheance', 'ASC')
       .limit(20);

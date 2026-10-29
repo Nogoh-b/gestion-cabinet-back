@@ -13,6 +13,7 @@ interface DossierStatsServiceInternals {
   getActiveCount(): Promise<number>;
   getClosedCount(): Promise<number>;
   getArchivedCount(): Promise<number>;
+  countUrgentDossiers(): Promise<number>;
 }
 
 describe('DossierStatsService status filters', () => {
@@ -20,6 +21,9 @@ describe('DossierStatsService status filters', () => {
     const queryBuilder = {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       getCount: jest.fn<() => Promise<number>>().mockResolvedValue(0),
     };
     const repository = {
@@ -58,6 +62,17 @@ describe('DossierStatsService status filters', () => {
     expect(queryBuilder.andWhere).toHaveBeenCalledWith(
       'dossier.lifecycle_phase != :closedPhase',
       { closedPhase: DossierLifecyclePhase.CLOSED },
+    );
+  });
+
+  it('compares the urgent danger levels as text, not as ENUM indexes', async () => {
+    const { service, queryBuilder } = createService();
+
+    await service.countUrgentDossiers();
+
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      '(dossier.danger_level IN (:...highLevels) OR dossier.priority_level >= :highPriority)',
+      { highLevels: ['2', '3'], highPriority: 2 },
     );
   });
 

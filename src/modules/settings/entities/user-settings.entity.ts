@@ -1,4 +1,8 @@
 import {
+  BusinessColumn,
+  BusinessTable,
+} from 'src/core/decorators/business-metadata.decorator';
+import {
   Column,
   Entity,
   JoinColumn,
@@ -10,12 +14,32 @@ import { ApiProperty } from '@nestjs/swagger';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('user_settings')
+// Lecture seule, limitée à l'utilisateur connecté (user_id, voir ai-scoped-tables.ts).
+@BusinessTable({
+  label: 'Mes préférences',
+  description:
+    "Préférences personnelles de l'utilisateur connecté : langue, thème, notifications, éléments par page, tableau de bord par défaut, signature.",
+  category: 'utilisateur',
+  readOnly: true,
+})
 export class UserSettings extends TenantEntity {
   @ApiProperty()
   @PrimaryGeneratedColumn('uuid')
+  @BusinessColumn({
+    label: 'Identifiant',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   id: string;
 
   @Column({ name: 'user_id', type: 'int', nullable: true, unique: true })
+  @BusinessColumn({
+    label: 'Utilisateur',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   user_id: number;
 
   @OneToOne(() => User)
@@ -88,6 +112,12 @@ export class UserSettings extends TenantEntity {
 
   @ApiProperty({ example: null, nullable: true })
   @Column({ type: 'text', nullable: true })
+  @BusinessColumn({
+    label: 'Avatar',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
   user_avatar: string | null;
 
   @ApiProperty({ example: '' })

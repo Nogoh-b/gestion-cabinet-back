@@ -11,6 +11,7 @@ import { UserRole } from 'src/core/enums/user-role.enum';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import {
   Audience,
+  audienceStatusParam,
   AudienceStatus,
 } from 'src/modules/audiences/entities/audience.entity';
 import {
@@ -941,7 +942,11 @@ export class CaseWorkflowService {
         where: {
           tenant_id: tenantId,
           dossier_id: String(dossierId),
-          status: In([AudienceStatus.SCHEDULED, AudienceStatus.POSTPONED]),
+          status: In([
+            AudienceStatus.SCHEDULED,
+            AudienceStatus.IN_PROGRESS,
+            AudienceStatus.POSTPONED,
+          ].map(audienceStatusParam)),
         },
         relations: ['children_audiences'],
       }),
@@ -979,6 +984,7 @@ export class CaseWorkflowService {
     const activeAudiences = audiencesForClosure.filter(
       (audience) =>
         audience.status === AudienceStatus.SCHEDULED ||
+        audience.status === AudienceStatus.IN_PROGRESS ||
         (audience.status === AudienceStatus.POSTPONED &&
           !audience.children_audiences?.length),
     ).length;
@@ -1275,7 +1281,11 @@ export class CaseWorkflowService {
             where: {
               tenant_id: tenantId,
               dossier_id: String(dossierId),
-              status: In([AudienceStatus.SCHEDULED, AudienceStatus.POSTPONED]),
+              status: In([
+            AudienceStatus.SCHEDULED,
+            AudienceStatus.IN_PROGRESS,
+            AudienceStatus.POSTPONED,
+          ].map(audienceStatusParam)),
             },
             relations: ['children_audiences'],
           }),
@@ -1287,6 +1297,7 @@ export class CaseWorkflowService {
       const activeAudiencesNow = audiencesNow.filter(
         (audience) =>
           audience.status === AudienceStatus.SCHEDULED ||
+          audience.status === AudienceStatus.IN_PROGRESS ||
           (audience.status === AudienceStatus.POSTPONED &&
             !audience.children_audiences?.length),
       ).length;

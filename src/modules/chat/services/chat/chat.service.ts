@@ -10,9 +10,14 @@ import { In, Repository } from 'typeorm';
 import {
   BadRequestException,
   ForbiddenException,
+  forwardRef,
+  Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { ChatTranscriptionService } from './chat-transcription.service';
 
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -169,6 +174,9 @@ export class ChatService {
     private userRepository: Repository<Employee>,
     @InjectRepository(Attachment)
     private attachmentRepository: Repository<Attachment>,
+    @Optional()
+    @Inject(forwardRef(() => ChatTranscriptionService))
+    private readonly transcriptionService?: ChatTranscriptionService,
   ) {}
 
   private sanitizeReferences(
@@ -583,6 +591,15 @@ export class ChatService {
         }),
       ),
     );
+
+    // Vocaux : transcription en arrière-plan (file Bull).
+    await this.transcriptionService
+      ?.schedule(savedAttachments)
+      .catch((err) =>
+        new Logger(ChatService.name).warn(
+          `Transcription non planifiée : ${err?.message}`,
+        ),
+      );
 
     return savedAttachments.map((att) => att.id);
   }

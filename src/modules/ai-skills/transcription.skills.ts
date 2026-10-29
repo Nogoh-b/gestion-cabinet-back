@@ -56,16 +56,35 @@ export class TranscrireAudioSkill implements AiSkillHandler {
   constructor(private readonly targets: SkillTargetsService) {}
 
   async run(ctx: AiSkillContext): Promise<AiSkillOutcome> {
-    const transcript = ctx.documents.find((doc) => /^transcription\b/i.test(doc.name))
+    let transcript = ctx.documents.find((doc) => /^transcription\b/i.test(doc.name))
       ?? (ctx.documents.length === 1 ? ctx.documents[0] : undefined);
+    const target = resolveSkillTarget(ctx, TARGETS);
+    const info: TargetInfo | null = target ? await this.targets.load(target).catch(() => null) : null;
+    const checks = ['Transcription automatique : relisez les noms propres, les montants et les dates avant usage.'];
+    // Audience enregistrée (fiche audience) : ses segments transcrits, assemblés.
+    let recorded = false;
+    if (!transcript?.content?.trim() && info?.type === 'audience') {
+      const audience = await this.targets.audienceTranscript(info, ctx.user, Number.MAX_SAFE_INTEGER);
+      if (audience && !audience.assembled.transcribed) {
+        return {
+          type: 'clarify',
+          markdown: `🎙️ Les ${audience.assembled.segments} segment(s) enregistré(s) de l'${info.label.charAt(0).toLowerCase()}${info.label.slice(1)} ne sont pas encore transcrits : lancez la transcription depuis la fiche de l'audience (bloc « Enregistrement »), puis renvoyez la demande.`,
+        };
+      }
+      if (audience) {
+        recorded = true;
+        transcript = { name: `Transcription — ${info.label}`, content: audience.assembled.text };
+        const { missing, inaudible } = audience.assembled;
+        if (missing.length) checks.push(`${missing.length} segment(s) non transcrit(s) : leur contenu manque (repères « contenu manquant » dans le texte).`);
+        if (inaudible) checks.push(`${inaudible} passage(s) inaudible(s) dans l'enregistrement.`);
+      }
+    }
     if (!transcript?.content?.trim()) {
       return {
         type: 'clarify',
         markdown: '🎙️ Aucun enregistrement transcrit dans la demande : utilisez le bouton micro de la saisie (« Enregistrer et transcrire » ou « Transcrire un fichier audio »), puis renvoyez la demande.',
       };
     }
-    const target = resolveSkillTarget(ctx, TARGETS);
-    const info: TargetInfo | null = target ? await this.targets.load(target).catch(() => null) : null;
     const text = transcript.content.trim();
     const words = text.split(/\s+/).filter(Boolean).length;
     const speakers = new Set((text.match(/^intervenant\s*\d+/gim) ?? []).map((item) => item.toLowerCase())).size;
@@ -87,8 +106,8 @@ export class TranscrireAudioSkill implements AiSkillHandler {
         mode: 'document',
         html: documentHtml(transcriptMarkup(text)),
         title: '',
-        sources: [{ name: transcript.name, origin: 'chat' }],
-        checks: ['Transcription automatique : relisez les noms propres, les montants et les dates avant usage.'],
+        sources: [{ name: recorded ? "Enregistrements de l'audience" : transcript.name, origin: recorded ? 'dossier' : 'chat' }],
+        checks,
       },
     };
 
@@ -114,7 +133,16 @@ export class TranscrireAudioSkill implements AiSkillHandler {
         params: { ...source, freeDraft: true, ...targetParam },
       },
       ...(info?.type === 'audience'
-        ? [{ label: "Compte rendu d'audience", skill: 'compte_rendu_audience', question: `Fais le compte rendu de l'audience d'après la transcription « ${base} » :\n${text.slice(0, 15000)}`, ...(targetParam && { params: targetParam }) }]
+        ? [
+            // Enregistrements de l'audience : les compétences relisent eux-mêmes la transcription.
+            { label: "Compte rendu d'audience", skill: 'compte_rendu_audience', question: recorded ? "Fais le compte rendu de l'audience d'après sa transcription." : `Fais le compte rendu de l'audience d'après la transcription « ${base} » :\n${text.slice(0, 15000)}`, ...(targetParam && { params: targetParam }) },
+            ...(recorded
+              ? [
+                  { label: "Rapport d'audience", skill: 'rapport_audience', question: "Rédige le rapport d'audience d'après sa transcription.", params: { ...targetParam, kind: 'rapport' } },
+                  { label: 'Projet de décision', skill: 'projet_decision_audience', question: "Rédige le projet de décision d'après la transcription de l'audience.", params: { ...targetParam } },
+                ]
+              : []),
+          ]
         : []),
     ];
     return {

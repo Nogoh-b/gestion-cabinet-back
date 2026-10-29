@@ -151,6 +151,7 @@ export class JurisdictionStatsService {
       [AudienceStatus.HELD]: 'Tenue',
       [AudienceStatus.POSTPONED]: 'Reportée',
       [AudienceStatus.CANCELLED]: 'Annulée',
+      [AudienceStatus.IN_PROGRESS]: 'En cours',
     };
 
     const statusColors = {
@@ -158,6 +159,7 @@ export class JurisdictionStatsService {
       [AudienceStatus.HELD]: '#10b981',
       [AudienceStatus.POSTPONED]: '#f59e0b',
       [AudienceStatus.CANCELLED]: '#ef4444',
+      [AudienceStatus.IN_PROGRESS]: '#8b5cf6', // violet
     };
 
     const parStatut = Array.from(byStatusMap.entries()).map(

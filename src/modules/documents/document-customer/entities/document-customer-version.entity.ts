@@ -15,8 +15,11 @@ import {
 
 import { DocumentCustomer } from './document-customer.entity';
 
-/** Origine d'une version : dépôt manuel, studio de documents du chat, restauration. */
-export type DocumentVersionSource = 'upload' | 'ai_studio' | 'restore';
+/**
+ * Origine d'une version : dépôt manuel, studio de documents du chat,
+ * éditeur interne (Modifier depuis la visionneuse), restauration.
+ */
+export type DocumentVersionSource = 'upload' | 'ai_studio' | 'editor' | 'restore';
 
 /**
  * Fichier remplacé d'un document classé. Le document garde son id (liens
@@ -93,7 +96,7 @@ export class DocumentCustomerVersion extends TenantEntity {
   @Column({ type: 'varchar', length: 20, default: 'upload' })
   @BusinessColumn({
     label: 'Origine',
-    description: 'upload = fichier remplacé à la main, ai_studio = modifié avec le studio IA, restore = restauration',
+    description: 'upload = fichier remplacé à la main, ai_studio = modifié avec le studio IA, editor = modifié dans l’éditeur interne, restore = restauration',
     importance: 'medium',
     group: 'versioning',
   })
@@ -102,6 +105,11 @@ export class DocumentCustomerVersion extends TenantEntity {
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({ label: 'Commentaire', description: 'Note sur la modification', importance: 'medium', group: 'contenu' })
   comment: string | null;
+
+  /** Source HTML de l'éditeur interne pour cette version (lue à la demande). */
+  @Column({ name: 'content_html', type: 'longtext', nullable: true, select: false })
+  @BusinessColumn({ label: 'Source HTML', description: "Contenu de l'éditeur interne", importance: 'low', group: 'contenu', ignored: true })
+  content_html: string | null;
 
   @Column({ name: 'created_by_id', type: 'int', nullable: true })
   @BusinessColumn({ label: 'Auteur', description: 'Utilisateur qui a remplacé le fichier', importance: 'low', group: 'audit', ignored: true })

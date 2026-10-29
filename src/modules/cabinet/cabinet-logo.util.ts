@@ -88,6 +88,18 @@ export function writeLogoFile(
   return `${LOGO_SUBDIR}/${filename}`;
 }
 
+/**
+ * Réécrit le fichier logo depuis le blob s'il a disparu du disque.
+ * Renvoie `true` si le fichier a été restauré.
+ */
+export function restoreLogoFile(relPath: string, buffer: Buffer): boolean {
+  const full = normalize(join(UPLOAD_PATH, relPath));
+  if (!full.startsWith(normalize(UPLOAD_PATH)) || existsSync(full)) return false;
+  mkdirSync(join(full, '..'), { recursive: true });
+  writeFileSync(full, buffer);
+  return true;
+}
+
 /** Supprime le fichier logo (best-effort, ignore les erreurs). */
 export function deleteLogoFile(relPath?: string | null): void {
   if (!relPath) return;

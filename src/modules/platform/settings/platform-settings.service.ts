@@ -12,6 +12,14 @@ import {
   isThemeName,
 } from 'src/modules/settings/appearance.constants';
 import { WorkflowEngine } from 'src/modules/case-workflow/case-workflow.enums';
+import {
+  CABINET_SIDEBAR_DEFAULTS,
+  CABINET_SIDEBAR_METRICS,
+} from './cabinet-sidebar.setting';
+import {
+  AUDIO_RECORDING_DEFAULTS,
+  sanitizeAudioRecordingPatch,
+} from './audio-recording.setting';
 
 /** Valeurs par défaut (et typage) des paramètres plateforme modifiables. */
 export const PLATFORM_SETTING_DEFAULTS = {
@@ -54,6 +62,10 @@ export const PLATFORM_SETTING_DEFAULTS = {
   workflow: {
     new_cabinet_engine: WorkflowEngine.ACTIONS_V2 as WorkflowEngine,
   },
+  /** Bloc « formule » de la sidebar des cabinets (tous les cabinets). */
+  cabinet_sidebar: { ...CABINET_SIDEBAR_DEFAULTS },
+  /** Enregistrement audio segmenté des audiences (tous les cabinets). */
+  audio: { ...AUDIO_RECORDING_DEFAULTS },
 };
 
 export type PlatformSettings = typeof PLATFORM_SETTING_DEFAULTS;
@@ -143,6 +155,26 @@ export class PlatformSettingsService {
       !Object.values(WorkflowEngine).includes(value.new_cabinet_engine)
     ) {
       throw new BadRequestException('Parcours des nouveaux cabinets invalide.');
+    }
+    if (key === 'cabinet_sidebar') {
+      const out: Record<string, any> = {};
+      for (const flag of ['plan_block_visible', 'plan_block_clickable'] as const) {
+        if (value[flag] !== undefined) out[flag] = value[flag] === true;
+      }
+      if (value.plan_block_metric !== undefined) {
+        if (!CABINET_SIDEBAR_METRICS.includes(value.plan_block_metric)) {
+          throw new BadRequestException('Jauge du bloc formule invalide.');
+        }
+        out.plan_block_metric = value.plan_block_metric;
+      }
+      return out;
+    }
+    if (key === 'audio') {
+      try {
+        return sanitizeAudioRecordingPatch(value);
+      } catch (error) {
+        throw new BadRequestException((error as Error).message);
+      }
     }
     if (key === 'appearance') {
       const invalid = (field: string) => {

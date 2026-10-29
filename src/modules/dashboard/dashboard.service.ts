@@ -8,6 +8,7 @@ import { FactureStatsService } from '../facture/facture-stats.service';
 import { CustomerStatsService } from '../customer/customer/customer-stats.service';
 import { EmployeeStatsService } from '../agencies/employee/employee-stats.service';
 import { DashboardOverviewDto } from './dto/dashboard-overview.dto';
+import { DashboardWatchlistService } from './dashboard-watchlist.service';
 import {
   RestrictedFieldsUser,
   seesAllRestrictedFields,
@@ -52,6 +53,7 @@ export class DashboardService {
     private factureStatsService: FactureStatsService,
     private customerStatsService: CustomerStatsService,
     private employeeStatsService: EmployeeStatsService,
+    private watchlistService: DashboardWatchlistService,
   ) {}
 
   async getOverview(
@@ -85,6 +87,7 @@ export class DashboardService {
       factures,
       clients,
       employes,
+      actionsEnRetard,
     ] = await Promise.all([
       safely('dossiers', () => this.dossierStatsService.getStats()),
       safely('audiences', () => this.audienceStatsService.getStats()),
@@ -95,6 +98,7 @@ export class DashboardService {
         : null,
       safely('clients', () => this.customerStatsService.getStats()),
       safely('employes', () => this.employeeStatsService.getStats()),
+      safely('actions', () => this.watchlistService.countOverdueActions()),
     ]);
 
     return {
@@ -109,7 +113,7 @@ export class DashboardService {
       }),
       alerts: this.buildAlerts({
         dossiers,
-        diligences,
+        actionsEnRetard,
         factures,
         documents,
         audiences,
@@ -151,8 +155,12 @@ export class DashboardService {
 
   private buildAlerts(data: any): DashboardOverviewDto['alerts'] {
     return {
-      dossiersUrgents: data.dossiers?.urgentDossiers?.length || 0,
-      diligencesEnRetard: data.diligences?.overdue || 0,
+      // Volumétrie réelle : `urgentDossiers` est un aperçu plafonné à 10.
+      dossiersUrgents:
+        data.dossiers?.urgentDossiersTotal ??
+        data.dossiers?.urgentDossiers?.length ??
+        0,
+      actionsEnRetard: data.actionsEnRetard || 0,
       facturesImpayees: data.factures?.unpaidCount || 0,
       documentsEnAttente: data.documents?.pendingValidation || 0,
       audiencesAJour:

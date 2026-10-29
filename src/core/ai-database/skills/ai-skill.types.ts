@@ -104,8 +104,8 @@ export interface DocumentDraft {
   /** Dossier où classer le PDF généré. */
   dossierId?: number;
   dossierLabel?: string;
-  /** Audience visée : le document classé est rangé dans ses documents. */
-  audience?: { id: number; label: string; past: boolean };
+  /** Audience visée : le document classé est rangé dans ses documents ; avec `saveAs`, la carte propose de l'enregistrer dans le rapport ou la décision de l'audience. */
+  audience?: { id: number; label: string; past: boolean; saveAs?: 'report' | 'decision' };
   fileName: string;
   /** Variables du modèle remplies par l'IA (subject, bodyContent…). */
   variables: Record<string, string>;

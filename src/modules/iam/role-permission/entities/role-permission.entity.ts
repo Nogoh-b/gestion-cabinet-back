@@ -1,3 +1,4 @@
+import { BusinessTable } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Entity, ManyToOne, JoinColumn, Column, PrimaryColumn } from 'typeorm';
 
@@ -8,6 +9,13 @@ import { UserRole } from '../../user-role/entities/user-role.entity';
 // filtrées par WHERE tenant_id = X, comme Permission et UserRole.
 // Pas de @SharedAcrossTenants — sinon doublons via IN (1, X).
 @Entity('role_permission')
+@BusinessTable({
+  label: 'Droits des rôles',
+  description:
+    'Association rôle → droit : role_id (user_role.id), permission_id (permission.id).',
+  category: 'iam',
+  readOnly: true,
+})
 export class RolePermission extends TenantEntity {
   @PrimaryColumn({ unsigned: true, type: 'int' })
   role_id: number;

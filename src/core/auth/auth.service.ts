@@ -133,7 +133,7 @@ export class AuthService {
       try {
         user = await this.usersService.findByEmail(username);
       } catch {
-        throw new UnauthorizedException('Identifiants invalides EMAIL');
+        throw new UnauthorizedException('E-mail ou mot de passe incorrect.');
       }
 
       if (!user || !user.password) {
@@ -145,7 +145,7 @@ export class AuthService {
       // ── Vérification du mot de passe ───────────────────────────────
       const isPasswordValid = await bcrypt.compare(pass, user.password);
       if (!isPasswordValid) {
-        throw new UnauthorizedException('Identifiants invalides MOT DE PASSE');
+        throw new UnauthorizedException('E-mail ou mot de passe incorrect.');
       }
 
       // ── Vérification d'appartenance au cabinet ───────────────
@@ -188,11 +188,11 @@ export class AuthService {
           this.usersService.findAllByEmail(username),
         );
       } catch {
-        throw new UnauthorizedException('Identifiants invalides EMAIL');
+        throw new UnauthorizedException('E-mail ou mot de passe incorrect.');
       }
 
       if (!candidates || candidates.length === 0) {
-        throw new UnauthorizedException('Identifiants invalides EMAIL');
+        throw new UnauthorizedException('E-mail ou mot de passe incorrect.');
       }
 
       let matched: any = null;
@@ -207,7 +207,7 @@ export class AuthService {
       }
 
       if (!matched) {
-        throw new UnauthorizedException('Identifiants invalides MOT DE PASSE');
+        throw new UnauthorizedException('E-mail ou mot de passe incorrect.');
       }
       user = matched;
 

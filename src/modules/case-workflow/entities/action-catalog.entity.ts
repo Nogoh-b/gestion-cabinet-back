@@ -109,7 +109,7 @@ export class ActionDefinition extends TenantEntity {
   })
   id: string;
 
-  @Column({ name: 'family_id', type: 'varchar' })
+  @Column({ name: 'family_id', type: 'varchar', length: 36 })
   @BusinessColumn({
     label: 'Famille d’actions',
     description:

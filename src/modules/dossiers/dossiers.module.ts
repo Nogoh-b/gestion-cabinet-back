@@ -25,6 +25,7 @@ import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.r
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { DossierSubscriber } from './subscribers/dossier.subscriber';
 import { DossierChatSyncService } from './dossier-chat-sync.service';
+import { DossierDeletionService } from './deletion/dossier-deletion.service';
 import { Conversation } from '../chat/entities/conversation.entity';
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { PlansModule } from '../plans/plans.module';
@@ -70,9 +71,11 @@ import { DossierBillingProfile } from '../case-workflow/entities/billing.entity'
     DossierWriteHandler,
     DossierChatSyncService,
     DossierSubscriber,
+    DossierDeletionService,
   ],
   exports: [
     DossiersService,
+    DossierDeletionService,
     DossierChatSyncService,
     DossierStatsService,
     DossierAccessGrantsService,

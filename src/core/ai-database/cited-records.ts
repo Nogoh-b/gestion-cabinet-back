@@ -40,6 +40,7 @@ const TABLE_TO_TYPE: Record<string, string> = {
   diligences: 'diligence',
   supplier: 'supplier',
   referrer: 'referrer',
+  cabinets: 'cabinet',
 };
 
 /** Type du chat → table (références des messages utilisateur : mentions @). */

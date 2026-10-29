@@ -32,7 +32,10 @@ describe('injectTenantConditions', () => {
   });
 
   it('applique aussi la tolérance aux référentiels partagés joints en externe', () => {
-    const service = serviceWithTables(['dossiers', 'audience_types'], ['audience_types']);
+    const service = serviceWithTables(
+      ['dossiers', 'audience_types'],
+      ['audience_types'],
+    );
     const sql = service.injectTenantConditions(
       'SELECT d.id FROM dossiers d LEFT OUTER JOIN audience_types t ON t.id = d.type_id',
       25,
@@ -44,7 +47,13 @@ describe('injectTenantConditions', () => {
     // Synthèse de dossier générée par DeepSeek : le premier WHERE du texte est
     // celui d'une sous-requête. Il était pris pour le WHERE principal → SQL
     // invalide → « aucune donnée » sur un dossier pourtant renseigné.
-    const service = serviceWithTables(['dossiers', 'customer', 'dossier_actions', 'audiences', 'user']);
+    const service = serviceWithTables([
+      'dossiers',
+      'customer',
+      'dossier_actions',
+      'audiences',
+      'user',
+    ]);
     const sql = service.injectTenantConditions(
       [
         'SELECT d.dossier_number,',
@@ -68,7 +77,9 @@ describe('injectTenantConditions', () => {
       'WHERE (d.id = 92 AND d.tenant_id = 25) AND ((u.tenant_id = 25 OR u.tenant_id IS NULL))\nLIMIT 50',
     );
     // Aucun alias de sous-requête dans le filtre principal.
-    const mainWhere = sql.split('\n').find((line: string) => line.startsWith('WHERE'));
+    const mainWhere = sql
+      .split('\n')
+      .find((line: string) => line.startsWith('WHERE'));
     expect(mainWhere).not.toMatch(/\b(?:da|a)\.tenant_id/);
   });
 
@@ -78,8 +89,12 @@ describe('injectTenantConditions', () => {
       'SELECT d.id, (SELECT a.audience_date FROM audiences a WHERE a.dossier_id = d.id ORDER BY a.audience_date LIMIT 1) AS prochaine FROM dossiers d ORDER BY d.id LIMIT 50',
       25,
     );
-    expect(sql).toContain('WHERE (a.dossier_id = d.id) AND (a.tenant_id = 25)\nORDER BY a.audience_date LIMIT 1)');
-    expect(sql).toContain('FROM dossiers d WHERE d.tenant_id = 25\nORDER BY d.id LIMIT 50');
+    expect(sql).toContain(
+      'WHERE (a.dossier_id = d.id) AND (a.tenant_id = 25)\nORDER BY a.audience_date LIMIT 1)',
+    );
+    expect(sql).toContain(
+      'FROM dossiers d WHERE d.tenant_id = 25\nORDER BY d.id LIMIT 50',
+    );
   });
 
   it('filtre chaque branche d’une UNION et ignore les mots entre guillemets', () => {
@@ -88,16 +103,78 @@ describe('injectTenantConditions', () => {
       "SELECT d.id FROM dossiers d WHERE d.object = 'appel (WHERE x' UNION ALL SELECT f.id FROM factures f",
       25,
     );
-    expect(sql).toContain("WHERE (d.object = 'appel (WHERE x') AND (d.tenant_id = 25) UNION ALL");
+    expect(sql).toContain(
+      "WHERE (d.object = 'appel (WHERE x') AND (d.tenant_id = 25) UNION ALL",
+    );
     expect(sql).toMatch(/FROM factures f WHERE f\.tenant_id = 25$/);
   });
 
-  it("ne réinjecte rien quand le filtre est déjà dans la clause ON", () => {
+  it('ne réinjecte rien quand le filtre est déjà dans la clause ON', () => {
     const service = serviceWithTables(['dossiers', 'jurisdictions']);
     const sql = service.injectTenantConditions(
       'SELECT d.id FROM dossiers d LEFT JOIN jurisdictions j ON j.id = d.jurisdiction_id AND j.tenant_id = 25 WHERE d.tenant_id = 25',
       25,
     );
     expect(sql).not.toContain('IS NULL');
+  });
+});
+
+describe('injectTenantConditions — tables sans tenant_id et personnelles', () => {
+  it('limite cabinets à la ligne du cabinet courant', () => {
+    const service = serviceWithTables(['dossiers']);
+    const sql = service.injectTenantConditions(
+      'SELECT c.rccm FROM cabinets c LIMIT 50',
+      25,
+    );
+    expect(sql).toBe(
+      'SELECT c.rccm FROM cabinets c WHERE c.`id` = 25\nLIMIT 50',
+    );
+  });
+
+  it('ne laisse pas un OR contourner le filtre du cabinet', () => {
+    const service = serviceWithTables([]);
+    const sql = service.injectTenantConditions(
+      'SELECT name FROM cabinets WHERE id = 3 OR 1 = 1',
+      25,
+    );
+    expect(sql).toBe(
+      'SELECT name FROM cabinets WHERE (id = 3 OR 1 = 1) AND (cabinets.`id` = 25)',
+    );
+  });
+
+  it('filtre aussi le cabinet 1 et une table jointe par virgule', () => {
+    const service = serviceWithTables(['dossiers']);
+    const sql = service.injectTenantConditions(
+      'SELECT d.id, c.name FROM dossiers d, cabinets c WHERE c.id = d.tenant_id',
+      1,
+    );
+    expect(sql).toContain('c.`id` = 1');
+  });
+
+  it("filtre la seconde table d'un FROM à virgules", () => {
+    const service = serviceWithTables(['dossiers', 'factures']);
+    const sql = service.injectTenantConditions(
+      'SELECT d.id FROM dossiers d, factures f WHERE f.dossier_id = d.id',
+      25,
+    );
+    expect(sql).toContain('d.tenant_id = 25 AND f.tenant_id = 25');
+  });
+
+  it('rattache abonnements et échéances au cabinet par cabinet_id', () => {
+    const service = serviceWithTables([]);
+    const sql = service.injectTenantConditions(
+      'SELECT s.status FROM subscriptions s JOIN subscription_payments p ON p.subscription_id = s.id',
+      25,
+    );
+    expect(sql).toContain('s.`cabinet_id` = 25 AND p.`cabinet_id` = 25');
+  });
+
+  it("sans utilisateur connu, aucune notification n'est lisible", () => {
+    const service = serviceWithTables(['notifications']);
+    const sql = service.injectTenantConditions(
+      'SELECT n.title FROM notifications n',
+      25,
+    );
+    expect(sql).toContain('n.tenant_id = 25 AND n.`user_id` = 0');
   });
 });

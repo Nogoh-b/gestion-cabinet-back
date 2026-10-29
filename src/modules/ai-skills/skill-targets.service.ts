@@ -22,6 +22,12 @@ import { Paiement } from '../paiement/entities/paiement.entity';
 import { summarizeInvoices } from '../facture/invoice-totals';
 import { BillableItem, DossierBillingProfile } from '../case-workflow/entities/billing.entity';
 import { BillableItemStatus } from '../case-workflow/case-workflow.enums';
+import {
+  AssembledTranscript,
+  AudienceTranscriptService,
+  TRANSCRIPT_DEFAULT_MAX,
+  transcriptFacts,
+} from '../audiences/recordings/audience-transcript.service';
 
 /** Type de mention → `linkedEntity.type` de l'historique des e-mails. */
 const MAIL_ENTITY_TYPES: Record<AiSkillTargetType, string> = {
@@ -47,6 +53,7 @@ const AUDIENCE_STATUS_LABELS: Record<number, string> = {
   1: 'tenue',
   2: 'renvoyée',
   3: 'annulée',
+  4: 'en cours',
 };
 
 const DILIGENCE_STATUS_LABELS: Record<string, string> = {
@@ -213,7 +220,24 @@ export class SkillTargetsService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @Optional() private readonly permissions?: AiDatabasePermissionService,
+    @Optional() private readonly transcripts?: AudienceTranscriptService,
   ) {}
+
+  /**
+   * Transcription assemblée des enregistrements d'une audience, avec le droit
+   * de voir les audiences (null sinon, ou sans enregistrement). L'audience a
+   * déjà été chargée par `load` (cabinet et confidentialité vérifiés).
+   */
+  async audienceTranscript(
+    info: TargetInfo,
+    user?: any,
+    max = TRANSCRIPT_DEFAULT_MAX,
+  ): Promise<{ assembled: AssembledTranscript; facts: string } | null> {
+    if (info.type !== 'audience' || !this.transcripts || !(await this.can(user, 'view_audiences'))) return null;
+    const assembled = await this.transcripts.assemble(Number(info.id)).catch(() => null);
+    if (!assembled?.segments) return null;
+    return { assembled, facts: transcriptFacts(assembled, max) };
+  }
 
   async load(target: SkillTarget): Promise<TargetInfo> {
     const repo = <T extends object>(entity: new () => T) => this.dataSource.getRepository<T>(entity);
@@ -303,9 +327,11 @@ export class SkillTargetsService {
   /**
    * Faits utiles à la rédaction (aucun montant inventé : seulement ceux
    * enregistrés). Pour un dossier (ou un client), l'activité menée : actions,
-   * audiences passées, diligences et pièces, selon les droits de `user`.
+   * audiences passées, diligences et pièces, selon les droits de `user`. Pour
+   * une audience enregistrée, sa transcription (bornée à `transcriptMax`
+   * caractères, troncature signalée ; 0 pour ne pas la joindre).
    */
-  async facts(info: TargetInfo, user?: any, question?: string): Promise<string> {
+  async facts(info: TargetInfo, user?: any, question?: string, options: { transcriptMax?: number } = {}): Promise<string> {
     const topics = requestTopics(question);
     const lines: string[] = [];
     const { client, dossier, resource } = info;
@@ -357,7 +383,11 @@ export class SkillTargetsService {
       if (resource.decision) lines.push(`Décision : ${resource.decision}`);
       if (resource.outcome) lines.push(`Issue : ${resource.outcome}`);
       if (resource.postponed_to) lines.push(`Renvoyée au : ${dateFr(resource.postponed_to)}`);
-      if (resource.notes) lines.push(`Notes : ${String(resource.notes).slice(0, 1500)}`);
+      if (resource.notes) lines.push(`Notes : ${htmlToText(String(resource.notes)).slice(0, 1500)}`);
+      if (options.transcriptMax !== 0) {
+        const transcript = await this.audienceTranscript(info, user, options.transcriptMax ?? TRANSCRIPT_DEFAULT_MAX);
+        if (transcript) lines.push(transcript.facts);
+      }
     }
     if (info.type === 'diligence') {
       lines.push(`Diligence : ${resource.title}${resource.deadline ? ` — échéance ${dateFr(resource.deadline)}` : ''}`);

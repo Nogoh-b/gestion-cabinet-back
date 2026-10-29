@@ -50,7 +50,12 @@ export class SubscriptionEvent {
   @Column({ type: 'varchar', length: 40 })
   type: SubscriptionEventType;
 
-  @Column({ type: 'varchar', length: 20, name: 'actor_type', default: 'system' })
+  @Column({
+    type: 'varchar',
+    length: 20,
+    name: 'actor_type',
+    default: 'system',
+  })
   actor_type: SubscriptionActorType;
 
   @Column({ type: 'int', name: 'actor_id', nullable: true })

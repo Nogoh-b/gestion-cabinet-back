@@ -17,6 +17,7 @@ import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { CabinetService } from 'src/modules/cabinet/cabinet.service';
 import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
+import { StorageUsageService } from 'src/modules/plans/storage-usage.service';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { CustomerResponseDto } from 'src/modules/customer/customer/dto/customer-response.dto';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
@@ -26,6 +27,7 @@ import { DossiersService } from 'src/modules/dossiers/dossiers.service';
 
 import { DossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dto';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { User } from 'src/modules/iam/user/entities/user.entity';
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
 import { Repository } from 'typeorm';
@@ -52,6 +54,7 @@ import { UpdateDocumentCustomerDto } from './dto/update-document-customer.dto';
 import {
   DocumentCustomer,
   DocumentCustomerStatus,
+  documentOriginFromMetadata,
 } from './entities/document-customer.entity';
 import {
   DocumentCustomerVersion,
@@ -73,6 +76,14 @@ export interface DocumentVersionView {
   comment: string | null;
   created_by: { id: number; name: string } | null;
   created_at: Date | null;
+}
+
+/** Options d'une nouvelle version (origine, commentaire, nom, source HTML de l'éditeur). */
+export interface VersionOptions {
+  source?: DocumentVersionSource;
+  comment?: string;
+  name?: string;
+  content_html?: string | null;
 }
 
 /** Émis quand le cabinet valide ou refuse un document en attente. */
@@ -100,6 +111,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     // private stepsService: StepsService,
     private cabinetService: CabinetService,
     private planQuotaService: PlanQuotaService,
+    private storageUsage: StorageUsageService,
     @Optional() private readonly eventEmitter?: EventEmitter2,
     @Optional()
     @InjectRepository(DocumentCustomerVersion)
@@ -108,25 +120,9 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     super(docRepository, paginationService);
   }
 
-  /** Volume total déjà stocké (octets) par le cabinet courant, versions archivées comprises. */
+  /** Volume total déjà stocké (octets) par le cabinet courant : calcul unique de StorageUsageService. */
   private async currentStorageBytes(): Promise<number> {
-    let qb = this.docRepository
-      .createQueryBuilder('d')
-      .select('COALESCE(SUM(d.file_size), 0)', 'total');
-    qb = addTenantCondition(qb, 'd');
-    const row = await qb.getRawOne<{ total: string }>();
-    let archived = 0;
-    if (this.versionRepository) {
-      let versions = this.versionRepository
-        .createQueryBuilder('v')
-        .select('COALESCE(SUM(v.file_size), 0)', 'total');
-      versions = addTenantCondition(versions, 'v');
-      const archivedRow = await versions
-        .getRawOne<{ total: string }>()
-        .catch(() => null);
-      archived = Number(archivedRow?.total ?? 0) || 0;
-    }
-    return (Number(row?.total ?? 0) || 0) + archived;
+    return this.storageUsage.getUsedBytes(getCurrentTenantId());
   }
 
   protected getDefaultSearchOptions(): SearchOptions {
@@ -193,6 +189,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
         'customer',
         'document_type',
         'uploaded_by',
+        'updated_by',
         'dossier',
         'category',
       ], // si tu veux inclure les relations
@@ -317,10 +314,8 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
 
       // ── Quota de stockage : refuse l'upload AVANT d'écrire le fichier ──────
       if (tenantId && file?.size) {
-        const used = await this.currentStorageBytes();
         await this.planQuotaService.checkStorageLimit(
           tenantId,
-          used,
           Number(file.size) || 0,
         );
       }
@@ -554,6 +549,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     }
 
     // 7. Versioning : seul un nouveau fichier change la version (cf. replaceFile).
+    if (userId) existing.updated_by_id = userId;
     const saved = await this.docRepository.save(existing);
     return plainToInstance(DocumentCustomerResponseDto, saved);
   }
@@ -569,7 +565,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     id: number,
     file: Express.Multer.File,
     userId?: number,
-    options: { source?: DocumentVersionSource; comment?: string; name?: string } = {},
+    options: VersionOptions = {},
   ): Promise<DocumentCustomerResponseDto> {
     if (!file) {
       throw new BadRequestException('Aucun fichier fourni pour la nouvelle version');
@@ -586,11 +582,56 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     return plainToInstance(DocumentCustomerResponseDto, saved);
   }
 
+  /** Contenu de départ de l'éditeur interne (source HTML de la version courante). */
+  async getEditorContent(id: number): Promise<{
+    id: number;
+    name: string;
+    version: number;
+    origin: DocumentCustomer['origin'];
+    file_mimetype: string | null;
+    content_html: string | null;
+  }> {
+    const document = await this.docRepository.findOne({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        version: true,
+        origin: true,
+        file_mimetype: true,
+        content_html: true,
+      },
+    });
+    if (!document) {
+      throw new NotFoundException(`Document avec l'ID ${id} introuvable`);
+    }
+    return {
+      id: document.id,
+      name: document.name,
+      version: document.version ?? 1,
+      origin: document.origin ?? 'imported',
+      file_mimetype: document.file_mimetype ?? null,
+      content_html: document.content_html ?? null,
+    };
+  }
+
+  /** Source HTML enregistrée d'un document ou d'une version (colonne non chargée par défaut). */
+  private async storedHtml(
+    repository: Repository<any> | undefined,
+    where: Record<string, unknown>,
+  ): Promise<string | null> {
+    if (!repository) return null;
+    const row = await repository
+      .findOne({ where, select: { id: true, content_html: true } })
+      .catch(() => null);
+    return typeof row?.content_html === 'string' ? row.content_html : null;
+  }
+
   /** Versions du document, la courante en premier. */
   async listVersions(id: number): Promise<DocumentVersionView[]> {
     const document = await this.docRepository.findOne({
       where: { id },
-      relations: ['uploaded_by'],
+      relations: ['uploaded_by', 'updated_by'],
     });
     if (!document) {
       throw new NotFoundException(`Document avec l'ID ${id} introuvable`);
@@ -613,10 +654,17 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
           ).trim()
         : '';
     const currentAuthorId = Number(meta.version_by ?? document.uploaded_by_id) || null;
-    const currentAuthor =
-      currentAuthorId && currentAuthorId === document.uploaded_by_id
-        ? document.uploaded_by
-        : null;
+    let currentAuthor: User | null = null;
+    if (currentAuthorId && currentAuthorId === document.uploaded_by_id) {
+      currentAuthor = document.uploaded_by;
+    } else if (currentAuthorId && currentAuthorId === Number(document.updated_by_id)) {
+      currentAuthor = document.updated_by ?? null;
+    } else if (currentAuthorId) {
+      currentAuthor =
+        (await this.docRepository.manager
+          ?.findOne(User, { where: { id: currentAuthorId } })
+          .catch(() => null)) ?? null;
+    }
     return [
       {
         id: null,
@@ -685,6 +733,10 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       : null;
     if (!version) throw new NotFoundException('Version introuvable');
     const { buffer, mimeType, name } = await this.readVersionFile(id, versionId);
+    const contentHtml = await this.storedHtml(this.versionRepository, {
+      id: versionId,
+      document_id: id,
+    });
     const file = {
       buffer,
       size: buffer.length,
@@ -697,6 +749,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       source: 'restore',
       comment: `Restauration de la version ${version.version}`,
       name: version.name,
+      content_html: contentHtml,
     });
   }
 
@@ -708,13 +761,12 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     existing: DocumentCustomer,
     file: Express.Multer.File,
     userId?: number,
-    options: { source?: DocumentVersionSource; comment?: string; name?: string } = {},
+    options: VersionOptions = {},
   ): Promise<void> {
     const tenantId = getCurrentTenantId();
     if (tenantId && file?.size) {
       await this.planQuotaService.checkStorageLimit(
         tenantId,
-        await this.currentStorageBytes(),
         Number(file.size) || 0,
       );
     }
@@ -742,10 +794,18 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
           file_mimetype: existing.file_mimetype ?? null,
           source: (meta.version_source as DocumentVersionSource) ?? 'upload',
           comment: meta.version_comment ?? null,
+          content_html: await this.storedHtml(this.docRepository, { id: existing.id }),
           created_by_id: Number(meta.version_by ?? existing.uploaded_by_id) || null,
         }),
       );
     }
+
+    // Un fichier déposé sans source HTML rend l'ancienne source obsolète.
+    existing.content_html = options.content_html?.trim() ? options.content_html : null;
+    if (options.source === 'editor' || options.source === 'ai_studio') {
+      existing.origin = 'internal';
+    }
+    if (userId) existing.updated_by_id = userId;
 
     const version = (existing.version ?? 1) + 1;
     existing.name = name;
@@ -1011,6 +1071,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     is_confidential?: boolean;
     notify_client?: boolean;
     metadata?: string | Record<string, any>;
+    content_html?: string;
   }): Promise<DocumentCustomer | any> {
     const {
       document_type,
@@ -1048,6 +1109,12 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       } catch (error) {
         documentData.metadata = { error: 'Invalid JSON format' };
       }
+    }
+
+    // Rédigé dans l'éditeur (« Rédiger », studio IA) : versions gérées en interne.
+    documentData.origin = documentOriginFromMetadata(documentData.metadata);
+    if (typeof documentData.content_html !== 'string' || !documentData.content_html.trim()) {
+      delete documentData.content_html;
     }
 
     const document = this.docRepository.create(documentData);

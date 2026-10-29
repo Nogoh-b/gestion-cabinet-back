@@ -1,4 +1,5 @@
 // src/modules/dossiers/services/dossier-stats.service.ts
+import { enumValue } from 'src/core/shared/utils/enum-value';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, SelectQueryBuilder } from 'typeorm';
@@ -38,7 +39,7 @@ import {
  */
 const dossierStatusValue = (status: DossierStatus): string => String(status);
 
-const ACTIVE_DOSSIER_STATUSES = [
+export const ACTIVE_DOSSIER_STATUSES = [
   DossierStatus.OPEN,
   DossierStatus.PRELIMINARY_ANALYSIS,
   DossierStatus.AMICABLE,
@@ -350,7 +351,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     // actual_costs = total des factures du dossier (calculé dynamiquement).
     // On évite toute référence directe à la colonne stockée `actual_costs`
     // pour rester robuste si elle n'a pas encore été synchronisée par TypeORM.
-    const facturesSumExpr = `(SELECT COALESCE(SUM(f.montant_ttc), 0) FROM factures f WHERE f.dossier_id = dossier.id AND f.deleted_at IS NULL AND f.status <> ${StatutFacture.ANNULEE})`;
+    const facturesSumExpr = `(SELECT COALESCE(SUM(f.montant_ttc), 0) FROM factures f WHERE f.dossier_id = dossier.id AND f.deleted_at IS NULL AND f.status <> '${enumValue(StatutFacture.ANNULEE)}')`;
 
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
@@ -540,12 +541,19 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     }));
   }
 
-  private async getUrgentDossiers(filters?: StatsFilterDto): Promise<any[]> {
+  /**
+   * Critère unique des « dossiers urgents » : dossier actif, non clôturé, de
+   * danger élevé/critique ou de priorité ≥ 2. Partagé par l'aperçu du tableau
+   * de bord, le compteur « À surveiller » et sa page de liste — le nombre
+   * affiché et la liste ouverte ne peuvent donc pas diverger.
+   */
+  private urgentDossiersQuery(
+    filters?: StatsFilterDto,
+  ): SelectQueryBuilder<Dossier> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
       .leftJoinAndSelect('dossier.client', 'client')
       .leftJoinAndSelect('dossier.lawyer', 'lawyer')
-      .leftJoinAndSelect('dossier.audiences', 'audience')
       .where(
         '(dossier.workflow_engine = :v2Engine OR dossier.status IN (:...activeStatuses))',
         {
@@ -559,18 +567,41 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .andWhere(
         '(dossier.danger_level IN (:...highLevels) OR dossier.priority_level >= :highPriority)',
         {
-          highLevels: [DangerLevel.Eleve, DangerLevel.Critique],
+          highLevels: [DangerLevel.Eleve, DangerLevel.Critique].map(enumValue),
           highPriority: 2,
         },
       )
       .orderBy('dossier.danger_level', 'DESC')
       .addOrderBy('dossier.priority_level', 'DESC')
-      .addOrderBy('dossier.opening_date', 'ASC')
-      .limit(10);
+      .addOrderBy('dossier.opening_date', 'ASC');
 
-    this.applyFilters(query, filters, 'dossier');
+    return this.applyFilters(query, filters, 'dossier');
+  }
 
-    const results = await query.getMany();
+  /** Nombre réel de dossiers urgents (sans le plafond de l'aperçu). */
+  async countUrgentDossiers(filters?: StatsFilterDto): Promise<number> {
+    return this.urgentDossiersQuery(filters).getCount();
+  }
+
+  /** Page de la liste complète des dossiers urgents (« À surveiller »). */
+  async listUrgentDossiers(
+    page: number,
+    limit: number,
+    filters?: StatsFilterDto,
+  ): Promise<[Dossier[], number]> {
+    return this.urgentDossiersQuery(filters)
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+  }
+
+  private async getUrgentDossiers(filters?: StatsFilterDto): Promise<any[]> {
+    // `take` (et non `limit`) : avec la jointure des audiences, `limit`
+    // tronquerait les lignes SQL jointes, pas les dossiers.
+    const results = await this.urgentDossiersQuery(filters)
+      .leftJoinAndSelect('dossier.audiences', 'audience')
+      .take(10)
+      .getMany();
 
     return results.map((d) => {
       // Prochaine audience = audience PROGRAMMÉE à venir. `AudienceStatus.HELD`
@@ -977,6 +1008,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       timelineStats,
       recentDossiers,
       urgentDossiers,
+      urgentDossiersTotal,
     ] = await Promise.all([
       this.getTotalCount(filters),
       this.getActiveCount(filters),
@@ -993,6 +1025,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       this.getTimelineStats(filters),
       this.getRecentDossiers(filters),
       this.getUrgentDossiers(filters),
+      this.countUrgentDossiers(filters),
     ]);
 
     return {
@@ -1012,6 +1045,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       timelineStats,
       recentDossiers,
       urgentDossiers,
+      urgentDossiersTotal,
     };
   }
 }

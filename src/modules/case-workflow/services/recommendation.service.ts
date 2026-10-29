@@ -145,9 +145,11 @@ export class RecommendationService {
         )[0]?.definition_code ?? null;
 
     const activeAudiences = audiences.filter((item) =>
-      [AudienceStatus.SCHEDULED, AudienceStatus.POSTPONED].includes(
-        item.status,
-      ),
+      [
+        AudienceStatus.SCHEDULED,
+        AudienceStatus.IN_PROGRESS,
+        AudienceStatus.POSTPONED,
+      ].includes(item.status),
     );
     const dates = activeAudiences
       .map((item) => new Date(item.postponed_to ?? item.audience_date))
