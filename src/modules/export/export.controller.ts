@@ -29,7 +29,7 @@ export class ExportController {
 
   /** Exports conservés sur le serveur : les siens, ou tous ceux du cabinet pour un administrateur. */
   @Get()
-  @RequirePermissions('view_dossiers')
+  @RequirePermissions('export_dossier')
   @ApiOperation({ summary: 'Lister mes exports de dossiers' })
   list(@CurrentUser() user: any) {
     return this.store.list(user);
@@ -37,7 +37,7 @@ export class ExportController {
 
   /** Export ZIP d'un dossier (documents + factures + paiements + métadonnées). */
   @Get('dossiers/:id')
-  @RequirePermissions('view_dossiers')
+  @RequirePermissions('export_dossier')
   @ApiOperation({ summary: 'Exporter un dossier en ZIP' })
   exportOne(
     @Param('id', ParseIntPipe) id: number,
@@ -49,7 +49,7 @@ export class ExportController {
 
   /** Export ZIP de plusieurs dossiers (?ids=1,2,3) — un dossier par sous-dossier. */
   @Get('dossiers')
-  @RequirePermissions('view_dossiers')
+  @RequirePermissions('export_dossier')
   @ApiOperation({
     summary:
       'Exporter plusieurs dossiers en ZIP (ids séparés par des virgules)',
@@ -68,7 +68,7 @@ export class ExportController {
 
   /** Retélécharge un export déjà produit. */
   @Get(':id/download')
-  @RequirePermissions('view_dossiers')
+  @RequirePermissions('export_dossier')
   @ApiOperation({ summary: 'Télécharger un export conservé' })
   async download(
     @Param('id', ParseIntPipe) id: number,
@@ -81,7 +81,7 @@ export class ExportController {
 
   /** Supprime le ZIP et sa ligne : l'espace est libéré. */
   @Delete(':id')
-  @RequirePermissions('view_dossiers')
+  @RequirePermissions('export_dossier')
   @ApiOperation({ summary: 'Supprimer un export (fichier + enregistrement)' })
   async remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     await this.store.remove(id, user);

@@ -17,6 +17,10 @@ export const PERMISSION_DEFINITIONS: {
   { code: 'edit_dossier', description: 'Modifier un dossier' },
   { code: 'delete_dossier', description: 'Supprimer un dossier' },
   {
+    code: 'export_dossier',
+    description: 'Exporter des dossiers (archive ZIP hors-ligne avec SQL) et gérer ses exports',
+  },
+  {
     code: 'assign_dossier',
     description: 'Assigner un dossier à un avocat',
   },
@@ -76,6 +80,10 @@ export const PERMISSION_DEFINITIONS: {
   {
     code: 'mark_audience_held',
     description: 'Marquer une audience comme tenue',
+  },
+  {
+    code: 'record_audience',
+    description: "Enregistrer le son d'une audience, transcrire et supprimer les enregistrements",
   },
 
   // ===================================================================

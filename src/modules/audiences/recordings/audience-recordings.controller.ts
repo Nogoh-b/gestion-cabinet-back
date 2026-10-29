@@ -107,7 +107,7 @@ export class AudienceRecordingsController {
   }
 
   @Post(':id/recordings')
-  @RequirePermissions('edit_audience')
+  @RequirePermissions('record_audience')
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: "Téléverser un segment audio de l'audience" })
   @UseInterceptors(RecordingUploadPrecheck, recordingUpload)
@@ -141,7 +141,7 @@ export class AudienceRecordingsController {
   }
 
   @Post(':id/recordings/:rid/transcribe')
-  @RequirePermissions('edit_audience')
+  @RequirePermissions('record_audience')
   @ApiOperation({ summary: 'Transcrire un segment audio' })
   transcribe(
     @Param('id', ParseIntPipe) id: number,
@@ -152,7 +152,7 @@ export class AudienceRecordingsController {
   }
 
   @Delete(':id/recordings/:rid')
-  @RequirePermissions('edit_audience')
+  @RequirePermissions('record_audience')
   @ApiOperation({ summary: 'Supprimer un segment audio' })
   remove(
     @Param('id', ParseIntPipe) id: number,
@@ -163,7 +163,7 @@ export class AudienceRecordingsController {
   }
 
   @Delete(':id/recordings')
-  @RequirePermissions('edit_audience')
+  @RequirePermissions('record_audience')
   @ApiOperation({ summary: "Supprimer tous les enregistrements de l'audience" })
   removeAll(
     @Param('id', ParseIntPipe) id: number,

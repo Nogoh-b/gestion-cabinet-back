@@ -78,6 +78,14 @@ export class AudiencesController {
     return await this.audiencesService.findInProgress(user);
   }
 
+  // 🔴 Suivi en direct - GET /audiences/live (avant `:id`)
+  @Get('live')
+  @RequirePermissions('view_audiences')
+  @ApiOperation({ summary: "Audiences en cours et programmées d'hier à demain (barre du haut)" })
+  async findLive(@CurrentUser() user: DossierScopeUser) {
+    return await this.audiencesService.findLive(user);
+  }
+
   // ✅ SEARCH - GET /audiences/search
   @Get('/search')
   @RequirePermissions('view_audiences')
@@ -155,7 +163,7 @@ export class AudiencesController {
 
   /** ⏹️ TERMINER - POST /audiences/:id/finish (IN_PROGRESS → HELD) */
   @Post(':id/finish')
-  @RequirePermissions('edit_audience')
+  @RequirePermissions('mark_audience_held')
   @ApiOperation({ summary: "Terminer l'audience (statut Tenue)" })
   @ApiResponse({ status: 201, type: AudienceResponseDto })
   async finish(

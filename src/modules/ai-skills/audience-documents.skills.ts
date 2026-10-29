@@ -7,7 +7,7 @@ import type { AiSkillContext, AiSkillDefinition, AiSkillHandler, AiSkillOutcome 
 import { htmlToText, todayFr } from 'src/core/ai-database/skills/skill-helpers';
 import { normalizeSkillText } from 'src/core/ai-database/skills/skill-suggestions';
 import { Permission } from 'src/core/enums/permission.enum';
-import { Audience } from '../audiences/entities/audience.entity';
+import { Audience, AudienceStatus } from '../audiences/entities/audience.entity';
 import { documentHtml, parseSectionedAnswer } from './document-markup';
 import {
   CARD_HINT,
@@ -120,6 +120,14 @@ export async function draftAudienceDocument(
   const audience = info.resource;
   const spec = KINDS[kind];
 
+  // Les documents se rédigent après l'audience : elle doit être « Tenue ».
+  if (audience && Number(audience.status) !== AudienceStatus.HELD) {
+    return {
+      type: 'clarify',
+      markdown: `⏳ Le ${spec.title.charAt(0).toLowerCase()}${spec.title.slice(1)} se rédige après l'audience : terminez d'abord l'${info.label.charAt(0).toLowerCase()}${info.label.slice(1)} (« Terminer l'audience » ou « Marquer tenue »), puis relancez.`,
+    };
+  }
+
   ctx.status("🎙️ Lecture de la transcription de l'audience…");
   const transcript = await deps.targets.audienceTranscript(info, ctx.user, TRANSCRIPT_BUDGET);
   const notes = clip(audience?.notes, 6000);
@@ -214,7 +222,7 @@ export class RapportAudienceSkill implements AiSkillHandler {
     description: "Rapport ou procès-verbal rédigé d'après l'enregistrement transcrit et les notes de l'audience",
     icon: 'clipboard-list',
     category: 'rapports',
-    permissions: [Permission.VIEW_AUDIENCES],
+    permissions: [Permission.EDIT_AUDIENCE],
     targets: ['audience', 'dossier'],
     targetRequired: true,
     placeholder: "Mentionnez l'audience avec @ ; précisez « procès-verbal » pour un PV",
@@ -242,7 +250,7 @@ export class ProjetDecisionAudienceSkill implements AiSkillHandler {
     description: "Projet de décision (dispositif) d'après les débats transcrits de l'audience et le dossier",
     icon: 'gavel',
     category: 'rapports',
-    permissions: [Permission.VIEW_AUDIENCES],
+    permissions: [Permission.EDIT_AUDIENCE],
     targets: ['audience', 'dossier'],
     targetRequired: true,
     placeholder: "Mentionnez l'audience avec @ et précisez éventuellement les demandes à trancher",

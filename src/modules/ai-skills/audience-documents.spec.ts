@@ -102,6 +102,19 @@ describe('Projet de décision d’audience', () => {
     expect(prompt.match(/Transcription automatique de l'audience/g)?.length).toBe(1);
   });
 
+  it.each([
+    ['programmée', 0],
+    ['en cours', 4],
+  ])('audience %s : refuse de rédiger avant la fin de l’audience', async (_label, status) => {
+    const deps = targets({ resource: { status } });
+    const context = ctx();
+    const outcome: any = await new ProjetDecisionAudienceSkill(deps as any, dataSource()).run(context);
+    expect(outcome.type).toBe('clarify');
+    expect(outcome.markdown).toContain('après l');
+    expect(deps.audienceTranscript).not.toHaveBeenCalled();
+    expect((context.llm as any).draft).not.toHaveBeenCalled();
+  });
+
   it('sans transcription ni notes : demande d’enregistrer ou de saisir des notes', async () => {
     const deps = targets({ transcript: assembled([{ status: RecordingTranscriptStatus.PENDING }]) });
     const context = ctx();
