@@ -2,6 +2,7 @@ import { TenantContext } from 'src/core/tenant/tenant.context';
 import {
   Audience,
   AudienceStatus,
+  audienceStatusParam,
 } from 'src/modules/audiences/entities/audience.entity';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import {
@@ -38,6 +39,23 @@ const INACTIVE_DOSSIER_STATUSES = new Set<number>([
 
 /** Durée de conservation du journal des alertes envoyées. */
 const DISPATCH_RETENTION_DAYS = 90;
+
+/** Rappel « l'audience commence bientôt » : dans 30 min au plus. */
+export const AUDIENCE_SOON_MINUTES = 30;
+/** Alerte « audience non démarrée » : 10 min après l'heure prévue… */
+export const AUDIENCE_LATE_MINUTES = 10;
+/** …et au plus 2 h après (pas d'alerte pour une audience oubliée depuis longtemps). */
+export const AUDIENCE_LATE_MAX_MINUTES = 120;
+
+/**
+ * Alerte due pour une audience programmée, `minutesUntil` minutes avant son
+ * heure prévue (négatif : heure passée) : 'soon', 'late' ou null.
+ */
+export function imminentAudienceAlert(minutesUntil: number): 'soon' | 'late' | null {
+  if (minutesUntil > 0 && minutesUntil <= AUDIENCE_SOON_MINUTES) return 'soon';
+  if (-minutesUntil >= AUDIENCE_LATE_MINUTES && -minutesUntil <= AUDIENCE_LATE_MAX_MINUTES) return 'late';
+  return null;
+}
 
 /**
  * ReminderScheduler — pousse les alertes proactives (rappels d'audience,
@@ -79,6 +97,17 @@ export class ReminderScheduler {
     );
   }
 
+  /**
+   * Audiences imminentes — toutes les 5 min : une notification 30 min avant,
+   * une autre si l'audience n'est pas démarrée 10 min après l'heure prévue.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async runImminentAudienceAlerts(): Promise<void> {
+    await this.forEachActiveCabinet((cabinetId) =>
+      this.alertImminentAudiences(cabinetId),
+    );
+  }
+
   /** Échéances (diligences + délais de recours) — chaque jour à 7 h. */
   @Cron(CronExpression.EVERY_DAY_AT_7AM)
   async runDeadlineAlerts(): Promise<void> {
@@ -114,7 +143,8 @@ export class ReminderScheduler {
 
   private async remindAudiences(cabinetId: number): Promise<void> {
     const candidates = await this.audienceRepo.find({
-      where: { reminder_sent: false, status: AudienceStatus.SCHEDULED },
+      // Colonne ENUM ('0'..'4') : un nombre serait lu comme un index d'enum.
+      where: { reminder_sent: false, status: audienceStatusParam(AudienceStatus.SCHEDULED) },
       relations: ['dossier', 'dossier.collaborators'],
     });
     // Fenêtre de rappel : audience à venir dans ≤ 48 h. On calcule ici plutôt
@@ -161,6 +191,61 @@ export class ReminderScheduler {
         `[Reminder] cabinet=${cabinetId} — ${due.length} rappel(s) d'audience`,
       );
     }
+  }
+
+  /**
+   * Audiences programmées d'hier à demain : « commence dans X min » (≤ 30 min)
+   * et « non démarrée » (10 min à 2 h après l'heure prévue). Une seule fois
+   * chacune ; la clé contient la date et l'heure, donc une audience déplacée
+   * est rappelée de nouveau. Destinataires : avocat et collaborateurs du dossier.
+   */
+  private async alertImminentAudiences(cabinetId: number): Promise<void> {
+    const candidates = await this.audienceRepo.find({
+      where: {
+        status: audienceStatusParam(AudienceStatus.SCHEDULED),
+        audience_date: Between(this.dayKey(this.shiftDays(-1)), this.dayKey(this.shiftDays(1))) as any,
+      },
+      relations: ['dossier', 'dossier.collaborators'],
+    });
+
+    const now = Date.now();
+    let sent = 0;
+    for (const a of candidates) {
+      const when = this.audienceDateTime(a);
+      if (!when) continue;
+      const minutesUntil = Math.round((when.getTime() - now) / 60_000);
+      const alert = imminentAudienceAlert(minutesUntil);
+      if (!alert) continue;
+      const recipients = this.uniqueIds([
+        a.dossier?.lawyer_id,
+        ...(a.dossier?.collaborators?.map((c) => c.id) ?? []),
+      ]);
+      if (!recipients.length) continue;
+      const slot = `${this.dayKey(a.audience_date)}T${a.audience_time ?? ''}`;
+      if (!(await this.claim(cabinetId, `audience_${alert}`, `${a.id}:${slot}`, this.dayKey(when))))
+        continue;
+
+      const dossier = a.dossier?.dossier_number ?? a.dossier_id;
+      const room = a.room ? ` (salle ${a.room})` : '';
+      await this.notifications.createBulk(
+        {
+          user_ids: recipients,
+          type: NotificationType.AUDIENCE_REMINDER,
+          title: alert === 'soon' ? `Audience dans ${minutesUntil} min` : 'Audience non démarrée',
+          content:
+            alert === 'soon'
+              ? `L'audience du dossier ${dossier} commence à ${a.audience_time}${room}.`
+              : `L'audience du dossier ${dossier} prévue à ${a.audience_time}${room} n'a pas été démarrée.`,
+          data: { audienceId: a.id, dossierId: a.dossier_id, alert, minutesUntil },
+          link: `/audiences/${a.id}`,
+          priority: alert === 'soon' ? 'HIGH' : 'URGENT',
+        },
+        SYSTEM_SENDER_ID,
+      );
+      sent++;
+    }
+    if (sent)
+      this.logger.log(`[Reminder] cabinet=${cabinetId} — ${sent} alerte(s) d'audience imminente`);
   }
 
   // ── Diligences à échoir / en retard ──────────────────────────────────────
@@ -420,6 +505,13 @@ export class ReminderScheduler {
     const timePart = a.audience_time?.trim() || '00:00';
     const dt = new Date(`${datePart}T${timePart}`);
     return isNaN(dt.getTime()) ? null : dt;
+  }
+
+  /** Aujourd'hui décalé de `days` jours. */
+  private shiftDays(days: number): Date {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return date;
   }
 
   private dateWindow(days: number): { startToday: Date; inDays: Date } {
