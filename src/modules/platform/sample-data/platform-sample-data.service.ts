@@ -100,6 +100,15 @@ const ACTION_STATUSES = ['TODO', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELL
 /** Document : 1 accepté, 0 en attente, 2 refusé. */
 const DOCUMENT_STATUSES = [1, 1, 0, 2];
 const DOCUMENT_NAMES = ['Assignation', 'Contrat signé', 'Mise en demeure', 'Procès-verbal', 'Conclusions', 'Pièce d’identité'];
+/** Classement de chaque document de test : code de catégorie et nom de nature du référentiel seedé. */
+const DOCUMENT_CLASSIFICATION: Record<string, { category: string; type: string }> = {
+  'Assignation': { category: 'LITIGATION_INITIATION', type: 'Assignation' },
+  'Contrat signé': { category: 'CONTRACT_BASIC', type: 'Acte sous seing privé' },
+  'Mise en demeure': { category: 'CORRESPONDENCE_LEGAL', type: "Acte d'avocat" },
+  'Procès-verbal': { category: 'EVIDENCE_DOCUMENTARY', type: 'Procès-verbal' },
+  'Conclusions': { category: 'LITIGATION_MOTIONS', type: 'Conclusions' },
+  'Pièce d’identité': { category: 'EVIDENCE_DOCUMENTARY', type: "Acte d'état civil" },
+};
 /** Facture : 0 brouillon, 1 envoyée, 2 partiellement payée, 3 payée, 4 impayée, 5 annulée. */
 const INVOICE_STATUSES = [0, 1, 2, 3, 4, 5, 3];
 const AI_QUESTIONS = [
@@ -673,10 +682,13 @@ export class PlatformSampleDataService {
   private async createDocuments(c: Ctx, dossiers: any[]) {
     const cabinetDir = FilesUtil.sanitizeName(c.cabinet.name || 'cabinet').toLowerCase() || 'cabinet';
     const base = (process.env.APP_URL ?? '').replace(/\/+$/, '');
+    const classification = await this.documentClassification(c);
     let n = 0;
     for (const [i, d] of dossiers.entries()) {
       for (let k = 0; k < (i % 2) + 1; k++) {
-        const name = `[TEST] ${pick(DOCUMENT_NAMES, i + k)}`;
+        const label = pick(DOCUMENT_NAMES, i + k);
+        const name = `[TEST] ${label}`;
+        const { categoryId, typeId } = classification.get(label) ?? { categoryId: null, typeId: null };
         const rel = `${UPLOAD_DOCS_FOLDER_NAME}/${cabinetDir}/${d.number}/Tests/${FilesUtil.sanitizeName(name)}-${c.tag}-${k + 1}.pdf`;
         const full = join(UPLOAD_PATH, rel);
         const pdf = samplePdf(`${name} — dossier ${d.number}`);
@@ -685,9 +697,9 @@ export class PlatformSampleDataService {
         c.files.push(full);
         const res = await c.m.query(
           `INSERT INTO document_customer (name, description, file_path, file_url, file_size, file_mimetype, status,
-                                          dossier_id, customer_id, uploaded_by_id, version, is_current_version,
-                                          uploaded_at, origin, tenant_id)
-           VALUES (?, ?, ?, ?, ?, 'application/pdf', ?, ?, ?, ?, 1, 1, NOW(), 'imported', ?)`,
+                                          dossier_id, customer_id, uploaded_by_id, category_id, document_type_id,
+                                          version, is_current_version, uploaded_at, origin, tenant_id)
+           VALUES (?, ?, ?, ?, ?, 'application/pdf', ?, ?, ?, ?, ?, ?, 1, 1, NOW(), 'imported', ?)`,
           [
             name,
             'Document fictif généré pour les tests.',
@@ -698,6 +710,8 @@ export class PlatformSampleDataService {
             d.id,
             d.client_id,
             c.actorUserId,
+            categoryId,
+            typeId,
             c.tenantId,
           ],
         );
@@ -706,6 +720,39 @@ export class PlatformSampleDataService {
       }
     }
     c.created.documents = n;
+  }
+
+  /**
+   * Catégorie et nature de chaque document de test, prises dans le référentiel
+   * du cabinet (sinon le référentiel global, tenant 1) ; null si absentes.
+   */
+  private async documentClassification(c: Ctx) {
+    const entries = Object.entries(DOCUMENT_CLASSIFICATION);
+    const codes = [...new Set(entries.map(([, v]) => v.category))];
+    const names = [...new Set(entries.map(([, v]) => v.type))];
+    // Les lignes du cabinet passent avant celles du référentiel global.
+    const categories: Array<{ id: number; code: string }> = await c.m.query(
+      `SELECT id, code FROM document_categories
+        WHERE tenant_id IN (1, ?) AND deleted_at IS NULL AND code IN (${marks(codes)})
+        ORDER BY tenant_id = 1, id`,
+      [c.tenantId, ...codes],
+    );
+    const types: Array<{ id: number; name: string }> = await c.m.query(
+      `SELECT id, name FROM document_type
+        WHERE tenant_id IN (1, ?) AND deleted_at IS NULL AND name IN (${marks(names)})
+        ORDER BY tenant_id = 1, id`,
+      [c.tenantId, ...names],
+    );
+    const first = <T,>(rows: T[], match: (row: T) => boolean) => rows.find(match) ?? null;
+    return new Map(
+      entries.map(([label, { category, type }]) => [
+        label,
+        {
+          categoryId: first(categories, (r) => r.code === category)?.id ?? null,
+          typeId: first(types, (r) => r.name === type)?.id ?? null,
+        },
+      ]),
+    );
   }
 
   private async createAiDiscussions(c: Ctx, dossiers: any[]) {
