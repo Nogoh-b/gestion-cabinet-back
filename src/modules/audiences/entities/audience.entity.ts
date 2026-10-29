@@ -30,7 +30,17 @@ export enum AudienceStatus {
   HELD = 1,
   POSTPONED = 2,
   CANCELLED = 3,
+  /** Posée par « Démarrer » (started_at), quittée par « Terminer » (→ HELD). */
+  IN_PROGRESS = 4,
 }
+
+/**
+ * Valeur d'un statut à LIER dans une requête. MariaDB stocke l'enum en texte
+ * ('0'..'4') : un paramètre numérique serait lu comme un INDEX d'enum (4 →
+ * '3'), donc la valeur doit partir sous forme de chaîne.
+ */
+export const audienceStatusParam = (status: AudienceStatus): AudienceStatus =>
+  String(status) as unknown as AudienceStatus;
 
 export enum AudienceType1 {
   HEARING = 0,
@@ -132,11 +142,29 @@ export class Audience extends BaseEntity {
   @BusinessColumn({
     label: 'Statut',
     description:
-      'BD: 0=SCHEDULED/Programmée, 1=HELD/Tenue, 2=POSTPONED/Reportée, 3=CANCELLED/Annulée.',
+      'BD: 0=SCHEDULED/Programmée, 1=HELD/Tenue, 2=POSTPONED/Reportée, 3=CANCELLED/Annulée, 4=IN_PROGRESS/En cours.',
     importance: 'critical',
     group: 'état',
   })
   status: AudienceStatus;
+
+  @Column({ name: 'started_at', type: 'datetime', nullable: true })
+  @BusinessColumn({
+    label: 'Démarrée le',
+    description: "Horodatage du clic « Démarrer l'audience » (statut En cours)",
+    importance: 'medium',
+    group: 'dates',
+  })
+  started_at: Date | null;
+
+  @Column({ name: 'ended_at', type: 'datetime', nullable: true })
+  @BusinessColumn({
+    label: 'Terminée le',
+    description: "Horodatage du clic « Terminer l'audience » (statut Tenue)",
+    importance: 'medium',
+    group: 'dates',
+  })
+  ended_at: Date | null;
 
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({
@@ -249,6 +277,9 @@ export class Audience extends BaseEntity {
     name: 'audience_documents',
     joinColumn: { name: 'audience_id', referencedColumnName: 'id' },
     inverseJoinColumn: { name: 'document_id', referencedColumnName: 'id' },
+    // Schéma porté par AudienceDocumentLink (colonne `phase` en plus) : sans
+    // ça, `synchronize` supprime `phase` de la table de jointure.
+    synchronize: false,
   })
   documents: DocumentCustomer[];
 
@@ -559,6 +590,7 @@ export class Audience extends BaseEntity {
       [AudienceStatus.HELD]: 'Tenue',
       [AudienceStatus.POSTPONED]: 'Reportée',
       [AudienceStatus.CANCELLED]: 'Annulée',
+      [AudienceStatus.IN_PROGRESS]: 'En cours',
     };
     return labels[this.status] || 'Inconnu';
   }

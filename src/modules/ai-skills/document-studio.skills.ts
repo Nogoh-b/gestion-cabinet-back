@@ -39,7 +39,7 @@ import {
   readFrameTitle,
   templateVariableNames,
 } from './document-markup';
-import { pastedText, senderLine, str } from './skill-drafting';
+import { AUDIENCE_TRANSCRIPT_RULES, pastedText, senderLine, str } from './skill-drafting';
 import { customerName, draftAudience, SkillTargetsService, TargetInfo } from './skill-targets.service';
 import { pdfText } from './skill-templates';
 import { editsTemplate, refersToEarlierTemplate, TEMPLATE_EDIT_PATTERN, templateCitedEarlier, templateCitedIn } from './template-search';
@@ -107,7 +107,7 @@ export function withoutLeadingTitle(html: string, title: string): string {
 /** Champ rédigé (plusieurs paragraphes), par opposition à une valeur courte. */
 const RICH_VARIABLE = /(body|content|contenu|corps|texte|text|clause|expose|faits|moyens|motifs|dispositif|observations|developpement|argument|conditions|stipulations)/i;
 
-const MARKUP_RULES = `Mise en forme (balisage simple, jamais de HTML ni de bloc de code) :
+export const MARKUP_RULES = `Mise en forme (balisage simple, jamais de HTML ni de bloc de code) :
 - « # Titre » pour le titre principal (centré), « ## » pour les parties (I., Article 1…), « ### » pour les sous-parties.
 - Paragraphes séparés par une ligne vide ; **gras**, *italique*, __souligné__.
 - Listes : « - » ou « 1. » en début de ligne. Tableau : lignes « | colonne | colonne | » avec une ligne « |---|---| » sous l'en-tête.
@@ -128,7 +128,7 @@ const KEEP_RULES = `- Repères de mise en forme, à recopier tels quels avec le 
 /** Police et taille du texte de tout le document (notes de la réponse), appliquées à la mise en page. */
 const LAYOUT_NOTES = `Champs facultatifs des notes, pour tout le document : « POLICE: <une de : ${LAYOUT_FONT_NAMES.join(', ')} — Arial et Times New Roman ne valent que pour un passage> » et « TAILLE: <taille du texte en points, 9 à 14> ».`;
 
-const DRAFT_FORMAT = `Réponds EXACTEMENT dans ce format : le document complet d'abord, puis une ligne ===NOTES=== suivie des notes.
+export const DRAFT_FORMAT = `Réponds EXACTEMENT dans ce format : le document complet d'abord, puis une ligne ===NOTES=== suivie des notes.
 
 # TITRE DU DOCUMENT
 (le document complet)
@@ -140,7 +140,7 @@ A_VERIFIER:
 - point à vérifier ou blanc « ……… » à compléter avant usage
 PIECES: numéros des pièces du dossier utilisées (ex. 1, 3), ou aucune`;
 
-const STUDIO_RULES = `Règles :
+export const STUDIO_RULES = `Règles :
 - Rédige le document EN ENTIER, prêt à être relu puis signé ou déposé : toutes les parties, mentions et clauses d'usage pour ce type de document, dans l'ordre habituel (droit OHADA et camerounais, sauf autre indication). Pas de plan, pas de résumé, pas de commentaire autour du document.
 - Appuie-toi sur les pièces et les informations fournies : noms, qualités, adresses, dates, montants et références exacts, repris fidèlement.
 - N'invente AUCUN fait, nom, date, montant, numéro ni référence. Une information indispensable absente des pièces s'écrit « ……… » (blanc à compléter) et figure dans A_VERIFIER.
@@ -274,7 +274,7 @@ export function sourcesPhrase(sources: StudioSources['sources']): string {
 // ── Outils communs ──────────────────────────────────────────────────────────
 
 /** Rédaction longue en flux si le chat le permet, sinon appel simple. */
-async function writeLong(ctx: AiSkillContext, prompt: string, options: { maxTokens?: number; live?: boolean } = {}): Promise<string> {
+export async function writeLong(ctx: AiSkillContext, prompt: string, options: { maxTokens?: number; live?: boolean } = {}): Promise<string> {
   ctx.status('✍️ Rédaction en cours…');
   return ctx.llm.draft
     ? ctx.llm.draft(prompt, options)
@@ -295,7 +295,7 @@ async function writeLongJson<T extends Record<string, any>>(ctx: AiSkillContext,
   throw new BadRequestException("Le remplissage du modèle n'a pas abouti : reformulez la demande ou réessayez.");
 }
 
-function studioFileName(base: string, info?: TargetInfo | null): string {
+export function studioFileName(base: string, info?: TargetInfo | null): string {
   const clean = base.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Document';
   const suffix = info?.dossier?.dossier_number ?? (info?.client ? customerName(info.client) : '');
   return `${clean}${suffix && !clean.includes(suffix) ? ` - ${suffix}` : ''}`.slice(0, 120);
@@ -315,7 +315,7 @@ function layoutOf(template: PdfTemplate): StudioLayout {
 }
 
 /** Brouillon studio : champs communs de la carte Document. */
-function studioDraft(input: {
+export function studioDraft(input: {
   name: string;
   fileName: string;
   info?: TargetInfo | null;
@@ -344,9 +344,9 @@ function studioDraft(input: {
 }
 
 /** Mode d'emploi commun du message qui accompagne la carte. */
-const CARD_HINT = "Relisez-le dans la carte : aperçu, modifications (à la main ou en demandant à l'IA), puis téléchargement **Word** ou **PDF**";
+export const CARD_HINT = "Relisez-le dans la carte : aperçu, modifications (à la main ou en demandant à l'IA), puis téléchargement **Word** ou **PDF**";
 
-function checksMarkdown(checks: string[]): string {
+export function checksMarkdown(checks: string[]): string {
   return checks.length ? `\n\n**À vérifier avant usage**\n${checks.slice(0, 8).map((item) => `- ${item}`).join('\n')}` : '';
 }
 
@@ -896,7 +896,8 @@ async function draftStudioDocument(
   if (!guide) ctx.step?.('template', '📄 Aucun modèle du cabinet utilisé', 'aucun : rédaction libre');
   ctx.status('⚖️ Recherche des textes applicables…');
   const legal = await legalBlock(ctx, `${ctx.question} ${info?.dossier?.object ?? ''}`.slice(0, 1500));
-  const facts = info ? await deps.targets.facts(info, ctx.user, ctx.question) : '';
+  // Audience enregistrée : transcription plus longue que dans les autres faits (rédaction complète).
+  const facts = info ? await deps.targets.facts(info, ctx.user, ctx.question, { transcriptMax: 60_000 }) : '';
   ctx.status('🧠 Analyse des pièces et rédaction…');
   const text = await writeLong(ctx, `Tu es avocat dans un cabinet (droit OHADA, Cameroun) et tu rédiges le document demandé, complet et prêt à l'emploi.
 
@@ -918,6 +919,8 @@ ${legal}
 ${ctx.userContext ? `\n${ctx.userContext}` : ''}
 
 ${STUDIO_RULES}
+${info?.type === 'audience' ? `
+${AUDIENCE_TRANSCRIPT_RULES}` : ''}
 
 ${MARKUP_RULES}
 

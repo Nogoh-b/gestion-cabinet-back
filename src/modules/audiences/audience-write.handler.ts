@@ -23,6 +23,7 @@ import {
   WriteableFieldSchema,
   ValidationResult,
 } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import { applyAudienceStatusChange } from './audience-workflow';
 
 /**
  * Handler custom pour les audiences.
@@ -348,6 +349,10 @@ export class AudienceWriteHandler extends BaseWriteHandler {
       };
     }
 
+    // Entrée/sortie du statut « En cours » (mêmes règles que Démarrer/Terminer).
+    if (safeFields.status !== undefined && safeFields.status !== null) {
+      applyAudienceStatusChange(audience, safeFields.status);
+    }
     Object.assign(audience, safeFields);
 
     // Transitions auto

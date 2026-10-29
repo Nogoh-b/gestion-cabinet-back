@@ -16,6 +16,10 @@ import {
   CABINET_SIDEBAR_DEFAULTS,
   CABINET_SIDEBAR_METRICS,
 } from './cabinet-sidebar.setting';
+import {
+  AUDIO_RECORDING_DEFAULTS,
+  sanitizeAudioRecordingPatch,
+} from './audio-recording.setting';
 
 /** Valeurs par défaut (et typage) des paramètres plateforme modifiables. */
 export const PLATFORM_SETTING_DEFAULTS = {
@@ -60,6 +64,8 @@ export const PLATFORM_SETTING_DEFAULTS = {
   },
   /** Bloc « formule » de la sidebar des cabinets (tous les cabinets). */
   cabinet_sidebar: { ...CABINET_SIDEBAR_DEFAULTS },
+  /** Enregistrement audio segmenté des audiences (tous les cabinets). */
+  audio: { ...AUDIO_RECORDING_DEFAULTS },
 };
 
 export type PlatformSettings = typeof PLATFORM_SETTING_DEFAULTS;
@@ -162,6 +168,13 @@ export class PlatformSettingsService {
         out.plan_block_metric = value.plan_block_metric;
       }
       return out;
+    }
+    if (key === 'audio') {
+      try {
+        return sanitizeAudioRecordingPatch(value);
+      } catch (error) {
+        throw new BadRequestException((error as Error).message);
+      }
     }
     if (key === 'appearance') {
       const invalid = (field: string) => {

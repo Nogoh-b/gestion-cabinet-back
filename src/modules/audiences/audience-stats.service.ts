@@ -55,6 +55,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     return {
       total,
       scheduled: byStatus.find((s) => s.name === 'Planifiée')?.value || 0,
+      inProgress: byStatus.find((s) => s.name === 'En cours')?.value || 0,
       held: byStatus.find((s) => s.name === 'Tenue')?.value || 0,
       postponed: byStatus.find((s) => s.name === 'Reportée')?.value || 0,
       cancelled: byStatus.find((s) => s.name === 'Annulée')?.value || 0,
@@ -90,6 +91,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       [AudienceStatus.HELD]: 'Tenue',
       [AudienceStatus.POSTPONED]: 'Reportée',
       [AudienceStatus.CANCELLED]: 'Annulée',
+      [AudienceStatus.IN_PROGRESS]: 'En cours',
     };
 
     const statusColors = {
@@ -97,6 +99,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       [AudienceStatus.HELD]: '#10b981',
       [AudienceStatus.POSTPONED]: '#f59e0b',
       [AudienceStatus.CANCELLED]: '#ef4444',
+      [AudienceStatus.IN_PROGRESS]: '#8b5cf6', // violet
     };
 
     return results.map((r) => ({

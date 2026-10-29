@@ -39,13 +39,23 @@ import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import {
   Audience,
+  audienceStatusParam,
   AudienceStatus,
   AudienceType1,
 } from './entities/audience.entity';
 import { PlanQuotaService } from '../plans/plan-quota.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
-import { postponeAudienceWithManager } from './audience-workflow';
+import {
+  applyAudienceStatusChange,
+  finishAudienceWithManager,
+  postponeAudienceWithManager,
+  startAudienceWithManager,
+} from './audience-workflow';
+import {
+  DossierScopeUser,
+  dossierRoleScope,
+} from '../dossiers/dossier-role-scope';
 
 @Injectable()
 export class AudiencesService extends BaseServiceV1<Audience> {
@@ -366,7 +376,11 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     }
 
     // ✅ VÉRIFICATION: Si on tente de marquer l'audience comme tenue (HELD)
-    if (dto.status !== undefined && dto.status === AudienceStatus.HELD) {
+    if (
+      dto.status !== undefined &&
+      dto.status === AudienceStatus.HELD &&
+      audience.status !== AudienceStatus.HELD
+    ) {
       const now = new Date();
       const audienceDateTime = new Date(
         `${audience.audience_date}T${audience.audience_time}`,
@@ -379,6 +393,12 @@ export class AudiencesService extends BaseServiceV1<Audience> {
             `Date de l'audience: ${audience.audience_date} à ${audience.audience_time}`,
         );
       }
+    }
+
+    // Entrée/sortie du statut « En cours » : mêmes règles et horodatage que
+    // les boutons Démarrer / Terminer.
+    if (dto.status !== undefined && dto.status !== null) {
+      applyAudienceStatusChange(audience, dto.status);
     }
 
     // Gestion pour jurisdiction_id - ignorer si null
@@ -461,6 +481,65 @@ export class AudiencesService extends BaseServiceV1<Audience> {
         judge_name: dto.judge_name,
         duration_minutes: dto.duration_minutes,
       }),
+    );
+  }
+
+  /**
+   * ▶️ Démarrer une audience (SCHEDULED → IN_PROGRESS)
+   */
+  async start(
+    id: number,
+    user?: DossierScopeUser | null,
+  ): Promise<AudienceResponseDto | any> {
+    await this.repository.manager.transaction((manager) =>
+      startAudienceWithManager(manager, id, dossierRoleScope(user)),
+    );
+    return this.findInProgressOne(id);
+  }
+
+  /**
+   * ⏹️ Terminer une audience (IN_PROGRESS → HELD)
+   */
+  async finish(
+    id: number,
+    user?: DossierScopeUser | null,
+  ): Promise<AudienceResponseDto | any> {
+    await this.repository.manager.transaction((manager) =>
+      finishAudienceWithManager(manager, id, dossierRoleScope(user)),
+    );
+    return this.findOneV1(
+      id,
+      this.getDefaultSearchOptions().relationFields,
+      AudienceResponseDto,
+    );
+  }
+
+  /**
+   * 🔴 Audiences en cours du cabinet, les plus anciennes d'abord. Un avocat
+   * ne voit que celles de ses dossiers (même portée que la liste des dossiers).
+   */
+  async findInProgress(
+    user?: DossierScopeUser | null,
+  ): Promise<AudienceResponseDto[]> {
+    const scope = dossierRoleScope(user);
+    const audiences = await this.repository.find({
+      where: {
+        status: audienceStatusParam(AudienceStatus.IN_PROGRESS),
+        ...(Object.keys(scope).length ? { dossier: scope } : {}),
+      },
+      relations: ['dossier', 'dossier.client', 'jurisdiction', 'audience_type'],
+      order: { started_at: 'ASC', id: 'ASC' },
+    });
+    return audiences.map((audience) =>
+      plainToInstance(AudienceResponseDto, audience),
+    );
+  }
+
+  private findInProgressOne(id: number) {
+    return this.findOneV1(
+      id,
+      this.getDefaultSearchOptions().relationFields,
+      AudienceResponseDto,
     );
   }
 
@@ -802,6 +881,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     return {
       total,
       scheduled: byStatus.find((s) => s.name === 'Planifiée')?.value || 0,
+      inProgress: byStatus.find((s) => s.name === 'En cours')?.value || 0,
       held: byStatus.find((s) => s.name === 'Tenue')?.value || 0,
       postponed: byStatus.find((s) => s.name === 'Reportée')?.value || 0,
       cancelled: byStatus.find((s) => s.name === 'Annulée')?.value || 0,
@@ -841,6 +921,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       [AudienceStatus.HELD]: 'Tenue',
       [AudienceStatus.POSTPONED]: 'Reportée',
       [AudienceStatus.CANCELLED]: 'Annulée',
+      [AudienceStatus.IN_PROGRESS]: 'En cours',
     };
 
     const statusColors = {
@@ -848,6 +929,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       [AudienceStatus.HELD]: '#10b981', // vert
       [AudienceStatus.POSTPONED]: '#f59e0b', // orange
       [AudienceStatus.CANCELLED]: '#ef4444', // rouge
+      [AudienceStatus.IN_PROGRESS]: '#8b5cf6', // violet
     };
 
     return results.map((r) => ({

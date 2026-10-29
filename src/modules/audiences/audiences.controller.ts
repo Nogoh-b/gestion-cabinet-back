@@ -25,6 +25,8 @@ import { AudienceSearchDto } from './dto/search-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { AudienceStatsService } from './audience-stats.service';
 import { AudienceDecisionService } from './audience-decision.service';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { DossierScopeUser } from '../dossiers/dossier-role-scope';
 import {
   AddDecisionResponseDto,
   DecisionAudienceDto,
@@ -65,6 +67,15 @@ export class AudiencesController {
       endDate: endDate ? new Date(endDate) : undefined,
       fieldToUseForDate: 'audience_date',
     });
+  }
+
+  // ▶️ En cours - GET /audiences/in-progress (avant `:id`)
+  @Get('in-progress')
+  @RequirePermissions('view_audiences')
+  @ApiOperation({ summary: 'Audiences en cours (démarrées, non terminées)' })
+  @ApiResponse({ status: 200, type: [AudienceResponseDto] })
+  async findInProgress(@CurrentUser() user: DossierScopeUser) {
+    return await this.audiencesService.findInProgress(user);
   }
 
   // ✅ SEARCH - GET /audiences/search
@@ -128,6 +139,30 @@ export class AudiencesController {
   @ApiResponse({ status: 200, description: 'Audience supprimée avec succès' })
   async remove(@Param('id') id: string) {
     return await this.audiencesService.remove(+id);
+  }
+
+  /** ▶️ DÉMARRER - POST /audiences/:id/start (SCHEDULED → IN_PROGRESS) */
+  @Post(':id/start')
+  @RequirePermissions('edit_audience')
+  @ApiOperation({ summary: "Démarrer l'audience (statut En cours)" })
+  @ApiResponse({ status: 201, type: AudienceResponseDto })
+  async start(
+    @Param('id') id: string,
+    @CurrentUser() user: DossierScopeUser,
+  ) {
+    return await this.audiencesService.start(+id, user);
+  }
+
+  /** ⏹️ TERMINER - POST /audiences/:id/finish (IN_PROGRESS → HELD) */
+  @Post(':id/finish')
+  @RequirePermissions('edit_audience')
+  @ApiOperation({ summary: "Terminer l'audience (statut Tenue)" })
+  @ApiResponse({ status: 201, type: AudienceResponseDto })
+  async finish(
+    @Param('id') id: string,
+    @CurrentUser() user: DossierScopeUser,
+  ) {
+    return await this.audiencesService.finish(+id, user);
   }
 
   /**
