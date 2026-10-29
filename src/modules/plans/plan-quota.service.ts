@@ -5,11 +5,12 @@
 //  - Calculer l'état d'utilisation (usage vs limites)
 //  - Vérifier et bloquer si une limite est dépassée
 //
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Plan } from './entities/plan.entity';
+import { StorageUsageService } from './storage-usage.service';
 import type { AiCreditStatus } from './ai-credits/ai-credits';
 
 export type QuotaResource =
@@ -69,6 +70,8 @@ export class PlanQuotaService {
   constructor(
     @InjectRepository(Cabinet)
     private cabinetRepo: Repository<Cabinet>,
+    // Calcul unique de l'espace utilisé (le même que l'affichage du quota).
+    @Optional() private readonly storageUsage?: StorageUsageService,
   ) {}
 
   // ── Récupère le plan actif du cabinet ────────────────────────────────────
@@ -190,14 +193,12 @@ export class PlanQuotaService {
   }
 
   // ── Vérifie le quota de stockage (octets) et lève si dépassé ─────────────
-  // `currentBytes` = volume déjà stocké par le cabinet ; `additionalBytes` =
-  // taille du fichier qu'on s'apprête à ajouter. Le calcul de `currentBytes`
-  // est laissé à l'appelant (qui dispose du repo documents), comme pour
-  // checkLimit. -1 = illimité.
+  // `additionalBytes` = taille du fichier qu'on s'apprête à ajouter ; l'espace
+  // déjà utilisé vient de StorageUsageService (documents, versions, exports…),
+  // le même calcul que l'affichage du quota. -1 = illimité.
 
   async checkStorageLimit(
     cabinetId: number,
-    currentBytes: number,
     additionalBytes: number,
   ): Promise<void> {
     const plan = await this.getCabinetPlan(cabinetId);
@@ -206,6 +207,8 @@ export class PlanQuotaService {
     const maxGb = plan.max_storage_gb;
     if (maxGb === null || maxGb === undefined || maxGb === -1) return; // illimité
 
+    const currentBytes =
+      (await this.storageUsage?.getUsedBytes(cabinetId)) ?? 0;
     const maxBytes = maxGb * 1024 * 1024 * 1024;
     if (currentBytes + additionalBytes > maxBytes) {
       const usedGb = (currentBytes / (1024 * 1024 * 1024)).toFixed(2);

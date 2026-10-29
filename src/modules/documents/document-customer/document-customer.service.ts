@@ -17,6 +17,7 @@ import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { CabinetService } from 'src/modules/cabinet/cabinet.service';
 import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
+import { StorageUsageService } from 'src/modules/plans/storage-usage.service';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { CustomerResponseDto } from 'src/modules/customer/customer/dto/customer-response.dto';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
@@ -110,6 +111,7 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     // private stepsService: StepsService,
     private cabinetService: CabinetService,
     private planQuotaService: PlanQuotaService,
+    private storageUsage: StorageUsageService,
     @Optional() private readonly eventEmitter?: EventEmitter2,
     @Optional()
     @InjectRepository(DocumentCustomerVersion)
@@ -118,25 +120,9 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     super(docRepository, paginationService);
   }
 
-  /** Volume total déjà stocké (octets) par le cabinet courant, versions archivées comprises. */
+  /** Volume total déjà stocké (octets) par le cabinet courant : calcul unique de StorageUsageService. */
   private async currentStorageBytes(): Promise<number> {
-    let qb = this.docRepository
-      .createQueryBuilder('d')
-      .select('COALESCE(SUM(d.file_size), 0)', 'total');
-    qb = addTenantCondition(qb, 'd');
-    const row = await qb.getRawOne<{ total: string }>();
-    let archived = 0;
-    if (this.versionRepository) {
-      let versions = this.versionRepository
-        .createQueryBuilder('v')
-        .select('COALESCE(SUM(v.file_size), 0)', 'total');
-      versions = addTenantCondition(versions, 'v');
-      const archivedRow = await versions
-        .getRawOne<{ total: string }>()
-        .catch(() => null);
-      archived = Number(archivedRow?.total ?? 0) || 0;
-    }
-    return (Number(row?.total ?? 0) || 0) + archived;
+    return this.storageUsage.getUsedBytes(getCurrentTenantId());
   }
 
   protected getDefaultSearchOptions(): SearchOptions {
@@ -328,10 +314,8 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
 
       // ── Quota de stockage : refuse l'upload AVANT d'écrire le fichier ──────
       if (tenantId && file?.size) {
-        const used = await this.currentStorageBytes();
         await this.planQuotaService.checkStorageLimit(
           tenantId,
-          used,
           Number(file.size) || 0,
         );
       }
@@ -783,7 +767,6 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     if (tenantId && file?.size) {
       await this.planQuotaService.checkStorageLimit(
         tenantId,
-        await this.currentStorageBytes(),
         Number(file.size) || 0,
       );
     }
