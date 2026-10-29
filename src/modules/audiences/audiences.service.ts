@@ -10,7 +10,7 @@ import {
   SearchOptions,
 } from 'src/core/shared/services/search/base-v1.service';
 import { DateUtils } from 'src/core/shared/utils/date.util.';
-import { EntityManager, Repository } from 'typeorm';
+import { Between, EntityManager, Repository } from 'typeorm';
 import {
   BadRequestException,
   forwardRef,
@@ -533,6 +533,41 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     return audiences.map((audience) =>
       plainToInstance(AudienceResponseDto, audience),
     );
+  }
+
+  /**
+   * 🔴 Suivi en direct (barre du haut) : audiences en cours + audiences
+   * programmées d'hier à demain. Le navigateur, à son heure locale, en tire
+   * celles qui commencent bientôt ou dont l'heure est passée sans démarrage.
+   */
+  async findLive(user?: DossierScopeUser | null): Promise<{
+    in_progress: AudienceResponseDto[];
+    scheduled: AudienceResponseDto[];
+  }> {
+    const scope = dossierRoleScope(user);
+    const day = (offset: number) => {
+      const date = new Date();
+      date.setDate(date.getDate() + offset);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    };
+    const [inProgress, scheduled] = await Promise.all([
+      this.findInProgress(user),
+      this.repository.find({
+        where: {
+          status: audienceStatusParam(AudienceStatus.SCHEDULED),
+          audience_date: Between(day(-1), day(1)) as any,
+          ...(Object.keys(scope).length ? { dossier: scope } : {}),
+        },
+        relations: ['dossier', 'dossier.client', 'jurisdiction', 'audience_type'],
+        order: { audience_date: 'ASC', audience_time: 'ASC', id: 'ASC' },
+        take: 200,
+      }),
+    ]);
+    return {
+      in_progress: inProgress,
+      scheduled: scheduled.map((audience) => plainToInstance(AudienceResponseDto, audience)),
+    };
   }
 
   private findInProgressOne(id: number) {
