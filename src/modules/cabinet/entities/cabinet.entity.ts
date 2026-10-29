@@ -864,6 +864,21 @@ export class Cabinet {
   })
   billing_account_mapping: Record<string, string> | null;
 
+  /**
+   * Compteurs (dossiers urgents, audiences du jour, factures impayées, documents
+   * en attente) affichés en badge dans la sidebar. Activé cabinet par cabinet
+   * par la plateforme (`PATCH /platform/cabinets/:id/sidebar-badges`).
+   */
+  @Column({ type: 'boolean', default: false, name: 'sidebar_badges_enabled' })
+  @BusinessColumn({
+    label: 'Badges de la sidebar',
+    description: 'Non exposé',
+    importance: 'low',
+    group: 'technique',
+    ignored: true,
+  })
+  sidebar_badges_enabled: boolean;
+
   /** Mots ajoutés au correcteur d'orthographe des éditeurs par les membres du cabinet. */
   @Column({ type: 'json', nullable: true, name: 'custom_dictionary' })
   @BusinessColumn({

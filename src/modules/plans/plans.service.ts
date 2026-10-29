@@ -11,9 +11,13 @@ import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { Plan } from './entities/plan.entity';
 import { PlanQuotaService } from './plan-quota.service';
+import { StorageUsageService } from './storage-usage.service';
 import { AiCreditsService } from './ai-credits/ai-credits.service';
 import { withoutCreditAllowance } from './ai-credits/ai-credits';
-import { readCabinetSidebarDisplay } from '../platform/settings/cabinet-sidebar.setting';
+import {
+  readCabinetSidebarDisplay,
+  readSidebarBadgesEnabled,
+} from '../platform/settings/cabinet-sidebar.setting';
 
 @Injectable()
 export class PlansService extends BaseServiceV1<Plan> {
@@ -24,6 +28,7 @@ export class PlansService extends BaseServiceV1<Plan> {
     @InjectRepository(Cabinet)
     private cabinetRepo: Repository<Cabinet>,
     private readonly quotaService: PlanQuotaService,
+    private readonly storageUsage: StorageUsageService,
     private readonly aiCredits: AiCreditsService,
     @Optional() private readonly appEvents?: EventEmitter2,
   ) {
@@ -113,10 +118,8 @@ export class PlansService extends BaseServiceV1<Plan> {
         'SELECT COUNT(*) as cnt FROM dossiers WHERE tenant_id = ?',
         [cabinetId],
       ),
-      this.cabinetRepo.manager.query(
-        'SELECT COALESCE(SUM(file_size), 0) as total FROM document_customer WHERE tenant_id = ?',
-        [cabinetId],
-      ),
+      // Même calcul que l'application du quota (documents + versions + exports…).
+      this.storageUsage.getUsedBytes(cabinetId),
       // Crédits IA du mois : pourcentages seulement (jamais de crédits ni de montants).
       this.aiCredits.status(cabinetId),
     ]);
@@ -125,14 +128,19 @@ export class PlansService extends BaseServiceV1<Plan> {
       employees: Number(employees[0]?.cnt ?? 0),
       clients: Number(clients[0]?.cnt ?? 0),
       dossiers: Number(dossiers[0]?.cnt ?? 0),
-      storageBytes: Number(storage[0]?.total ?? 0),
+      storageBytes: storage,
     };
 
-    const [usage, display] = await Promise.all([
+    const [usage, display, sidebarBadges] = await Promise.all([
       this.quotaService.getUsageStatus(cabinetId, counts, aiStatus),
       readCabinetSidebarDisplay(this.cabinetRepo.manager),
+      readSidebarBadgesEnabled(this.cabinetRepo.manager, cabinetId),
     ]);
     // Le cabinet ne voit que des pourcentages : jamais le nombre de crédits du forfait.
-    return { ...usage, plan: withoutCreditAllowance(usage.plan), display };
+    return {
+      ...usage,
+      plan: withoutCreditAllowance(usage.plan),
+      display: { ...display, sidebar_badges_enabled: sidebarBadges },
+    };
   }
 }

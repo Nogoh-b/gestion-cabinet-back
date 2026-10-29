@@ -66,6 +66,14 @@ export class UpdateCabinetWorkflowDto {
   new_dossiers_engine: WorkflowEngine;
 }
 
+export class UpdateCabinetSidebarBadgesDto {
+  @ApiProperty({
+    description: 'Affiche les badges de compteurs dans la sidebar du cabinet',
+  })
+  @IsBoolean()
+  enabled: boolean;
+}
+
 export class ExtendSubscriptionDto {
   @ApiPropertyOptional({ description: 'Nombre de jours à ajouter' })
   @IsOptional() @IsInt() @Min(1) @Max(3660)

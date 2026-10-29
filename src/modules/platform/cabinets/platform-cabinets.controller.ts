@@ -29,6 +29,7 @@ import {
   GrantFreePeriodDto,
   PlatformCabinetQueryDto,
   SuspendCabinetDto,
+  UpdateCabinetSidebarBadgesDto,
   UpdateCabinetWorkflowDto,
 } from './dto/platform-cabinet.dto';
 
@@ -88,6 +89,23 @@ export class PlatformCabinetsController {
     @Body() dto: UpdateCabinetWorkflowDto,
   ) {
     return this.service.setWorkflow(id, dto.new_dossiers_engine);
+  }
+
+  @Get(':id/sidebar-badges')
+  @ApiOperation({ summary: 'Badges de compteurs de la sidebar du cabinet' })
+  sidebarBadges(@Param('id', ParseIntPipe) id: number) {
+    return this.service.sidebarBadges(id);
+  }
+
+  @Patch(':id/sidebar-badges')
+  @PlatformRoles('support')
+  @PlatformAudit({ action: 'cabinet.sidebar_badges', ...CABINET })
+  @ApiOperation({ summary: 'Activer ou désactiver les badges de compteurs de la sidebar' })
+  setSidebarBadges(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCabinetSidebarBadgesDto,
+  ) {
+    return this.service.setSidebarBadges(id, dto.enabled);
   }
 
   // ── Actions abonnement ────────────────────────────────────────────────────

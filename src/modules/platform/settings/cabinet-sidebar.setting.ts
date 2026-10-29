@@ -42,3 +42,23 @@ export async function readCabinetSidebarDisplay(
     metric: CABINET_SIDEBAR_METRICS.includes(s.plan_block_metric) ? s.plan_block_metric : 'storage',
   };
 }
+
+/**
+ * Badges de compteurs de la sidebar : réglage PAR CABINET (colonne
+ * `cabinets.sidebar_badges_enabled`), posé par la plateforme. Désactivé tant
+ * que la colonne est absente (base non migrée) ou le cabinet introuvable.
+ */
+export async function readSidebarBadgesEnabled(
+  db: DataSource | EntityManager,
+  cabinetId: number,
+): Promise<boolean> {
+  try {
+    const rows: Array<{ enabled: number | boolean | null }> = await db.query(
+      'SELECT sidebar_badges_enabled AS enabled FROM cabinets WHERE id = ? LIMIT 1',
+      [cabinetId],
+    );
+    return !!Number(rows[0]?.enabled ?? 0);
+  } catch {
+    return false;
+  }
+}
