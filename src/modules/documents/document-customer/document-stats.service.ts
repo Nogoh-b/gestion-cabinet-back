@@ -1,4 +1,5 @@
 // src/modules/documents/document-customer/services/document-stats.service.ts
+import { enumValue } from 'src/core/shared/utils/enum-value';
 import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
@@ -352,7 +353,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     const query = this.documentRepository
       .createQueryBuilder('document')
       .where('document.status = :status', {
-        status: DocumentCustomerStatus.PENDING,
+        status: enumValue(DocumentCustomerStatus.PENDING),
       });
     return this.applyFilters(query, filters, 'document');
   }
@@ -381,7 +382,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     const query = this.documentRepository
       .createQueryBuilder('document')
       .where('document.status = :status', {
-        status: DocumentCustomerStatus.ACCEPTED,
+        status: enumValue(DocumentCustomerStatus.ACCEPTED),
       });
     this.applyFilters(query, filters, 'document');
     return query.getCount();
@@ -391,7 +392,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     const query = this.documentRepository
       .createQueryBuilder('document')
       .where('document.status = :status', {
-        status: DocumentCustomerStatus.REFUSED,
+        status: enumValue(DocumentCustomerStatus.REFUSED),
       });
     this.applyFilters(query, filters, 'document');
     return query.getCount();
@@ -401,7 +402,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     const query = this.documentRepository
       .createQueryBuilder('document')
       .where('document.status = :status', {
-        status: DocumentCustomerStatus.EXPIRED,
+        status: enumValue(DocumentCustomerStatus.EXPIRED),
       });
     this.applyFilters(query, filters, 'document');
     return query.getCount();
@@ -689,7 +690,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
       .leftJoinAndSelect('document.document_type', 'type')
       .leftJoinAndSelect('document.uploaded_by', 'user')
       .where('document.status = :status', {
-        status: DocumentCustomerStatus.PENDING,
+        status: enumValue(DocumentCustomerStatus.PENDING),
       })
       .orderBy('document.uploaded_at', 'ASC')
       .limit(20);

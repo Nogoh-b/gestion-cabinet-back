@@ -1,4 +1,5 @@
 // src/modules/dossiers/services/dossier-stats.service.ts
+import { enumValue } from 'src/core/shared/utils/enum-value';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, SelectQueryBuilder } from 'typeorm';
@@ -38,7 +39,7 @@ import {
  */
 const dossierStatusValue = (status: DossierStatus): string => String(status);
 
-const ACTIVE_DOSSIER_STATUSES = [
+export const ACTIVE_DOSSIER_STATUSES = [
   DossierStatus.OPEN,
   DossierStatus.PRELIMINARY_ANALYSIS,
   DossierStatus.AMICABLE,
@@ -350,7 +351,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     // actual_costs = total des factures du dossier (calculé dynamiquement).
     // On évite toute référence directe à la colonne stockée `actual_costs`
     // pour rester robuste si elle n'a pas encore été synchronisée par TypeORM.
-    const facturesSumExpr = `(SELECT COALESCE(SUM(f.montant_ttc), 0) FROM factures f WHERE f.dossier_id = dossier.id AND f.deleted_at IS NULL AND f.status <> ${StatutFacture.ANNULEE})`;
+    const facturesSumExpr = `(SELECT COALESCE(SUM(f.montant_ttc), 0) FROM factures f WHERE f.dossier_id = dossier.id AND f.deleted_at IS NULL AND f.status <> '${enumValue(StatutFacture.ANNULEE)}')`;
 
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
@@ -566,7 +567,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .andWhere(
         '(dossier.danger_level IN (:...highLevels) OR dossier.priority_level >= :highPriority)',
         {
-          highLevels: [DangerLevel.Eleve, DangerLevel.Critique],
+          highLevels: [DangerLevel.Eleve, DangerLevel.Critique].map(enumValue),
           highPriority: 2,
         },
       )

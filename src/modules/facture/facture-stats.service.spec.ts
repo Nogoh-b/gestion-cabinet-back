@@ -8,6 +8,7 @@ import { FactureStatsService } from './facture-stats.service';
 interface FactureStatsInternals {
   getTotalTTC(): Promise<number>;
   getUnpaidCount(): Promise<number>;
+  getPaidCount(): Promise<number>;
 }
 
 describe('FactureStatsService - factures annulées', () => {
@@ -39,7 +40,7 @@ describe('FactureStatsService - factures annulées', () => {
 
     expect(queryBuilder.where).toHaveBeenCalledWith(
       'facture.status != :cancelled',
-      { cancelled: StatutFacture.ANNULEE },
+      { cancelled: String(StatutFacture.ANNULEE) },
     );
   });
 
@@ -50,7 +51,27 @@ describe('FactureStatsService - factures annulées', () => {
 
     expect(queryBuilder.andWhere).toHaveBeenCalledWith(
       'facture.status != :cancelled',
-      { cancelled: StatutFacture.ANNULEE },
+      { cancelled: String(StatutFacture.ANNULEE) },
+    );
+  });
+
+  it("compare les statuts en texte : un nombre serait lu comme l'index de l'ENUM", async () => {
+    const { service, queryBuilder } = createService();
+
+    await service.getUnpaidCount();
+    await service.getPaidCount();
+
+    expect(queryBuilder.where).toHaveBeenCalledWith(
+      "facture.status != :status",
+      { status: "3" },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      "facture.status != :brouillon",
+      { brouillon: "0" },
+    );
+    expect(queryBuilder.where).toHaveBeenCalledWith(
+      "facture.status = :status",
+      { status: "3" },
     );
   });
 });
