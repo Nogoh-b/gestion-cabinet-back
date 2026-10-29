@@ -84,14 +84,14 @@ describe('startAudienceWithManager', () => {
     );
   });
 
-  it('refuse de démarrer avant le jour prévu', async () => {
+  it('accepte une audience programmée avant le jour prévu', async () => {
     const { manager } = managerWith(
       audience({ audience_date: '2026-10-29' as any }),
     );
 
-    await expect(startAudienceWithManager(manager, 7, {}, NOW)).rejects.toThrow(
-      /avant le jour prévu/,
-    );
+    const saved = await startAudienceWithManager(manager, 7, {}, NOW);
+
+    expect(saved.status).toBe(AudienceStatus.IN_PROGRESS);
   });
 
   it('accepte une audience dont le jour est passé (retard de saisie)', async () => {

@@ -100,13 +100,6 @@ export async function postponeAudienceWithManager(
 /** Portée de dossier du rôle de l'appelant ({} : aucune restriction). */
 export type AudienceDossierScope = FindOptionsWhere<Dossier>;
 
-/** Jour calendaire (AAAA-MM-JJ, heure locale) d'une colonne DATE. */
-function dayKey(value: string | Date): string {
-  if (typeof value === 'string') return value.slice(0, 10);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
-}
-
 async function loadScopedAudience(
   manager: EntityManager,
   audienceId: number,
@@ -142,11 +135,7 @@ export async function startAudienceWithManager(
       `Seule une audience programmée peut être démarrée (statut actuel : ${audience.status_label}).`,
     );
   }
-  if (dayKey(audience.audience_date) > dayKey(now)) {
-    throw new BadRequestException(
-      `Impossible de démarrer l'audience avant le jour prévu (${dayKey(audience.audience_date)}).`,
-    );
-  }
+  // Pas de contrainte de date : une audience programmée peut être démarrée à tout moment.
   applyAudienceStatusChange(audience, AudienceStatus.IN_PROGRESS, now);
   return manager.getRepository(Audience).save(audience);
 }
