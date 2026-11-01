@@ -11,7 +11,6 @@ describe('AppController', () => {
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
       providers: [
-        AppService,
         { provide: DataSource, useValue: {} },
         { provide: 'USER_SERVICE', useValue: client },
       ],

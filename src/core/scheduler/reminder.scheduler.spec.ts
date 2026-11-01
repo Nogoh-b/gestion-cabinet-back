@@ -48,6 +48,7 @@ function setup(diligences: any[]) {
     { find: jest.fn().mockResolvedValue([]) } as any,
     notifications as any,
     { run: (_id: number, fn: () => any) => fn() } as any,
+    {} as any,
     db as any,
   );
   return { scheduler, notifications, db };
