@@ -5,6 +5,7 @@ describe('ProcedureInstanceController — commandes sûres', () => {
     const controller = new ProcedureInstanceController(
       {} as any,
       {} as any,
+      {} as any,
     );
 
     expect((controller as any).triggerEvent).toBeUndefined();
@@ -20,6 +21,7 @@ describe('ProcedureInstanceController — commandes sûres', () => {
     const controller = new ProcedureInstanceController(
       { navigateToStage } as any,
       { assertProcedureInstanceAccess } as any,
+      {} as any,
     );
 
     await controller.navigateToStage(

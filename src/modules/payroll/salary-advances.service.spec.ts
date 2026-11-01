@@ -64,6 +64,7 @@ describe('SalaryAdvancesService - approbation et versement', () => {
       dataSource as any,
       outbox as any,
       audit as any,
+      {} as any,
     );
   });
 

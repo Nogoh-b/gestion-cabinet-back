@@ -44,6 +44,8 @@ function setup(status = ExpenseReportStatus.SUBMITTED) {
     {} as any,
     dataSource as any,
     { syncExpenseLineToBillableItem } as any,
+    {} as any,
+    {} as any,
   );
   return {
     service,
@@ -60,7 +62,7 @@ describe('ExpenseReportsService - synchronisation de facturation', () => {
     const context = setup();
 
     const saved = await new TenantContext().run(22, () =>
-      context.service.approve(8, 9),
+      context.service.approve(8, { userId: 9 } as any),
     );
 
     expect(saved.status).toBe(ExpenseReportStatus.APPROVED);
@@ -78,7 +80,7 @@ describe('ExpenseReportsService - synchronisation de facturation', () => {
     const context = setup(ExpenseReportStatus.APPROVED);
 
     const saved = await new TenantContext().run(22, () =>
-      context.service.reject(8, 9, 'Justificatif invalide'),
+      context.service.reject(8, 'Justificatif invalide', { userId: 9 } as any),
     );
 
     expect(saved.status).toBe(ExpenseReportStatus.REJECTED);

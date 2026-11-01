@@ -532,6 +532,7 @@ describe('Dossiers : projection pour le client (liste blanche)', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
     );
 
     it('GET /dossiers/:id : le client reçoit la projection', async () => {

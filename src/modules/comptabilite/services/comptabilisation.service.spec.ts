@@ -10,7 +10,10 @@ describe('ComptabilisationService - contrepassation de facture', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     ecritures.creer.mockResolvedValue({ id: 'entry-reversal' });
-    service = new ComptabilisationService(ecritures as any);
+    service = new ComptabilisationService(ecritures as any,
+      {} as any,
+      {} as any,
+    );
   });
 
   it('utilise une source et une clé d’idempotence distinctes de l’écriture originale', async () => {

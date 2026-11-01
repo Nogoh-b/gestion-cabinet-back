@@ -10,6 +10,9 @@ describe('AiDatabaseController - lecture seule', () => {
     {} as any,
     {} as any,
     {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
   );
 
   beforeEach(() => {

@@ -82,6 +82,7 @@ describe('SupplierInvoicesService - cycle métier sécurisé', () => {
       outbox as any,
       audit as any,
       evidenceStorage as any,
+      {} as any,
     );
   });
 

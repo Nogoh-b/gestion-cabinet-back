@@ -83,6 +83,7 @@ describe('FactureService - cycle métier', () => {
       dataSource as any,
       outbox as any,
       audit as any,
+      {} as any,
     );
   });
 

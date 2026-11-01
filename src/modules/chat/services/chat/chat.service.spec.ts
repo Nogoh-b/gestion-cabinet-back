@@ -29,6 +29,9 @@ function buildService() {
     userService as any,
     {} as any,
     attachmentRepository as any,
+    {} as any,
+    {} as any,
+    {} as any,
   );
   jest.spyOn(service, 'isParticipant').mockResolvedValue(true);
   jest.spyOn(service, 'getParticipantIds').mockResolvedValue([1, 2]);

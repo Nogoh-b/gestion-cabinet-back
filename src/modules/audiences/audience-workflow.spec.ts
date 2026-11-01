@@ -50,7 +50,9 @@ describe('startAudienceWithManager', () => {
   it('refuse une audience introuvable (autre cabinet ou hors portée)', async () => {
     const { manager } = managerWith(null);
 
-    await expect(startAudienceWithManager(manager, 7, {}, NOW)).rejects.toThrow(
+    await expect(
+      inTenant(() => startAudienceWithManager(manager, 7, {}, NOW)),
+    ).rejects.toThrow(
       NotFoundException,
     );
   });
@@ -74,7 +76,9 @@ describe('startAudienceWithManager', () => {
   ])('refuse de démarrer une audience au statut %s', async (status) => {
     const { manager, repository } = managerWith(audience({ status }));
 
-    await expect(startAudienceWithManager(manager, 7, {}, NOW)).rejects.toThrow(
+    await expect(
+      inTenant(() => startAudienceWithManager(manager, 7, {}, NOW)),
+    ).rejects.toThrow(
       BadRequestException,
     );
     expect(repository.save).not.toHaveBeenCalled();
@@ -85,7 +89,9 @@ describe('startAudienceWithManager', () => {
       audience({ status: AudienceStatus.IN_PROGRESS }),
     );
 
-    await expect(startAudienceWithManager(manager, 7, {}, NOW)).rejects.toThrow(
+    await expect(
+      inTenant(() => startAudienceWithManager(manager, 7, {}, NOW)),
+    ).rejects.toThrow(
       /déjà en cours/,
     );
   });
@@ -129,7 +135,7 @@ describe('finishAudienceWithManager', () => {
     const { manager, repository } = managerWith(audience());
 
     await expect(
-      finishAudienceWithManager(manager, 7, {}, NOW),
+      inTenant(() => finishAudienceWithManager(manager, 7, {}, NOW)),
     ).rejects.toThrow(/en cours/);
     expect(repository.save).not.toHaveBeenCalled();
   });

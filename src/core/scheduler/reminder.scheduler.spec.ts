@@ -153,6 +153,7 @@ describe('ReminderScheduler — audiences imminentes', () => {
       notifications as any,
       { run: (_id: number, fn: () => any) => fn() } as any,
       db as any,
+      {} as any,
     );
     return { scheduler, notifications, audienceRepo };
   }

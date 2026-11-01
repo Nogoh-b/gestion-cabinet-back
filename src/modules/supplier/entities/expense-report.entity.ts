@@ -14,7 +14,7 @@ import {
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { ExpenseLine } from './expense-line.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import { PaymentMethod } from './supplier-invoice.entity';
+import { PaymentMethod } from './payment-method.enum';
 
 export enum ExpenseReportStatus {
   DRAFT = 'draft',

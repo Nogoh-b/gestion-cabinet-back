@@ -23,7 +23,9 @@ describe('AppSettingsService SMTP security', () => {
     queryBuilder.where.mockReturnValue(queryBuilder);
     repository.createQueryBuilder.mockReturnValue(queryBuilder);
     repository.save.mockImplementation(async (entity) => entity);
-    service = new AppSettingsService(repository as any);
+    service = new AppSettingsService(repository as any,
+      {} as any,
+    );
   });
 
   afterAll(() => {

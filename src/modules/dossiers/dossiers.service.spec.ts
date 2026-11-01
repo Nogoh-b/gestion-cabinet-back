@@ -42,6 +42,10 @@ describe('DossiersService - modèle administratif', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
     );
   });
 
@@ -216,6 +220,10 @@ describe('DossiersService - modèle administratif', () => {
       outbox as any,
       facture as any,
       {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
     );
     jest
       .spyOn(activatedService, 'findOne')
@@ -296,6 +304,10 @@ describe('DossiersService - modèle administratif', () => {
       dataSource as any,
       audit as any,
       outbox as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
       {} as any,
       {} as any,
     );

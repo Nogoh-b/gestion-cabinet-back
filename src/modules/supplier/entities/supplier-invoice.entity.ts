@@ -25,14 +25,9 @@ export enum SupplierInvoiceStatus {
   DISPUTED = 'disputed',
 }
 
-export enum PaymentMethod {
-  ESPECES = 'ESPECES',
-  CHEQUE = 'CHEQUE',
-  VIREMENT = 'VIREMENT',
-  CARTE_BANCAIRE = 'CARTE_BANCAIRE',
-  PRELEVEMENT = 'PRELEVEMENT',
-  MOBILE_MONEY = 'MOBILE_MONEY',
-}
+import { PaymentMethod } from './payment-method.enum';
+
+export { PaymentMethod } from './payment-method.enum';
 
 @Entity('supplier_invoice')
 @Index(

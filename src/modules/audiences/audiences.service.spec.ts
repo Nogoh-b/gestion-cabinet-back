@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { BadRequestException } from '@nestjs/common';
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { AudiencesService } from './audiences.service';
-import { audienceStatusParam, AudienceStatus } from './entities/audience.entity';
-import { BadRequestException } from '@nestjs/common';
-import { AudiencesService } from './audiences.service';
 import {
+  audienceStatusParam,
   AudienceRecordStatus,
   AudienceStatus,
 } from './entities/audience.entity';
@@ -91,7 +90,7 @@ describe('AudiencesService - commandes métier', () => {
   });
 
   it('marque une audience passée comme tenue dans une transaction et publie l’outbox', async () => {
-    manager.findOne.mockResolvedValue({
+    (manager.findOne as any).mockResolvedValue({
       id: 8,
       dossier_id: 42,
       procedure_instance_id: 'instance-1',
@@ -121,7 +120,7 @@ describe('AudiencesService - commandes métier', () => {
   });
 
   it('refuse de marquer une audience future comme tenue', async () => {
-    manager.findOne.mockResolvedValue({
+    (manager.findOne as any).mockResolvedValue({
       id: 9,
       dossier_id: 42,
       status: AudienceStatus.SCHEDULED,
@@ -139,7 +138,7 @@ describe('AudiencesService - commandes métier', () => {
   });
 
   it('exige un motif avant toute correction d’un rapport scellé', async () => {
-    manager.findOne.mockResolvedValue({
+    (manager.findOne as any).mockResolvedValue({
       id: 10,
       dossier_id: 42,
       report_record_status: AudienceRecordStatus.SEALED,

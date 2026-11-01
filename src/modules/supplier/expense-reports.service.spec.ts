@@ -66,6 +66,7 @@ describe('ExpenseReportsService - préparation, validation et remboursement', ()
       dataSource as any,
       outbox as any,
       audit as any,
+      {} as any,
     );
   });
 
