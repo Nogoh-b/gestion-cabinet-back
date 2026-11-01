@@ -1,19 +1,12 @@
 // dto/update-procedure-template.dto.ts
 import { PartialType } from '@nestjs/mapped-types';
 import {
-  CreateStageDto,
-  StageConfigDto,
-  CreateTransitionDto,
-  CreateCycleDto,
+    CreateStageDto,
+    StageConfigDto,
+    CreateTransitionDto,
+    CreateCycleDto
 } from './create-procedure-template.dto';
-import {
-  IsOptional,
-  IsArray,
-  ValidateNested,
-  IsBoolean,
-  IsString,
-  IsObject,
-} from 'class-validator';
+import { IsOptional, IsArray, ValidateNested, IsString, IsObject } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // DTO pour la mise à jour des stages (avec ID optionnel)
@@ -32,10 +25,6 @@ export class UpdateProcedureTemplateDto {
   @IsOptional()
   @IsString()
   description?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
 
   @IsOptional()
   @IsArray()

@@ -1,14 +1,17 @@
 // src/modules/procedures/seeder/procedure-template.seeder.ts
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull, Not } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
-import { ProcedureTemplate } from '../entities/procedure-template.entity';
+import {
+  ProcedureTemplate,
+  ProcedureTemplateLifecycle,
+} from '../entities/procedure-template.entity';
 import { Stage } from '../entities/stage.entity';
 import { SubStage } from '../entities/sub-stage.entity';
 import { Transition } from '../entities/transition.entity';
-import { Cycle } from '../entities/cycle.entity';
-import { StageConfig } from '../entities/stage-config.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
 import { findOneForTenant } from 'src/core/tenant/seeder-helper';
+import { randomUUID } from 'crypto';
+import { publishSeededProcedureTemplate } from './procedure-template-seeder.utils';
 
 export default class ProcedureTemplateSeeder implements Seeder {
   public async run(
@@ -16,11 +19,6 @@ export default class ProcedureTemplateSeeder implements Seeder {
     factoryManager: SeederFactoryManager,
   ): Promise<any> {
     const templateRepository = dataSource.getRepository(ProcedureTemplate);
-    const stageRepository = dataSource.getRepository(Stage);
-    const subStageRepository = dataSource.getRepository(SubStage);
-    const transitionRepository = dataSource.getRepository(Transition);
-    const cycleRepository = dataSource.getRepository(Cycle);
-    const configRepository = dataSource.getRepository(StageConfig);
     const procedureTypeRepository = dataSource.getRepository(ProcedureType);
 
     // Récupérer tous les sous-types de procédure existants (codes)
@@ -2268,179 +2266,210 @@ export default class ProcedureTemplateSeeder implements Seeder {
     const createdTemplates: ProcedureTemplate[] = [];
 
     for (const templateData of templatesData) {
-      // Vérifier si le template existe déjà (per-tenant exact match)
-      let savedTemplate = await findOneForTenant(
-        templateRepository,
-        'name',
-        templateData.name,
-      );
-      if (savedTemplate) {
-        savedTemplate = await templateRepository.findOne({
-          where: { id: savedTemplate.id },
-          relations: ['stages'],
-        });
-      }
-
-      if (savedTemplate) {
-        console.log(
-          `⏩ Template existant: ${templateData.name}, vérification des données...`,
-        );
-
-        // Vérifier si tous les stages existent
-        const existingStageNames = new Set(
-          savedTemplate.stages.map((s) => s.name),
-        );
-        const requiredStageNames = new Set(
-          templateData.stages.map((s) => s.name),
-        );
-
-        // Vérifier s'il manque des stages
-        const missingStages = Array.from(requiredStageNames).filter(
-          (name) => !existingStageNames.has(name),
-        );
-
-        if (missingStages.length > 0) {
-          console.log(
-            `  ⚠️ Stages manquants: ${missingStages.join(', ')} - Mise à jour nécessaire`,
+      const finalizedTemplate = await dataSource.transaction(
+        async (manager) => {
+          const templateRepository = manager.getRepository(ProcedureTemplate);
+          const stageRepository = manager.getRepository(Stage);
+          const subStageRepository = manager.getRepository(SubStage);
+          const transitionRepository = manager.getRepository(Transition);
+          // Vérifier si le template existe déjà (per-tenant exact match)
+          let savedTemplate = await findOneForTenant(
+            templateRepository,
+            'name',
+            templateData.name,
           );
-          // On va recréer le template pour avoir la structure complète
-          await templateRepository.remove(savedTemplate);
-          savedTemplate = null;
-        } else {
-          console.log(
-            `  ✅ Template existant complet, aucune modification nécessaire`,
-          );
-        }
-      }
+          if (savedTemplate) {
+            savedTemplate = await templateRepository.findOne({
+              where: { id: savedTemplate.id },
+              relations: ['stages'],
+            });
+          }
 
-      // Créer le template seulement s'il n'existe pas ou a été supprimé
-      if (!savedTemplate) {
-        const template = templateRepository.create({
-          name: templateData.name,
-          description: templateData.description,
-          version: 1,
-        });
-        savedTemplate = await templateRepository.save(template);
-        console.log(`✅ Template créé: ${savedTemplate.name}`);
+          if (savedTemplate) {
+            console.log(
+              `⏩ Template existant: ${templateData.name}, vérification des données...`,
+            );
 
-        // 🔗 LIER LE TEMPLATE AU PROCEDURE_TYPE
-        const procedureType = procedureTypeMap.get(
-          templateData.procedureTypeCode,
-        );
-        if (procedureType) {
-          await procedureTypeRepository.update(procedureType.id, {
-            procedure_template_id: savedTemplate.id,
-          });
-          console.log(
-            `  🔗 Template lié à: ${procedureType.name} (${procedureType.code})`,
-          );
-        } else {
-          console.log(
-            `  ⚠️ ProcedureType non trouvé pour le code: ${templateData.procedureTypeCode}`,
-          );
-        }
+            // Vérifier si tous les stages existent
+            const existingStageNames = new Set(
+              savedTemplate.stages.map((s) => s.name),
+            );
+            const requiredStageNames = new Set(
+              templateData.stages.map((s) => s.name),
+            );
 
-        // Créer les stages
-        const stages: Stage[] = [];
-        for (const stageData of templateData.stages) {
-          const stage = stageRepository.create({
-            ...stageData,
-            description: stageData.name,
-            templateId: savedTemplate.id,
-          });
-          const savedStage = await stageRepository.save(stage);
-          stages.push(savedStage);
-        }
-        console.log(
-          `  📍 ${stages.length} stages créés pour ${savedTemplate.name}`,
-        );
+            // Vérifier s'il manque des stages
+            const missingStages = Array.from(requiredStageNames).filter(
+              (name) => !existingStageNames.has(name),
+            );
 
-        // Créer les sub-stages
-        if (templateData.subStages) {
-          for (const stage of stages) {
-            const subStagesForStage = templateData.subStages[stage.name];
-            if (subStagesForStage) {
-              for (const subStageData of subStagesForStage) {
-                const subStage = subStageRepository.create({
-                  ...subStageData,
-                  description: subStageData.name,
-                  stageId: stage.id,
-                });
-                await subStageRepository.save(subStage);
+            if (missingStages.length > 0) {
+              if (
+                savedTemplate.lifecycleStatus !==
+                ProcedureTemplateLifecycle.DRAFT
+              ) {
+                throw new Error(
+                  `Le template publié "${savedTemplate.name}" est incomplet ; créez une nouvelle version au lieu de le modifier`,
+                );
               }
-              console.log(`    📝 Sub-stages créés pour ${stage.name}`);
-            }
-          }
-        }
-
-        // Créer les transitions
-        if (templateData.transitions) {
-          const getStageByName = (name: string) =>
-            stages.find((s) => s.name === name);
-          const transitionSet = new Set<string>();
-
-          // Ajouter les transitions définies dans le template
-          for (const transData of templateData.transitions) {
-            const fromStage = getStageByName(transData.from);
-            const toStage = getStageByName(transData.to);
-
-            if (fromStage && toStage) {
-              const transition = transitionRepository.create({
-                fromStageId: fromStage.id,
-                toStageId: toStage.id,
-                type: transData.type,
-                label: (transData as any).label || null,
-                isDefault: transData.isDefault,
-                requiresDecision: transData.type === 'manual',
-                requiresValidation: false,
+              console.log(
+                `  ⚠️ Stages manquants: ${missingStages.join(', ')} - Mise à jour nécessaire`,
+              );
+              // On va recréer le template pour avoir la structure complète
+              // La FK transitions.templateId n'a pas de suppression en cascade.
+              await manager.delete(Transition, {
                 templateId: savedTemplate.id,
-                expectsUserInput: false,
-                userInputs: null,
-                preTransitionActions: null,
-                postTransitionActions: null,
-                onTransition: null,
-              } as any);
-              await transitionRepository.save(transition);
-              transitionSet.add(`${transData.from}|${transData.to}`);
+              });
+              await templateRepository.remove(savedTemplate);
+              savedTemplate = null;
+            } else {
+              console.log(
+                `  ✅ Template existant complet, aucune modification nécessaire`,
+              );
             }
           }
 
-          // Générer et ajouter les transitions manquantes (aller-retour complet)
-          const missingTransitions = generateAllPossibleTransitions(
-            stages,
-            transitionSet,
-          );
-          for (const transData of missingTransitions) {
-            const fromStage = getStageByName(transData.from);
-            const toStage = getStageByName(transData.to);
+          // Créer le template seulement s'il n'existe pas ou a été supprimé
+          if (!savedTemplate) {
+            const template = templateRepository.create({
+              familyId: randomUUID(),
+              name: templateData.name,
+              description: templateData.description,
+              version: 1,
+              lifecycleStatus: ProcedureTemplateLifecycle.DRAFT,
+              publishedAt: null,
+              retiredAt: null,
+              contentHash: null,
+            });
+            savedTemplate = await templateRepository.save(template);
+            console.log(`✅ Template créé: ${savedTemplate.name}`);
 
-            if (fromStage && toStage) {
-              const transition = transitionRepository.create({
-                fromStageId: fromStage.id,
-                toStageId: toStage.id,
-                type: transData.type,
-                label: transData.label,
-                isDefault: transData.isDefault,
-                requiresDecision: transData.type === 'manual',
-                requiresValidation: false,
+            // Créer les stages
+            const stages: Stage[] = [];
+            for (const stageData of templateData.stages) {
+              const stage = stageRepository.create({
+                ...stageData,
+                description: stageData.name,
                 templateId: savedTemplate.id,
-                expectsUserInput: false,
-                userInputs: null,
-                preTransitionActions: null,
-                postTransitionActions: null,
-                onTransition: null,
-              } as any);
-              await transitionRepository.save(transition);
+              });
+              const savedStage = await stageRepository.save(stage);
+              stages.push(savedStage);
+            }
+            console.log(
+              `  📍 ${stages.length} stages créés pour ${savedTemplate.name}`,
+            );
+
+            // Créer les sub-stages
+            if (templateData.subStages) {
+              for (const stage of stages) {
+                const subStagesForStage = templateData.subStages[stage.name];
+                if (subStagesForStage) {
+                  for (const subStageData of subStagesForStage) {
+                    const subStage = subStageRepository.create({
+                      ...subStageData,
+                      description: subStageData.name,
+                      stageId: stage.id,
+                      requirements: [],
+                    });
+                    await subStageRepository.save(subStage);
+                  }
+                  console.log(`    📝 Sub-stages créés pour ${stage.name}`);
+                }
+              }
+            }
+
+            // Créer les transitions
+            if (templateData.transitions) {
+              const getStageByName = (name: string) =>
+                stages.find((s) => s.name === name);
+              const transitionSet = new Set<string>();
+
+              // Ajouter les transitions définies dans le template
+              for (const transData of templateData.transitions) {
+                const fromStage = getStageByName(transData.from);
+                const toStage = getStageByName(transData.to);
+
+                if (fromStage && toStage) {
+                  const transition = transitionRepository.create({
+                    fromStageId: fromStage.id,
+                    toStageId: toStage.id,
+                    type: transData.type,
+                    label: (transData as any).label || null,
+                    isDefault: transData.isDefault,
+                    requiresDecision: transData.type === 'manual',
+                    requiresValidation: false,
+                    templateId: savedTemplate.id,
+                    expectsUserInput: false,
+                    userInputs: null,
+                    preTransitionActions: null,
+                    postTransitionActions: null,
+                    onTransition: null,
+                  } as any);
+                  await transitionRepository.save(transition);
+                  transitionSet.add(`${transData.from}|${transData.to}`);
+                }
+              }
+
+              // Générer et ajouter les transitions manquantes (aller-retour complet)
+              // Le seeder ne fabrique jamais de raccourcis globaux : seules les
+              // transitions explicitement définies par le template font autorité.
+              const missingTransitions: any[] = [];
+              for (const transData of missingTransitions) {
+                const fromStage = getStageByName(transData.from);
+                const toStage = getStageByName(transData.to);
+
+                if (fromStage && toStage) {
+                  const transition = transitionRepository.create({
+                    fromStageId: fromStage.id,
+                    toStageId: toStage.id,
+                    type: transData.type,
+                    label: transData.label,
+                    isDefault: transData.isDefault,
+                    requiresDecision: transData.type === 'manual',
+                    requiresValidation: false,
+                    templateId: savedTemplate.id,
+                    expectsUserInput: false,
+                    userInputs: null,
+                    preTransitionActions: null,
+                    postTransitionActions: null,
+                    onTransition: null,
+                  } as any);
+                  await transitionRepository.save(transition);
+                }
+              }
+
+              console.log(
+                `  🔄 ${transitionSet.size + missingTransitions.length} transitions créées (${transitionSet.size} définies + ${missingTransitions.length} complémentaires)`,
+              );
             }
           }
 
-          console.log(
-            `  🔄 ${transitionSet.size + missingTransitions.length} transitions créées (${transitionSet.size} définies + ${missingTransitions.length} complémentaires)`,
+          const procedureType = procedureTypeMap.get(
+            templateData.procedureTypeCode,
           );
-        }
-      }
+          savedTemplate = await publishSeededProcedureTemplate(
+            manager,
+            savedTemplate!.id,
+          );
+          if (procedureType) {
+            await manager.update(ProcedureType, procedureType.id, {
+              procedure_template_id: savedTemplate.id,
+            });
+          }
+          if (procedureType) {
+            console.log(
+              `  🔗 Version publiée liée à: ${procedureType.name} (${procedureType.code})`,
+            );
+          } else {
+            console.log(
+              `  ⚠️ ProcedureType non trouvé pour le code: ${templateData.procedureTypeCode}`,
+            );
+          }
+          return savedTemplate;
+        },
+      );
 
-      createdTemplates.push(savedTemplate);
+      createdTemplates.push(finalizedTemplate);
     }
 
     console.log(
@@ -2453,7 +2482,7 @@ export default class ProcedureTemplateSeeder implements Seeder {
 
     // Vérification finale des liaisons
     const linkedProcedureTypes = await procedureTypeRepository.find({
-      where: { procedure_template_id: { $not: null } as any },
+      where: { procedure_template_id: Not(IsNull()) },
     });
     console.log(
       `\n🔗 ${linkedProcedureTypes.length} ProcedureTypes ont un template lié`,

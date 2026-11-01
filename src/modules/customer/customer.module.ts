@@ -1,4 +1,4 @@
-import { forwardRef, Module } from '@nestjs/common';
+import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AgenciesModule } from '../agencies/agencies.module';
 import { BranchService } from '../agencies/branch/branch.service';
@@ -14,24 +14,19 @@ import { TypeCustomersService } from './type-customer/type-customer.service';
 import { DocumentsModule } from '../documents/documents.module';
 import { CustomerStatsService } from './customer/customer-stats.service';
 import { TypeCustomerStatsService } from './type-customer/type-customer-stats.service';
+import { PlansModule } from '../plans/plans.module';
 import { CustomerWriteHandler } from './customer/customer-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
-import { PlansModule } from '../plans/plans.module';
 
 @Module({
   imports: [
     forwardRef(() => DocumentsModule),
     AgenciesModule,
     GeographyModule,
-    TypeOrmModule.forFeature([
-      TypeCustomer,
-      Customer,
-      DocumentType,
-      CustomerCommunication,
-    ]),
-    AiDatabaseModule,
+    TypeOrmModule.forFeature([TypeCustomer, Customer, DocumentType, CustomerCommunication]),
     PlansModule,
+    AiDatabaseModule,
   ],
   controllers: [TypeCustomersController, CustomerController],
   providers: [
@@ -42,21 +37,15 @@ import { PlansModule } from '../plans/plans.module';
     TypeCustomerStatsService,
     CustomerWriteHandler,
   ],
-  exports: [
-    TypeCustomersService,
-    CustomersService,
-    TypeOrmModule,
-    CustomerStatsService,
-    TypeCustomerStatsService,
-  ],
+  exports: [TypeCustomersService, CustomersService, TypeOrmModule, CustomerStatsService, TypeCustomerStatsService],
 })
-export class CustomerModule {
+export class CustomerModule implements OnModuleInit {
   constructor(
     private readonly registry: WriteHandlerRegistry,
-    private readonly handler: CustomerWriteHandler,
+    private readonly handler0: CustomerWriteHandler,
   ) {}
 
   onModuleInit() {
-    this.registry.register(this.handler);
+    this.registry.register(this.handler0);
   }
 }

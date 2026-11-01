@@ -115,29 +115,74 @@ export class SubscriptionPayment {
   })
   checkout_url: string | null;
 
+  /** Dernier événement de webhook traité pour garantir l'idempotence. */
+  @Column({
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+    unique: true,
+    name: 'last_webhook_event_id',
+  })
+  last_webhook_event_id: string | null;
+
+  @Column({ type: 'datetime', nullable: true, name: 'last_webhook_at' })
+  last_webhook_at: Date | null;
   /** Moyen de paiement choisi (platform_payment_methods). */
   @Column({ type: 'int', nullable: true, name: 'payment_method_id' })
   payment_method_id: number | null;
 
   /** Identifiant côté passerelle (ex. session Stripe, référence NotchPay). */
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'provider_reference' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'provider_reference',
+  })
   provider_reference: string | null;
 
   /** Montant avant remise (null = pas de remise). `amount` reste le net dû. */
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, name: 'amount_gross' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    name: 'amount_gross',
+  })
   amount_gross: number | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'discount_amount' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+    name: 'discount_amount',
+  })
   discount_amount: number;
 
   /** Frais prélevés par la passerelle (estimés depuis la configuration du moyen). */
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'fee_amount' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+    name: 'fee_amount',
+  })
   fee_amount: number;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'failure_reason' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'failure_reason',
+  })
   failure_reason: string | null;
 
-  @Column({ type: 'varchar', length: 120, nullable: true, name: 'declared_reference' })
+  @Column({
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+    name: 'declared_reference',
+  })
   declared_reference: string | null;
 
   @Column({ type: 'datetime', nullable: true, name: 'declared_at' })
@@ -156,10 +201,21 @@ export class SubscriptionPayment {
   @Column({ type: 'datetime', nullable: true, name: 'refunded_at' })
   refunded_at: Date | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, name: 'refund_amount' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    name: 'refund_amount',
+  })
   refund_amount: number | null;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'refund_reason' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'refund_reason',
+  })
   refund_reason: string | null;
 
   @Column({ type: 'varchar', length: 20, default: 'subscription' })
@@ -170,11 +226,22 @@ export class SubscriptionPayment {
   ai_credit_pack_id: number | null;
 
   /** Crédits IA vendus par ce paiement (figés à l'achat). */
-  @Column({ type: 'decimal', precision: 14, scale: 4, nullable: true, name: 'ai_credits' })
+  @Column({
+    type: 'decimal',
+    precision: 14,
+    scale: 4,
+    nullable: true,
+    name: 'ai_credits',
+  })
   ai_credits: number | null;
 
   /** Numéro du reçu (attribué à l'encaissement). */
-  @Column({ type: 'varchar', length: 40, nullable: true, name: 'receipt_number' })
+  @Column({
+    type: 'varchar',
+    length: 40,
+    nullable: true,
+    name: 'receipt_number',
+  })
   receipt_number: string | null;
 
   /** Dernière réponse de la passerelle (vérification / webhook). */

@@ -19,7 +19,6 @@ import {
   FindingStatus,
 } from 'src/modules/finding/entities/finding.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
@@ -66,9 +65,6 @@ export enum DiligencePriority {
   category: 'investigation',
 })
 export class Diligence extends BaseEntity {
-  /** Transient — lu par le DiligenceSubscriber pour notifier le client. */
-  notify_client?: boolean;
-
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
@@ -306,23 +302,6 @@ export class Diligence extends BaseEntity {
     group: 'documents',
   })
   documents: DocumentCustomer[];
-
-  @ManyToOne(() => Step, (step) => step.diligences, { nullable: true })
-  @JoinColumn({ name: 'step_id' })
-  @BusinessColumn({
-    label: 'Ancienne étape du dossier',
-    description: 'Lien legacy',
-    ignored: true,
-  })
-  step: Step;
-
-  @Column({ name: 'step_id', type: 'int', nullable: true })
-  @BusinessColumn({
-    label: 'Ancienne étape du dossier',
-    description: 'Lien legacy',
-    ignored: true,
-  })
-  step_id: number;
 
   @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
   @BusinessColumn({

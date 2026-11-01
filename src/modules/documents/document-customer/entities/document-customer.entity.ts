@@ -13,7 +13,6 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { Finding } from 'src/modules/finding/entities/finding.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
@@ -32,10 +31,12 @@ import {
   ManyToMany,
   OneToMany,
   JoinTable,
-  BeforeInsert,
+  OneToOne,
 } from 'typeorm';
 
 import { DocumentType } from '../../document-type/entities/document-type.entity';
+import { DocumentVersion } from './document-version.entity';
+import { Exclude, Expose } from 'class-transformer';
 
 export enum DocumentCustomerStatus {
   PENDING = 0,
@@ -55,7 +56,6 @@ export enum DocumentCustomerStatus {
 })
 export class DocumentCustomer extends BaseEntity {
   /** Transient — lu par le DocumentSubscriber pour notifier le client. */
-  notify_client?: boolean;
 
   @PrimaryGeneratedColumn()
   @BusinessColumn({
@@ -162,7 +162,7 @@ export class DocumentCustomer extends BaseEntity {
   @Column({
     type: 'enum',
     enum: DocumentCustomerStatus,
-    default: DocumentCustomerStatus.ACCEPTED,
+    default: DocumentCustomerStatus.PENDING,
   })
   @BusinessColumn({
     label: 'Statut',
@@ -175,6 +175,7 @@ export class DocumentCustomer extends BaseEntity {
   status: DocumentCustomerStatus;
 
   @Column({ name: 'file_path', nullable: true })
+  @Exclude()
   @BusinessColumn({
     label: 'Chemin du fichier',
     description: 'Emplacement physique du fichier sur le serveur',
@@ -185,6 +186,7 @@ export class DocumentCustomer extends BaseEntity {
   file_path: string;
 
   @Column({ name: 'file_url', nullable: true })
+  @Exclude()
   @BusinessColumn({
     label: 'URL du fichier',
     description: 'Lien de téléchargement du document',
@@ -236,6 +238,23 @@ export class DocumentCustomer extends BaseEntity {
   @JoinColumn({ name: 'previous_version_id' })
   previous_version: DocumentCustomer;
 
+  @Column({ name: 'current_version_id', type: 'uuid', nullable: true })
+  currentVersionId: string | null;
+
+  @OneToOne(() => DocumentVersion, { nullable: true })
+  @JoinColumn({ name: 'current_version_id' })
+  currentVersion: DocumentVersion | null;
+
+  @OneToMany(() => DocumentVersion, (version) => version.document)
+  versions: DocumentVersion[];
+
+  @Expose()
+  get content_url(): string | null {
+    if (!this.currentVersionId) return null;
+    const base = (process.env.APP_URL ?? '').replace(/\/+$/, '');
+    return `${base}/documents/${this.id}/versions/${this.currentVersionId}/content`;
+  }
+
   @ManyToOne(() => Dossier, { nullable: false })
   @JoinColumn({ name: 'dossier_id' })
   @BusinessColumn({
@@ -249,14 +268,6 @@ export class DocumentCustomer extends BaseEntity {
   @ManyToOne(() => User)
   @JoinColumn({ name: 'uploaded_by_id' })
   uploaded_by: User;
-
-  @ManyToMany(() => Step, (step) => step.documents)
-  @JoinTable({
-    name: 'step_documents',
-    joinColumn: { name: 'document_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'step_id', referencedColumnName: 'id' },
-  })
-  steps: Step[];
 
   @Column({ name: 'uploaded_at', type: 'timestamp' })
   @CreateDateColumn()
@@ -489,14 +500,5 @@ export class DocumentCustomer extends BaseEntity {
         ? this.dossier.lifecycle_phase !== DossierLifecyclePhase.CLOSED
         : this.dossier?.status !== DossierStatus.CLOSED)
     );
-  }
-
-  @BeforeInsert()
-  beforeCreate() {
-    // Validé d'office, sauf dépôt explicitement en attente (documents du
-    // portail client, à valider par le cabinet).
-    if (this.status !== DocumentCustomerStatus.PENDING) {
-      this.status = DocumentCustomerStatus.ACCEPTED;
-    }
   }
 }

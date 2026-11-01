@@ -23,6 +23,7 @@ import { RegionSearchDto } from './dto/region-search.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 @Controller('region')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class RegionController {
   constructor(private readonly regionService: RegionsService) {}

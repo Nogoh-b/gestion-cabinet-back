@@ -20,7 +20,6 @@ import { Audience } from '../modules/audiences/entities/audience.entity';
 import { Diligence } from '../modules/diligence/entities/diligence.entity';
 import { Facture } from '../modules/facture/entities/facture.entity';
 import { Paiement } from '../modules/paiement/entities/paiement.entity';
-import { Step } from 'src/modules/dossiers/entities/step.entity';
 
 @Global()
 @Module({
@@ -42,7 +41,6 @@ import { Step } from 'src/modules/dossiers/entities/step.entity';
       DocumentType,
       // Dossiers
       Dossier,
-      Step,
       Audience,
       Diligence,
       Facture,

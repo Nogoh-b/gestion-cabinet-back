@@ -1,38 +1,84 @@
 // src/modules/audiences/dto/audience-response.dto.ts
-import { Exclude, Expose, Transform } from 'class-transformer';
+import { Exclude, Expose, Transform } from "class-transformer";
 
-import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 
-import { ApiProperty } from '@nestjs/swagger';
 
-import { AudienceStatus, AudienceType1 } from '../entities/audience.entity';
+
+import { Jurisdiction } from "src/modules/jurisdiction/entities/jurisdiction.entity";
+
+
+
+
+import { ApiProperty } from "@nestjs/swagger";
+
+import {
+  AudienceRecordStatus,
+  AudienceStatus,
+  AudienceType1,
+} from "../entities/audience.entity";
+
+
+
+
+
+
+
+
+
 
 export class AudienceResponseDto {
   @ApiProperty({ example: 1 })
   @Expose()
   id: number;
 
-  @ApiProperty({ example: '2024-12-15' })
+  @ApiProperty({ example: "2024-12-15" })
   @Expose()
   audience_date: Date;
 
-  @ApiProperty({ example: '14:30' })
+  @ApiProperty({ example: "14:30" })
   @Expose()
   audience_time: string;
+
+  @ApiProperty({ example: '2026-08-03T08:00:00.000Z' })
   @Expose()
+  starts_at_utc: Date;
+
+  @ApiProperty({ example: 'Africa/Ndjamena' })
+  @Expose()
+  timezone: string;
+  @Expose()  
   decision_text: string;
 
-  @Expose()
+  @Expose()  
   decision_date: Date;
 
-  @Expose()
+  @Expose()  
   decision_outcome: string; // 'favorable', 'unfavorable', 'partial'
 
-  @Expose()
+  @Expose()  
   decision_notes: string;
 
   @Expose()
+  @Transform(({ obj }) =>
+    (obj.decision_documents ?? []).map((document: any) => ({
+      id: document.id,
+      name: document.name,
+      current_version_id: document.currentVersionId ?? null,
+    })),
+  )
   decision_documents: any[];
+
+  @Expose()
+  decision_record_status: AudienceRecordStatus;
+
+  @Expose()
+  decision_record_version: number;
+
+  @Expose()
+  decision_record_hash: string | null;
+
+  @Expose()
+  decision_sealed_at: Date | null;
 
   // ── Rapport d'audience (procès-verbal) ──────────────────────────────────
   @Expose()
@@ -45,23 +91,31 @@ export class AudienceResponseDto {
   report_author_id: string;
 
   @Expose()
+  report_record_status: AudienceRecordStatus;
+
+  @Expose()
+  report_record_version: number;
+
+  @Expose()
+  report_record_hash: string | null;
+
+  @Expose()
+  report_sealed_at: Date | null;
+
+  @Expose()
   @Transform(({ obj }) => {
     if (!obj.report_documents) return [];
     return obj.report_documents.map((doc: any) => ({
       id: doc.id,
       name: doc.name,
-      file_url: doc.file_url,
       file_mimetype: doc.file_mimetype,
+      current_version_id: doc.currentVersionId ?? null,
     }));
   })
   report_documents: any[];
 
   // ── Filiation report ────────────────────────────────────────────────────
-  @ApiProperty({
-    example: 42,
-    required: false,
-    description: "ID de l'audience d'origine si celle-ci est née d'un report",
-  })
+  @ApiProperty({ example: 42, required: false, description: "ID de l'audience d'origine si celle-ci est née d'un report" })
   @Expose()
   parent_audience_id: number;
 
@@ -71,34 +125,18 @@ export class AudienceResponseDto {
   @Transform(({ obj }) => {
     const p = obj?.parent_audience;
     if (!p) return null;
-    return {
-      id: p.id,
-      audience_date: p.audience_date,
-      audience_time: p.audience_time,
-      status: p.status,
-    };
+    return { id: p.id, audience_date: p.audience_date, audience_time: p.audience_time, status: p.status };
   })
-  parent_audience_summary: {
-    id: number;
-    audience_date: Date;
-    audience_time: string;
-    status: number;
-  } | null;
+  parent_audience_summary: { id: number; audience_date: Date; audience_time: string; status: number } | null;
 
   /** ID de l'audience de remplacement (la plus récente née d'un report de celle-ci) */
-  @ApiProperty({
-    example: 57,
-    required: false,
-    description: "ID de l'audience qui remplace celle-ci suite à un report",
-  })
+  @ApiProperty({ example: 57, required: false, description: "ID de l'audience qui remplace celle-ci suite à un report" })
   @Expose()
   @Transform(({ obj }) => {
     const list = obj?.children_audiences;
     if (!Array.isArray(list) || list.length === 0) return null;
     const sorted = [...list].sort(
-      (a, b) =>
-        new Date(b.created_at ?? 0).getTime() -
-        new Date(a.created_at ?? 0).getTime(),
+      (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime(),
     );
     return sorted[0]?.id ?? null;
   })
@@ -111,27 +149,16 @@ export class AudienceResponseDto {
     const list = obj?.children_audiences;
     if (!Array.isArray(list) || list.length === 0) return null;
     const sorted = [...list].sort(
-      (a, b) =>
-        new Date(b.created_at ?? 0).getTime() -
-        new Date(a.created_at ?? 0).getTime(),
+      (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime(),
     );
     const c = sorted[0];
     if (!c) return null;
-    return {
-      id: c.id,
-      audience_date: c.audience_date,
-      audience_time: c.audience_time,
-      status: c.status,
-    };
+    return { id: c.id, audience_date: c.audience_date, audience_time: c.audience_time, status: c.status };
   })
-  replacement_audience_summary: {
-    id: number;
-    audience_date: Date;
-    audience_time: string;
-    status: number;
-  } | null;
+  replacement_audience_summary: { id: number; audience_date: Date; audience_time: string; status: number } | null;
 
-  @ApiProperty({ example: 'Tribunal de Grande Instance de Paris' })
+
+ @ApiProperty({ example: "Tribunal de Grande Instance de Paris" })
   @Expose()
   @Transform(({ value }: { value: Jurisdiction }) => {
     if (!value) return null;
@@ -148,24 +175,24 @@ export class AudienceResponseDto {
       address: value.address,
       phone: value.phone,
       email: value.email,
-      website: value.website,
+      website: value.website
     };
   })
   jurisdiction: Jurisdiction;
 
-  @ApiProperty({ example: 'Salle 4B', required: false })
+  @ApiProperty({ example: "Salle 4B", required: false })
   @Expose()
   room?: string;
 
-  @ApiProperty({
-    example: AudienceType1,
+  @ApiProperty({ 
+    example: AudienceType1 
   })
   @Expose()
   type: AudienceType1;
 
-  @ApiProperty({
+  @ApiProperty({ 
     enum: AudienceStatus,
-    example: AudienceStatus.SCHEDULED,
+    example: AudienceStatus.SCHEDULED 
   })
   @Expose()
   status: AudienceStatus;
@@ -174,11 +201,11 @@ export class AudienceResponseDto {
   @Expose()
   notes?: string;
 
-  @ApiProperty({ example: 'Décision rendue...', required: false })
+  @ApiProperty({ example: "Décision rendue...", required: false })
   @Expose()
   decision?: string;
 
-  @ApiProperty({ example: '2024-12-20', required: false })
+  @ApiProperty({ example: "2024-12-20", required: false })
   @Expose()
   postponed_to?: Date;
 
@@ -190,11 +217,11 @@ export class AudienceResponseDto {
   @Expose()
   duration_minutes?: number;
 
-  @ApiProperty({ example: 'Juge Dupont', required: false })
+  @ApiProperty({ example: "Juge Dupont", required: false })
   @Expose()
   judge_name?: string;
 
-  @ApiProperty({ example: 'favorable', required: false })
+  @ApiProperty({ example: "favorable", required: false })
   @Expose()
   outcome?: string;
 
@@ -203,12 +230,12 @@ export class AudienceResponseDto {
   @Expose()
   dossier_id: number;
 
-  @ApiProperty({
+  @ApiProperty({ 
     example: {
       id: 1,
-      reference: 'DOS-2024-001',
-      objet: 'Affaire commerciale',
-    },
+      reference: "DOS-2024-001",
+      objet: "Affaire commerciale"
+    }
   })
   @Expose()
   @Transform(({ obj }) => ({
@@ -216,29 +243,29 @@ export class AudienceResponseDto {
     dossier_number: obj.dossier?.dossier_number,
     object: obj.dossier?.object,
     full_name: obj.dossier?.full_name,
-    collaborators: obj.dossier?.collaborators,
+    collaborators: obj.dossier?.collaborators
   }))
   dossier_details?: {
     id: number;
     dossier_number?: string;
     object?: string;
-    full_name?: string;
-    collaborators: any;
+    full_name?: string; 
+    collaborators: any
   };
 
-  @ApiProperty({
+  @ApiProperty({ 
     example: {
       id: 1,
-      reference: 'DOS-2024-001',
-      objet: 'Affaire commerciale',
-    },
+      reference: "DOS-2024-001",
+      objet: "Affaire commerciale"
+    }
   })
   @Expose()
   @Transform(({ obj }) => ({
     id: obj.dossier?.client?.id,
     // dossier_number: obj.dossier?.dossier_number,
     // object: obj.dossier?.object,
-    full_name: obj.dossier?.client?.full_name,
+    full_name: obj.dossier?.client?.full_name
   }))
   client_details?: {
     id: number;
@@ -247,15 +274,15 @@ export class AudienceResponseDto {
     full_name?: any;
   };
 
-  @ApiProperty({
+  @ApiProperty({ 
     type: [Object],
     example: [
       {
         id: 1,
-        name: 'Convocation',
-        document_type: 'CONVOCATION',
-      },
-    ],
+        name: "Convocation",
+        document_type: "CONVOCATION"
+      }
+    ]
   })
   @Expose()
   @Transform(({ obj }) => {
@@ -265,16 +292,16 @@ export class AudienceResponseDto {
       name: doc.name,
       document_type: doc.document_type,
       category: doc.category,
-      file_url: doc.file_url,
+      current_version_id: doc.currentVersionId ?? null,
       status: doc.status,
-      file_mimetype: doc.file_mimetype,
+      file_mimetype: doc.file_mimetype
     }));
   })
   documents: Array<{
     id: number;
     name: string;
     document_type: string;
-    file_url?: string;
+    current_version_id?: string | null;
     file_mimetype?: string;
   }>;
 
@@ -286,9 +313,9 @@ export class AudienceResponseDto {
   @Expose()
   @Transform(({ obj }) => {
     const today = new Date();
-    const audienceDateTime = new Date(
-      `${obj.audience_date}T${obj.audience_time}`,
-    );
+    const audienceDateTime = obj.starts_at_utc
+      ? new Date(obj.starts_at_utc)
+      : new Date(`${obj.audience_date}T${obj.audience_time}`);
     return audienceDateTime < today;
   })
   is_past: boolean;
@@ -297,9 +324,9 @@ export class AudienceResponseDto {
   @Expose()
   @Transform(({ obj }) => {
     const today = new Date();
-    const audienceDateTime = new Date(
-      `${obj.audience_date}T${obj.audience_time}`,
-    );
+    const audienceDateTime = obj.starts_at_utc
+      ? new Date(obj.starts_at_utc)
+      : new Date(`${obj.audience_date}T${obj.audience_time}`);
     return audienceDateTime > today;
   })
   is_upcoming: boolean;
@@ -313,21 +340,24 @@ export class AudienceResponseDto {
   })
   is_today: boolean;
 
-  @ApiProperty({ example: '2024-12-15T14:30:00.000Z' })
+  @ApiProperty({ example: "2024-12-15T14:30:00.000Z" })
   @Expose()
-  @Transform(({ obj }) => new Date(`${obj.audience_date}T${obj.audience_time}`))
+  @Transform(({ obj }) =>
+    obj.starts_at_utc
+      ? new Date(obj.starts_at_utc)
+      : new Date(`${obj.audience_date}T${obj.audience_time}`),
+  )
   full_datetime: Date;
 
   @ApiProperty({ example: true })
   @Expose()
   @Transform(({ obj }) => {
     if (obj.reminder_sent || obj.is_past) return false;
-    const audienceDateTime = new Date(
-      `${obj.audience_date}T${obj.audience_time}`,
-    );
+    const audienceDateTime = obj.starts_at_utc
+      ? new Date(obj.starts_at_utc)
+      : new Date(`${obj.audience_date}T${obj.audience_time}`);
     const now = new Date();
-    const diffHours =
-      (audienceDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const diffHours = (audienceDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
     return diffHours <= 48;
   })
   needs_reminder: boolean;
@@ -337,68 +367,73 @@ export class AudienceResponseDto {
   @Transform(({ obj }) => obj.code)
   type_label: string;
 
-  @ApiProperty({
-    description:
-      "Date d'affichage (prend postponed_to si reportée, sinon audience_date)",
-    example: '2024-12-20',
+
+
+  @ApiProperty({ 
+    description: "Date d'affichage (prend postponed_to si reportée, sinon audience_date)",
+    example: "2024-12-20" 
   })
   @Expose()
+
   display_date: Date;
 
-  @ApiProperty({
-    description:
-      "Heure d'affichage (extrait de postponed_to si reportée, sinon audience_time)",
-    example: '11:00',
+  @ApiProperty({ 
+    description: "Heure d'affichage (extrait de postponed_to si reportée, sinon audience_time)",
+    example: "11:00" 
   })
   @Expose()
+
   display_time: string;
 
-  @ApiProperty({
+  @ApiProperty({ 
     description: "Date et heure d'affichage combinées",
-    example: '2024-12-20T11:00:00.000Z',
+    example: "2024-12-20T11:00:00.000Z" 
   })
   @Expose()
+
   display_datetime: Date;
 
-  @ApiProperty({
+  @ApiProperty({ 
     description: "Date et heure d'affichage formatées (locale française)",
-    example: 'vendredi 20 décembre 2024 à 11:00',
+    example: "vendredi 20 décembre 2024 à 11:00" 
   })
   @Expose()
+
   display_datetime_formatted: string;
 
-  @ApiProperty({
+  @ApiProperty({ 
     description: "Indique si l'audience a été reportée",
-    example: false,
+    example: false 
   })
   @Expose()
   is_postponed: boolean;
 
-  @ApiProperty({ example: 'Planifiée' })
+
+  @ApiProperty({ example: "Planifiée" })
   @Expose()
   @Transform(({ obj }) => {
     const statusLabels = {
-      [AudienceStatus.SCHEDULED]: 'Planifiée',
-      [AudienceStatus.HELD]: 'Tenue',
-      [AudienceStatus.POSTPONED]: 'Reportée',
-      [AudienceStatus.CANCELLED]: 'Annulée',
+      [AudienceStatus.SCHEDULED]: "Planifiée",
+      [AudienceStatus.HELD]: "Tenue",
+      [AudienceStatus.POSTPONED]: "Reportée",
+      [AudienceStatus.CANCELLED]: "Annulée"
     };
-    return statusLabels[obj.status] || 'Inconnu';
+    return statusLabels[obj.status] || "Inconnu";
   })
   status_label: string;
 
-  @ApiProperty({ example: 'Dans 3 jours' })
+  @ApiProperty({ example: "Dans 3 jours" })
   @Expose()
   @Transform(({ obj }) => {
     const now = new Date();
     const audienceDate = new Date(obj.audience_date);
     const diffTime = audienceDate.getTime() - now.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
+    
     if (diffDays === 0) return "Aujourd'hui";
-    if (diffDays === 1) return 'Demain';
+    if (diffDays === 1) return "Demain";
     if (diffDays > 1) return `Dans ${diffDays} jours`;
-    if (diffDays === -1) return 'Hier';
+    if (diffDays === -1) return "Hier";
     return `Il y a ${Math.abs(diffDays)} jours`;
   })
   relative_date: string;
@@ -410,19 +445,19 @@ export class AudienceListResponseDto {
   @Expose()
   id: number;
 
-  @ApiProperty({ example: '2024-12-15' })
+  @ApiProperty({ example: "2024-12-15" })
   @Expose()
   audience_date: Date;
 
-  @ApiProperty({ example: '14:30' })
+  @ApiProperty({ example: "14:30" })
   @Expose()
   audience_time: string;
 
-  @ApiProperty({ example: 'Tribunal de Grande Instance de Paris' })
+  @ApiProperty({ example: "Tribunal de Grande Instance de Paris" })
   @Expose()
   jurisdiction: Jurisdiction;
 
-  @ApiProperty({ example: 'Salle 4B' })
+  @ApiProperty({ example: "Salle 4B" })
   @Expose()
   room?: string;
 
@@ -434,49 +469,44 @@ export class AudienceListResponseDto {
   @Expose()
   status: AudienceStatus;
 
-  @ApiProperty({ example: 'Juge Dupont' })
+  @ApiProperty({ example: "Juge Dupont" })
   @Expose()
   judge_name?: string;
 
-  @ApiProperty({ example: 'DOS-2024-001' })
+  @ApiProperty({ example: "DOS-2024-001" })
   @Expose()
   @Transform(({ obj }) => obj.dossier?.reference)
   dossier_reference: string;
 
-  @ApiProperty({ example: 'Affaire commerciale' })
+  @ApiProperty({ example: "Affaire commerciale" })
   @Expose()
   @Transform(({ obj }) => obj.dossier?.objet)
   dossier_objet: string;
 
-  @ApiProperty({ example: 'Société ABC' })
+  @ApiProperty({ example: "Société ABC" })
   @Expose()
-  @Transform(
-    ({ obj }) =>
-      obj.dossier?.client?.company_name || obj.dossier?.client?.full_name,
-  )
+  @Transform(({ obj }) => obj.dossier?.client?.company_name || obj.dossier?.client?.full_name)
   client_name: string;
 
   @ApiProperty({ example: true })
   @Expose()
   @Transform(({ obj }) => {
     const today = new Date();
-    const audienceDateTime = new Date(
-      `${obj.audience_date}T${obj.audience_time}`,
-    );
+    const audienceDateTime = new Date(`${obj.audience_date}T${obj.audience_time}`);
     return audienceDateTime < today;
   })
   is_past: boolean;
 
-  @ApiProperty({ example: 'Planifiée' })
+  @ApiProperty({ example: "Planifiée" })
   @Expose()
   @Transform(({ obj }) => {
     const statusLabels = {
-      [AudienceStatus.SCHEDULED]: 'Planifiée',
-      [AudienceStatus.HELD]: 'Tenue',
-      [AudienceStatus.POSTPONED]: 'Reportée',
-      [AudienceStatus.CANCELLED]: 'Annulée',
+      [AudienceStatus.SCHEDULED]: "Planifiée",
+      [AudienceStatus.HELD]: "Tenue",
+      [AudienceStatus.POSTPONED]: "Reportée",
+      [AudienceStatus.CANCELLED]: "Annulée"
     };
-    return statusLabels[obj.status] || 'Inconnu';
+    return statusLabels[obj.status] || "Inconnu";
   })
   status_label: string;
 }

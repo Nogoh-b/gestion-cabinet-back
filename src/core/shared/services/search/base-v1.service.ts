@@ -26,6 +26,10 @@ import {
   PaginatedResult,
   PaginationServiceV1,
 } from '../pagination/paginations-v1.service';
+import {
+  getDefaultSortColumn,
+  isEntityColumnPath,
+} from '../../utils/entity-property-path.util';
 
 export interface SearchCriteria {
   [key: string]: any;
@@ -93,7 +97,10 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     paginationParams?: PaginationParamsDto,
   ): FindOptionsOrder<T> {
     // Si pas de tri spécifié dans paginationParams, utiliser l'ordre par défaut
-    if (!paginationParams?.sort_by) {
+    if (
+      !paginationParams?.sort_by ||
+      !isEntityColumnPath(this.repository.metadata, paginationParams.sort_by)
+    ) {
       return defaultOrder;
     }
 
@@ -192,25 +199,36 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     sortBy?: string,
     sortDirection?: string,
   ): FindOptionsOrder<any> {
-    if (!sortBy) {
-      return { created_at: 'ASC' } as FindOptionsOrder<any>;
+    const safeSortBy =
+      sortBy && isEntityColumnPath(this.repository.metadata, sortBy)
+        ? sortBy
+        : getDefaultSortColumn(this.repository.metadata);
+
+    if (!safeSortBy) {
+      return {} as FindOptionsOrder<any>;
     }
 
     // Vérifier si le tri concerne une relation (contient un point)
-    if (sortBy.includes('.')) {
-      const [relation, field] = sortBy.split('.');
+    if (safeSortBy.includes('.')) {
+      const parts = safeSortBy.split('.');
+      const order: Record<string, any> = {};
+      let currentLevel = order;
 
-      // Pour les relations, TypeORM nécessite une structure spécifique
-      return {
-        [relation]: {
-          [field]: (sortDirection || 'ASC').toUpperCase(),
-        },
-      } as FindOptionsOrder<any>;
+      for (let index = 0; index < parts.length - 1; index += 1) {
+        currentLevel[parts[index]] = {};
+        currentLevel = currentLevel[parts[index]];
+      }
+
+      currentLevel[parts[parts.length - 1]] = (
+        sortDirection || 'ASC'
+      ).toUpperCase();
+
+      return order as FindOptionsOrder<any>;
     }
 
     // Tri simple sur un champ direct
     return {
-      [sortBy]: (sortDirection || 'ASC').toUpperCase(),
+      [safeSortBy]: (sortDirection || 'ASC').toUpperCase(),
     } as FindOptionsOrder<any>;
   }
 
@@ -460,15 +478,17 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
       return [];
     }
 
-    return searchFields.map((field) => {
-      // Si le champ contient un point, c'est une relation
-      if (field.includes('.')) {
-        return this.buildNestedCondition(field, searchTerm);
-      } else {
+    return searchFields
+      .filter((field) => isEntityColumnPath(this.repository.metadata, field))
+      .map((field) => {
+        // Si le champ contient un point, c'est une relation
+        if (field.includes('.')) {
+          return this.buildNestedCondition(field, searchTerm);
+        }
+
         // Champ simple
         return { [field]: ILike(`%${searchTerm}%`) } as FindOptionsWhere<T>;
-      }
-    });
+      });
   }
 
   /**
@@ -520,7 +540,10 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     let hasDateConditions = false;
 
     // Gestion de date_from/date_to pour created_at
-    if (criteria.date_from || criteria.date_to) {
+    if (
+      (criteria.date_from || criteria.date_to) &&
+      isEntityColumnPath(this.repository.metadata, 'created_at')
+    ) {
       const dateFrom = criteria.date_from
         ? new Date(criteria.date_from)
         : undefined;
@@ -541,6 +564,10 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     const dateFields = options.dateRangeFields || ['created_at', 'updated_at'];
 
     dateFields.forEach((field) => {
+      if (!isEntityColumnPath(this.repository.metadata, field)) {
+        return;
+      }
+
       const fromKey = `${field}_from`;
       const toKey = `${field}_to`;
 
@@ -662,6 +689,12 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
         continue;
       }
 
+      // Ne jamais transmettre à TypeORM une propriété qui n'existe pas
+      // réellement sur l'entité ou sur une relation pointée.
+      if (!isEntityColumnPath(this.repository.metadata, key)) {
+        continue;
+      }
+
       if (value !== undefined && value !== null && value !== '') {
         // Champ avec relation pointée
         if (key.includes('.')) {
@@ -741,6 +774,12 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
         key.endsWith('_from') ||
         key.endsWith('_to')
       ) {
+        continue;
+      }
+
+      // Ne jamais transmettre à TypeORM une propriété qui n'existe pas
+      // réellement sur l'entité ou sur une relation pointée.
+      if (!isEntityColumnPath(this.repository.metadata, key)) {
         continue;
       }
 
@@ -1097,18 +1136,8 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     return {};
   }
 
-  private isValidField(fieldName: string, options: SearchOptions): boolean {
-    // Vérifier si le champ existe dans les options ou est un champ standard
-    const allFields = [
-      ...(options.searchFields || []),
-      ...(options.exactMatchFields || []),
-      ...(options.dateRangeFields || []),
-      'id',
-      'created_at',
-      'updated_at',
-    ];
-
-    return true; //allFields.includes(fieldName) || fieldName.includes('.');
+  private isValidField(fieldName: string, _options: SearchOptions): boolean {
+    return isEntityColumnPath(this.repository.metadata, fieldName);
   }
 
   private parseNumericValue(value: any): number | null {

@@ -105,7 +105,7 @@ export function injectTenantFilter(
   sql: string,
   options: TenantInjectionOptions,
 ): string {
-  if (!options.tenantId || options.tenantId === 1) return sql;
+  if (!options.tenantId) return sql;
   if (options.tenantTables.size === 0) return sql;
   // Le niveau principal est toujours filtré, même s'il commence par WITH.
   return processNested(sql, options, true);

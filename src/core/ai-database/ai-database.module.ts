@@ -16,14 +16,15 @@ import { AiSkillRegistry } from './skills/ai-skill.registry';
 import { AiSkillService } from './skills/ai-skill.service';
 import { UserProfileService } from './user-profile.service';
 import { EntityResolverService } from './write/entity-resolver.service';
-import { AutoHandlerFactory } from './write/auto-handler-factory.service';
 import { AiDatabasePermissionService } from './ai-database-permission.service';
 import { IamModule } from 'src/modules/iam/iam.module';
 import { PlansModule } from 'src/modules/plans/plans.module';
 import { AiRequestLog } from './entities/ai-request-log.entity';
 import { AiConversationDocument } from './entities/ai-conversation-document.entity';
 import { AiQuotaGuard } from './guards/ai-quota.guard';
+import { AiFeatureGuard } from './guards/ai-feature.guard';
 import { AiModelRouterService } from './ai-model-router.service';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { AiUsageService } from './ai-usage.service';
 import { ImageReaderService } from './image-reader.service';
 import { PlanFieldsService } from './plan-fields.service';
@@ -65,7 +66,6 @@ import { AudioTranscriptionService } from './audio-transcription.service';
     UserProfileService,
     IntentDetectionService,
     EntityResolverService,
-    AutoHandlerFactory,
     AiDatabasePermissionService,
     AiModelRouterService,
     CabinetAiSettingsService,
@@ -73,6 +73,8 @@ import { AudioTranscriptionService } from './audio-transcription.service';
     ImageReaderService,
     PlanFieldsService,
     AiQuotaGuard,
+    AiFeatureGuard,
+    PermissionsGuard,
     AiContextConfigService,
   ],
   exports: [

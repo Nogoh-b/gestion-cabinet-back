@@ -13,10 +13,11 @@ import {
   UpdateEvent,
 } from 'typeorm';
 import { Injectable } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
-import { StatutFacture } from '../dto/create-facture.dto';
+import { InvoiceNature, StatutFacture } from '../dto/create-facture.dto';
 import { Facture } from '../entities/facture.entity';
 import {
   BillableItem,
@@ -30,7 +31,8 @@ import { BillableItemStatus } from 'src/modules/case-workflow/case-workflow.enum
  * Événements émis :
  *  - FACTURE_CREATED          → à la création (client si notify_client=true)
  *  - FACTURE_PAID             → quand le statut passe à PAYEE
- *  - FACTURE_OVERDUE          → quand le statut passe à IMPAYEE
+ * Le retard est une projection calculée depuis l'échéance et le solde ; il ne
+ * déclenche jamais un changement de statut persistant.
  */
 @Injectable()
 export class FactureSubscriber extends NotifiableSubscriber<Facture> {
@@ -72,6 +74,10 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     );
     this.emitAccountingLifecycleEvents(null, facture);
 
+    // Une facture est toujours créée en brouillon. La notification est
+    // déclenchée durablement par l'outbox au moment de son émission.
+    if (facture.status === StatutFacture.BROUILLON) return;
+
     const notifyClient = this.resolveTransientBoolean(
       'notify_client',
       entity,
@@ -108,6 +114,41 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     });
   }
 
+  @OnEvent('outbox.invoice.issued', { async: true })
+  async onInvoiceIssued(payload: any): Promise<void> {
+    const facture = await this.load(String(payload.invoiceId)).catch(
+      () => null,
+    );
+    if (!facture) {
+      throw new Error(
+        `Facture émise ${payload.invoiceId} introuvable pour notification`,
+      );
+    }
+    const currencySymbol = await this.getCurrencySymbol();
+    await this.notificationDispatcher.dispatchStrict({
+      event: NotifiableEvent.FACTURE_CREATED,
+      title: `Nouvelle facture ${facture.numero}`,
+      content:
+        `Facture ${facture.numero} — ${formatMoney(facture.montantTTC, currencySymbol)} ` +
+        `(échéance ${formatDate(facture.dateEcheance)})`,
+      link: `/facturation/factures/${facture.id}`,
+      audience: {
+        client: {
+          user_id: (facture.client as any)?.user_id,
+          email: (facture.client as any)?.email,
+          notify: facture.notifyClientRequested,
+        },
+        lawyer_id: (facture.dossier as any)?.lawyer_id ?? null,
+      },
+      entity: { type: 'facture', id: facture.id },
+      emailContext: buildEntityMailContext({
+        dossier: facture.dossier as any,
+        resourceType: 'facture',
+        resource: facture as any,
+      }),
+    });
+  }
+
   protected async onAfterUpdate(
     entity: Partial<Facture>,
     event: UpdateEvent<Facture>,
@@ -123,6 +164,11 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
       (c) => c.field === 'status',
     );
     if (!change) return;
+
+    if (Number(change.newValue) === StatutFacture.PAYEE) {
+      // Les notifications terminales sont émises depuis l'outbox.
+      return;
+    }
 
     const id = entity.id ?? event.databaseEntity?.id;
     if (!id) return;
@@ -170,10 +216,6 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
       event_ = NotifiableEvent.FACTURE_PAID;
       title = `Facture ${facture.numero} payée`;
       statusLabel = 'PAYEE';
-    } else if (newStatus === StatutFacture.IMPAYEE) {
-      event_ = NotifiableEvent.FACTURE_OVERDUE;
-      title = `Facture ${facture.numero} impayée`;
-      statusLabel = 'IMPAYEE';
     }
     if (!event_) return;
 
@@ -198,6 +240,46 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
       },
       entity: { type: 'facture', id: facture.id },
       changes: { status: { from: change.oldValue, to: change.newValue } },
+      emailContext: buildEntityMailContext({
+        dossier: facture.dossier as any,
+        resourceType: 'facture',
+        resource: facture as any,
+      }),
+    });
+  }
+
+  @OnEvent('outbox.payment.validated', { async: true })
+  async onPaymentValidated(payload: any): Promise<void> {
+    if (Number(payload.invoiceStatus) !== StatutFacture.PAYEE) return;
+    const facture = await this.load(String(payload.invoiceId)).catch(
+      () => null,
+    );
+    if (!facture) {
+      throw new Error(
+        `Facture payée ${payload.invoiceId} introuvable pour notification`,
+      );
+    }
+    const currencySymbol = await this.getCurrencySymbol();
+    await this.notificationDispatcher.dispatchStrict({
+      event: NotifiableEvent.FACTURE_PAID,
+      title: `Facture ${facture.numero} payée`,
+      content: `Montant : ${formatMoney(facture.montantTTC, currencySymbol)}`,
+      link: `/facturation/factures/${facture.id}`,
+      audience: {
+        client: {
+          user_id: (facture.client as any)?.user_id,
+          email: (facture.client as any)?.email,
+          notify: facture.notifyClientRequested,
+        },
+        lawyer_id: (facture.dossier as any)?.lawyer_id ?? null,
+      },
+      entity: { type: 'facture', id: facture.id },
+      changes: {
+        status: {
+          from: StatutFacture.PARTIELLEMENT_PAYEE,
+          to: StatutFacture.PAYEE,
+        },
+      },
       emailContext: buildEntityMailContext({
         dossier: facture.dossier as any,
         resourceType: 'facture',
@@ -243,15 +325,33 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
       await (event?.manager ?? this.dataSource.manager).query(
         `UPDATE dossiers
          SET actual_costs = COALESCE(
-           (SELECT SUM(f.montant_ttc)
+           (SELECT SUM(
+              CASE
+                WHEN f.nature = ? AND f.status = ? THEN -f.montant_ttc
+                WHEN f.nature <> ? AND f.status IN (?, ?, ?)
+                  THEN f.montant_ttc
+                ELSE 0
+              END
+            )
             FROM factures f
             WHERE f.dossier_id = ?
-              AND f.deleted_at IS NULL
-              AND f.status <> ?),
+              AND f.tenant_id = ?
+              AND f.deleted_at IS NULL),
            0
          )
-         WHERE id = ?`,
-        [dossierId, StatutFacture.ANNULEE, dossierId],
+         WHERE id = ? AND tenant_id = ?`,
+        [
+          InvoiceNature.CREDIT_NOTE,
+          StatutFacture.VALIDEE,
+          InvoiceNature.CREDIT_NOTE,
+          StatutFacture.VALIDEE,
+          StatutFacture.PARTIELLEMENT_PAYEE,
+          StatutFacture.PAYEE,
+          dossierId,
+          getCurrentTenantId(),
+          dossierId,
+          getCurrentTenantId(),
+        ],
       );
       this.logger.log(`💰 actual_costs mis à jour | dossier #${dossierId}`);
     } catch (err) {
@@ -300,7 +400,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
       StatutFacture.ENVOYEE,
       StatutFacture.PARTIELLEMENT_PAYEE,
       StatutFacture.PAYEE,
-      StatutFacture.IMPAYEE,
+      StatutFacture.VALIDEE,
     ].includes(status);
   }
 

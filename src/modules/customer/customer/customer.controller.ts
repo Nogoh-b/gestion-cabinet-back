@@ -41,6 +41,7 @@ import { CustomerStatsService } from './customer-stats.service';
 
 @ApiTags('customer')
 @Controller('customer')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class CustomerController {
   constructor(

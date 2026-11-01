@@ -17,7 +17,6 @@ import {
   Dossier,
   DossierOutcome,
 } from 'src/modules/dossiers/entities/dossier.entity';
-import { StepStatus } from 'src/modules/dossiers/entities/step.entity';
 import {
   Diligence,
   DiligenceStatus,
@@ -965,7 +964,7 @@ export class CaseWorkflowService {
           status: In([
             StatutFacture.ENVOYEE,
             StatutFacture.PARTIELLEMENT_PAYEE,
-            StatutFacture.IMPAYEE,
+            StatutFacture.VALIDEE,
           ]),
         },
       }),
@@ -1543,7 +1542,6 @@ export class CaseWorkflowService {
     const dossier = await this.dossierRepository.findOne({
       where: { id: dossierId, tenant_id: tenantId },
       relations: [
-        'steps',
         'procedureInstance',
         'procedureInstance.currentStage',
       ],
@@ -1570,20 +1568,22 @@ export class CaseWorkflowService {
       existingPreview.rolled_back_at = new Date();
       await this.migrationRepository.save(existingPreview);
     }
-    const legacySteps = (dossier.steps ?? []).map((step) => ({
-      id: step.id,
-      title: step.title ?? `Étape ${step.id}`,
-      status: step.status,
-      dueDate: step.metadata?.deadline ?? step.scheduledDate ?? null,
-      createdAt: step.created_at ?? null,
-      updatedAt: step.updated_at ?? null,
-      completedAt: step.completedDate ?? null,
-    }));
+    // Les anciennes étapes de dossier (table steps) ont été retirées par la
+    // refonte : seule l'instance de procédure alimente désormais l'aperçu.
+    const legacySteps: Array<{
+      id: number;
+      title: string;
+      status: string;
+      dueDate: Date | string | null;
+      createdAt: Date | null;
+      updatedAt: Date | null;
+      completedAt: Date | null;
+    }> = [];
     const currentStage = dossier.procedureInstance?.currentStage;
     const labels = [
       currentStage?.name,
       ...legacySteps
-        .filter((step) => step.status !== StepStatus.COMPLETED)
+        .filter((step) => step.status !== 'completed')
         .map((step) => step.title),
     ].filter(
       (label): label is string =>

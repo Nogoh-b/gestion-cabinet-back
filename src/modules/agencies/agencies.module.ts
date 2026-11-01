@@ -1,4 +1,4 @@
-import { forwardRef, Module } from '@nestjs/common';
+import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { GeographyModule } from '../geography/geography.module';
 import { BranchController } from './branch/branch.controller';
@@ -10,12 +10,12 @@ import { Employee } from './employee/entities/employee.entity';
 import { EmployeeStatsService } from './employee/employee-stats.service';
 import { BranchStatsService } from './branch/branch-stats.service';
 import { EmployeeSubscriber } from './employee/suscribers/employee.suscribers';
-import { EmployeeWriteHandler } from './employee/employee-write.handler';
-import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
-import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { PlansModule } from '../plans/plans.module';
 import { UserRole } from '../iam/user-role/entities/user-role.entity';
 import { UserRoleAssignment } from '../iam/user-role-assignment/entities/user-role-assignment.entity';
+import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
+import { EmployeeWriteHandler } from './employee/employee-write.handler';
 
 @Module({
   imports: [
@@ -41,7 +41,7 @@ import { UserRoleAssignment } from '../iam/user-role-assignment/entities/user-ro
     BranchStatsService,
   ],
 })
-export class AgenciesModule {
+export class AgenciesModule implements OnModuleInit {
   constructor(
     private readonly registry: WriteHandlerRegistry,
     private readonly handler: EmployeeWriteHandler,

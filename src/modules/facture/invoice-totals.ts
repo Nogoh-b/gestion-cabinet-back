@@ -63,7 +63,7 @@ const STATUS_LABELS: Record<number, string> = {
   [StatutFacture.ENVOYEE]: 'Envoyée',
   [StatutFacture.PARTIELLEMENT_PAYEE]: 'Partiellement payée',
   [StatutFacture.PAYEE]: 'Payée',
-  [StatutFacture.IMPAYEE]: 'Impayée',
+  [StatutFacture.VALIDEE]: 'Validée',
   [StatutFacture.ANNULEE]: 'Annulée',
 };
 

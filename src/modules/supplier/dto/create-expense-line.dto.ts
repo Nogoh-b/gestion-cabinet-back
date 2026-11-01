@@ -1,45 +1,32 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsString,
-  IsNotEmpty,
-  IsOptional,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
   IsInt,
   IsNumber,
-  IsEnum,
-  IsDateString,
-  IsBoolean,
+  IsOptional,
+  IsString,
   IsUUID,
   MaxLength,
   Min,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  ExpenseCategory,
-  ExpenseRebillingType,
-} from '../entities/expense-line.entity';
+import { ExpenseRebillingType } from '../entities/expense-line.entity';
 
 export class CreateExpenseLineDto {
-  @ApiProperty({
-    example: 1,
-    description: 'ID de la note de frais parente',
-  })
+  @ApiProperty()
   @IsInt()
-  @IsNotEmpty()
+  @Min(1)
   expense_report_id: number;
 
-  @ApiProperty({
-    example: '2026-04-08',
-    description: 'Date de la dépense',
-  })
+  @ApiProperty({ example: '2026-04-08' })
   @IsDateString()
-  @IsNotEmpty()
-  expense_date: Date;
+  expense_date: string;
 
-  @ApiProperty({
-    example: 'Train Paris-Lyon A/R',
-    description: 'Description de la dépense',
-  })
+  @ApiProperty()
   @IsString()
   @IsOptional()
+  @MaxLength(500)
   description?: string;
 
   @ApiProperty({
@@ -47,50 +34,33 @@ export class CreateExpenseLineDto {
     description: 'Code de catégorie de dépense (liste gérable par le cabinet)',
   })
   @IsString()
-  @IsNotEmpty()
   @MaxLength(80)
   category: string;
 
-  @ApiProperty({
-    example: 120.0,
-    description: 'Montant HT',
-  })
-  @IsNumber()
-  @Min(0)
-  @IsNotEmpty()
+  @ApiProperty()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
   amount_ht: number;
 
-  @ApiProperty({
-    example: 20.0,
-    description: 'Taux TVA (%)',
-  })
-  @IsNumber()
+  @ApiProperty()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  @IsNotEmpty()
   tax_rate: number;
 
-  @ApiProperty({
-    example: 144.0,
-    description: 'Montant TTC',
-  })
-  @IsNumber()
-  @Min(0)
-  @IsNotEmpty()
+  @ApiProperty()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
   amount_ttc: number;
 
-  @ApiPropertyOptional({
-    example: true,
-    description: 'Refacturable au client',
-    default: false,
-  })
-  @IsBoolean()
+  @ApiPropertyOptional({ default: false })
   @IsOptional()
+  @IsBoolean()
   is_rebillable?: boolean;
 
   @ApiPropertyOptional({
     enum: ExpenseRebillingType,
     example: ExpenseRebillingType.EXPENSE,
-    description: 'Nature de la refacturation : frais ou dÃ©bours',
+    description: 'Nature de la refacturation : frais ou débours',
   })
   @IsEnum(ExpenseRebillingType)
   @IsOptional()
@@ -98,7 +68,7 @@ export class CreateExpenseLineDto {
 
   @ApiPropertyOptional({
     example: '0cfce36d-9aec-4ff2-83b8-f20d63866d22',
-    description: 'Action du dossier associÃ©e Ã  la dÃ©pense',
+    description: 'Action du dossier associée à la dépense',
   })
   @IsUUID()
   @IsOptional()
@@ -106,7 +76,7 @@ export class CreateExpenseLineDto {
 
   @ApiPropertyOptional({
     example: 'XAF',
-    description: 'Devise de la dÃ©pense',
+    description: 'Devise de la dépense',
     default: 'XAF',
   })
   @IsString()
@@ -114,19 +84,9 @@ export class CreateExpenseLineDto {
   @IsOptional()
   currency?: string;
 
-  @ApiPropertyOptional({
-    example: 15,
-    description: 'ID du dossier associé (si refacturable)',
-  })
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsInt()
-  @IsOptional()
+  @Min(1)
   dossier_id?: number;
-
-  @ApiPropertyOptional({
-    example: 'https://storage.cabinet.fr/justificatifs/ticket-train.pdf',
-    description: 'Lien vers le justificatif',
-  })
-  @IsString()
-  @IsOptional()
-  attachment_url?: string;
 }

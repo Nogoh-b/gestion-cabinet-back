@@ -486,9 +486,11 @@ export abstract class BaseService<T extends ObjectLiteral> {
           const operator = exactMatch ? '=' : 'LIKE';
           const condition = `${targetAlias}.${column} ${operator} :term`;
 
-          idx === 0
-            ? br.where(condition, { term: termValue })
-            : br.orWhere(condition, { term: termValue });
+          if (idx === 0) {
+            br.where(condition, { term: termValue });
+          } else {
+            br.orWhere(condition, { term: termValue });
+          }
         });
       }),
     );
@@ -639,9 +641,11 @@ export abstract class BaseService<T extends ObjectLiteral> {
           const operator = exactMatch ? '=' : 'LIKE';
           const condition = `${targetAlias}.${column} ${operator} :term`;
 
-          idx === 0
-            ? br.where(condition, { term: termValue })
-            : br.orWhere(condition, { term: termValue });
+          if (idx === 0) {
+            br.where(condition, { term: termValue });
+          } else {
+            br.orWhere(condition, { term: termValue });
+          }
         });
       }),
     );

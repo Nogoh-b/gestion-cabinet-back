@@ -24,6 +24,7 @@ import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { DivisionSearchDto } from './dto/division-search.dto';
 
 @Controller('divisions')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class DivisionsController {
   constructor(private readonly service: DivisionsService) {}

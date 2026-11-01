@@ -8,7 +8,7 @@ import {
   IsEnum,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export enum SortDirection {
   ASC = 'ASC',
@@ -56,6 +56,9 @@ export class PaginationParamsDto {
     example: SortDirection.DESC,
   })
   @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toUpperCase() : value,
+  )
   @IsEnum(SortDirection)
   sort_direction?: SortDirection = SortDirection.DESC;
 

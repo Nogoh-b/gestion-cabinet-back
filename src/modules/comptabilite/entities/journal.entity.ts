@@ -1,4 +1,10 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { TypeJournal } from '../enums/comptabilite.enums';
 import { Ecriture } from './ecriture.entity';
@@ -8,6 +14,12 @@ import {
 } from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('journaux_comptables')
+@Index('UQ_journals_tenant_code', ['tenant_id', 'code'], {
+  unique: true,
+})
+@Index('UQ_journals_tenant_type', ['tenant_id', 'typeJournal'], {
+  unique: true,
+})
 @BusinessTable({
   label: 'Journaux comptables',
   description:

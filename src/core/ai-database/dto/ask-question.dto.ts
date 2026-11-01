@@ -16,8 +16,10 @@ export class AskQuestionDto {
   @IsIn([true, false, 'true', 'false'])
   temporary?: boolean | string;
 
-  conversationId?: string; // Optionnel : si non fourni, on crée une nouvelle conversation
-  @ApiProperty({
+  @IsOptional()
+  @IsString()
+  conversationId?: string;  // Optionnel : si non fourni, on crée une nouvelle conversation
+  @ApiProperty({ 
     description: 'Question en langage naturel sur votre base de données',
     example: 'Quel est le taux de succès par avocat pour 2025 ?',
   })
@@ -36,6 +38,7 @@ export class AskQuestionDto {
   @IsString({ each: true })
   specificTables?: string[];
 
+  @IsBoolean()
   analyzeOnly = true;
 
   @ApiProperty({

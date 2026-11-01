@@ -3,27 +3,20 @@ import {
   Controller,
   Get,
   Post,
-  Put,
   Body,
   Param,
   Query,
-  UseInterceptors,
-  UploadedFiles,
   Request,
   UseGuards,
-  ForbiddenException,
 } from '@nestjs/common';
 import { ProcedureInstanceService } from '../services/procedure-instance.service';
-import { WorkflowService } from '../services/workflow.service';
-import { CreateProcedureInstanceDto } from '../dto/create-procedure-instance.dto';
-import { InstanceStatus } from '../entities/enums/instance-status.enum';
-import { ApplyTransitionDto } from '../dto/create-procedure-instance.dto copy';
-import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { TriggerEventDto } from '../dto/trigger-event.dto';
+import { ApplyTransitionDto } from '../dto/apply-transition.dto';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { InstanceStatus } from '../entities/enums/instance-status.enum';
+import { ResourcePolicyService } from 'src/core/resource-policy.service';
 import { LegacyWorkflowMutationGuard } from '../services/legacy-workflow-mutation.guard';
 
 @ApiBearerAuth()
@@ -32,176 +25,172 @@ import { LegacyWorkflowMutationGuard } from '../services/legacy-workflow-mutatio
 export class ProcedureInstanceController {
   constructor(
     private readonly instanceService: ProcedureInstanceService,
-    private readonly workflowService: WorkflowService,
+    private readonly resourcePolicy: ResourcePolicyService,
     private readonly legacyMutationGuard: LegacyWorkflowMutationGuard,
   ) {}
 
-  private assertDevelopmentOnly(): void {
-    if (process.env.NODE_ENV === 'production') {
-      throw new ForbiddenException(
-        'Endpoint de test indisponible en production',
-      );
-    }
-  }
-
-  @Post()
-  @RequirePermissions('edit_dossier')
-  async create(@Body() dto: CreateProcedureInstanceDto, @Request() req: any) {
     // Récupérer l'utilisateur connecté (à adapter selon votre auth)
-    const userId = req.user?.id || 'system';
-    return this.instanceService.create(dto, userId);
-  }
 
   @Get()
-  @RequirePermissions('view_dossiers')
   async findAll(
     @Query('status') status?: InstanceStatus,
     @Query('templateId') templateId?: string,
+    @Request() req?: any,
   ) {
-    return this.instanceService.findAll({ status, templateId });
+    const instanceIds =
+      await this.resourcePolicy.getAccessibleProcedureInstanceIds(req.user);
+    return this.instanceService.findAll({ status, templateId, instanceIds });
   }
 
   @Get(':id')
-  @RequirePermissions('view_dossiers')
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string, @Request() req: any) {
+    await this.resourcePolicy.assertProcedureInstanceAccess(id, req.user);
     return this.instanceService.findOne(id);
   }
 
   @Get(':id/workflow')
-  @RequirePermissions('view_dossiers')
-  async getWorkflowStatus(@Param('id') id: string) {
+  async getWorkflowStatus(@Param('id') id: string, @Request() req: any) {
+    await this.resourcePolicy.assertProcedureInstanceAccess(id, req.user);
     return this.instanceService.getWorkflowStatus(id);
   }
 
   /**
-   * GET /instances/:id/stages/:stageId
-   * Naviguer vers une étape spécifique
-   */
+  * GET /instances/:id/stages/:stageId
+  * Naviguer vers une étape spécifique
+  */
   @Get(':id/stages/:stageId')
-  @RequirePermissions('view_dossiers')
   async navigateToStage(
     @Param('id') id: string,
     @Param('stageId') stageId: string,
     @Request() req,
   ) {
+    await this.resourcePolicy.assertProcedureInstanceAccess(id, req.user);
     const result = await this.instanceService.navigateToStage(
       id,
       stageId,
-      req.user.id,
     );
-
+    
     return {
       ...result,
-      message: result.canCompleteSubStages
+      message: result.canCompleteSubStages 
         ? 'Vous pouvez compléter les sous-étapes de cette étape'
         : 'Consultation uniquement',
     };
   }
 
   /**
-   * POST /instances/:id/stages/:stageId/sub-stages/:subStageId/complete
-   * Compléter une sous-étape dans une étape précédente
-   */
-  @Post(':id/stages/:stageId/sub-stages/:subStageId/complete')
-  @RequirePermissions('edit_dossier')
-  async completeSubStageInPreviousStage(
-    @Param('id') id: string,
-    @Param('stageId') stageId: string,
-    @Param('subStageId') subStageId: string,
-    @Body('notes') notes: string,
-    @Request() req,
-  ) {
-    await this.legacyMutationGuard.assertMutable(id);
-    return this.instanceService.completeSubStageInPreviousStage(
-      id,
-      subStageId,
-      stageId,
-      req.user.id,
-      notes,
-    );
-  }
-
+ * POST /instances/:id/stages/:stageId/sub-stages/:subStageId/complete
+ * Compléter une sous-étape dans une étape précédente
+ */
   @Get(':id/transitions')
-  @RequirePermissions('view_dossiers')
-  async getAvailableTransitions(@Param('id') id: string) {
-    return this.workflowService.getAvailableTransitions(id);
+  async getAvailableTransitions(@Param('id') id: string, @Request() req: any) {
+    await this.resourcePolicy.assertProcedureInstanceAccess(id, req.user);
+    return this.instanceService.getAvailableTransitionsWithInputs(id);
   }
 
-  @Post(':id/transitions')
-  @RequirePermissions('edit_dossier')
-  async applyTransition(
-    @Param('id') id: string,
-    @Body() dto: ApplyTransitionDto,
-    @Request() req: any,
-  ) {
-    await this.legacyMutationGuard.assertMutable(id);
-    const userId = req.user?.id || 'system';
-    return this.workflowService.applyManualTransition(id, dto, userId);
-  }
+
+
+
 
   @Get(':id/cycles')
-  @RequirePermissions('view_dossiers')
-  async getAvailableCycles(@Param('id') id: string) {
+  async getAvailableCycles(@Param('id') id: string, @Request() req: any) {
+    await this.resourcePolicy.assertProcedureInstanceAccess(id, req.user);
     return this.instanceService.getAvailableCycles(id);
   }
 
   @Post(':id/sub-stages/:subStageId/complete')
-  @RequirePermissions('edit_dossier')
+  @RequirePermissions('apply_procedure_transition')
   async completeSubStage(
     @Param('id') id: string,
     @Param('subStageId') subStageId: string,
     @Query('notes') queryNotes: string,
-    @Query('skipAutoTransitions') skipAutoTransitions: string,
-    @Body() body: { notes?: string; skipAutoTransitions?: boolean },
+    @Body() body: { notes?: string; metadata?: Record<string, any> },
     @Request() req: any,
   ) {
     await this.legacyMutationGuard.assertMutable(id);
-    const userId = req.user?.id || 'system';
+    await this.resourcePolicy.assertProcedureInstanceAccess(
+      id,
+      req.user,
+      'write',
+      'apply_procedure_transition',
+    );
+    const userId = req.user.id;
     // Le front peut envoyer la note via query OU via body — on accepte les deux.
     const notes = body?.notes ?? queryNotes;
-    const skipAuto =
-      body?.skipAutoTransitions ?? skipAutoTransitions === 'true';
     return this.instanceService.completeSubStage(
       id,
       subStageId,
       userId,
       notes,
-      skipAuto,
+      body?.metadata,
     );
   }
 
   @Post(':id/sub-stages/:subStageId/start')
-  @RequirePermissions('edit_dossier')
+  @RequirePermissions('apply_procedure_transition')
   async startSubStage(
     @Param('id') id: string,
     @Param('subStageId') subStageId: string,
     @Request() req: any,
   ) {
     await this.legacyMutationGuard.assertMutable(id);
-    const userId = req.user?.id || 'system';
+    await this.resourcePolicy.assertProcedureInstanceAccess(
+      id,
+      req.user,
+      'write',
+      'apply_procedure_transition',
+    );
+    const userId = req.user.id;
     return this.instanceService.startSubStage(id, subStageId, userId);
   }
 
-  @Post(':id/transitions/:transitionId/apply')
-  @RequirePermissions('edit_dossier')
-  @UseInterceptors(FilesInterceptor('files', 10))
-  async applyTransition1(
+  @Post(
+    ':id/sub-stages/:subStageId/requirements/:requirementId/approve',
+  )
+  @RequirePermissions('approve_procedure_requirement')
+  async approveSubStageRequirement(
     @Param('id') id: string,
-    @Param('transitionId') transitionId: string,
-    @Body() dto: ApplyTransitionDto,
-    @UploadedFiles() files: Express.Multer.File[],
+    @Param('subStageId') subStageId: string,
+    @Param('requirementId') requirementId: string,
+    @Body('comment') comment: string | undefined,
     @Request() req: any,
   ) {
     await this.legacyMutationGuard.assertMutable(id);
-    const userId = req.user?.id || 'system';
+    await this.resourcePolicy.assertProcedureInstanceAccess(
+      id,
+      req.user,
+      'write',
+      'approve_procedure_requirement',
+    );
+    return this.instanceService.approveSubStageRequirement(
+      id,
+      subStageId,
+      requirementId,
+      req.user.id,
+      req.user.role,
+      comment,
+    );
+  }
 
+  @Post(':id/transitions/:transitionId/apply')
+  @RequirePermissions('apply_procedure_transition')
+  async applyTransition(
+    @Param('id') id: string,
+    @Param('transitionId') transitionId: string,
+    @Body() dto: ApplyTransitionDto,
+    @Request() req: any,
+  ) {
+    await this.legacyMutationGuard.assertMutable(id);
     // Gérer les fichiers uploadés
-    const fileIds: number[] = [];
-    if (files && files.length > 0) {
       // Uploader les fichiers et récupérer leurs IDs
       // fileIds = await this.uploadService.uploadFiles(files);
-    }
-
+    await this.resourcePolicy.assertProcedureInstanceAccess(
+      id,
+      req.user,
+      'write',
+      'apply_procedure_transition',
+    );
+    const userId = req.user.id;
     return this.instanceService.applyTransition(
       id,
       transitionId,
@@ -213,173 +202,51 @@ export class ProcedureInstanceController {
   }
 
   @Post(':id/cycles/:cycleId/apply')
-  @RequirePermissions('edit_dossier')
+  @RequirePermissions('apply_procedure_transition')
   async applyCycle(
     @Param('id') id: string,
     @Param('cycleId') cycleId: string,
     @Request() req: any,
   ) {
     await this.legacyMutationGuard.assertMutable(id);
-    const userId = req.user?.id || 'system';
+    await this.resourcePolicy.assertProcedureInstanceAccess(
+      id,
+      req.user,
+      'write',
+      'apply_procedure_transition',
+    );
+    const userId = req.user.id;
     return this.instanceService.applyCycle(id, cycleId, userId);
   }
 
-  @Put(':id/status')
-  @RequirePermissions('edit_dossier')
-  async updateStatus(
-    @Param('id') id: string,
-    @Body('status') status: InstanceStatus,
-    @Request() req: any,
-  ) {
+  @Post(':id/complete')
+  @RequirePermissions('apply_procedure_transition')
+  async completeInstance(@Param('id') id: string, @Request() req: any) {
     await this.legacyMutationGuard.assertMutable(id);
-    const userId = req.user?.id || 'system';
-    return this.instanceService.updateStatus(id, status, userId);
-  }
-
-  @Post(':id/reset')
-  @RequirePermissions('edit_dossier')
-  async resetInstance(
-    @Param('id') id: string,
-    @Body()
-    body: {
-      keepTitle?: boolean;
-      keepData?: boolean;
-      keepHistory?: boolean;
-      reason?: string;
-    },
-    @Request() req: any,
-  ) {
-    await this.legacyMutationGuard.assertMutable(id);
-    const userId = req.user?.id || 'system';
-
-    return this.instanceService.resetInstance(id, userId, {
-      keepTitle: body?.keepTitle ?? false,
-      keepData: body?.keepData ?? true,
-      keepHistory: body?.keepHistory ?? false,
-      reason: body?.reason,
-    });
-  }
-
-  // Version simplifiée
-  @Post(':id/reset-simple')
-  @RequirePermissions('edit_dossier')
-  async resetInstanceSimple(
-    @Param('id') id: string,
-    @Body() body: { reason?: string },
-    @Request() req: any,
-  ) {
-    await this.legacyMutationGuard.assertMutable(id);
-    const userId = req.user?.id || 'system';
-    return this.instanceService.resetInstanceSimple(id, userId, body?.reason);
-  }
-  /**
-   * Déclencher un événement sur une instance
-   * POST /procedure-instances/:instanceId/events
-   */
-  @Post(':instanceId/events')
-  @RequirePermissions('edit_dossier')
-  @ApiOperation({ summary: 'Déclencher un événement sur une instance' })
-  @ApiResponse({ status: 200, description: 'Événement traité avec succès' })
-  @ApiResponse({ status: 404, description: 'Instance non trouvée' })
-  async triggerEvent(
-    @Param('instanceId') instanceId: string,
-    @Body() triggerEventDto: TriggerEventDto,
-    @Request() req,
-  ): Promise<{ success: boolean; message: string }> {
-    await this.legacyMutationGuard.assertMutable(instanceId);
-    const userId = req.user?.id || 'system';
-
-    await this.instanceService.triggerEventOnInstance(
-      instanceId,
-      triggerEventDto.eventType,
-      triggerEventDto.eventData,
-      userId,
-    );
-
-    return {
-      success: true,
-      message: `Événement ${triggerEventDto.eventType} déclenché avec succès`,
-    };
-  }
-
-  /**
-   * TEST ONLY - Compléter toutes les sous-étapes de l'étape courante
-   */
-  @Post(':id/test/complete-all-substages')
-  @RequirePermissions('edit_dossier')
-  async testCompleteAllSubStagesInCurrentStage(
-    @Param('id') id: string,
-    @Body()
-    body: {
-      notes?: string;
-      skipAutoTransitions?: boolean;
-      forceComplete?: boolean;
-    },
-    @Request() req: any,
-  ) {
-    this.assertDevelopmentOnly();
-    await this.legacyMutationGuard.assertMutable(id);
-    const userId = req.user?.id || 'system';
-    return this.instanceService.completeAllSubStagesInCurrentStage(id, userId, {
-      notes: body?.notes,
-      skipAutoTransitions: body?.skipAutoTransitions,
-      forceComplete: body?.forceComplete,
-    });
-  }
-
-  /**
-   * TEST ONLY - Compléter toutes les sous-étapes d'une étape spécifique
-   */
-  @Post(':id/test/complete-all-substages-in-stage/:stageId')
-  @RequirePermissions('edit_dossier')
-  async testCompleteAllSubStagesInStage(
-    @Param('id') id: string,
-    @Param('stageId') stageId: string,
-    @Body()
-    body: {
-      notes?: string;
-      skipAutoTransitions?: boolean;
-      forceComplete?: boolean;
-    },
-    @Request() req: any,
-  ) {
-    this.assertDevelopmentOnly();
-    await this.legacyMutationGuard.assertMutable(id);
-    const userId = req.user?.id || 'system';
-    return this.instanceService.completeAllSubStagesInStage(
+    await this.resourcePolicy.assertProcedureInstanceAccess(
       id,
-      stageId,
-      userId,
-      {
-        notes: body?.notes,
-        skipAutoTransitions: body?.skipAutoTransitions,
-        forceComplete: body?.forceComplete,
-      },
+      req.user,
+      'write',
+      'apply_procedure_transition',
     );
+    return this.instanceService.completeInstance(id, req.user.id);
   }
 
-  /**
-   * TEST ONLY - Compléter toutes les sous-étapes de toutes les étapes
-   */
-  @Post(':id/test/complete-all-substages-all-stages')
-  @RequirePermissions('edit_dossier')
-  async testCompleteAllSubStagesInAllStages(
+  @Post(':id/cancel')
+  @RequirePermissions('apply_procedure_transition')
+  async cancelInstance(
     @Param('id') id: string,
-    @Body()
-    body: {
-      notes?: string;
-      skipAutoTransitions?: boolean;
-      finalStageId?: string;
-    },
+    @Body('reason') reason: string,
     @Request() req: any,
   ) {
-    this.assertDevelopmentOnly();
     await this.legacyMutationGuard.assertMutable(id);
-    const userId = req.user?.id || 'system';
-    return this.instanceService.completeAllSubStagesInAllStages(id, userId, {
-      notes: body?.notes,
-      skipAutoTransitions: body?.skipAutoTransitions,
-      finalStageId: body?.finalStageId,
-    });
+    await this.resourcePolicy.assertProcedureInstanceAccess(
+      id,
+      req.user,
+      'write',
+      'apply_procedure_transition',
+    );
+    return this.instanceService.cancelInstance(id, req.user.id, reason);
   }
+
 }

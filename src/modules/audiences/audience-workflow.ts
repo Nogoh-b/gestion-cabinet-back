@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { EntityManager } from 'typeorm';
 import { Audience, AudienceStatus } from './entities/audience.entity';
+import { normalizeAudienceSchedule } from './audience-schedule.util';
 
 export interface PostponeAudienceInput {
   audience_date: string | Date;
@@ -52,10 +53,12 @@ export async function postponeAudienceWithManager(
   // Rapport facultatif : enregistr\u00e9 s'il accompagne le report.
   const reportContent = input.report_content?.trim();
 
-  const nextDate = new Date(input.audience_date);
-  if (Number.isNaN(nextDate.getTime())) {
-    throw new BadRequestException(`La nouvelle date d'audience est invalide.`);
-  }
+  // Même normalisation que l'écran : instant UTC + fuseau de l'audience.
+  const schedule = normalizeAudienceSchedule({
+    audience_date: input.audience_date as any,
+    audience_time: input.audience_time,
+    timezone: audience.timezone,
+  } as any);
 
   if (reportContent) {
     audience.report_content = reportContent;
@@ -64,13 +67,20 @@ export async function postponeAudienceWithManager(
       input.report_author_id ?? audience.report_author_id;
   }
   audience.outcome = 'postponed';
-  audience.postpone(nextDate, input.audience_time, input.reason?.trim());
+  audience.status = AudienceStatus.POSTPONED;
+  audience.postponed_to = schedule.startsAtUtc;
+  if (input.reason?.trim()) {
+    audience.notes = `${audience.notes || ''}
+Reporté: ${input.reason.trim()}`.trim();
+  }
   const original = await repository.save(audience);
 
   const replacement = repository.create({
     tenant_id: audience.tenant_id,
-    audience_date: nextDate,
-    audience_time: input.audience_time,
+    audience_date: schedule.legacyDate as unknown as Date,
+    audience_time: schedule.legacyTime,
+    starts_at_utc: schedule.startsAtUtc,
+    timezone: schedule.timezone,
     jurisdiction_id: audience.jurisdiction_id,
     room: input.room ?? audience.room,
     type: audience.type,
@@ -86,7 +96,6 @@ export async function postponeAudienceWithManager(
     stageVisit_id: audience.stageVisit_id,
     sub_stage_visit_id: audience.sub_stage_visit_id,
     sub_stage_id: audience.sub_stage_id,
-    step_id: audience.step_id,
     parent_audience_id: audience.id,
   });
 

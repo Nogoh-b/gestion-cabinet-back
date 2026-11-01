@@ -1,155 +1,112 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsString,
-  IsNotEmpty,
-  IsOptional,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
   IsInt,
   IsNumber,
-  IsEnum,
-  IsDateString,
-  IsBoolean,
+  IsOptional,
+  IsString,
   IsUUID,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { SupplierInvoiceStatus } from '../entities/supplier-invoice.entity';
 import { ExpenseRebillingType } from '../entities/expense-line.entity';
 
 export class CreateSupplierInvoiceDto {
-  @ApiProperty({
-    example: 1,
-    description: 'ID du fournisseur',
-  })
+  @ApiProperty({ description: 'Identifiant du fournisseur' })
   @IsInt()
-  @IsNotEmpty()
+  @Min(1)
   supplier_id: number;
 
-  @ApiPropertyOptional({ description: 'Dossier client associé lorsque la dépense est refacturable' })
-  @IsInt()
+  @ApiPropertyOptional({
+    description: 'Dossier client associé lorsque la dépense est refacturable',
+  })
   @IsOptional()
+  @IsInt()
+  @Min(1)
   dossier_id?: number;
 
-  @ApiPropertyOptional({ description: 'Action du dossier à l’origine de la dépense' })
-  @IsUUID()
+  @ApiPropertyOptional({
+    description: 'Action du dossier à l’origine de la dépense',
+  })
   @IsOptional()
+  @IsUUID()
   action_id?: string;
 
   @ApiPropertyOptional({ default: false })
-  @IsBoolean()
   @IsOptional()
+  @IsBoolean()
   is_rebillable?: boolean;
 
-  @ApiPropertyOptional({ enum: ExpenseRebillingType, default: ExpenseRebillingType.EXPENSE })
-  @IsEnum(ExpenseRebillingType)
+  @ApiPropertyOptional({
+    enum: ExpenseRebillingType,
+    default: ExpenseRebillingType.EXPENSE,
+  })
   @IsOptional()
+  @IsEnum(ExpenseRebillingType)
   rebilling_type?: ExpenseRebillingType;
 
   @ApiPropertyOptional({ example: 'XAF', default: 'XAF' })
+  @IsOptional()
   @IsString()
   @MaxLength(10)
-  @IsOptional()
   currency?: string;
 
-  @ApiProperty({
-    example: 'FAC-2026-0452',
+  @ApiPropertyOptional({
     description:
-      'Numéro de facture fournisseur. Généré automatiquement si non fourni.',
-    required: false,
+      'Numéro émis par le fournisseur ; une référence interne est générée si absent',
   })
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   invoice_number?: string;
 
-  @ApiPropertyOptional({
-    example: 'Abonnement internet fibre - Mars 2026',
-    description: 'Objet de la facture',
-  })
-  @IsString()
+  @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  @MaxLength(4000)
   description?: string;
 
-  @ApiProperty({
-    example: '2026-03-15',
-    description: "Date d'émission",
-  })
+  @ApiProperty({ example: '2026-03-15' })
   @IsDateString()
-  @IsNotEmpty()
-  invoice_date: Date;
+  invoice_date: string;
 
-  @ApiProperty({
-    example: '2026-04-15',
-    description: "Date d'échéance",
-  })
+  @ApiProperty({ example: '2026-04-15' })
   @IsDateString()
-  @IsNotEmpty()
-  due_date: Date;
+  due_date: string;
 
-  @ApiProperty({
-    example: 150.0,
-    description: 'Montant HT',
-  })
-  @IsNumber()
-  @Min(0)
-  @IsNotEmpty()
+  @ApiProperty({ example: 150 })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
   amount_ht: number;
 
-  @ApiProperty({
-    example: 20.0,
-    description: 'Taux TVA (%)',
-  })
-  @IsNumber()
+  @ApiProperty({ example: 20 })
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  @IsNotEmpty()
   tax_rate: number;
 
-  @ApiProperty({
-    example: 30.0,
-    description: 'Montant TVA',
-  })
-  @IsNumber()
+  @ApiProperty({ example: 30 })
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  @IsNotEmpty()
   amount_tva: number;
 
-  @ApiProperty({
-    example: 180.0,
-    description: 'Montant TTC',
-  })
-  @IsNumber()
-  @Min(0)
-  @IsNotEmpty()
+  @ApiProperty({ example: 180 })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
   amount_ttc: number;
 
-  @ApiPropertyOptional({
-    enum: SupplierInvoiceStatus,
-    example: SupplierInvoiceStatus.RECEIVED,
-    description: 'Statut initial',
-  })
-  @IsEnum(SupplierInvoiceStatus)
+  @ApiPropertyOptional({ description: 'Identifiant de l’agence' })
   @IsOptional()
-  status?: SupplierInvoiceStatus;
-
-  @ApiPropertyOptional({
-    example: 'https://storage.cabinet.fr/factures/fac-2026-0452.pdf',
-    description: 'Lien vers la facture scannée',
-  })
-  @IsString()
-  @IsOptional()
-  attachment_url?: string;
-
-  @ApiPropertyOptional({
-    example: 2,
-    description: "ID de l'agence",
-  })
   @IsInt()
-  @IsOptional()
+  @Min(1)
   branch_id?: number;
 
-  @ApiPropertyOptional({
-    example: 'Paiement à valider',
-    description: 'Notes internes',
-  })
-  @IsString()
+  @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(4000)
   notes?: string;
 }

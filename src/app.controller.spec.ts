@@ -1,22 +1,20 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { of } from 'rxjs';
+
 import { AppController } from './app.controller';
-import { AppService } from './app.service';
 
 describe('AppController', () => {
-  let appController: AppController;
+  it('relaie seulement les messages TCP au service interne', async () => {
+    const client = {
+      send: jest.fn().mockReturnValue(of({ accepted: true })),
+    };
+    const controller = new AppController(client as any);
 
-  beforeEach(async () => {
-    const app: TestingModule = await Test.createTestingModule({
-      controllers: [AppController],
-      providers: [AppService],
-    }).compile();
-
-    appController = app.get<AppController>(AppController);
-  });
-
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
-    });
+    await expect(
+      controller.handleTcpRelay({ dossierId: 12 }),
+    ).resolves.toEqual({ accepted: true });
+    expect(client.send).toHaveBeenCalledWith(
+      { cmd: 'process-data' },
+      { dossierId: 12 },
+    );
   });
 });

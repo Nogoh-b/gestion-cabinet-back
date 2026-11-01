@@ -7,7 +7,7 @@ import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 export class ProcedureSearchDto extends PaginationParamsDto {
   @ApiPropertyOptional({
     description: 'Recherche textuelle sur le nom, code ou description',
-    example: 'civile',
+    example: 'civile'
   })
   @IsOptional()
   @IsString()
@@ -15,7 +15,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer par code exact',
-    example: 'CIVILE',
+    example: 'CIVILE'
   })
   @IsOptional()
   @IsString()
@@ -23,7 +23,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer par nom exact',
-    example: 'Civile',
+    example: 'Civile'
   })
   @IsOptional()
   @IsString()
@@ -31,7 +31,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer par statut sous-type',
-    example: false,
+    example: false
   })
   @IsOptional()
   @Transform(({ value }) => {
@@ -45,7 +45,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer par ID du parent',
-    example: 2,
+    example: 2
   })
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
@@ -54,7 +54,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer par niveau hiérarchique',
-    example: 1,
+    example: 1
   })
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
@@ -63,8 +63,9 @@ export class ProcedureSearchDto extends PaginationParamsDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer par statut actif',
-    example: true,
+    example: true
   })
+  @IsOptional()
   @Transform(({ value }) => {
     if (value === 'true' || value === '1' || value === true) return 1;
     if (value === 'false' || value === '0' || value === false) return 0;
@@ -76,7 +77,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer par durée moyenne minimale (en jours)',
-    example: 30,
+    example: 30
   })
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
@@ -85,7 +86,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer par durée moyenne maximale (en jours)',
-    example: 365,
+    example: 365
   })
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
@@ -94,7 +95,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer par document requis spécifique',
-    example: 'Acte de naissance',
+    example: 'Acte de naissance'
   })
   @IsOptional()
   @IsString()
@@ -102,7 +103,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer par juridiction spécifique',
-    example: 'Paris',
+    example: 'Paris'
   })
   @IsOptional()
   @IsString()
@@ -112,7 +113,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
   @ApiPropertyOptional({
     description: 'Page number',
     example: 1,
-    default: 1,
+    default: 1
   })
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
@@ -122,7 +123,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
   @ApiPropertyOptional({
     description: 'Number of items per page',
     example: 10,
-    default: 10,
+    default: 10
   })
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
@@ -132,18 +133,10 @@ export class ProcedureSearchDto extends PaginationParamsDto {
   @ApiPropertyOptional({
     description: 'Sort field',
     example: 'name',
-    enum: ['id', 'name', 'code', 'hierarchy_level', 'created_at', 'updated_at'],
+    enum: ['id', 'name', 'code', 'hierarchy_level', 'created_at', 'updated_at']
   })
   @IsOptional()
   @IsString()
   sort_by?: string = 'name';
 
-  @ApiPropertyOptional({
-    description: 'Sort order',
-    example: 'ASC',
-    enum: ['ASC', 'DESC'],
-  })
-  @IsOptional()
-  @IsString()
-  sort_order?: 'ASC' | 'DESC' = 'ASC';
 }

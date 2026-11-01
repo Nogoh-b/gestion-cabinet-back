@@ -1,10 +1,20 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
@@ -16,6 +26,7 @@ import { DocumentCategoryResponseDto } from './dto/document-category-response.dt
 @ApiTags('Document Categories')
 @ApiBearerAuth()
 @Controller('document-categories')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DocumentCategoryController {
   constructor(private readonly service: DocumentCategoryService) {}
 

@@ -250,9 +250,11 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     uploadedByUserId?: number,
     options?: { status?: DocumentCustomerStatus },
   ): Promise<DocumentCustomerResponseDto | any> {
+    this.rejectLegacyOperation(
+      'Création documentaire historique désactivée : utiliser POST /documents.',
+    );
     const {
       document_type_id,
-      customer_id,
       category_id,
       dossier_id,
       loan_id,
@@ -405,7 +407,11 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       if (audience_id) {
         await this.docRepository.manager.query(
           'INSERT IGNORE INTO audience_documents (audience_id, document_id, phase) VALUES (?, ?, ?)',
-          [audience_id, document.id, audience_phase === 'after' ? 'after' : 'preparation'],
+          [
+            audience_id,
+            document.id,
+            audience_phase === 'after' ? 'after' : 'preparation',
+          ],
         );
       }
       if (createDto.sub_stage_visit_id) {
@@ -423,7 +429,10 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
   }
 
   /** L'audience visée existe dans le cabinet et appartient au dossier du document. */
-  private async validateHearing(audienceId: number, dossierId: number): Promise<void> {
+  private async validateHearing(
+    audienceId: number,
+    dossierId: number,
+  ): Promise<void> {
     const rows: Array<{ dossier_id: number | null }> =
       await this.docRepository.manager.query(
         'SELECT dossier_id FROM audiences WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
@@ -447,6 +456,11 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     updateDto: UpdateDocumentCustomerDto & { file?: Express.Multer.File },
     userId?: number,
   ): Promise<DocumentCustomerResponseDto> {
+    if (updateDto.file) {
+      throw new BadRequestException(
+        'Le binaire se modifie uniquement par une nouvelle version documentaire.',
+      );
+    }
     const existing = await this.docRepository.findOne({
       where: { id },
       relations: ['customer', 'document_type', 'dossier', 'category'],
@@ -492,21 +506,6 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     }
 
     // 4. Si customer_id change, valider le nouveau client
-    if (
-      updateDto.customer_id &&
-      updateDto.customer_id !== existing.customer_id
-    ) {
-      const customer = await this.validateCustomer(
-        updateDto.customer_id,
-        existing.document_type_id ?? 0,
-        true,
-      );
-      if (customer) {
-        existing.customer = customer;
-        existing.customer_id = customer.id;
-      }
-    }
-
     // 5. Si category_id change, valider la nouvelle catégorie
     if (
       updateDto.category_id &&
@@ -529,7 +528,6 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
       existing.required_for_hearing = updateDto.required_for_hearing;
     if (updateDto.is_confidential !== undefined)
       existing.is_confidential = updateDto.is_confidential;
-    if (updateDto.status !== undefined) existing.status = updateDto.status;
     if (updateDto.metadata !== undefined) {
       try {
         existing.metadata =
@@ -557,10 +555,16 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     id: number,
     file: Express.Multer.File,
     userId?: number,
-    options: { source?: DocumentVersionSource; comment?: string; name?: string } = {},
+    options: {
+      source?: DocumentVersionSource;
+      comment?: string;
+      name?: string;
+    } = {},
   ): Promise<DocumentCustomerResponseDto> {
     if (!file) {
-      throw new BadRequestException('Aucun fichier fourni pour la nouvelle version');
+      throw new BadRequestException(
+        'Aucun fichier fourni pour la nouvelle version',
+      );
     }
     const existing = await this.docRepository.findOne({
       where: { id },
@@ -600,7 +604,8 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
               `#${user.id}`,
           ).trim()
         : '';
-    const currentAuthorId = Number(meta.version_by ?? document.uploaded_by_id) || null;
+    const currentAuthorId =
+      Number(meta.version_by ?? document.uploaded_by_id) || null;
     const currentAuthor =
       currentAuthorId && currentAuthorId === document.uploaded_by_id
         ? document.uploaded_by
@@ -616,9 +621,14 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
         source: (meta.version_source as DocumentVersionSource) ?? 'upload',
         comment: meta.version_comment ?? null,
         created_by: currentAuthorId
-          ? { id: currentAuthorId, name: userName(currentAuthor) || meta.version_by_name || '' }
+          ? {
+              id: currentAuthorId,
+              name: userName(currentAuthor) || meta.version_by_name || '',
+            }
           : null,
-        created_at: meta.version_at ? new Date(meta.version_at) : document.uploaded_at ?? null,
+        created_at: meta.version_at
+          ? new Date(meta.version_at)
+          : (document.uploaded_at ?? null),
       },
       ...archived.map((row) => ({
         id: row.id,
@@ -648,7 +658,10 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
         })
       : null;
     if (!version) throw new NotFoundException('Version introuvable');
-    const buffer = await this.readStoredFile(version.file_path, version.file_url);
+    const buffer = await this.readStoredFile(
+      version.file_path,
+      version.file_url,
+    );
     const ext = path.extname(version.file_path || version.file_url || '');
     const name = version.name.toLowerCase().endsWith(ext.toLowerCase())
       ? version.name
@@ -672,7 +685,10 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
         })
       : null;
     if (!version) throw new NotFoundException('Version introuvable');
-    const { buffer, mimeType, name } = await this.readVersionFile(id, versionId);
+    const { buffer, mimeType, name } = await this.readVersionFile(
+      id,
+      versionId,
+    );
     const file = {
       buffer,
       size: buffer.length,
@@ -696,7 +712,11 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     existing: DocumentCustomer,
     file: Express.Multer.File,
     userId?: number,
-    options: { source?: DocumentVersionSource; comment?: string; name?: string } = {},
+    options: {
+      source?: DocumentVersionSource;
+      comment?: string;
+      name?: string;
+    } = {},
   ): Promise<void> {
     const tenantId = getCurrentTenantId();
     if (tenantId && file?.size) {
@@ -716,7 +736,9 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     const meta: any = existing.metadata ?? {};
     if (existing.file_path || existing.file_url) {
       if (!this.versionRepository) {
-        throw new InternalServerErrorException('Historique des versions indisponible');
+        throw new InternalServerErrorException(
+          'Historique des versions indisponible',
+        );
       }
       // La ligne décrit la version archivée : son auteur et son origine.
       await this.versionRepository.save(
@@ -730,7 +752,8 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
           file_mimetype: existing.file_mimetype ?? null,
           source: (meta.version_source as DocumentVersionSource) ?? 'upload',
           comment: meta.version_comment ?? null,
-          created_by_id: Number(meta.version_by ?? existing.uploaded_by_id) || null,
+          created_by_id:
+            Number(meta.version_by ?? existing.uploaded_by_id) || null,
         }),
       );
     }
@@ -776,8 +799,11 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     const dossierNumber =
       document.dossier?.dossier_number ??
       (document.dossier_id
-        ? (await this.dossierService.findOne(document.dossier_id).catch(() => null))
-            ?.dossier_number
+        ? (
+            await this.dossierService
+              .findOne(document.dossier_id)
+              .catch(() => null)
+          )?.dossier_number
         : null);
     if (!dossierNumber) return `${cabinetName}/documents`;
     const categoryName = document.category?.name ?? 'Documents non classés';
@@ -1040,7 +1066,6 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
 
     const document = this.docRepository.create(documentData);
     // Champ transient consommé par le DocumentCustomerSubscriber.
-    (document as any).notify_client = !!(documentData as any).notify_client;
     return this.docRepository.save(document);
   }
 
@@ -1113,6 +1138,9 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
   }
 
   async validate(document_id: number): Promise<DocumentCustomer | any> {
+    this.rejectLegacyOperation(
+      'Validation historique désactivée : utiliser la commande validate de la version courante.',
+    );
     const doc = await this.docRepository.findOne({
       where: { id: document_id },
       relations: ['customer'],
@@ -1155,6 +1183,9 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
   }
 
   async refuse(document_id: number): Promise<DocumentCustomer | null> {
+    this.rejectLegacyOperation(
+      'Refus historique désactivé : utiliser la commande reject de la version courante.',
+    );
     const doc = await this.docRepository.findOne({
       where: { id: document_id },
       relations: ['customer'],
@@ -1200,6 +1231,9 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     id: any,
     userId: any,
   ): Promise<{ stream: fs.ReadStream; mimeType: string; fileName: string }> {
+    this.rejectLegacyOperation(
+      'Lecture historique désactivée : utiliser la route protégée de contenu versionné.',
+    );
     const document = await this.findOne(id);
 
     // const uploadPath = this.configService.get('UPLOAD_PATH', './uploads');
@@ -1251,6 +1285,9 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     fileName: string;
     fileSize?: number;
   }> {
+    this.rejectLegacyOperation(
+      'Export base64 historique désactivé : utiliser la route protégée de contenu versionné.',
+    );
     const document = await this.findOne(id);
 
     if (!document || !document.file_path) {
@@ -1274,5 +1311,9 @@ export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
     const fileName = document.original_name || path.basename(filePath);
 
     return { base64, mimeType, fileName, fileSize: document.file_size ?? 0 };
+  }
+
+  private rejectLegacyOperation(message: string): void {
+    throw new BadRequestException(message);
   }
 }

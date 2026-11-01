@@ -6,7 +6,8 @@ import {
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { conversationTypeBackfill } from '../../conversation-type.backfill';
-import { In, Repository } from 'typeorm';
+import { createHash } from 'crypto';
+import { DataSource, In, Repository } from 'typeorm';
 import {
   BadRequestException,
   ForbiddenException,
@@ -29,9 +30,16 @@ import {
 import { Message } from '../../entities/messages.entity';
 import { MessageRead } from '../../entities/message-read.entity';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
-import { Attachment } from '../../entities/attachment.entity';
-import { FilesUtil } from 'src/core/shared/utils/file.util';
-import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+import {
+  Attachment,
+  AttachmentType,
+  ChatAttachmentSecurityStatus,
+} from '../../entities/attachment.entity';
+import { AuditService } from 'src/core/audit/audit.service';
+import {
+  ChatAttachmentStorageService,
+  StoredChatAttachment,
+} from './chat-attachment-storage.service';
 
 /** Taille maximale d'une pièce jointe (alignée sur la limite multer). */
 export const CHAT_MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -169,6 +177,9 @@ export class ChatService {
     private userRepository: Repository<Employee>,
     @InjectRepository(Attachment)
     private attachmentRepository: Repository<Attachment>,
+    private readonly attachmentStorage: ChatAttachmentStorageService,
+    private readonly dataSource: DataSource,
+    private readonly auditService: AuditService,
   ) {}
 
   private sanitizeReferences(
@@ -450,7 +461,11 @@ export class ChatService {
       );
     }
     await this.assertParticipant(dto.conversationId, senderId);
-    const ids = await this.uploadAttachments(senderId, files);
+    const ids = await this.uploadAttachments(
+      senderId,
+      Number(dto.conversationId),
+      files,
+    );
     return this.sendMessageWithExistingAttachments(
       { ...dto, attachmentIds: ids },
       senderId,
@@ -490,7 +505,12 @@ export class ChatService {
         relations: ['message'],
       });
       const usable = attachments.filter(
-        (a) => !a.message && Number(a.uploadedById) === Number(senderId),
+        (a) =>
+          !a.message &&
+          Number(a.uploadedById) === Number(senderId) &&
+          (!a.conversationId ||
+            Number(a.conversationId) === conversationId) &&
+          a.securityStatus === ChatAttachmentSecurityStatus.CLEAN,
       );
       if (usable.length !== attachmentIds.length) {
         throw new BadRequestException(
@@ -557,34 +577,128 @@ export class ChatService {
 
   async uploadAttachments(
     senderId: number,
+    conversationId: number,
     files: Express.Multer.File[],
   ): Promise<number[]> {
     this.validateFiles(files);
-    const uploadedAttachments = (await FilesUtil.uploadFiles(
-      files,
-      UPLOAD_DOCS_PATH,
-      'docType.mimetype',
-      {
-        maxSizeKB: 300, // recompression des images uniquement
-        quality: 70,
-      },
-    )) as unknown as Array<Partial<Attachment>>;
+    await this.assertParticipant(conversationId, senderId);
+
+    // Analyse antivirus obligatoire et stockage privé (hors répertoire public).
+    const uploadedAttachments: StoredChatAttachment[] = [];
+    try {
+      for (const file of files ?? []) {
+        uploadedAttachments.push(await this.attachmentStorage.store(file));
+      }
+    } catch (error) {
+      await this.removeStored(uploadedAttachments);
+      throw error;
+    }
 
     if (!uploadedAttachments.length) {
       return [];
     }
 
-    const savedAttachments = await this.attachmentRepository.save(
-      uploadedAttachments.map((fileInfo) =>
-        this.attachmentRepository.create({
-          ...fileInfo,
-          isUploaded: true,
-          uploadedById: Number(senderId),
-        }),
+    try {
+      const savedAttachments = await this.attachmentRepository.save(
+        uploadedAttachments.map((fileInfo) =>
+          this.attachmentRepository.create({
+            ...fileInfo,
+            fileType: fileInfo.fileType as AttachmentType,
+            securityStatus: ChatAttachmentSecurityStatus.CLEAN,
+            conversationId: Number(conversationId),
+            uploadedById: Number(senderId),
+          }),
+        ),
+      );
+      return savedAttachments.map((att) => att.id);
+    } catch (error) {
+      await this.removeStored(uploadedAttachments);
+      throw error;
+    }
+  }
+
+  private async removeStored(items: StoredChatAttachment[]): Promise<void> {
+    await Promise.all(
+      items.map((item) =>
+        this.attachmentStorage.remove(item.storageKey).catch(() => undefined),
       ),
     );
+  }
 
-    return savedAttachments.map((att) => att.id);
+  /**
+   * Lecture d'une pièce jointe : participant de la conversation uniquement,
+   * intégrité vérifiée (SHA-256) et téléchargement tracé.
+   */
+  async downloadAttachment(
+    attachmentId: number,
+    userId: number,
+    context: {
+      ip?: string | null;
+      userAgent?: string | null;
+      requestId?: string | null;
+    } = {},
+  ): Promise<{
+    buffer: Buffer;
+    fileName: string;
+    mimeType: string;
+  }> {
+    const attachment = await this.attachmentRepository.findOne({
+      where: { id: Number(attachmentId) },
+    });
+    if (
+      !attachment?.storageKey ||
+      !attachment.conversationId ||
+      attachment.securityStatus !== ChatAttachmentSecurityStatus.CLEAN
+    ) {
+      throw new NotFoundException('Pièce jointe introuvable');
+    }
+    await this.assertParticipant(attachment.conversationId, userId);
+    const buffer = await this.attachmentStorage
+      .read(attachment.storageKey)
+      .catch(() => {
+        throw new NotFoundException('Pièce jointe introuvable');
+      });
+    const hash = createHash('sha256').update(buffer).digest('hex');
+    if (!attachment.sha256 || hash !== attachment.sha256) {
+      buffer.fill(0);
+      throw new BadRequestException(
+        'Intégrité de la pièce jointe impossible à vérifier.',
+      );
+    }
+
+    const dossierId = await this.conversationRepository
+      .findOne({
+        where: { id: attachment.conversationId },
+        relations: ['dossier'],
+      })
+      .then((conversation) => (conversation as any)?.dossier?.id ?? null)
+      .catch(() => null);
+    await this.dataSource.transaction((manager) =>
+      this.auditService.append(manager, {
+        actorId: userId,
+        action: 'chat.attachment.downloaded',
+        resourceType: 'Attachment',
+        resourceId: attachment.id,
+        dossierId,
+        afterState: {
+          conversationId: attachment.conversationId,
+          sha256: attachment.sha256,
+          size: attachment.fileSize,
+        },
+        ip: context.ip ?? null,
+        userAgent: context.userAgent ?? null,
+        requestId: context.requestId ?? null,
+      }),
+    );
+
+    return {
+      buffer,
+      fileName: attachment.originalName || attachment.fileName,
+      mimeType:
+        attachment.detectedMime ||
+        attachment.mimeType ||
+        'application/octet-stream',
+    };
   }
 
   private validateFiles(files: Express.Multer.File[]): void {

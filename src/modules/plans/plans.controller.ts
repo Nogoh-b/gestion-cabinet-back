@@ -1,11 +1,13 @@
 import { Controller, Get, UseGuards, Request } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { PlansService } from './plans.service';
 import { PlanQuotaService } from './plan-quota.service';
 
 @ApiTags('Plans')
 @Controller('plans')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PlansController {
   constructor(

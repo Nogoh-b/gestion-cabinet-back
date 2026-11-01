@@ -14,6 +14,8 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
 import { ExercicesService } from '../services/exercices.service';
+import { CloseExerciceDto } from '../dto/close-exercice.dto';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 
 @ApiTags('comptabilite-exercices')
 @ApiBearerAuth()
@@ -38,15 +40,25 @@ export class ExercicesController {
 
   @Post()
   @RequirePermissions('open_exercice')
-  @ApiOperation({ summary: 'Ouvrir un nouvel exercice pour une annee donnee' })
-  create(@Body('annee') annee: number) {
-    return this.service.create(annee);
+  @ApiOperation({ summary: 'Ouvrir un nouvel exercice pour une année donnée' })
+  create(@Body('annee') annee: number, @CurrentUser() user: any) {
+    return this.service.create(annee, {
+      userId: user?.userId ?? user?.id ?? null,
+    });
   }
 
   @Patch(':id/cloturer')
   @RequirePermissions('close_exercice')
-  @ApiOperation({ summary: 'Cloturer un exercice' })
-  cloturer(@Param('id', ParseIntPipe) id: number) {
-    return this.service.cloturer(id);
+  @ApiOperation({
+    summary: 'Clôturer un exercice (verrouille toutes ses écritures)',
+  })
+  cloturer(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CloseExerciceDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.service.cloturer(id, dto, {
+      userId: user?.userId ?? user?.id ?? null,
+    });
   }
 }

@@ -9,7 +9,10 @@ import {
   Param,
   Query,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -29,6 +32,7 @@ import { JurisdictionStatsService } from './jurisdiction-stats.service';
 @ApiTags('Jurisdictions')
 @ApiBearerAuth()
 @Controller('jurisdictions')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class JurisdictionController {
   constructor(
     private readonly service: JurisdictionService,

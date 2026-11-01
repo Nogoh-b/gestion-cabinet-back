@@ -19,25 +19,25 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
     TypeOrmModule.forFeature([ProcedureType, ProcedureTemplate, Dossier]),
     CustomerModule,
     ProcedureModule,
-    AiDatabaseModule,
     forwardRef(() => DossiersModule),
+    AiDatabaseModule,
   ],
   controllers: [ProceduresController],
   providers: [
     ProceduresService,
     ProcedureStatsService,
-    ProcedureTypeWriteHandler,
     ProcedureTypeSubscriber,
+    ProcedureTypeWriteHandler,
   ],
   exports: [ProceduresService, ProcedureStatsService],
 })
 export class ProceduresModule implements OnModuleInit {
   constructor(
     private readonly registry: WriteHandlerRegistry,
-    private readonly procedureTypeHandler: ProcedureTypeWriteHandler,
+    private readonly handler0: ProcedureTypeWriteHandler,
   ) {}
 
   onModuleInit() {
-    this.registry.register(this.procedureTypeHandler);
+    this.registry.register(this.handler0);
   }
 }

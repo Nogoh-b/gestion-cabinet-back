@@ -69,11 +69,14 @@ pids
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-
-# echo src/core/config/ appended previously
+# Private runtime artefacts
 uploads/
+/backups/*.sql
+/backups-private/
+/artifacts-private/
+ecosystem.config.js
+
 storage/
-src/core/config/database.config.ts
 
 # PM2 - config locale au serveur, ne pas versionner
 /ecosystem.config.js

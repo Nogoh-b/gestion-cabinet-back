@@ -29,6 +29,7 @@ import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BranchStatsService } from './branch-stats.service';
 
 @Controller('branch')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiTags('branch')
 @ApiBearerAuth()
 export class BranchController {

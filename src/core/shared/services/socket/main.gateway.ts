@@ -18,6 +18,8 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ACCESS_COOKIE, readCookie } from 'src/core/auth/session-cookie.util';
+import { isCorsOriginAllowed } from 'src/core/config/cors-origin';
 import { NotificationType } from 'src/modules/notification/enum/notification-type.enum';
 import {
   ChatMessagePayload,
@@ -34,6 +36,25 @@ import { TenantContext } from 'src/core/tenant/tenant.context';
 import { WsTenantInterceptor } from 'src/core/tenant/ws-tenant.interceptor';
 import { signUploadUrlsDeep } from '../../interceptors/sign-upload-urls.interceptor';
 
+function allowWebsocketOrigin(
+  origin: string | undefined,
+  callback: (error: Error | null, allowed?: boolean) => void,
+): void {
+  const configuredOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((configuredOrigin) => configuredOrigin.trim())
+    .filter(Boolean);
+  const allowed = isCorsOriginAllowed(
+    origin,
+    configuredOrigins,
+    process.env.NODE_ENV === 'production',
+  );
+  callback(
+    allowed ? null : new Error('Origine WebSocket non autorisée'),
+    allowed,
+  );
+}
+
 /** `conversation_<id>` → id, sinon null. */
 function conversationIdFromRoom(room: unknown): number | null {
   const match = /^conversation_(\d+)$/.exec(String(room ?? ''));
@@ -42,7 +63,7 @@ function conversationIdFromRoom(room: unknown): number | null {
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: allowWebsocketOrigin,
     credentials: true,
   },
   // PAS DE NAMESPACE - utilise le namespace par défaut
@@ -62,14 +83,24 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async handleConnection(client: Socket) {
     try {
-      const token = String(client.handshake.auth?.token ?? '');
+      const authorization = String(
+        client.handshake.headers?.authorization ?? '',
+      );
+      const token = String(
+        readCookie(client.request as any, ACCESS_COOKIE) ||
+          client.handshake.auth?.token ||
+          (authorization.startsWith('Bearer ') ? authorization.slice(7) : ''),
+      );
       if (!token) throw new Error('Jeton de session manquant');
 
       const payload = await this.jwtService.verifyAsync(token);
       const userId = Number(payload?.sub);
-      const tenantId = Number(payload?.tenantId ?? 1);
+      const tenantId = Number(payload?.tenantId);
       if (!Number.isInteger(userId) || userId <= 0) {
         throw new Error('Utilisateur de session invalide');
+      }
+      if (!Number.isInteger(tenantId) || tenantId <= 0) {
+        throw new Error('Contexte cabinet invalide');
       }
 
       const sessionUser = await this.userService.findSessionState(
@@ -98,6 +129,10 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.addConnection(userId, client);
       client.data.userId = userId;
       client.data.tenantId = tenantId;
+      client.data.role = sessionUser.role ?? payload.role ?? null;
+      client.data.permissions = Array.isArray(payload.permissions)
+        ? payload.permissions
+        : [];
 
       // Joindre la room personnelle et celle du cabinet (présence)
       const userRoom = `user_${userId}`;
@@ -314,6 +349,7 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     },
   ) {
     try {
+      this.assertSocketPermission(client, 'send_notification');
       const senderId = this.getUserIdBySocketId(client.id);
       // this.logger.log(`🔔 send_notification reçu de user ${senderId}:`, {
       //   ...data,
@@ -488,6 +524,7 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     },
   ) {
     try {
+      this.assertSocketPermission(client, 'broadcast_notification');
       const senderId = this.getUserIdBySocketId(client.id);
       // this.logger.log(`📢 broadcast_notification reçu de user ${senderId}:`, data);
 
@@ -1080,6 +1117,19 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   // ========== INJECTION DES SERVICES ==========
+  /** Les envois de notifications exigent la permission correspondante. */
+  private assertSocketPermission(client: Socket, permission: string): void {
+    const permissions: string[] = client.data?.permissions ?? [];
+    if (
+      client.data?.role === 'admin' ||
+      permissions.includes('SUPER_ADMIN') ||
+      permissions.includes(permission)
+    ) {
+      return;
+    }
+    throw new Error(`Permission ${permission} requise`);
+  }
+
   constructor(
     @Inject(forwardRef(() => ChatService))
     private chatService: ChatService,

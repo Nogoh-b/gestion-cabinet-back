@@ -1,15 +1,12 @@
-import { DataSource, Repository } from 'typeorm';
-import { unlink } from 'fs/promises';
-import { join } from 'path';
-import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
-import { FilesUtil } from 'src/core/shared/utils/file.util';
 import {
   BadRequestException,
-  ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { ExpenseLine } from './entities/expense-line.entity';
 import { CreateExpenseLineDto } from './dto/create-expense-line.dto';
 import { UpdateExpenseLineDto } from './dto/update-expense-line.dto';
@@ -18,67 +15,59 @@ import {
   ExpenseReportStatus,
 } from './entities/expense-report.entity';
 import { Dossier } from '../dossiers/entities/dossier.entity';
+import { AuditService } from 'src/core/audit/audit.service';
+import { SupplierEvidenceStorageService } from './supplier-evidence-storage.service';
 import { CaseBillingService } from '../case-workflow/services/case-billing.service';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { DossierAction } from '../case-workflow/entities/dossier-action.entity';
-import { BillableItemStatus } from '../case-workflow/case-workflow.enums';
-import { BillableItem } from '../case-workflow/entities/billing.entity';
+
+export interface ExpenseEvidenceActor {
+  userId?: number | null;
+}
 
 @Injectable()
 export class ExpenseLinesService {
   constructor(
     @InjectRepository(ExpenseLine)
-    private repository: Repository<ExpenseLine>,
+    private readonly repository: Repository<ExpenseLine>,
+    @InjectRepository(ExpenseReport)
+    private readonly reportRepo: Repository<ExpenseReport>,
+    @InjectRepository(Dossier)
+    private readonly dossierRepo: Repository<Dossier>,
     private readonly dataSource: DataSource,
+    private readonly auditService: AuditService,
+    private readonly evidenceStorage: SupplierEvidenceStorageService,
     private readonly caseBillingService: CaseBillingService,
   ) {}
 
-  async create(
-    dto: CreateExpenseLineDto,
-    actorUserId: number | null = null,
-  ): Promise<ExpenseLine> {
-    const tenantId = getCurrentTenantId();
-    return this.dataSource.transaction(async (manager) => {
-      const expenseReport = await manager
-        .getRepository(ExpenseReport)
-        .findOne({
-          where: { id: dto.expense_report_id, tenant_id: tenantId },
-        });
-      if (!expenseReport)
-        throw new NotFoundException('Note de frais non trouvée');
-      this.assertRebillableHasDossier(dto.is_rebillable, dto.dossier_id);
-      const dossier = await this.resolveDossier(
-        manager,
-        dto.dossier_id,
-        tenantId,
-      );
-      await this.assertActionBelongsToDossier(
-        manager,
-        dto.action_id,
-        dto.dossier_id,
-        tenantId,
-      );
-      const repository = manager.getRepository(ExpenseLine);
-      const entity = repository.create(dto);
-      entity.expense_report = expenseReport;
-      if (dossier) entity.dossier = dossier;
-      const saved = await repository.save(entity);
-      saved.expense_report = expenseReport;
-      if (this.reportAllowsBilling(expenseReport.status)) {
-        await this.caseBillingService.syncExpenseLineToBillableItem(
-          manager,
-          saved,
-          actorUserId,
-          true,
-        );
-      }
-      return saved;
+  async create(dto: CreateExpenseLineDto): Promise<ExpenseLine> {
+    const report = await this.findMutableReport(dto.expense_report_id);
+    const dossier = await this.resolveDossier(
+      dto.dossier_id,
+      dto.is_rebillable,
+    );
+    this.assertAmounts(dto.amount_ht, dto.tax_rate, dto.amount_ttc);
+    await this.assertActionBelongsToDossier(dto.action_id, dossier?.id);
+    const entity = this.repository.create();
+    Object.assign(entity, {
+      ...dto,
+      expense_date: new Date(dto.expense_date),
+      expense_report: report,
+      expense_report_id: report.id,
+      dossier,
+      dossier_id: dossier?.id ?? null,
+      is_rebillable: dto.is_rebillable ?? false,
+      attachment_url: null,
+      tenant_id: getCurrentTenantId(),
     });
+    return this.repository.save(entity);
   }
 
-  async findByReport(report_id: number): Promise<ExpenseLine[]> {
+  findByReport(reportId: number): Promise<ExpenseLine[]> {
     return this.repository.find({
-      where: { expense_report_id: report_id },
+      where: {
+        expense_report_id: reportId,
+        tenant_id: getCurrentTenantId(),
+      },
       relations: ['dossier'],
       order: { expense_date: 'ASC' },
     });
@@ -86,118 +75,160 @@ export class ExpenseLinesService {
 
   async findOne(id: number): Promise<ExpenseLine> {
     const line = await this.repository.findOne({
-      where: { id },
+      where: { id, tenant_id: getCurrentTenantId() },
       relations: ['expense_report', 'dossier'],
     });
-    if (!line) throw new NotFoundException('Ligne de dépense non trouvée');
+    if (!line) {
+      throw new NotFoundException('Ligne de dépense non trouvée');
+    }
     return line;
   }
 
   async update(
     id: number,
     dto: UpdateExpenseLineDto,
-    actorUserId: number | null = null,
   ): Promise<ExpenseLine> {
-    const tenantId = getCurrentTenantId();
-    return this.dataSource.transaction(async (manager) => {
-      const repository = manager.getRepository(ExpenseLine);
-      const line = await repository.findOne({
-        where: { id, tenant_id: tenantId },
-        relations: ['expense_report', 'dossier'],
-      });
-      if (!line)
-        throw new NotFoundException('Ligne de dépense non trouvée');
-      await this.assertBillableItemMutable(manager, line.id, dto);
-      let expenseReport = line.expense_report;
-      if (dto.expense_report_id) {
-        const nextExpenseReport = await manager
-          .getRepository(ExpenseReport)
-          .findOne({
-            where: { id: dto.expense_report_id, tenant_id: tenantId },
-          });
-        if (!nextExpenseReport)
-          throw new NotFoundException('Note de frais non trouvée');
-        expenseReport = nextExpenseReport;
-      }
-      const dossierId = dto.dossier_id ?? line.dossier_id;
-      const isRebillable = dto.is_rebillable ?? line.is_rebillable;
-      const actionId = dto.action_id ?? line.action_id;
-      this.assertRebillableHasDossier(isRebillable, dossierId);
-      const dossier = await this.resolveDossier(manager, dossierId, tenantId);
-      await this.assertActionBelongsToDossier(
-        manager,
-        actionId,
-        dossierId,
-        tenantId,
-      );
-      Object.assign(line, dto);
-      line.expense_report = expenseReport;
-      if (dossier) line.dossier = dossier;
-      const saved = await repository.save(line);
-      saved.expense_report = expenseReport;
-      await this.caseBillingService.syncExpenseLineToBillableItem(
-        manager,
-        saved,
-        actorUserId,
-        this.reportAllowsBilling(expenseReport.status),
-      );
-      return saved;
+    const line = await this.findOne(id);
+    await this.assertMutable(line.expense_report);
+    const amountHt = dto.amount_ht ?? Number(line.amount_ht);
+    const taxRate = dto.tax_rate ?? Number(line.tax_rate);
+    const amountTtc = dto.amount_ttc ?? Number(line.amount_ttc);
+    this.assertAmounts(amountHt, taxRate, amountTtc);
+
+    const isRebillable =
+      dto.is_rebillable ?? Boolean(line.is_rebillable);
+    const dossier = await this.resolveDossier(
+      dto.dossier_id ?? line.dossier_id,
+      isRebillable,
+    );
+    await this.assertActionBelongsToDossier(
+      dto.action_id ?? line.action_id,
+      dossier?.id,
+    );
+    Object.assign(line, {
+      ...dto,
+      expense_date: dto.expense_date
+        ? new Date(dto.expense_date)
+        : line.expense_date,
+      amount_ht: amountHt,
+      tax_rate: taxRate,
+      amount_ttc: amountTtc,
+      is_rebillable: isRebillable,
+      dossier,
+      dossier_id: dossier?.id ?? null,
+      expense_report_id: line.expense_report_id,
+      expense_report: line.expense_report,
+      attachment_url: line.attachment_url,
+      tenant_id: line.tenant_id,
     });
+    return this.repository.save(line);
   }
 
-  async attachReceipt(
+  async remove(id: number): Promise<void> {
+    const line = await this.findOne(id);
+    await this.assertMutable(line.expense_report);
+    await this.repository.delete({
+      id: line.id,
+      tenant_id: getCurrentTenantId(),
+    });
+    await this.evidenceStorage.remove(line.attachment_url);
+  }
+
+  async attachEvidence(
     id: number,
     file: Express.Multer.File,
-    actorUserId: number,
+    actor: ExpenseEvidenceActor,
   ): Promise<ExpenseLine> {
-    if (!file?.buffer?.length || file.size > 5 * 1024 * 1024) {
-      throw new BadRequestException('Choisissez un fichier de 5 Mo maximum');
-    }
-    const formats: Record<string, { extension: string; signature: (buffer: Buffer) => boolean }> = {
-      'application/pdf': { extension: '.pdf', signature: (b) => b.subarray(0, 5).toString() === '%PDF-' },
-      'image/png': { extension: '.png', signature: (b) => b.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) },
-      'image/jpeg': { extension: '.jpg', signature: (b) => b.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex')) },
-    };
-    const format = formats[file.mimetype];
-    const extension = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
-    if (!format || !format.signature(file.buffer) ||
-      !(file.mimetype === 'image/jpeg' ? ['.jpg', '.jpeg'].includes(extension) : extension === format.extension)) {
-      throw new BadRequestException('Justificatif PDF, PNG ou JPEG valide requis');
-    }
-    const tenantId = getCurrentTenantId();
-    let uploadedPath: string | undefined;
+    const actorId = this.requireActor(actor);
+    const stored = await this.evidenceStorage.store(file, 'expense');
+    let previousStorageKey: string | null = null;
     try {
-      return await this.dataSource.transaction(async (manager) => {
-        const repository = manager.getRepository(ExpenseLine);
-        const line = await repository.findOne({
-          where: { id, tenant_id: tenantId },
-          relations: ['expense_report'],
+      const saved = await this.dataSource.transaction(async (manager) => {
+        const line = await manager.getRepository(ExpenseLine).findOne({
+          where: { id, tenant_id: getCurrentTenantId() },
+          relations: ['expense_report', 'dossier'],
           lock: { mode: 'pessimistic_write' },
         });
-        if (!line) throw new NotFoundException('Ligne de dépense non trouvée');
-        if (line.attachment_url) {
-          throw new ConflictException('Un justificatif est déjà associé à cette ligne');
+        if (!line) {
+          throw new NotFoundException('Ligne de dépense non trouvée');
         }
-        await this.assertBillableItemMutable(manager, id, { attachment_url: 'new' });
-        const upload = await FilesUtil.uploadFileV1(
-          file,
-          join(UPLOAD_DOCS_PATH, 'expenses', String(tenantId), String(line.expense_report_id)),
-        );
-        uploadedPath = upload.filePath;
-        line.attachment_url = upload.fileUrl;
-        const saved = await repository.save(line);
-        saved.expense_report = line.expense_report;
-        await this.caseBillingService.syncExpenseLineToBillableItem(
-          manager, saved, actorUserId, this.reportAllowsBilling(line.expense_report.status),
-        );
-        return saved;
+        await this.assertMutable(line.expense_report);
+        previousStorageKey = line.attachment_url;
+        Object.assign(line, {
+          attachment_url: stored.storageKey,
+          attachment_original_name: stored.originalName,
+          attachment_mime_type: stored.mimeType,
+          attachment_size: String(stored.size),
+          attachment_sha256: stored.sha256,
+        });
+        const result = await manager.getRepository(ExpenseLine).save(line);
+        await this.auditService.append(manager, {
+          actorId,
+          action: 'expense_line.evidence.attached',
+          resourceType: 'expense_line',
+          resourceId: result.id,
+          dossierId: result.dossier_id,
+          afterState: {
+            filename: stored.originalName,
+            mimeType: stored.mimeType,
+            size: stored.size,
+            sha256: stored.sha256,
+          },
+        });
+        return result;
       });
+      if (previousStorageKey && previousStorageKey !== stored.storageKey) {
+        await this.evidenceStorage.remove(previousStorageKey);
+      }
+      return saved;
     } catch (error) {
-      if (uploadedPath) await unlink(uploadedPath).catch(() => undefined);
+      await this.evidenceStorage.remove(stored.storageKey);
       throw error;
     }
   }
 
+  async getEvidence(
+    id: number,
+    actor: ExpenseEvidenceActor,
+  ): Promise<{
+    buffer: Buffer;
+    filename: string;
+    mimeType: string;
+    sha256: string;
+  }> {
+    const actorId = this.requireActor(actor);
+    const line = await this.findOne(id);
+    if (
+      !line.attachment_url ||
+      !line.attachment_original_name ||
+      !line.attachment_mime_type ||
+      !line.attachment_sha256
+    ) {
+      throw new NotFoundException('Justificatif de dépense absent');
+    }
+    const buffer = await this.evidenceStorage.read(line.attachment_url);
+    await this.dataSource.transaction((manager) =>
+      this.auditService.append(manager, {
+        actorId,
+        action: 'expense_line.evidence.downloaded',
+        resourceType: 'expense_line',
+        resourceId: line.id,
+        dossierId: line.dossier_id,
+        afterState: { sha256: line.attachment_sha256 },
+      }),
+    );
+    return {
+      buffer,
+      filename: line.attachment_original_name,
+      mimeType: line.attachment_mime_type,
+      sha256: line.attachment_sha256,
+    };
+  }
+
+  /**
+   * Autorise exceptionnellement la refacturation d'un débours sans
+   * justificatif (décision tracée par la facturation du dossier).
+   */
   async approveWithoutReceipt(id: number, actorUserId: number, reason: string) {
     const tenantId = getCurrentTenantId();
     return this.dataSource.transaction(async (manager) => {
@@ -207,72 +238,17 @@ export class ExpenseLinesService {
       });
       if (!line) throw new NotFoundException('Ligne de dépense non trouvée');
       return this.caseBillingService.approveExpenseWithoutReceipt(
-        manager, line, actorUserId, reason,
-      );
-    });
-  }
-
-  async remove(id: number, actorUserId: number | null = null): Promise<void> {
-    const tenantId = getCurrentTenantId();
-    await this.dataSource.transaction(async (manager) => {
-      const repository = manager.getRepository(ExpenseLine);
-      const line = await repository.findOne({
-        where: { id, tenant_id: tenantId },
-        relations: ['expense_report'],
-      });
-      if (!line)
-        throw new NotFoundException('Ligne de dépense non trouvée');
-      const item = await this.caseBillingService.syncExpenseLineToBillableItem(
         manager,
         line,
         actorUserId,
-        false,
+        reason,
       );
-      if (
-        item &&
-        [
-          BillableItemStatus.RESERVED,
-          BillableItemStatus.INVOICED,
-          BillableItemStatus.ADJUSTED,
-        ].includes(item.status)
-      ) {
-        throw new ConflictException(
-          'Cette dépense est déjà engagée dans la facturation et ne peut plus être supprimée',
-        );
-      }
-      await repository.delete({ id, tenant_id: tenantId });
     });
-  }
-
-  private assertRebillableHasDossier(
-    isRebillable: boolean | undefined,
-    dossierId: number | undefined,
-  ): void {
-    if (isRebillable && !dossierId) {
-      throw new BadRequestException(
-        'Un dossier est obligatoire pour refacturer une dépense',
-      );
-    }
-  }
-
-  private async resolveDossier(
-    manager: import('typeorm').EntityManager,
-    dossierId: number | undefined,
-    tenantId: number,
-  ): Promise<Dossier | null> {
-    if (!dossierId) return null;
-    const dossier = await manager.getRepository(Dossier).findOne({
-      where: { id: dossierId, tenant_id: tenantId },
-    });
-    if (!dossier) throw new NotFoundException('Dossier non trouvé');
-    return dossier;
   }
 
   private async assertActionBelongsToDossier(
-    manager: import('typeorm').EntityManager,
-    actionId: string | undefined | null,
-    dossierId: number | undefined,
-    tenantId: number,
+    actionId: string | null | undefined,
+    dossierId: number | null | undefined,
   ): Promise<void> {
     if (!actionId) return;
     if (!dossierId) {
@@ -280,8 +256,12 @@ export class ExpenseLinesService {
         'Un dossier est obligatoire pour associer une action',
       );
     }
-    const action = await manager.getRepository(DossierAction).findOne({
-      where: { id: actionId, dossier_id: dossierId, tenant_id: tenantId },
+    const action = await this.dataSource.getRepository(DossierAction).findOne({
+      where: {
+        id: actionId,
+        dossier_id: dossierId,
+        tenant_id: getCurrentTenantId(),
+      },
     });
     if (!action) {
       throw new BadRequestException(
@@ -290,49 +270,91 @@ export class ExpenseLinesService {
     }
   }
 
-  private async assertBillableItemMutable(
-    manager: import('typeorm').EntityManager,
-    expenseLineId: number,
-    dto: UpdateExpenseLineDto,
-  ): Promise<void> {
-    const billingFields = [
-      'amount_ht',
-      'amount_ttc',
-      'tax_rate',
-      'dossier_id',
-      'action_id',
-      'is_rebillable',
-      'rebilling_type',
-      'currency',
-      'description',
-      'expense_date',
-      'attachment_url',
-    ];
-    if (!billingFields.some((field) => field in dto)) return;
-    const item = await manager.getRepository(BillableItem).findOne({
-      where: {
-        tenant_id: getCurrentTenantId(),
-        source_event_key: `EXPENSE:${expenseLineId}:APPROVED`,
-      },
+  private async findMutableReport(id: number): Promise<ExpenseReport> {
+    const report = await this.reportRepo.findOne({
+      where: { id, tenant_id: getCurrentTenantId() },
     });
+    if (!report) throw new NotFoundException('Note de frais non trouvée');
+    await this.assertMutable(report);
+    return report;
+  }
+
+  private async assertMutable(report: ExpenseReport): Promise<void> {
     if (
-      item &&
-      [
-        BillableItemStatus.RESERVED,
-        BillableItemStatus.INVOICED,
-        BillableItemStatus.ADJUSTED,
-      ].includes(item.status)
+      ![
+        ExpenseReportStatus.DRAFT,
+        ExpenseReportStatus.REJECTED,
+      ].includes(report.status)
     ) {
-      throw new ConflictException(
-        'Cette dépense est déjà engagée dans la facturation. Utilisez un ajustement.',
+      throw new BadRequestException(
+        'Les lignes sont verrouillées dès la soumission de la note',
       );
     }
   }
 
-  private reportAllowsBilling(status: ExpenseReportStatus): boolean {
-    return [
-      ExpenseReportStatus.APPROVED,
-      ExpenseReportStatus.REIMBURSED,
-    ].includes(status);
+  private async resolveDossier(
+    dossierId?: number | null,
+    isRebillable = false,
+  ): Promise<Dossier | null> {
+    if (isRebillable && !dossierId) {
+      throw new BadRequestException(
+        'Une dépense refacturable doit être rattachée à un dossier',
+      );
+    }
+    if (!dossierId) return null;
+    const dossier = await this.dossierRepo.findOne({
+      where: { id: dossierId, tenant_id: getCurrentTenantId() },
+    });
+    if (!dossier) throw new NotFoundException('Dossier non trouvé');
+    return dossier;
+  }
+
+  private assertAmounts(
+    amountHt: number,
+    taxRate: number,
+    amountTtc: number,
+  ): void {
+    const ht = this.toMinorUnits(amountHt);
+    const ttc = this.toMinorUnits(amountTtc);
+    const rate = Number(taxRate);
+    if (
+      ht <= 0 ||
+      ttc <= 0 ||
+      !Number.isFinite(rate) ||
+      rate < 0 ||
+      rate > 100
+    ) {
+      throw new BadRequestException('Montants de dépense invalides');
+    }
+    const expectedTtc = ht + Math.round((ht * rate) / 100);
+    if (Math.abs(expectedTtc - ttc) > 1) {
+      throw new BadRequestException(
+        'Le montant TTC ne correspond pas au montant HT et au taux de TVA',
+      );
+    }
+  }
+
+  private toMinorUnits(value: number): number {
+    const numeric = Number(value);
+    const scaled = numeric * 100;
+    const rounded = Math.round(scaled);
+    if (
+      !Number.isFinite(numeric) ||
+      Math.abs(scaled - rounded) > 0.000001 ||
+      !Number.isSafeInteger(rounded)
+    ) {
+      throw new BadRequestException(
+        'Les montants utilisent au plus deux décimales',
+      );
+    }
+    return rounded;
+  }
+
+  private requireActor(actor: ExpenseEvidenceActor): number {
+    const actorId = Number(actor?.userId);
+    if (!Number.isInteger(actorId) || actorId <= 0) {
+      throw new ForbiddenException('Acteur authentifié obligatoire');
+    }
+    return actorId;
   }
 }

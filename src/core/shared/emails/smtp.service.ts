@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as nodemailer from 'nodemailer';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
+import { decryptSmtpConfig } from './smtp-config.crypto';
 
 export interface SmtpConfig {
   host?: string;
@@ -27,9 +28,7 @@ export class SmtpService {
     private readonly cabinetRepo: Repository<Cabinet>,
   ) {}
 
-  buildTransport(
-    cfg: SmtpConfig | null | undefined,
-  ): nodemailer.Transporter | null {
+  buildTransport(cfg: SmtpConfig | null | undefined): nodemailer.Transporter | null {
     if (!cfg?.host || !cfg?.port) return null;
     return nodemailer.createTransport({
       host: cfg.host,
@@ -44,25 +43,26 @@ export class SmtpService {
     cabinetId: number,
   ): Promise<{ transport: nodemailer.Transporter; from?: string } | null> {
     if (!cabinetId) return null;
-    const cabinet = await this.cabinetRepo.findOne({
-      where: { id: cabinetId },
-    });
-    const cfg = (cabinet?.smtp_config ?? null) as SmtpConfig | null;
+    const cabinet = await this.cabinetRepo
+      .createQueryBuilder('cabinet')
+      .addSelect('cabinet.smtp_config_encrypted')
+      .where('cabinet.id = :cabinetId', { cabinetId })
+      .getOne();
+    const cfg = cabinet?.smtp_config_encrypted
+      ? decryptSmtpConfig<SmtpConfig & Record<string, unknown>>(
+          cabinet.smtp_config_encrypted,
+        )
+      : (cabinet?.smtp_config ?? null) as SmtpConfig | null;
     const transport = this.buildTransport(cfg);
     if (!transport) return null;
     return { transport, from: cfg?.from ?? cfg?.user };
   }
 
   /** Envoie un e-mail de test avec la configuration SMTP du cabinet. */
-  async sendTest(
-    cabinetId: number,
-    to: string,
-  ): Promise<{ success: boolean; message: string }> {
+  async sendTest(cabinetId: number, to: string): Promise<{ success: boolean; message: string }> {
     const t = await this.getTenantTransport(cabinetId);
     if (!t) {
-      throw new BadRequestException(
-        'Configuration SMTP absente ou incomplète (host/port requis).',
-      );
+      throw new BadRequestException('Configuration SMTP absente ou incomplète (host/port requis).');
     }
     try {
       await t.transport.sendMail({
@@ -75,9 +75,7 @@ export class SmtpService {
       return { success: true, message: `E-mail de test envoyé à ${to}` };
     } catch (e: any) {
       this.logger.warn(`[SMTP test] échec: ${e?.message ?? e}`);
-      throw new BadRequestException(
-        `Échec de l'envoi de test : ${e?.message ?? e}`,
-      );
+      throw new BadRequestException(`Échec de l'envoi de test : ${e?.message ?? e}`);
     }
   }
 }

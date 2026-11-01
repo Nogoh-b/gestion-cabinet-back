@@ -12,6 +12,7 @@ import {
 import { pruneDeniedJoins } from './denied-join-pruning';
 import { WritePlan } from './dto/analysis-response.dto';
 import { AiActionRegistry } from './write/ai-action.registry';
+import { isAiLifecycleTable } from '../../config/ai-database/ai-lifecycle-tables.config';
 
 type AiDatabaseOperation = 'READ' | 'INSERT' | 'UPDATE' | 'DELETE' | 'ACTION';
 
@@ -31,6 +32,34 @@ type AiUserLike = AiUserContext | string | number | undefined | null;
 
 const SUPER_ADMIN = 'SUPER_ADMIN';
 const PERMISSION_CACHE_TTL_MS = 10_000;
+
+/**
+ * Tables contenant des secrets, des identites, des journaux probatoires ou
+ * l'infrastructure interne de l'assistant. Elles ne sont jamais exposees a une
+ * requete SQL generee par l'IA, y compris pour un administrateur.
+ */
+const AI_DENIED_TABLES = new Set([
+  'user',
+  'users',
+  'user_role',
+  'user_role_assignment',
+  'role_permission',
+  'permission',
+  'auth_tokens',
+  'otp_codes',
+  'otp_online_link',
+  'audit_events',
+  'audit_chain_heads',
+  'outbox_events',
+  'outbox_delivery_attempts',
+  'activities_user',
+  'conversations_bot',
+  'conversation_messages',
+  'ai_request_log',
+]);
+
+const AI_DENIED_COLUMN_PATTERN =
+  /\b(?:password(?:_hash)?|refresh_?token|access_?token|fcm_?token|mfa_?secret|otp(?:_code|_secret)?|api_?key|private_?key|secret|token)\b/i;
 
 export const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
   // Dossiers
@@ -535,6 +564,17 @@ export class AiDatabasePermissionService {
   }
 
   async assertCanReadSql(user: AiUserLike, sqlQuery: string): Promise<void> {
+    const inspectableSql = this.stripSqlLiterals(sqlQuery);
+    const sensitiveColumn = inspectableSql.match(AI_DENIED_COLUMN_PATTERN)?.[0];
+    if (sensitiveColumn) {
+      this.logger.warn(
+        `Acces IA refuse: user=${this.getUserDebugId(user)} | colonne sensible ${sensitiveColumn}`,
+      );
+      throw new ForbiddenException(
+        'Cette demande IA vise une donnee authentification ou un secret.',
+      );
+    }
+
     const tables = this.extractTablesFromSql(sqlQuery);
     await this.assertCanReadTables(user, tables);
 
@@ -679,6 +719,19 @@ export class AiDatabasePermissionService {
     user: AiUserLike,
     writePlan: WritePlan,
   ): Promise<void> {
+    const lifecycleTables = (writePlan.operations ?? [])
+      .filter((operation) => operation.operation !== 'ACTION' && isAiLifecycleTable(operation.entity))
+      .map((operation) => operation.entity);
+    if (lifecycleTables.length > 0) {
+      this.logger.warn(
+        `Ecriture IA generique refusee: user=${this.getUserDebugId(user)} | tables a cycle de vie ${[...new Set(lifecycleTables)].join(', ')}`,
+      );
+      throw new ForbiddenException(
+        `Ces données (${[...new Set(lifecycleTables)].join(', ')}) suivent un cycle de vie métier : ` +
+          "elles ne peuvent être modifiées que par l'action métier correspondante, pas par une écriture directe.",
+      );
+    }
+
     const requirements = (writePlan.operations ?? []).flatMap((operation): AiRequirement[] => {
       if (operation.operation !== 'ACTION') {
         return [{ table: operation.entity, operation: operation.operation }];
@@ -706,6 +759,7 @@ export class AiDatabasePermissionService {
     table: string,
     operation: 'INSERT' | 'UPDATE' = 'INSERT',
   ): Promise<boolean> {
+    if (!this.isTableAllowed(table)) return false;
     return (await this.findMissing(user, [{ table, operation }])).length === 0;
   }
 
@@ -737,6 +791,23 @@ export class AiDatabasePermissionService {
     }
 
     return Array.from(tables);
+  }
+
+  filterAllowedTables(tables: string[]): string[] {
+    return this.normalizeTables(tables)
+      .filter((table) => !AI_DENIED_TABLES.has(table));
+  }
+
+  isTableAllowed(table: string): boolean {
+    const normalized = this.normalizeTableName(table);
+    return !!normalized && !AI_DENIED_TABLES.has(normalized);
+  }
+
+  isColumnAllowed(column: string): boolean {
+    const normalized = String(column ?? '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .toLowerCase();
+    return !!normalized && !AI_DENIED_COLUMN_PATTERN.test(normalized);
   }
 
   private stripSqlLiterals(sqlQuery: string): string {
@@ -777,6 +848,19 @@ export class AiDatabasePermissionService {
     user: AiUserLike,
     requirements: AiRequirement[],
   ): Promise<void> {
+    const denied = this.normalizeRequirements(requirements).filter(({ table }) =>
+      AI_DENIED_TABLES.has(table),
+    );
+    if (denied.length > 0) {
+      const tables = denied.map(({ table }) => table).join(', ');
+      this.logger.warn(
+        `Acces IA refuse: user=${this.getUserDebugId(user)} | tables protegees ${tables}`,
+      );
+      throw new ForbiddenException(
+        'Cette demande IA vise une table interne ou une donnee authentification.',
+      );
+    }
+
     const missing = await this.findMissing(user, requirements);
     if (missing.length === 0) return;
 

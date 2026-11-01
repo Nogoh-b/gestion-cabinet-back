@@ -1109,9 +1109,7 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
 
     for (const keyword of strongWriteKeywords) {
       if (normalized.includes(keyword)) {
-        this.logger.debug(
-          `🔍 Mot-clé WRITE détecté: "${keyword}" dans "${normalized.substring(0, 60)}..."`,
-        );
+        this.logger.debug(`Mot-cle WRITE detecte: ${keyword}`);
         return true;
       }
     }

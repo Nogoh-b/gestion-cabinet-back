@@ -24,6 +24,7 @@ import { DistrictSearchDto } from './dto/district-search.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 @Controller('districts')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class DistrictsController {
   constructor(private readonly service: DistrictsService) {}

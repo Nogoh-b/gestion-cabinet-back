@@ -19,17 +19,22 @@ export abstract class BaseStatsService<T extends ObjectLiteral> {
     addTenantCondition(query, alias);
 
     if (!filters) return query;
-    const fieldToUseForDate = filters.fieldToUseForDate ?? 'created_at';
+    if (Array.isArray(filters.dossierIds)) {
+      if (filters.dossierIds.length === 0) {
+        query.andWhere('1 = 0');
+      } else {
+        query.andWhere(`${alias}.dossier_id IN (:...accessibleDossierIds)`, {
+          accessibleDossierIds: filters.dossierIds,
+        });
+      }
+    }
+    const fieldToUseForDate = filters.fieldToUseForDate ?? 'created_at'
     if (filters.startDate) {
-      query.andWhere(`${alias}.${fieldToUseForDate} >= :startDate`, {
-        startDate: filters.startDate,
-      });
+      query.andWhere(`${alias}.${fieldToUseForDate} >= :startDate`, { startDate: filters.startDate });
     }
 
     if (filters.endDate) {
-      query.andWhere(`${alias}.${fieldToUseForDate} <= :endDate`, {
-        endDate: filters.endDate,
-      });
+      query.andWhere(`${alias}.${fieldToUseForDate} <= :endDate`, { endDate: filters.endDate });
     }
 
     return query;
@@ -41,42 +46,38 @@ export abstract class BaseStatsService<T extends ObjectLiteral> {
     return query.getCount();
   }
 
-  // src/modules/stats/services/base-stats.service.ts
+// src/modules/stats/services/base-stats.service.ts
 
-  protected async getEvolution(
-    filters?: StatsFilterDto,
-    dateField: string = 'created_at',
-    alias: string = 'entity', // 👈 Ajouter un paramètre alias
-  ): Promise<any[]> {
-    const { startDate = this.getDefaultStartDate(), endDate = new Date() } =
-      filters || {};
-    dateField = filters?.fieldToUseForDate ?? dateField;
+protected async getEvolution(
+  filters?: StatsFilterDto,
+  dateField: string = 'created_at',
+  alias: string = 'entity' // 👈 Ajouter un paramètre alias
+): Promise<any[]> {
+  const { startDate = this.getDefaultStartDate(), endDate = new Date() } = filters || {};
+  dateField = filters?.fieldToUseForDate ?? dateField;
+  
+  const query = this.repository
+    .createQueryBuilder(alias) // 👈 Utiliser l'alias passé en paramètre
+    .select(`DATE(${alias}.${dateField})`, 'date')
+    .addSelect('COUNT(*)', 'count')
+    .where(`${alias}.${dateField} BETWEEN :start AND :end`, { start: startDate, end: endDate })
+    .groupBy(`DATE(${alias}.${dateField})`)
+    .orderBy('date', 'ASC');
 
-    const query = this.repository
-      .createQueryBuilder(alias) // 👈 Utiliser l'alias passé en paramètre
-      .select(`DATE(${alias}.${dateField})`, 'date')
-      .addSelect('COUNT(*)', 'count')
-      .where(`${alias}.${dateField} BETWEEN :start AND :end`, {
-        start: startDate,
-        end: endDate,
-      })
-      .groupBy(`DATE(${alias}.${dateField})`)
-      .orderBy('date', 'ASC');
+  this.applyFilters(query, filters, alias); // 👈 Passer l'alias à applyFilters
 
-    this.applyFilters(query, filters, alias); // 👈 Passer l'alias à applyFilters
-
-    const results = await query.getRawMany();
-
-    let cumulative = 0;
-    return results.map((r) => {
-      cumulative += parseInt(r.count);
-      return {
-        date: r.date,
-        count: parseInt(r.count),
-        cumulative,
-      };
-    });
-  }
+  const results = await query.getRawMany();
+  
+  let cumulative = 0;
+  return results.map(r => {
+    cumulative += parseInt(r.count);
+    return {
+      date: r.date,
+      count: parseInt(r.count),
+      cumulative,
+    };
+  });
+}
   protected getDefaultStartDate(): Date {
     const date = new Date();
     date.setMonth(date.getMonth() - 6);

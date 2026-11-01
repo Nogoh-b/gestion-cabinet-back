@@ -26,6 +26,9 @@ export class Paiement extends TenantEntity {
   /** Transient — lu par le PaiementSubscriber pour notifier le client. */
   notify_client?: boolean;
 
+  @Column({ name: 'notify_client_requested', default: false })
+  notifyClientRequested: boolean;
+
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
     label: 'Identifiant',
@@ -37,12 +40,14 @@ export class Paiement extends TenantEntity {
   id: string;
 
   /** Colonne DB facture_id gérée via la relation @ManyToOne (voir ci-dessous). */
-  get factureId(): string { return this.facture?.id; }
+  get factureId(): string {
+    return this.facture?.id;
+  }
   set factureId(v: string) {
     if (v) this.facture = { id: v } as Facture;
   }
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 18, scale: 2 })
   @BusinessColumn({
     label: 'Montant',
     description: 'Montant payé',
@@ -130,7 +135,7 @@ export class Paiement extends TenantEntity {
     enum: StatutPaiement,
     // Un paiement est considéré comme validé par défaut (cf. demande métier) :
     // tout paiement enregistré l'est après vérification, donc VALIDE d'office.
-    default: StatutPaiement.VALIDE,
+    default: StatutPaiement.EN_ATTENTE,
   })
   @BusinessColumn({
     label: 'Statut',
@@ -161,6 +166,32 @@ export class Paiement extends TenantEntity {
   })
   preuvePaiement: string;
 
+  @Column({
+    name: 'preuve_original_name',
+    type: 'varchar',
+    nullable: true,
+    length: 255,
+  })
+  preuveOriginalName: string | null;
+
+  @Column({
+    name: 'preuve_mime_type',
+    type: 'varchar',
+    nullable: true,
+    length: 120,
+  })
+  preuveMimeType: string | null;
+
+  @Column({ name: 'preuve_size', type: 'bigint', nullable: true })
+  preuveSize: string | null;
+
+  @Column({
+    name: 'preuve_sha256',
+    type: 'char',
+    nullable: true,
+    length: 64,
+  })
+  preuveSha256: string | null;
   @Column({ name: 'declared_by_client', type: 'tinyint', width: 1, default: 0 })
   @BusinessColumn({
     label: 'Déclaré par le client',

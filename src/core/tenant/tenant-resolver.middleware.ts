@@ -15,7 +15,7 @@ import { PLATFORM_PATH_PREFIX } from '../decorators/platform.decorator';
  * Résultat : req['resolvedTenantId'] = cabinet.id (ou undefined si non résolu).
  *
  * Le TenantInterceptor complète ensuite :
- *   tenantId = req.user?.tenantId ?? req['resolvedTenantId'] ?? 1
+ *   tenantId = req.user?.tenantId ?? req['resolvedTenantId']; sinon refus.
  */
 @Injectable()
 export class TenantResolverMiddleware implements NestMiddleware {
@@ -46,6 +46,10 @@ export class TenantResolverMiddleware implements NestMiddleware {
     let resolvedTenantId: number | undefined;
 
     if (code) {
+      if (!this.isValidCode(code)) {
+        res.status(400).json({ message: 'Code cabinet invalide' });
+        return;
+      }
       const resolved = await this.resolveCode(code);
       if (resolved) {
         resolvedTenantId = resolved;
@@ -55,6 +59,8 @@ export class TenantResolverMiddleware implements NestMiddleware {
         );
       } else {
         this.logger.warn(`[Tenant] code="${code}" non trouvé`);
+        res.status(404).json({ message: 'Cabinet inconnu' });
+        return;
       }
     }
 

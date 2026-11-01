@@ -7,6 +7,7 @@
 // Ce guard doit être appliqué APRÈS JwtAuthGuard (qui vérifie l'auth) et
 // APRES le TenantResolverMiddleware (qui résout resolvedTenantId).
 import { IS_PUBLIC_KEY } from 'src/core/decorators/public.decorator';
+import { ALLOW_SUSPENDED_CABINET_KEY } from 'src/core/decorators/allow-suspended-cabinet.decorator';
 import { ALLOW_SUSPENDED_KEY } from 'src/core/decorators/allow-suspended.decorator';
 import { IS_PLATFORM_KEY } from 'src/core/decorators/platform.decorator';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
@@ -39,16 +40,32 @@ export class SuspendedCabinetGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     // 1. Routes publiques → laisser passer (login, onboarding, resolve...)
     const metadataTargets = [context.getHandler(), context.getClass()];
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, metadataTargets);
-    if (isPublic) return true;
-    // Espace plateforme : aucun cabinet courant, rien à bloquer.
-    if (this.reflector.getAllAndOverride<boolean>(IS_PLATFORM_KEY, metadataTargets)) {
-      return true;
-    }
-    const allowSuspended = this.reflector.getAllAndOverride<boolean>(
-      ALLOW_SUSPENDED_KEY,
+    const isPublic = this.reflector.getAllAndOverride<boolean>(
+      IS_PUBLIC_KEY,
       metadataTargets,
     );
+    if (isPublic) return true;
+    // Espace plateforme : aucun cabinet courant, rien à bloquer.
+    if (
+      this.reflector.getAllAndOverride<boolean>(
+        IS_PLATFORM_KEY,
+        metadataTargets,
+      )
+    ) {
+      return true;
+    }
+    // Deux décorateurs coexistent (@AllowSuspended de main,
+    // @AllowSuspendedCabinet de la refonte) : l'un ou l'autre suffit.
+    const allowSuspended =
+      this.reflector.getAllAndOverride<boolean>(
+        ALLOW_SUSPENDED_KEY,
+        metadataTargets,
+      ) ||
+      this.reflector.getAllAndOverride<boolean>(
+        ALLOW_SUSPENDED_CABINET_KEY,
+        metadataTargets,
+      );
+    if (allowSuspended) return true;
 
     // 2. Récupérer l'ID du tenant (cabinet)
     const req = context.switchToHttp().getRequest();

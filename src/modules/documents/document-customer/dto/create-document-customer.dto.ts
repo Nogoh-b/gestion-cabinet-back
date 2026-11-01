@@ -1,18 +1,17 @@
 import { Transform } from 'class-transformer';
 import {
+  IsBoolean,
+  IsDateString,
+  IsJSON,
   IsNotEmpty,
   IsNumber,
   IsOptional,
-  IsBoolean,
-  IsEnum,
   IsString,
-  IsJSON,
+  IsUUID,
   IsIn,
 } from 'class-validator';
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
-import { DocumentCustomerStatus } from '../entities/document-customer.entity';
 
 export class CreateDocumentCustomerDto {
   @ApiPropertyOptional({ description: 'ID du type de document' })
@@ -26,14 +25,6 @@ export class CreateDocumentCustomerDto {
   @IsNumber()
   @Transform(({ value }) => parseInt(value))
   dossier_id: number;
-
-  @ApiPropertyOptional({
-    description: 'ID du client (déduit du dossier si absent)',
-  })
-  @IsOptional()
-  @IsNumber()
-  @Transform(({ value }) => parseInt(value))
-  customer_id?: number;
 
   @ApiPropertyOptional({ description: 'ID du prêt associé' })
   @IsOptional()
@@ -58,14 +49,6 @@ export class CreateDocumentCustomerDto {
   @IsNumber()
   @Transform(({ value }) => (value ? parseInt(value) : undefined))
   category_id?: number;
-
-  @ApiPropertyOptional({
-    enum: DocumentCustomerStatus,
-    description: 'Statut du document',
-  })
-  @IsOptional()
-  @IsEnum(DocumentCustomerStatus)
-  status?: DocumentCustomerStatus;
 
   @ApiPropertyOptional({ description: 'Document requis pour une audience' })
   @IsOptional()
@@ -106,7 +89,25 @@ export class CreateDocumentCustomerDto {
     description: 'ID de la sous-étape de visite associée',
   })
   @IsOptional()
-  sub_stage_visit_id?: any;
+  @IsUUID()
+  sub_stage_visit_id?: string;
+
+  @ApiPropertyOptional({ description: "ID de la visite d'étape associée" })
+  @IsOptional()
+  @IsUUID()
+  stage_visit_id?: string;
+
+  @ApiPropertyOptional({
+    description: 'Mots-clés séparés par des virgules',
+  })
+  @IsOptional()
+  @IsString()
+  keywords?: string;
+
+  @ApiPropertyOptional({ description: 'Date portée par le document' })
+  @IsOptional()
+  @IsDateString()
+  document_date?: string;
 
   @ApiPropertyOptional({ description: 'Mode strict (lève des exceptions)' })
   @IsOptional()
@@ -119,7 +120,11 @@ export class CreateDocumentCustomerDto {
     format: 'binary',
     description: 'Fichier à uploader',
   })
-  file: Express.Multer.File;
+  // Le fichier est extrait par Multer via @UploadedFile(). Ce décorateur sert
+  // uniquement à rendre la propriété compatible avec le whitelist strict du
+  // DTO généré pour le multipart ; l'absence réelle est contrôlée au service.
+  @IsOptional()
+  file?: Express.Multer.File;
 
   /** Transient — case « Notifier le client » du modal. */
   @ApiPropertyOptional({
