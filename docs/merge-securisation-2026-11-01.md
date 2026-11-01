@@ -55,4 +55,42 @@ Date : 2026-11-01. Merge de `origin/feature/securisation-juridique-refonte`
 
 - `npm run build` OK
 - `tsc --noEmit` OK (0 erreur)
-- suite de tests : voir le résultat du run dans le compte-rendu de session
+- `npm run migration:rehearse` : refusé par le garde-fou (cible non anonymisée) —
+  il faut une base dédiée (`DB_NAME` contenant `rehearsal`/`reco`/`test`, etc.) et
+  `MIGRATION_REHEARSAL_CONFIRMATION=ANONYMIZED_COPY_ONLY`.
+
+### Tests (baseline mesurée)
+
+| Run | Suites OK | Suites KO | Tests KO |
+|---|---|---|---|
+| `dev` seul (`10662200`) | 204 / 247 | 42 | 49 |
+| merge, avant adaptations | 204 / 277 | 71 | 109 |
+| merge, après adaptations (3 suites réparées) | 207 / 277 | ~68 | ~88 |
+
+`dev` n'était donc pas vert avant le merge (42 suites déjà rouges : specs Nest
+génériques et dépendances de constructeurs).
+
+Suites réparées dans ce commit : `modules/export/dossier-export.service.spec.ts`
+(21/21), `modules/export/dossier-sql.exporter.spec.ts`, `app.controller.spec.ts`.
+`modules/audiences/audience-workflow.spec.ts` : 11 → 6 tests rouges (en cours).
+
+### Causes des suites encore rouges (par volume)
+
+1. **Contexte tenant strict** — `getCurrentTenantId()` lève désormais
+   `Aucun contexte cabinet actif` (secu). Les specs qui appellent un service
+   tenant-scopé hors ALS échouent : correctif = envelopper l'appel dans
+   `runWithTenantContext(1, () => …)` (cf. `dossier-export.service.spec.ts`).
+2. **Signature des constructeurs** — secu a ajouté des paramètres
+   (`ReminderScheduler` 7→8, `AiDatabaseController` 4→7,
+   `ProcedureInstanceController` +`LegacyWorkflowMutationGuard`, etc.) : les
+   `new X(...)` des specs doivent être complétés.
+3. **Modules supprimés** — `AppService`, `Step`/`StepAction`, `step.service`,
+   `dossier-analysis.service`, `*`-write.handler, `backup.controller` : les specs
+   qui les importent ne compilent plus.
+4. **Changements de comportement** — statuts de facture (`IMPAYEE` retiré),
+   comparaison des ENUM, `DossierStatus` devenu chaîne, `AudienceStatus` +
+   `IN_PROGRESS`.
+
+Point d'entrée le plus rentable : traiter (1) puis (2), qui couvrent la majorité
+des 68 suites restantes.
+
