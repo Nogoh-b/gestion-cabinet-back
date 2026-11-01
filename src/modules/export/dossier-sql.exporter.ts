@@ -5,7 +5,6 @@ import { DataSource, EntityMetadata, EntityTarget } from 'typeorm';
 
 import type { HiddenFields } from 'src/core/security/restricted-fields';
 import { Dossier } from '../dossiers/entities/dossier.entity';
-import { Step } from '../dossiers/entities/step.entity';
 import { Audience } from '../audiences/entities/audience.entity';
 import { Diligence } from '../diligence/entities/diligence.entity';
 import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
@@ -148,7 +147,6 @@ export class DossierSqlExporter {
     // ── Dossier et tables à dossier_id ──
     const dossiers = await add(Dossier, 'id', scope.dossierIds);
     const dossierIds = ids(dossiers);
-    await add(Step, 'dossier_id', dossierIds);
     const documents = await add(DocumentCustomer, 'dossier_id', dossierIds);
     const documentIds = ids(documents);
     await add(DocumentCustomerVersion, 'document_id', documentIds);

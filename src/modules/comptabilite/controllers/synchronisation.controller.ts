@@ -19,21 +19,28 @@ export class SynchronisationController {
 
   @Get('etat')
   @RequirePermissions('view_accounting')
-  @ApiOperation({ summary: 'Apercu des documents historiques a synchroniser' })
+  @ApiOperation({
+    summary: 'Aperçu : nombre de documents historiques à synchroniser',
+  })
   etat() {
     return this.service.etat();
   }
 
   @Post('initialiser')
   @RequirePermissions('manage_chart_of_accounts')
-  @ApiOperation({ summary: 'Cree le plan comptable du tenant courant' })
+  @ApiOperation({
+    summary:
+      'Crée le plan comptable du tenant courant (SYSCOHADA + journaux + exercice)',
+  })
   initialiser() {
     return this.initialisation.initialiser();
   }
 
   @Post()
   @RequirePermissions('manage_chart_of_accounts')
-  @ApiOperation({ summary: 'Lance la synchronisation initiale' })
+  @ApiOperation({
+    summary: 'Lance la synchronisation initiale (backfill) — idempotent',
+  })
   synchroniser() {
     return this.service.synchroniser();
   }

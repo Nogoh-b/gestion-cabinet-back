@@ -7,6 +7,7 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { CompteComptable } from '../entities/compte.entity';
 import { ClasseCompte } from '../enums/comptabilite.enums';
 import { ComptesService } from '../services/comptes.service';
+import { CreateCompteDto } from '../dto/create-compte.dto';
 
 @ApiTags('comptabilite-comptes')
 @ApiBearerAuth()
@@ -26,15 +27,15 @@ export class ComptesController {
 
   @Get('soldes')
   @RequirePermissions('view_accounting')
-  @ApiOperation({ summary: 'Soldes de tous les comptes' })
+  @ApiOperation({ summary: 'Soldes de tous les comptes (pour balance)' })
   getSoldes() {
     return this.service.getSoldes();
   }
 
   @Post()
   @RequirePermissions('manage_chart_of_accounts')
-  @ApiOperation({ summary: 'Creer un compte comptable' })
-  create(@Body() data: Partial<CompteComptable>) {
+  @ApiOperation({ summary: 'Créer un compte comptable' })
+  create(@Body() data: CreateCompteDto) {
     return this.service.create(data);
   }
 }

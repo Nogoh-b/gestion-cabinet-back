@@ -16,6 +16,8 @@ import { ChatService } from '../chat/services/chat/chat.service';
 import { ClientPortalService } from '../client-portal/client-portal.service';
 import { MailTemplateService } from '../mail-template/mail-template.service';
 import { SkillTargetsService, TargetInfo } from './skill-targets.service';
+import { getCurrentRequestUser } from 'src/core/security/request-user.context';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 const IRREVERSIBLE_EMAIL = "L'e-mail part dès la confirmation : il ne pourra pas être rappelé.";
 const IRREVERSIBLE_MESSAGE = 'Le message est envoyé dès la confirmation : il ne pourra pas être retiré.';
@@ -321,10 +323,20 @@ export class ReporterAudienceAiAction implements AiActionHandler {
     return `${info.label} → ${date.toLocaleDateString('fr-FR')}${time && time !== '00:00' ? ` à ${time}` : ''}`;
   }
 
-  async prepare(targetId: string | number, params: Record<string, any>): Promise<PreparedAiAction> {
+  async prepare(targetId: string | number, params: Record<string, any>, userId?: string): Promise<PreparedAiAction> {
     const info = await this.targets.load({ type: 'audience', table: 'audiences', id: Number(targetId), label: '' });
     const { date, time } = this.parse(params);
     const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    // Mêmes contrôles que l'écran de report (acteur authentifié, délai < 48 h).
+    const requestUser = getCurrentRequestUser();
+    const actorId = Number(userId ?? requestUser?.userId);
+    const actor = {
+      id: actorId,
+      userId: actorId,
+      tenantId: getCurrentTenantId(),
+      role: requestUser?.role,
+      permissions: requestUser?.permissions ?? [],
+    };
     return {
       data: info.resource,
       plannedMessage: `${info.label} à reporter au ${date.toLocaleDateString('fr-FR')}.`,
@@ -334,7 +346,7 @@ export class ReporterAudienceAiAction implements AiActionHandler {
           audience_time: time && time !== '00:00' ? time : (info.resource.audience_time ?? undefined),
           ...(params.reason && { reason: String(params.reason) }),
           ...(params.room && { room: String(params.room) }),
-        } as any);
+        } as any, actor);
         return `Audience reportée au ${date.toLocaleDateString('fr-FR')} (nouvelle audience #${replacement.id}).`;
       },
     };

@@ -4,7 +4,12 @@ import { CustomerResponseDto } from 'src/modules/customer/customer/dto/customer-
 import { DossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dto';
 import { ApiProperty } from '@nestjs/swagger';
 
-import { StatutFacture, TypeFacture } from './create-facture.dto';
+import {
+  InvoiceNature,
+  InvoiceSettlementDisposition,
+  StatutFacture,
+  TypeFacture,
+} from './create-facture.dto';
 import { InvoiceType } from 'src/modules/invoice-type/entities/invoice-type.entity';
 
 type FactureTransformSource = {
@@ -125,6 +130,26 @@ export class FactureResponseDto {
   @Expose()
   status: StatutFacture;
 
+  @ApiProperty({ enum: InvoiceNature })
+  @Expose()
+  nature: InvoiceNature;
+
+  @ApiProperty({ enum: InvoiceSettlementDisposition })
+  @Expose()
+  settlementDisposition: InvoiceSettlementDisposition;
+
+  @ApiProperty({ required: false, nullable: true })
+  @Expose()
+  originalInvoiceId: string | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  @Expose()
+  dispositionReason: string | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  @Expose()
+  dispositionAt: Date | null;
+
   @ApiProperty()
   @Expose()
   description: string;
@@ -187,7 +212,14 @@ export class FactureResponseDto {
     if (!source.dateEcheance) return false;
     const diff = Date.now() - new Date(source.dateEcheance).getTime();
     const jours = Math.floor(diff / (1000 * 60 * 60 * 24));
-    return jours > 0 && Number(source.resteAPayer ?? 0) > 0;
+    return (
+      jours > 0 &&
+      Number(source.resteAPayer ?? 0) > 0 &&
+      [StatutFacture.VALIDEE, StatutFacture.PARTIELLEMENT_PAYEE].includes(
+        obj.status,
+      ) &&
+      obj.nature !== InvoiceNature.CREDIT_NOTE
+    );
   })
   is_en_retard: boolean;
 }

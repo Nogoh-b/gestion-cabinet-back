@@ -8,6 +8,7 @@ import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { NotificationModule } from 'src/modules/notification/notification.module';
 
 import { ReminderScheduler } from './reminder.scheduler';
+import { AudienceReminderDeliveryService } from './audience-reminder-delivery.service';
 
 /**
  * Planificateur d'alertes proactives (rappels d'audience, échéances de
@@ -19,6 +20,6 @@ import { ReminderScheduler } from './reminder.scheduler';
     TypeOrmModule.forFeature([Cabinet, Audience, Diligence, Dossier]),
     NotificationModule,
   ],
-  providers: [ReminderScheduler],
+  providers: [ReminderScheduler, AudienceReminderDeliveryService],
 })
 export class ReminderSchedulerModule {}

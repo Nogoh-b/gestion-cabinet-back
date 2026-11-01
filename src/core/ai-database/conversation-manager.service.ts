@@ -1009,7 +1009,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     if (this.temporarySession.getStore()) return;
     await this.conversationRepo.update(conversationId, { title });
     this.logger.log(
-      `📝 Titre mis à jour pour conv ${conversationId}: "${title}"`,
+      `Titre mis a jour pour la conversation ${conversationId}`,
     );
   }
 

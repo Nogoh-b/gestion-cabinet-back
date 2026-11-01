@@ -11,7 +11,7 @@ import { Facture } from './entities/facture.entity';
 import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service';
 import { FactureStatsDto } from './dto/facture-stats.dto';
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
-import { StatutFacture } from './dto/create-facture.dto';
+import { InvoiceNature, StatutFacture } from './dto/create-facture.dto';
 import { StatutPaiement } from '../paiement/dto/create-paiement.dto';
 
 @Injectable()
@@ -169,10 +169,8 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getTotalHT(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .select('SUM(facture.montantHT)', 'total')
-      .where('facture.status != :cancelled', {
-        cancelled: enumValue(StatutFacture.ANNULEE),
-      });
+      .select(this.netRecognizedExpression('facture.montantHT'), 'total')
+      .setParameters(this.financialStatusParameters());
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
     return parseFloat(result.total || 0);
@@ -181,10 +179,8 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getTotalTTC(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .select('SUM(facture.montantTTC)', 'total')
-      .where('facture.status != :cancelled', {
-        cancelled: enumValue(StatutFacture.ANNULEE),
-      });
+      .select(this.netRecognizedExpression('facture.montantTTC'), 'total')
+      .setParameters(this.financialStatusParameters());
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
     return parseFloat(result.total || 0);
@@ -193,8 +189,16 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getTotalPaid(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .select('SUM(facture.montantTTC)', 'total')
-      .where('facture.status = :status', { status: enumValue(StatutFacture.PAYEE) });
+      .innerJoin(
+        'facture.paiements',
+        'payment',
+        'payment.status = :validatedPayment',
+        { validatedPayment: enumValue(StatutPaiement.VALIDE) },
+      )
+      .select('COALESCE(SUM(payment.montant), 0)', 'total')
+      .where('facture.nature != :creditNote', {
+        creditNote: enumValue(InvoiceNature.CREDIT_NOTE),
+      });
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
     return parseFloat(result.total || 0);
@@ -203,19 +207,43 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getTotalUnpaid(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .leftJoinAndSelect(
-        'facture.paiements',
-        'paiement',
-        'paiement.status = :valide',
-        {
-          valide: enumValue(StatutPaiement.VALIDE),
-        },
-      )
       .select(
-        'SUM(facture.montantTTC - COALESCE(paiement.montant, 0))',
+        `COALESCE(SUM(GREATEST(
+          facture.montantTTC
+          - COALESCE((
+              SELECT SUM(payment_amount.montant)
+              FROM paiements payment_amount
+              WHERE payment_amount.facture_id = facture.id
+                AND payment_amount.tenant_id = facture.tenant_id
+                AND payment_amount.status = :validatedPayment
+                AND payment_amount.deleted_at IS NULL
+            ), 0)
+          - COALESCE((
+              SELECT SUM(credit_amount.montant_ttc)
+              FROM factures credit_amount
+              WHERE credit_amount.original_invoice_id = facture.id
+                AND credit_amount.tenant_id = facture.tenant_id
+                AND credit_amount.nature = :creditNote
+                AND credit_amount.status = :validated
+                AND credit_amount.deleted_at IS NULL
+            ), 0),
+          0
+        )), 0)`,
         'total',
       )
-      .where('facture.status != :status', { status: enumValue(StatutFacture.PAYEE) });
+      .where('facture.status IN (:...receivableStatuses)', {
+        receivableStatuses: [
+          StatutFacture.VALIDEE,
+          StatutFacture.PARTIELLEMENT_PAYEE,
+        ],
+      })
+      .andWhere('facture.nature != :creditNote', {
+        creditNote: enumValue(InvoiceNature.CREDIT_NOTE),
+      })
+      .setParameters({
+        validatedPayment: enumValue(StatutPaiement.VALIDE),
+        validated: enumValue(StatutFacture.VALIDEE),
+      });
 
     query.andWhere('facture.status != :cancelled', {
       cancelled: enumValue(StatutFacture.ANNULEE),
@@ -229,7 +257,10 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getPaidCount(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .where('facture.status = :status', { status: enumValue(StatutFacture.PAYEE) });
+      .where('facture.status = :status', { status: enumValue(StatutFacture.PAYEE) })
+      .andWhere('facture.nature != :creditNote', {
+        creditNote: enumValue(InvoiceNature.CREDIT_NOTE),
+      });
     this.applyFilters(query, filters, 'facture');
     return query.getCount();
   }
@@ -241,12 +272,11 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private unpaidQuery(filters?: StatsFilterDto): SelectQueryBuilder<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .where('facture.status != :status', { status: enumValue(StatutFacture.PAYEE) })
-      .andWhere('facture.status != :brouillon', {
-        brouillon: enumValue(StatutFacture.BROUILLON),
+      .where('facture.status IN (:...statuses)', {
+        statuses: [enumValue(StatutFacture.VALIDEE), enumValue(StatutFacture.PARTIELLEMENT_PAYEE)],
       })
-      .andWhere('facture.status != :cancelled', {
-        cancelled: enumValue(StatutFacture.ANNULEE),
+      .andWhere('facture.nature != :creditNote', {
+        creditNote: enumValue(InvoiceNature.CREDIT_NOTE),
       });
     return this.applyFilters(query, filters, 'facture');
   }
@@ -275,12 +305,11 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .where('facture.dateEcheance < :now', { now })
-      .andWhere('facture.status != :status', { status: enumValue(StatutFacture.PAYEE) })
-      .andWhere('facture.status != :brouillon', {
-        brouillon: enumValue(StatutFacture.BROUILLON),
+      .andWhere('facture.status IN (:...statuses)', {
+        statuses: [enumValue(StatutFacture.VALIDEE), enumValue(StatutFacture.PARTIELLEMENT_PAYEE)],
       })
-      .andWhere('facture.status != :cancelled', {
-        cancelled: enumValue(StatutFacture.ANNULEE),
+      .andWhere('facture.nature != :creditNote', {
+        creditNote: enumValue(InvoiceNature.CREDIT_NOTE),
       });
     this.applyFilters(query, filters, 'facture');
     return query.getCount();
@@ -313,8 +342,8 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       [StatutFacture.ENVOYEE]: 'Envoyée',
       [StatutFacture.PARTIELLEMENT_PAYEE]: 'Partiellement payée',
       [StatutFacture.PAYEE]: 'Payée',
-      [StatutFacture.IMPAYEE]: 'Impayée',
       [StatutFacture.ANNULEE]: 'Annulée',
+      [StatutFacture.VALIDEE]: 'Validée',
     };
 
     const statusColors = {
@@ -322,8 +351,8 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       [StatutFacture.ENVOYEE]: '#3b82f6',
       [StatutFacture.PARTIELLEMENT_PAYEE]: '#f59e0b',
       [StatutFacture.PAYEE]: '#10b981',
-      [StatutFacture.IMPAYEE]: '#ef4444',
       [StatutFacture.ANNULEE]: '#6b7280',
+      [StatutFacture.VALIDEE]: '#8b5cf6',
     };
 
     return results.map((r) => ({
@@ -514,12 +543,11 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         'paiement.montant',
       ])
       .where('facture.dateEcheance < :now', { now })
-      .andWhere('facture.status != :status', { status: enumValue(StatutFacture.PAYEE) })
-      .andWhere('facture.status != :brouillon', {
-        brouillon: enumValue(StatutFacture.BROUILLON),
+      .andWhere('facture.status IN (:...statuses)', {
+        statuses: [enumValue(StatutFacture.VALIDEE), enumValue(StatutFacture.PARTIELLEMENT_PAYEE)],
       })
-      .andWhere('facture.status != :cancelled', {
-        cancelled: enumValue(StatutFacture.ANNULEE),
+      .andWhere('facture.nature != :creditNote', {
+        creditNote: enumValue(InvoiceNature.CREDIT_NOTE),
       });
 
     this.applyFilters(query, filters, 'facture');
@@ -593,14 +621,17 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .select("DATE_FORMAT(facture.dateFacture, '%Y-%m')", 'month')
-      .addSelect('SUM(facture.montantHT)', 'totalHT')
-      .addSelect('SUM(facture.montantTTC)', 'totalTTC')
+      .addSelect(this.netRecognizedExpression('facture.montantHT'), 'totalHT')
+      .addSelect(this.netRecognizedExpression('facture.montantTTC'), 'totalTTC')
       .addSelect(
         'SUM(CASE WHEN facture.status = :paid THEN facture.montantTTC ELSE 0 END)',
         'totalPaid',
       )
       .addSelect('COUNT(*)', 'count')
-      .setParameter('paid', enumValue(StatutFacture.PAYEE))
+      .setParameters({
+        ...this.financialStatusParameters(),
+        paid: enumValue(StatutFacture.PAYEE),
+      })
       .where('facture.dateFacture BETWEEN :start AND :end', {
         start: startDate,
         end: endDate,
@@ -654,9 +685,17 @@ export class FactureStatsService extends BaseStatsService<Facture> {
           valide: enumValue(StatutPaiement.VALIDE),
         },
       )
-      .where('facture.status != :status', { status: enumValue(StatutFacture.PAYEE) })
-      .andWhere('facture.status != :brouillon', {
-        brouillon: enumValue(StatutFacture.BROUILLON),
+      .leftJoinAndSelect(
+        'facture.creditNotes',
+        'creditNote',
+        'creditNote.status = :validatedCredit',
+        { validatedCredit: enumValue(StatutFacture.VALIDEE) },
+      )
+      .where('facture.status IN (:...statuses)', {
+        statuses: [enumValue(StatutFacture.VALIDEE), enumValue(StatutFacture.PARTIELLEMENT_PAYEE)],
+      })
+      .andWhere('facture.nature != :creditNature', {
+        creditNature: enumValue(InvoiceNature.CREDIT_NOTE),
       })
       .andWhere('facture.status != :cancelled', {
         cancelled: enumValue(StatutFacture.ANNULEE),
@@ -671,7 +710,15 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     return results.map((f) => {
       const montantPaye =
         f.paiements?.reduce((sum, p) => sum + Number(p.montant), 0) || 0;
-      const resteAPayer = f.montantTTC - montantPaye;
+      const montantAvoir =
+        f.creditNotes?.reduce(
+          (sum, credit) => sum + Number(credit.montantTTC),
+          0,
+        ) || 0;
+      const resteAPayer = Math.max(
+        0,
+        Number(f.montantTTC) - montantPaye - montantAvoir,
+      );
 
       // Convertir la date en objet Date
       const dateEcheance =
@@ -699,5 +746,27 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         joursRetard,
       };
     });
+  }
+
+  private netRecognizedExpression(column: string): string {
+    return `COALESCE(SUM(
+      CASE
+        WHEN facture.nature = :creditNote AND facture.status = :validated
+          THEN -${column}
+        WHEN facture.nature != :creditNote
+          AND facture.status IN (:validated, :partial, :paid)
+          THEN ${column}
+        ELSE 0
+      END
+    ), 0)`;
+  }
+
+  private financialStatusParameters(): Record<string, unknown> {
+    return {
+      creditNote: enumValue(InvoiceNature.CREDIT_NOTE),
+      validated: enumValue(StatutFacture.VALIDEE),
+      partial: enumValue(StatutFacture.PARTIELLEMENT_PAYEE),
+      paid: enumValue(StatutFacture.PAYEE),
+    };
   }
 }

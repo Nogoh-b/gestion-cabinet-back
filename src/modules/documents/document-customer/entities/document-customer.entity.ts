@@ -13,7 +13,6 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { Finding } from 'src/modules/finding/entities/finding.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
@@ -36,6 +35,7 @@ import {
 } from 'typeorm';
 
 import { DocumentType } from '../../document-type/entities/document-type.entity';
+import { DocumentVersion } from './document-version.entity';
 
 /** internal = rédigé ou modifié dans l'éditeur du cabinet, imported = fichier déposé. */
 export type DocumentOrigin = 'internal' | 'imported';
@@ -241,6 +241,19 @@ export class DocumentCustomer extends BaseEntity {
   })
   version: number;
 
+  @Column({ name: 'current_version_id', type: 'char', length: 36, nullable: true })
+  @BusinessColumn({
+    label: 'Version courante (identifiant)',
+    description:
+      "Identifiant de la version courante dans document_versions",
+    importance: 'low',
+    ignored: true,
+  })
+  currentVersionId?: string | null;
+
+  @OneToMany(() => DocumentVersion, (version) => version.document)
+  versions: DocumentVersion[];
+
   @Column({ name: 'is_current_version', default: true })
   @BusinessColumn({
     label: 'Version courante',
@@ -303,13 +316,6 @@ export class DocumentCustomer extends BaseEntity {
   })
   content_html?: string | null;
 
-  @ManyToMany(() => Step, (step) => step.documents)
-  @JoinTable({
-    name: 'step_documents',
-    joinColumn: { name: 'document_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'step_id', referencedColumnName: 'id' },
-  })
-  steps: Step[];
 
   @Column({ name: 'uploaded_at', type: 'timestamp' })
   @CreateDateColumn()

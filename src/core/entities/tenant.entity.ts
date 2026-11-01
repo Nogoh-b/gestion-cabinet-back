@@ -22,7 +22,7 @@ import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
  *   - Plan (abonnements)
  */
 export abstract class TenantEntity extends BaseEntity {
-  @Column({ name: 'tenant_id', default: 1 })
+  @Column({ name: 'tenant_id' })
   @Index()
   tenant_id: number;
 
@@ -35,6 +35,12 @@ export abstract class TenantEntity extends BaseEntity {
   protected _injectTenantId(): void {
     if (hasActiveTenant()) {
       this.tenant_id = getCurrentTenantId();
+      return;
+    }
+    if (!this.tenant_id) {
+      throw new Error(
+        'Insertion multi-tenant refusée sans contexte cabinet explicite',
+      );
     }
   }
 }

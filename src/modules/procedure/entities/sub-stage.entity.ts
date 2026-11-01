@@ -21,6 +21,7 @@ import {
   BusinessColumn,
 } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
+import { ProcedureRequirement } from '../interfaces/procedure-requirement.interface';
 
 @Entity('sub_stages')
 @BusinessTable({
@@ -96,6 +97,16 @@ export class SubStage extends BaseEntity {
     group: 'règles',
   })
   isMandatory: boolean;
+
+  @Column({ type: 'json', nullable: true })
+  @BusinessColumn({
+    label: 'Exigences',
+    description:
+      'Exigences métier à satisfaire avant de pouvoir terminer la sous-étape',
+    importance: 'critical',
+    group: 'règles',
+  })
+  requirements: ProcedureRequirement[] | null;
 
   @OneToMany(() => Facture, (facture) => facture.subStage)
   factures: Facture[];

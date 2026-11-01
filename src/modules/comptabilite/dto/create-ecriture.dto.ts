@@ -1,19 +1,9 @@
-import {
-  IsArray,
-  IsDateString,
-  IsEnum,
-  IsNotEmpty,
-  IsNumber,
-  IsOptional,
-  IsString,
-  ValidateNested,
-} from 'class-validator';
+import { IsArray, IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SourceModule, TypeJournal } from '../enums/comptabilite.enums';
 
 export class CreateLigneDto {
-  @IsString()
-  @IsNotEmpty()
+  @IsString() @IsNotEmpty()
   numeroCompte: string;
 
   @IsNumber()
@@ -22,8 +12,7 @@ export class CreateLigneDto {
   @IsNumber()
   credit: number;
 
-  @IsOptional()
-  @IsString()
+  @IsOptional() @IsString()
   libelle?: string;
 }
 
@@ -31,23 +20,21 @@ export class CreateEcritureDto {
   @IsDateString()
   dateEcriture: string;
 
-  @IsString()
-  @IsNotEmpty()
+  @IsString() @IsNotEmpty()
   libelle: string;
 
   @IsEnum(TypeJournal)
   codeJournal: TypeJournal;
 
-  @IsOptional()
-  @IsEnum(SourceModule)
+  @IsOptional() @IsEnum(SourceModule)
   sourceModule?: SourceModule;
 
-  @IsOptional()
-  @IsString()
+  @IsOptional() @IsString()
   sourceId?: string;
 
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CreateLigneDto)
+  @IsOptional() @IsString()
+  idempotencyKey?: string;
+
+  @IsArray() @ValidateNested({ each: true }) @Type(() => CreateLigneDto)
   lignes: CreateLigneDto[];
 }

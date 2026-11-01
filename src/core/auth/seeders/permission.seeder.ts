@@ -526,6 +526,24 @@ export const PERMISSION_DEFINITIONS: {
     description: '[legacy] Supprimer un type de ressource',
   },
   { code: 'DELETE_BRANCH', description: '[legacy] Supprimer une agence' },
+  // ===================================================================
+  // REFONTE — cycles de vie, audiences < 48 h, paie, notifications, IA
+  // ===================================================================
+  {
+    code: 'override_dossier_closure',
+    description: "Déroger aux préconditions de clôture d'un dossier",
+  },
+  { code: 'schedule_audience_under_48h', description: 'Créer ou reporter une audience à moins de 48 heures avec motif' },
+  { code: 'manage_procedure_templates', description: 'Créer, publier et retirer les versions de templates procéduraux' },
+  { code: 'apply_procedure_transition', description: 'Appliquer une transition sur une instance procédurale autorisée' },
+  { code: 'approve_procedure_requirement', description: 'Approuver une exigence procédurale sur une instance autorisée' },
+  { code: 'send_notification', description: 'Envoyer une notification à des membres du cabinet' },
+  { code: 'broadcast_notification', description: 'Diffuser une notification à tout le cabinet' },
+  { code: 'use_ai_assistant', description: 'Utiliser l’assistant IA en lecture seule' },
+  { code: 'view_own_payslip', description: 'Voir uniquement ses propres bulletins payés' },
+  { code: 'validate_payslip', description: 'Valider et figer un bulletin de paie' },
+  { code: 'pay_payslip', description: 'Enregistrer le paiement d’un bulletin de paie' },
+  { code: 'manage_payroll_rates', description: 'Créer, publier et retirer les versions de barèmes de paie' },
 ];
 
 

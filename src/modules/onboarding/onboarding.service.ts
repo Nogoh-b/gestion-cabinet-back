@@ -3,6 +3,7 @@ import {
   Logger,
   ConflictException,
   InternalServerErrorException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -28,6 +29,13 @@ import { JwtPayload } from 'src/core/auth/interfaces/jwt-payload.interface';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { MailTemplateService } from '../mail-template/mail-template.service';
 import { CouponsService } from '../subscriptions/coupons/coupons.service';
+
+const LEGACY_PLAN_CODE_ALIASES: Record<string, string> = {
+  starter: 'avocat',
+  pro: 'cabinet',
+  business: 'firme',
+  enterprise: 'firme',
+};
 
 @Injectable()
 export class OnboardingService {
@@ -103,10 +111,19 @@ export class OnboardingService {
       throw new ConflictException('Un compte avec cet email existe déjà');
 
     // ── 1. Résoudre le plan choisi (ou 'free' par défaut) ─────────────
-    const planCode = dto.plan_code ?? 'free';
-    const selectedPlan = await this.plansService
-      .findByCode(planCode)
-      .catch(() => null);
+    const requestedPlanCode = dto.plan_code?.trim().toLowerCase() || 'free';
+    let selectedPlan = await this.plansService.findByCode(requestedPlanCode);
+    if (!selectedPlan && LEGACY_PLAN_CODE_ALIASES[requestedPlanCode]) {
+      selectedPlan = await this.plansService.findByCode(
+        LEGACY_PLAN_CODE_ALIASES[requestedPlanCode],
+      );
+    }
+    if (!selectedPlan || !selectedPlan.is_active) {
+      throw new BadRequestException(
+        `Le plan "${requestedPlanCode}" est introuvable ou indisponible`,
+      );
+    }
+    const planCode = selectedPlan.code;
 
     // Code promo vérifié avant toute création (message clair, rien à défaire).
     const couponCode = dto.coupon_code?.trim() || null;
@@ -123,16 +140,16 @@ export class OnboardingService {
       name: dto.cabinet_name.trim(),
       status: 'trial',
       plan: planCode as CabinetPlan,
-      plan_id: selectedPlan?.id ?? null,
+      plan_id: selectedPlan.id,
       routing_mode: dto.routing_mode ?? 'path',
-      trial_ends_at: selectedPlan?.trial_enabled
+      trial_ends_at: selectedPlan.trial_enabled
         ? this.trialEnd(selectedPlan.trial_days)
         : null,
     });
     await this.cabinetService.applyPlatformAppearanceDefaults(cabinet);
     await this.cabinetRepo.save(cabinet);
     this.logger.log(
-      `[Onboarding] Cabinet créé — id=${cabinet.id} code="${cabinet.code}" plan="${planCode}" plan_id=${selectedPlan?.id ?? 'none'}`,
+      `[Onboarding] Cabinet créé — id=${cabinet.id} code="${cabinet.code}" plan="${planCode}" plan_id=${selectedPlan.id}`,
     );
 
     // ── 2. Tout le reste dans le contexte du nouveau tenant ───────────────
@@ -201,7 +218,7 @@ export class OnboardingService {
           // Plan gratuit → accès direct.
           const subscription = await this.subscriptionsService.createForCabinet(
             cabinet.id,
-            selectedPlan?.id ?? null,
+            selectedPlan.id,
             dto.billing_cycle ?? 'monthly',
             {
               gateAllPaid: true,
@@ -226,7 +243,19 @@ export class OnboardingService {
             permissions: [],
             tenantId: cabinet.id,
           };
-          const access_token = this.jwtService.sign(payload);
+          const refreshSecret = process.env.JWT_REFRESH_SECRET;
+          if (!refreshSecret) {
+            throw new Error('JWT_REFRESH_SECRET est obligatoire');
+          }
+          const [access_token, refresh_token] = await Promise.all([
+            this.jwtService.signAsync(payload, { expiresIn: '15m' }),
+            this.jwtService.signAsync(payload, {
+              secret: refreshSecret,
+              expiresIn: '7d',
+            }),
+          ]);
+          savedUser.refreshToken = await bcrypt.hash(refresh_token, 10);
+          await this.userRepo.save(savedUser);
 
           // ── 4. URL d'accès ───────────────────────────────────────────────
           const tenant_url = this.cabinetService.getCabinetUrl(cabinet);
@@ -261,6 +290,7 @@ export class OnboardingService {
               last_name: savedUser.last_name,
             },
             access_token,
+            refresh_token,
             tenant_url,
           };
         },

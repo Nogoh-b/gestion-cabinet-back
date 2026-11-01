@@ -43,7 +43,6 @@ const FACTURE_STATUS_BADGES: Partial<
     label: 'Partiellement payée',
     tone: 'warning',
   },
-  [StatutFacture.IMPAYEE]: { label: 'Impayée', tone: 'error' },
 };
 
 /** Jour calendaire local `YYYY-MM-DD` d'une colonne DATE (Date ou chaîne). */

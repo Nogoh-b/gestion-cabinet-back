@@ -7,7 +7,7 @@ export class AddCommissionModeToDossierReferral1781600000000
     if (!(await queryRunner.hasColumn('dossier_referral', 'commission_mode'))) {
       await queryRunner.query(`
         ALTER TABLE dossier_referral
-        ADD commission_mode ENUM('rate', 'fixed_amount') NOT NULL DEFAULT 'rate'
+          ADD commission_mode ENUM('rate', 'fixed_amount') NOT NULL DEFAULT 'rate'
       `);
     }
     if (
@@ -15,7 +15,7 @@ export class AddCommissionModeToDossierReferral1781600000000
     ) {
       await queryRunner.query(`
         ALTER TABLE dossier_referral
-        ADD commission_amount DECIMAL(15,2) NULL
+          ADD commission_amount DECIMAL(15,2) NULL
       `);
     }
   }

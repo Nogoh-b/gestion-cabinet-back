@@ -13,6 +13,7 @@ import {
   ImpersonationInfo,
   loadImpersonation,
 } from '../impersonation';
+import { ACCESS_COOKIE, readCookie } from '../session-cookie.util';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -22,7 +23,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     @Optional() @InjectDataSource() private readonly dataSource?: DataSource,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // Session web : cookie HttpOnly ; clients API : en-tête Bearer.
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (request: Request) => readCookie(request, ACCESS_COOKIE),
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ]),
       ignoreExpiration: false,
       secretOrKey: getJwtSecret(),
       // passReqToCallback: true → validate() reçoit la requête en 1er argument,
@@ -37,7 +42,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (payload?.typ === 'platform') {
       throw new UnauthorizedException('Jeton plateforme non valide ici.');
     }
-    const jwtTenantId: number = payload.tenantId ?? 1;
+    // Aucun cabinet implicite : un jeton sans cabinet valide est refusé.
+    const jwtTenantId = Number(payload.tenantId);
+    if (!Number.isInteger(jwtTenantId) || jwtTenantId <= 0) {
+      throw new UnauthorizedException('Jeton sans cabinet valide');
+    }
     const resolvedTenantId: number | undefined = (req as any)[
       'resolvedTenantId'
     ];

@@ -27,7 +27,9 @@ export class RapportsController {
 
   @Get('balance')
   @RequirePermissions('view_accounting_reports')
-  @ApiOperation({ summary: 'Balance des comptes' })
+  @ApiOperation({
+    summary: 'Balance des comptes (soldes débit/crédit par compte)',
+  })
   @ApiQuery({ name: 'exerciceId', required: false })
   getBalance(@Query('exerciceId') exerciceId?: number) {
     return this.service.getBalance(exerciceId ? +exerciceId : undefined);
@@ -35,7 +37,7 @@ export class RapportsController {
 
   @Get('grand-livre/:compteId')
   @RequirePermissions('view_accounting_reports')
-  @ApiOperation({ summary: "Grand livre d'un compte" })
+  @ApiOperation({ summary: "Grand livre d'un compte (tous les mouvements)" })
   @ApiQuery({ name: 'exerciceId', required: false })
   getGrandLivre(
     @Param('compteId', ParseIntPipe) compteId: number,
@@ -49,7 +51,7 @@ export class RapportsController {
 
   @Get('resultat')
   @RequirePermissions('view_accounting_reports')
-  @ApiOperation({ summary: 'Compte de resultat' })
+  @ApiOperation({ summary: 'Compte de résultat (charges vs produits)' })
   @ApiQuery({ name: 'exerciceId', required: false })
   getResultat(@Query('exerciceId') exerciceId?: number) {
     return this.service.getResultat(exerciceId ? +exerciceId : undefined);
@@ -57,7 +59,7 @@ export class RapportsController {
 
   @Get('tva')
   @RequirePermissions('view_accounting_reports')
-  @ApiOperation({ summary: 'Etat de TVA' })
+  @ApiOperation({ summary: 'État de TVA (collectée vs déductible)' })
   @ApiQuery({ name: 'exerciceId', required: false })
   @ApiQuery({ name: 'mois', required: false, description: 'Format YYYY-MM' })
   getTva(

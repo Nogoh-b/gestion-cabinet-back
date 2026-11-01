@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { CompteComptable } from './entities/compte.entity';
@@ -32,13 +32,8 @@ import { ComptesController } from './controllers/comptes.controller';
 import { ExercicesController } from './controllers/exercices.controller';
 import { RapportsController } from './controllers/rapports.controller';
 import { SynchronisationController } from './controllers/synchronisation.controller';
-
-// Write handlers IA Database — permettent à l'IA de créer/modifier les
-// entités comptables (plan comptable, journaux, exercices, écritures).
 import { CompteWriteHandler } from './write/compte-write.handler';
 import { JournalWriteHandler } from './write/journal-write.handler';
-import { ExerciceWriteHandler } from './write/exercice-write.handler';
-import { EcritureWriteHandler } from './write/ecriture-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 
@@ -80,24 +75,18 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
     ComptabiliteEventBridge,
     CompteWriteHandler,
     JournalWriteHandler,
-    ExerciceWriteHandler,
-    EcritureWriteHandler,
   ],
   exports: [EcrituresService],
 })
-export class ComptabiliteModule {
+export class ComptabiliteModule implements OnModuleInit {
   constructor(
     private readonly registry: WriteHandlerRegistry,
-    private readonly compteHandler: CompteWriteHandler,
-    private readonly journalHandler: JournalWriteHandler,
-    private readonly exerciceHandler: ExerciceWriteHandler,
-    private readonly ecritureHandler: EcritureWriteHandler,
+    private readonly handler0: CompteWriteHandler,
+    private readonly handler1: JournalWriteHandler,
   ) {}
 
   onModuleInit() {
-    this.registry.register(this.compteHandler);
-    this.registry.register(this.journalHandler);
-    this.registry.register(this.exerciceHandler);
-    this.registry.register(this.ecritureHandler);
+    this.registry.register(this.handler0);
+    this.registry.register(this.handler1);
   }
 }

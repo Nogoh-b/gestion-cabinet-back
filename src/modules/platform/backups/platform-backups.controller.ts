@@ -37,11 +37,12 @@ export class PlatformBackupsController {
   @Get(':name/download')
   @PlatformAudit({ action: 'backup.download', targetType: 'backup', targetParam: 'name' })
   @ApiOperation({ summary: 'Télécharger une sauvegarde' })
-  download(@Param('name') name: string, @Res() res: Response) {
-    const { stream, name: file } = this.backup.streamFor(name, FULL);
+  async download(@Param('name') name: string, @Res() res: Response) {
+    const file = await this.backup.prepareDownload(name, FULL);
     res.setHeader('Content-Type', 'application/sql');
-    res.setHeader('Content-Disposition', `attachment; filename="${file}"`);
-    stream.pipe(res);
+    res.setHeader('Content-Disposition', `attachment; filename="${file.name}"`);
+    res.setHeader('Content-Length', String(file.size));
+    file.stream.pipe(res);
   }
 
   @Post(':name/restore')

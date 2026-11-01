@@ -1,34 +1,38 @@
-// src/paiement/paiement.service.ts
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { InjectRepository } from '@nestjs/typeorm';
 import { plainToInstance } from 'class-transformer';
-import { join } from 'path';
-import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+import { createHash, randomUUID } from 'crypto';
+import { promises as fs } from 'fs';
+import { extname, join, resolve } from 'path';
+import {
+  DataSource,
+  EntityManager,
+  Repository,
+} from 'typeorm';
+
+import { AuditService } from 'src/core/audit/audit.service';
+import { OutboxService } from 'src/core/outbox/outbox.service';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import {
   BaseServiceV1,
   SearchCriteria,
   SearchOptions,
 } from 'src/core/shared/services/search/base-v1.service';
-import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
-import { FilesUtil } from 'src/core/shared/utils/file.util';
-import { DataSource, In, Repository } from 'typeorm';
-
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-
-import { StatutFacture, TypeFacture } from '../facture/dto/create-facture.dto';
-import { Facture } from '../facture/entities/facture.entity';
-import { FactureService } from '../facture/facture.service';
-import { Dossier } from '../dossiers/entities/dossier.entity';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-import { generateEntityCode } from 'src/core/shared/utils/code.util';
-import { AllocateDossierPaymentDto } from './dto/allocation-paiement.dto';
+import { AntivirusScannerService } from '../documents/document-customer/antivirus-scanner.service';
+import { AntivirusStatus } from '../documents/document-customer/entities/document-version.entity';
+import {
+  InvoiceNature,
+  StatutFacture,
+} from '../facture/dto/create-facture.dto';
+import { Facture } from '../facture/entities/facture.entity';
 import {
   CreatePaiementDto,
-  ModePaiement,
   StatutPaiement,
 } from './dto/create-paiement.dto';
 import { PaiementResponseDto } from './dto/paiement-response.dto';
@@ -36,29 +40,44 @@ import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
 import { Paiement } from './entities/paiement.entity';
 
+export interface PaymentActor {
+  id?: number;
+  userId?: number;
+}
+
+export interface PrivatePaymentProof {
+  buffer: Buffer;
+  filename: string;
+  mimeType: string;
+  sha256: string;
+}
+
 @Injectable()
 export class PaiementService extends BaseServiceV1<Paiement> {
+  private readonly storageRoot = resolve(
+    process.env.PRIVATE_STORAGE_ROOT ?? join(process.cwd(), 'storage', 'private'),
+  );
+
   constructor(
     @InjectRepository(Paiement)
     protected readonly repository: Repository<Paiement>,
     @InjectRepository(Facture)
     private readonly factureRepository: Repository<Facture>,
     protected readonly paginationService: PaginationServiceV1,
+    // Conservé pour les notifications non critiques héritées. Les effets
+    // comptables utilisent exclusivement l'outbox persistante.
+    private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource,
-    private readonly factureService: FactureService,
+    private readonly outboxService: OutboxService,
+    private readonly auditService: AuditService,
+    private readonly antivirusScanner: AntivirusScannerService,
   ) {
     super(repository, paginationService);
   }
 
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      searchFields: [
-        'reference',
-        'numeroCheque',
-        'banque',
-        'titulaire',
-        'notes',
-      ],
+      searchFields: ['reference', 'numeroCheque', 'banque', 'titulaire', 'notes'],
       exactMatchFields: [
         'id',
         'factureId',
@@ -79,315 +98,378 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   async createPaiement(
     createDto: CreatePaiementDto,
     file?: Express.Multer.File,
+    actor: PaymentActor = {},
   ): Promise<PaiementResponseDto> {
-    const facture = await this.loadFactureForPayment(createDto.factureId);
-    this.assertFactureAcceptsPayment(facture);
-
-    const montant = this.normalizeAmount(createDto.montant);
-    const status = this.normalizePaymentStatus(
-      createDto.status ?? StatutPaiement.VALIDE,
-    );
-
-    if (status === StatutPaiement.VALIDE) {
-      this.assertNoOverpayment(facture, montant);
-    }
-
-    const { notify_client, modePaiment, ...persistable } = createDto as any;
-    const paiement = this.repository.create({
-      ...persistable,
-      facture,
-      montant,
-      modePaiement: this.normalizePaymentMode(createDto),
-      status,
-      datePaiement: createDto.datePaiement ?? new Date(),
-      dateValeur: createDto.dateValeur ?? new Date(),
-    } as Partial<Paiement>);
-    paiement.notify_client = !!notify_client;
+    const amountMinor = this.toMinorUnits(createDto.montant);
+    let storedProof:
+      | {
+          storageKey: string;
+          originalName: string;
+          mimeType: string;
+          size: number;
+          sha256: string;
+        }
+      | undefined;
 
     if (file) {
-      const uploaded = await FilesUtil.uploadFileV1(
-        file,
-        join(UPLOAD_DOCS_PATH, 'paiements'),
-        { maxSizeKB: 3000 },
-      );
-      paiement.preuvePaiement = uploaded.fileUrl;
+      storedProof = await this.storePrivateProof(file);
     }
 
-    const saved = await this.repository.save(paiement);
-    await this.updateFactureStatus(facture.id);
+    try {
+      const saved = await this.dataSource.transaction(
+        'READ COMMITTED',
+        async (manager) => {
+          const facture = await this.lockFacture(
+            manager,
+            String(createDto.factureId),
+          );
+          this.assertReceivableFacture(facture);
 
-    return plainToInstance(PaiementResponseDto, saved);
-  }
+          const paidMinor = await this.getValidatedTotalMinor(
+            manager,
+            facture.id,
+          );
+          const invoiceMinor = await this.getEffectiveInvoiceTotalMinor(
+            manager,
+            facture,
+          );
+          if (amountMinor > invoiceMinor - paidMinor) {
+            throw new BadRequestException(
+              'Le montant dépasse le solde restant de la facture',
+            );
+          }
 
-  async updateFacture(factureId: string): Promise<void> {
-    await this.updateFactureStatus(factureId);
+          const repository = manager.getRepository(Paiement);
+          const paiement = repository.create();
+          Object.assign(paiement, {
+            factureId: facture.id,
+            montant: this.fromMinorUnits(amountMinor),
+            modePaiement: createDto.modePaiement,
+            datePaiement: createDto.datePaiement,
+            dateValeur: createDto.dateValeur,
+            reference: createDto.reference?.trim() || null,
+            numeroCheque: createDto.numeroCheque?.trim() || null,
+            banque: createDto.banque?.trim() || null,
+            titulaire: createDto.titulaire?.trim() || null,
+            notes: createDto.notes?.trim() || null,
+            status: StatutPaiement.EN_ATTENTE,
+            preuvePaiement: storedProof?.storageKey ?? null,
+            preuveOriginalName: storedProof?.originalName ?? null,
+            preuveMimeType: storedProof?.mimeType ?? null,
+            preuveSize:
+              storedProof?.size == null ? null : String(storedProof.size),
+            preuveSha256: storedProof?.sha256 ?? null,
+            notify_client: false,
+            notifyClientRequested: Boolean(createDto.notify_client),
+          });
+          const result = await repository.save(paiement);
+
+          const audit = await this.auditService.append(manager, {
+            actorId: actor.userId ?? actor.id ?? null,
+            action: 'payment.created',
+            resourceType: 'payment',
+            resourceId: result.id,
+            dossierId: facture.dossier_id,
+            afterState: {
+              status: result.status,
+              amount: result.montant,
+              invoiceId: facture.id,
+              hasProof: Boolean(result.preuvePaiement),
+            },
+          });
+          await this.outboxService.enqueue(manager, {
+            eventType: 'payment.created',
+            aggregateType: 'payment',
+            aggregateId: result.id,
+            idempotencyKey: `payment-created:${audit.id}`,
+            payload: {
+              paymentId: result.id,
+              invoiceId: facture.id,
+              dossierId: facture.dossier_id,
+              status: result.status,
+            },
+          });
+          return result;
+        },
+      );
+      return plainToInstance(PaiementResponseDto, saved, {
+        excludeExtraneousValues: false,
+      });
+    } catch (error) {
+      if (storedProof) {
+        await this.deletePrivateFile(storedProof.storageKey);
+      }
+      throw error;
+    }
   }
 
   async updatePaiement(
     id: string,
     updateDto: UpdatePaiementDto,
+    actor: PaymentActor = {},
   ): Promise<PaiementResponseDto> {
-    const paiement = await this.findOneV1(id, [
-      'facture',
-      'facture.paiements',
-      'facture.client',
-      'facture.dossier',
-    ]);
-
-    if (!paiement) {
-      throw new NotFoundException(`Paiement avec l'ID ${id} non trouve`);
+    if (updateDto.factureId !== undefined) {
+      throw new BadRequestException(
+        "La facture d'un paiement ne peut pas être modifiée",
+      );
     }
-    if (!paiement.facture) {
-      throw new NotFoundException(`Facture du paiement ${id} non trouvee`);
-    }
+    const updated = await this.dataSource.transaction(
+      'READ COMMITTED',
+      async (manager) => {
+        const snapshot = await this.findPaymentForUpdate(manager, id);
+        const facture = await this.lockFacture(manager, snapshot.factureId);
+        const paiement = await this.lockPayment(manager, id);
+        if (paiement.status !== StatutPaiement.EN_ATTENTE) {
+          throw new BadRequestException(
+            'Seul un paiement en attente peut être modifié',
+          );
+        }
 
-    this.assertFactureAcceptsPayment(paiement.facture);
+        const amountMinor =
+          updateDto.montant == null
+            ? this.toMinorUnits(paiement.montant)
+            : this.toMinorUnits(updateDto.montant);
+        const paidMinor = await this.getValidatedTotalMinor(
+          manager,
+          facture.id,
+        );
+        if (
+          amountMinor >
+          (await this.getEffectiveInvoiceTotalMinor(manager, facture)) -
+            paidMinor
+        ) {
+          throw new BadRequestException(
+            'Le montant dépasse le solde restant de la facture',
+          );
+        }
 
-    const nextStatus =
-      updateDto.status !== undefined
-        ? this.normalizePaymentStatus(updateDto.status)
-        : paiement.status;
-    const nextMontant =
-      updateDto.montant !== undefined
-        ? this.normalizeAmount(updateDto.montant)
-        : Number(paiement.montant);
-
-    if (nextStatus === StatutPaiement.VALIDE) {
-      this.assertNoOverpayment(paiement.facture, nextMontant, paiement.id);
-    }
-
-    const { notify_client, modePaiment, ...persistable } = updateDto as any;
-    Object.assign(paiement, persistable);
-    paiement.montant = nextMontant;
-    paiement.status = nextStatus;
-
-    if (
-      (updateDto as any).modePaiement !== undefined ||
-      modePaiment !== undefined
-    ) {
-      paiement.modePaiement = this.normalizePaymentMode(updateDto);
-    }
-    if (notify_client !== undefined) {
-      paiement.notify_client = !!notify_client;
-    }
-
-    const saved = await this.repository.save(paiement);
-    await this.updateFactureStatus(saved.factureId);
-
-    return plainToInstance(PaiementResponseDto, saved);
+        const beforeState = this.paymentAuditState(paiement);
+        paiement.montant = this.fromMinorUnits(amountMinor);
+        if (updateDto.modePaiement !== undefined) {
+          paiement.modePaiement = updateDto.modePaiement;
+        }
+        if (updateDto.datePaiement !== undefined) {
+          paiement.datePaiement = updateDto.datePaiement;
+        }
+        if (updateDto.dateValeur !== undefined) {
+          paiement.dateValeur = updateDto.dateValeur;
+        }
+        for (const field of [
+          'reference',
+          'numeroCheque',
+          'banque',
+          'titulaire',
+          'notes',
+        ] as const) {
+          if (updateDto[field] !== undefined) {
+            (paiement as any)[field] =
+              typeof updateDto[field] === 'string'
+                ? updateDto[field]?.trim() || null
+                : updateDto[field];
+          }
+        }
+        const saved = await manager.getRepository(Paiement).save(paiement);
+        const audit = await this.auditService.append(manager, {
+          actorId: actor.userId ?? actor.id ?? null,
+          action: 'payment.updated',
+          resourceType: 'payment',
+          resourceId: saved.id,
+          dossierId: facture.dossier_id,
+          beforeState,
+          afterState: this.paymentAuditState(saved),
+        });
+        await this.outboxService.enqueue(manager, {
+          eventType: 'payment.updated',
+          aggregateType: 'payment',
+          aggregateId: saved.id,
+          idempotencyKey: `payment-updated:${audit.id}`,
+          payload: {
+            paymentId: saved.id,
+            invoiceId: facture.id,
+            dossierId: facture.dossier_id,
+          },
+        });
+        return saved;
+      },
+    );
+    return plainToInstance(PaiementResponseDto, updated);
   }
 
-  /**
-   * Encaissement groupé sur un dossier, atomique : soit des factures
-   * cochées avec leur montant, soit un montant global ventilé
-   * automatiquement des échéances les plus anciennes aux plus récentes.
-   * Un trop-perçu est converti en avoir lié à la dernière facture soldée.
-   */
-  async allocateDossierPayment(
-    dossierId: number,
-    dto: AllocateDossierPaymentDto,
-  ) {
-    const tenantId = getCurrentTenantId();
-    const manual =
-      Array.isArray(dto.allocations) && dto.allocations.length > 0;
-    const autoTotal = Number(dto.montant_total ?? 0);
-    if (!manual && !(autoTotal > 0)) {
-      throw new BadRequestException(
-        'Indiquez des factures à encaisser ou un montant global à ventiler',
-      );
-    }
-    if (manual && autoTotal > 0) {
-      throw new BadRequestException(
-        'Choisissez soit des factures cochées, soit un montant global',
-      );
-    }
-    const round = (value: number): number =>
-      Math.round((value + Number.EPSILON) * 100) / 100;
-    const reference = (dto as any).reference?.trim() || generateEntityCode('ENC');
-    const rawDate: string | undefined =
-      (dto as any).date_paiement ?? (dto as any).datePaiement;
-    const datePaiement = rawDate ? new Date(rawDate) : new Date();
-    return this.dataSource.transaction(async (manager) => {
-      const dossier = await manager.getRepository(Dossier).findOne({
-        where: { id: dossierId, tenant_id: tenantId },
-        relations: ['client'],
-      });
-      if (!dossier) {
-        throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
-      }
-      // MySQL stocke les enums TS numériques dans un ENUM('0','1',...) :
-      // comparé à des NOMBRES, `status IN (1,2,4)` matche l'INDEX 1-based
-      // ('0','1','3' !) au lieu des valeurs. On compare avec des chaînes.
-      const statutsEncaissables = [
-        StatutFacture.BROUILLON,
-        StatutFacture.ENVOYEE,
-        StatutFacture.PARTIELLEMENT_PAYEE,
-        StatutFacture.IMPAYEE,
-      ].map(String);
-      const factures = await manager.getRepository(Facture).find({
-        where: {
-          dossier_id: dossierId,
-          tenant_id: tenantId,
-          status: In(statutsEncaissables as unknown as StatutFacture[]),
-        },
-        relations: ['paiements'],
-        order: { dateEcheance: 'ASC', dateFacture: 'ASC' },
-      });
-      const eligible = factures.filter(
-        (facture) =>
-          Number(facture.type) !== TypeFacture.AVOIR &&
-          this.getRemainingAmount(facture) > 0.009,
-      );
-      if (!eligible.length) {
-        throw new BadRequestException(
-          'Aucune facture à encaisser sur ce dossier',
-        );
-      }
-      const plan: Array<{ facture: Facture; montant: number }> = [];
-      if (manual) {
-        for (const rawAlloc of dto.allocations! as any[]) {
-          const fid: string | undefined =
-            rawAlloc.facture_id ??
-            rawAlloc.factureId ??
-            rawAlloc.id ??
-            rawAlloc.facture_id_string;
-          if (!fid) {
-            throw new BadRequestException(
-              "Chaque allocation doit contenir facture_id",
-            );
-          }
-          const facture = eligible.find(
-            (candidate) => candidate.id === fid,
+  async validerPaiement(
+    id: string,
+    actor: PaymentActor = {},
+  ): Promise<PaiementResponseDto> {
+    const result = await this.dataSource.transaction(
+      'SERIALIZABLE',
+      async (manager) => {
+        const snapshot = await this.findPaymentForUpdate(manager, id);
+        const facture = await this.lockFacture(manager, snapshot.factureId);
+        const paiement = await this.lockPayment(manager, id);
+        if (paiement.status !== StatutPaiement.EN_ATTENTE) {
+          throw new BadRequestException(
+            'Seul un paiement en attente peut être validé',
           );
-          if (!facture) {
-            throw new BadRequestException(
-              `La facture ${fid} n'est pas encaissable`,
-            );
-          }
-          const montant = round(Number((rawAlloc as any).montant));
-          if (!(montant > 0)) {
-            throw new BadRequestException(
-              'Le montant du paiement doit etre strictement positif',
-            );
-          }
-          const remaining = this.getRemainingAmount(facture);
-          if (montant > remaining + 0.01) {
-            throw new BadRequestException(
-              `Le montant (${montant.toFixed(2)}) depasse le reste à payer de la facture ${facture.numero} (${remaining.toFixed(2)})`,
-            );
-          }
-          plan.push({ facture, montant });
         }
-      } else {
-        let left = round(autoTotal);
-        for (const facture of eligible) {
-          if (left <= 0.009) break;
-          const take = Math.min(this.getRemainingAmount(facture), left);
-          if (take > 0.009) {
-            plan.push({ facture, montant: round(take) });
-            left = round(left - take);
-          }
+        this.assertReceivableFacture(facture);
+
+        const paidMinor = await this.getValidatedTotalMinor(
+          manager,
+          facture.id,
+        );
+        const amountMinor = this.toMinorUnits(paiement.montant);
+        const totalMinor = await this.getEffectiveInvoiceTotalMinor(
+          manager,
+          facture,
+        );
+        const newPaidMinor = paidMinor + amountMinor;
+        if (newPaidMinor > totalMinor) {
+          throw new BadRequestException(
+            'Validation refusée : le paiement dépasserait le solde de la facture',
+          );
         }
-      }
-      if (!plan.length) {
-        throw new BadRequestException(
-          'Aucune facture à encaisser sur ce dossier',
-        );
-      }
-      const paiementRepo = manager.getRepository(Paiement);
-      const allocations: Array<{
-        facture_id: string;
-        numero: string;
-        montant: number;
-        paid_after: number;
-        remaining_after: number;
-        status: StatutFacture;
-      }> = [];
-      for (const { facture, montant } of plan) {
-        // L'entité Paiement a maintenant un getter factureId → this.facture?.id.
-        // On ne set pas factureId en dur : TypeORM utilise la relation @ManyToOne.
-        await paiementRepo.save(
-          paiementRepo.create({
-            tenant_id: tenantId,
-            facture,
-            montant,
-            modePaiement: this.normalizePaymentMode(dto),
-            status: StatutPaiement.VALIDE,
-            datePaiement,
-            dateValeur: datePaiement,
-            reference,
-            banque: (dto as any).banque?.trim() || null,
-            titulaire: (dto as any).titulaire?.trim() || null,
-            numeroCheque: (dto as any).numero_cheque?.trim() || null,
-            notes: (dto as any).notes?.trim() || null,
-          } as unknown as Partial<Paiement>),
-        );
-        const paidAfter = round(
-          this.getValidatedPaidAmount(facture) + montant,
-        );
-        const totalTtc = round(Number(facture.montantTTC));
+
+        paiement.status = StatutPaiement.VALIDE;
+        const saved = await manager.getRepository(Paiement).save(paiement);
+        const previousInvoiceStatus = facture.status;
         facture.status =
-          paidAfter >= totalTtc - 0.009
+          newPaidMinor === totalMinor
             ? StatutFacture.PAYEE
             : StatutFacture.PARTIELLEMENT_PAYEE;
-        // `facture.paiements` a été chargé AVANT l'insert ci-dessus : le
-        // passer à save() ferait croire à TypeORM que le paiement inséré a
-        // été retiré de la relation → UPDATE paiements SET facture_id=NULL
-        // → violation de FK (1452). On le détache le temps du save.
-        const paiementsCharges = facture.paiements;
-        facture.paiements = undefined as unknown as Paiement[];
         await manager.getRepository(Facture).save(facture);
-        facture.paiements = paiementsCharges;
-        allocations.push({
-          facture_id: facture.id,
-          numero: facture.numero,
-          montant,
-          paid_after: paidAfter,
-          remaining_after: round(totalTtc - paidAfter),
-          status: facture.status,
+
+        const audit = await this.auditService.append(manager, {
+          actorId: actor.userId ?? actor.id ?? null,
+          action: 'payment.validated',
+          resourceType: 'payment',
+          resourceId: saved.id,
+          dossierId: facture.dossier_id,
+          beforeState: {
+            paymentStatus: StatutPaiement.EN_ATTENTE,
+            invoiceStatus: previousInvoiceStatus,
+            paidMinor,
+          },
+          afterState: {
+            paymentStatus: saved.status,
+            invoiceStatus: facture.status,
+            paidMinor: newPaidMinor,
+          },
         });
-      }
-      const totalAllocated = round(
-        allocations.reduce((sum, row) => sum + row.montant, 0),
-      );
-      let avoir: { id: string; numero: string; montant: number } | null = null;
-      const leftover = manual ? 0 : round(autoTotal - totalAllocated);
-      if (leftover > 0.009 && dto.create_avoir !== false) {
-        const last = plan[plan.length - 1].facture;
-        const credit = await this.factureService.createFacture(
-          {
-            dossierId: dossier.id,
-            clientId: dossier.client?.id ?? dossier.client_id,
-            type: TypeFacture.AVOIR,
-            original_facture_id: last.id,
-            dateFacture: datePaiement,
-            dateEcheance: datePaiement,
-            montantHT: -leftover,
-            tauxTVA: 0,
-            montantTVA: 0,
-            montantTTC: -leftover,
-            description: `Trop-perçu de l'encaissement ${reference} — dossier ${dossier.dossier_number}`,
-            statut: StatutFacture.ENVOYEE,
-          } as any,
-          { manager, dossier, client: dossier.client },
-        );
-        avoir = { id: credit.id, numero: credit.numero, montant: leftover };
-      }
-      return { reference, allocations, total_allocated: totalAllocated, avoir };
-    });
+        await this.outboxService.enqueue(manager, {
+          eventType: 'payment.validated',
+          aggregateType: 'payment',
+          aggregateId: saved.id,
+          idempotencyKey: `payment-validated:${saved.id}`,
+          payload: {
+            auditId: audit.id,
+            paymentId: saved.id,
+            invoiceId: facture.id,
+            dossierId: facture.dossier_id,
+            amount: saved.montant,
+            modePaiement: saved.modePaiement,
+            datePaiement: saved.datePaiement,
+            reference: saved.reference,
+            invoiceNumber: facture.numero,
+            invoiceStatus: facture.status,
+          },
+        });
+        return saved;
+      },
+    );
+    return plainToInstance(PaiementResponseDto, result);
   }
 
-  private getRemainingAmount(facture: Facture): number {
-    const paid = this.getValidatedPaidAmount(facture);
-    return (
-      Math.round((Number(facture.montantTTC) - paid + Number.EPSILON) * 100) /
-      100
+  async rejeterPaiement(
+    id: string,
+    raison: string,
+    actor: PaymentActor = {},
+  ): Promise<PaiementResponseDto> {
+    return this.transitionPendingPayment(
+      id,
+      StatutPaiement.REJETE,
+      raison,
+      actor,
     );
+  }
+
+  async annulerPaiement(
+    id: string,
+    raison: string,
+    actor: PaymentActor = {},
+  ): Promise<PaiementResponseDto> {
+    return this.transitionPendingPayment(
+      id,
+      StatutPaiement.ANNULE,
+      raison,
+      actor,
+    );
+  }
+
+  async removePaiement(): Promise<never> {
+    throw new BadRequestException(
+      'La suppression d’un paiement est interdite ; utilisez la commande d’annulation',
+    );
+  }
+
+  async getPaymentDossierId(id: string): Promise<number> {
+    const paiement = await this.repository.findOne({
+      where: { id },
+      relations: ['facture'],
+    });
+    if (!paiement?.facture) {
+      throw new NotFoundException('Paiement introuvable');
+    }
+    return paiement.facture.dossier_id;
+  }
+
+  async getFactureDossierId(factureId: string): Promise<number> {
+    const facture = await this.factureRepository.findOne({
+      where: { id: factureId },
+      select: ['id', 'dossier_id'],
+    });
+    if (!facture) throw new NotFoundException('Facture introuvable');
+    return facture.dossier_id;
+  }
+
+  async getPrivateProof(
+    id: string,
+    actor: PaymentActor = {},
+  ): Promise<PrivatePaymentProof> {
+    const paiement = await this.repository.findOne({
+      where: { id },
+      relations: ['facture'],
+    });
+    if (!paiement?.preuvePaiement || !paiement.facture) {
+      throw new NotFoundException('Preuve de paiement introuvable');
+    }
+    const absolutePath = this.resolveStorageKey(paiement.preuvePaiement);
+    const buffer = await fs.readFile(absolutePath).catch(() => null);
+    if (!buffer) throw new NotFoundException('Fichier de preuve introuvable');
+    const sha256 = createHash('sha256').update(buffer).digest('hex');
+    if (paiement.preuveSha256 && paiement.preuveSha256 !== sha256) {
+      throw new BadRequestException(
+        'La preuve de paiement a échoué au contrôle d’intégrité',
+      );
+    }
+    await this.dataSource.transaction(async (manager) => {
+      await this.auditService.append(manager, {
+        actorId: actor.userId ?? actor.id ?? null,
+        action: 'payment.proof.downloaded',
+        resourceType: 'payment',
+        resourceId: paiement.id,
+        dossierId: paiement.facture.dossier_id,
+        afterState: { sha256, size: buffer.length },
+      });
+    });
+    return {
+      buffer,
+      filename: paiement.preuveOriginalName ?? `preuve-${paiement.id}`,
+      mimeType: paiement.preuveMimeType ?? 'application/octet-stream',
+      sha256,
+    };
   }
 
   async searchPaiements(searchDto: SearchPaiementDto): Promise<any> {
     const criteria: SearchCriteria = { ...searchDto };
-
     if (
       searchDto.montant_min !== undefined ||
       searchDto.montant_max !== undefined
@@ -397,7 +479,6 @@ export class PaiementService extends BaseServiceV1<Paiement> {
         searchDto.montant_max ?? Number.MAX_SAFE_INTEGER,
       ];
     }
-
     return this.searchWithTransformer(
       criteria,
       PaiementResponseDto,
@@ -412,254 +493,333 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   }
 
   async getPaiementsByClient(clientId: string): Promise<Paiement[]> {
-    const qb = this.repository
+    return this.repository
       .createQueryBuilder('paiement')
       .leftJoinAndSelect('paiement.facture', 'facture')
-      .where('facture.clientId = :clientId', { clientId })
-      .orderBy('paiement.datePaiement', 'DESC');
-    // Isolation multi-tenant.
-    addTenantCondition(qb, 'paiement');
-    return qb.getMany();
-  }
-
-  async validerPaiement(id: string): Promise<Paiement> {
-    const paiement = await this.findOneV1(id, [
-      'facture',
-      'facture.paiements',
-      'facture.client',
-      'facture.dossier',
-    ]);
-
-    if (!paiement) {
-      throw new NotFoundException(`Paiement avec l'ID ${id} non trouve`);
-    }
-    if (!paiement.facture) {
-      throw new NotFoundException(`Facture du paiement ${id} non trouvee`);
-    }
-
-    this.assertFactureAcceptsPayment(paiement.facture);
-    this.assertNoOverpayment(
-      paiement.facture,
-      Number(paiement.montant),
-      paiement.id,
-    );
-
-    paiement.status = StatutPaiement.VALIDE;
-
-    const saved = await this.repository.save(paiement);
-    await this.updateFactureStatus(saved.factureId);
-
-    return saved;
-  }
-
-  async rejeterPaiement(id: string, raison: string): Promise<Paiement> {
-    const paiement = await this.findOneV1(id, ['facture']);
-    if (!paiement) {
-      throw new NotFoundException(`Paiement avec l'ID ${id} non trouve`);
-    }
-
-    const factureId = paiement.factureId ?? paiement.facture?.id;
-    paiement.status = StatutPaiement.REJETE;
-    paiement.notes = raison + (paiement.notes ? `\n${paiement.notes}` : '');
-
-    const saved = await this.repository.save(paiement);
-    if (factureId) {
-      await this.updateFactureStatus(factureId);
-    }
-
-    return saved;
-  }
-
-  async removePaiement(id: string): Promise<Paiement | null> {
-    const paiement = await this.findOneV1(id, ['facture']);
-    if (!paiement) {
-      throw new NotFoundException(`Paiement avec l'ID ${id} non trouve`);
-    }
-
-    const factureId = paiement.factureId ?? paiement.facture?.id;
-    const removed = await this.removeV1(id);
-
-    if (factureId) {
-      await this.updateFactureStatus(factureId);
-    }
-
-    return removed;
+      .where('facture.client_id = :clientId', { clientId })
+      .andWhere('paiement.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .orderBy('paiement.date_paiement', 'DESC')
+      .getMany();
   }
 
   async getPaiementsEnAttente(): Promise<Paiement[]> {
-    return this.findAllV1({ status: String(StatutPaiement.EN_ATTENTE) }, undefined, [
-      'facture',
-    ]);
+    return this.findAllV1(
+      { status: StatutPaiement.EN_ATTENTE },
+      undefined,
+      ['facture'],
+    );
   }
 
   async getStatistiquesPaiementsParPeriode(
     dateDebut: Date,
     dateFin: Date,
   ): Promise<any> {
-    const parModeQB = this.repository
+    const query = this.repository
       .createQueryBuilder('paiement')
-      .select('paiement.mode', 'mode')
-      .addSelect('COUNT(*)', 'nombre')
-      .addSelect('SUM(paiement.montant)', 'montantTotal')
-      .where('paiement.datePaiement BETWEEN :dateDebut AND :dateFin', {
+      .where('paiement.date_paiement BETWEEN :dateDebut AND :dateFin', {
         dateDebut,
         dateFin,
       })
-      .andWhere('paiement.statut = :statut', { statut: 'valide' })
-      .groupBy('paiement.mode');
-    // Isolation multi-tenant.
-    addTenantCondition(parModeQB, 'paiement');
-    const result = await parModeQB.getRawMany();
-
-    const totalQB = this.repository
-      .createQueryBuilder('paiement')
-      .select('SUM(paiement.montant)', 'total')
-      .where('paiement.datePaiement BETWEEN :dateDebut AND :dateFin', {
-        dateDebut,
-        dateFin,
+      .andWhere('paiement.status = :status', {
+        status: StatutPaiement.VALIDE,
       })
-      .andWhere('paiement.statut = :statut', { statut: 'valide' });
-    addTenantCondition(totalQB, 'paiement');
-    const total = await totalQB.getRawOne();
-
+      .andWhere('paiement.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      });
+    const [rows, total] = await Promise.all([
+      query
+        .clone()
+        .select('paiement.modePaiement', 'mode')
+        .addSelect('COUNT(*)', 'nombre')
+        .addSelect('SUM(paiement.montant)', 'montantTotal')
+        .groupBy('paiement.modePaiement')
+        .getRawMany(),
+      query
+        .clone()
+        .select('SUM(paiement.montant)', 'total')
+        .getRawOne(),
+    ]);
     return {
-      total: parseFloat(total?.total) || 0,
-      parMode: result.map((row) => ({
+      total: Number(total?.total ?? 0),
+      parMode: rows.map((row) => ({
         mode: row.mode,
-        nombre: parseInt(row.nombre, 10),
-        montantTotal: parseFloat(row.montantTotal),
+        nombre: Number(row.nombre),
+        montantTotal: Number(row.montantTotal),
       })),
     };
   }
 
-  private async loadFactureForPayment(factureId: string): Promise<Facture> {
-    const facture = await this.factureRepository.findOne({
-      where: { id: String(factureId) },
-      relations: ['paiements', 'client', 'dossier'],
-    });
-    if (!facture) {
-      throw new NotFoundException(`Facture avec l'ID ${factureId} non trouvee`);
+  private async transitionPendingPayment(
+    id: string,
+    target: StatutPaiement.REJETE | StatutPaiement.ANNULE,
+    rawReason: string,
+    actor: PaymentActor,
+  ): Promise<PaiementResponseDto> {
+    const reason = rawReason?.trim();
+    if (!reason || reason.length < 10) {
+      throw new BadRequestException(
+        'Un motif explicite d’au moins 10 caractères est obligatoire',
+      );
     }
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const paiement = await this.lockPayment(manager, id);
+      if (paiement.status !== StatutPaiement.EN_ATTENTE) {
+        throw new BadRequestException(
+          'Seul un paiement en attente peut changer vers cet état',
+        );
+      }
+      const facture = await this.lockFacture(manager, paiement.factureId);
+      paiement.status = target;
+      paiement.notes = `${reason}${paiement.notes ? `\n${paiement.notes}` : ''}`;
+      const result = await manager.getRepository(Paiement).save(paiement);
+      const action =
+        target === StatutPaiement.REJETE
+          ? 'payment.rejected'
+          : 'payment.cancelled';
+      const audit = await this.auditService.append(manager, {
+        actorId: actor.userId ?? actor.id ?? null,
+        action,
+        resourceType: 'payment',
+        resourceId: result.id,
+        dossierId: facture.dossier_id,
+        beforeState: { status: StatutPaiement.EN_ATTENTE },
+        afterState: { status: target },
+        justification: reason,
+      });
+      await this.outboxService.enqueue(manager, {
+        eventType: action,
+        aggregateType: 'payment',
+        aggregateId: result.id,
+        idempotencyKey: `${action}:${audit.id}`,
+        payload: {
+          paymentId: result.id,
+          invoiceId: facture.id,
+          dossierId: facture.dossier_id,
+          reason,
+        },
+      });
+      return result;
+    });
+    return plainToInstance(PaiementResponseDto, saved);
+  }
+
+  private async findPaymentForUpdate(
+    manager: EntityManager,
+    id: string,
+  ): Promise<Paiement> {
+    const payment = await manager.getRepository(Paiement).findOne({
+      where: { id, tenant_id: getCurrentTenantId() },
+      select: ['id', 'factureId'],
+    });
+    if (!payment) throw new NotFoundException('Paiement introuvable');
+    return payment;
+  }
+
+  private async lockPayment(
+    manager: EntityManager,
+    id: string,
+  ): Promise<Paiement> {
+    const payment = await manager
+      .getRepository(Paiement)
+      .createQueryBuilder('payment')
+      .setLock('pessimistic_write')
+      .where('payment.id = :id', { id })
+      .andWhere('payment.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .getOne();
+    if (!payment) throw new NotFoundException('Paiement introuvable');
+    return payment;
+  }
+
+  private async lockFacture(
+    manager: EntityManager,
+    id: string,
+  ): Promise<Facture> {
+    const facture = await manager
+      .getRepository(Facture)
+      .createQueryBuilder('facture')
+      .setLock('pessimistic_write')
+      .where('facture.id = :id', { id })
+      .andWhere('facture.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .getOne();
+    if (!facture) throw new NotFoundException('Facture introuvable');
     return facture;
   }
 
-  private normalizeAmount(value: any): number {
-    const amount = Number(value);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new BadRequestException(
-        'Le montant du paiement doit etre strictement positif',
-      );
-    }
-    return amount;
-  }
-
-  private normalizePaymentStatus(value: any): StatutPaiement {
-    if (typeof value === 'number') return value as StatutPaiement;
-
-    const numeric = Number(value);
-    if (!Number.isNaN(numeric)) return numeric as StatutPaiement;
-
-    const labels: Record<string, StatutPaiement> = {
-      en_attente: StatutPaiement.EN_ATTENTE,
-      attente: StatutPaiement.EN_ATTENTE,
-      valide: StatutPaiement.VALIDE,
-      valid: StatutPaiement.VALIDE,
-      rejete: StatutPaiement.REJETE,
-      rejected: StatutPaiement.REJETE,
-      annule: StatutPaiement.ANNULE,
-      cancelled: StatutPaiement.ANNULE,
-    };
-
-    return labels[String(value).toLowerCase()] ?? StatutPaiement.VALIDE;
-  }
-
-  private normalizePaymentMode(
-    dto: Partial<CreatePaiementDto> | any,
-  ): ModePaiement {
-    const value =
-      dto.modePaiement ??
-      dto.modePaiment ??
-      dto.mode_paiement ??
-      dto.mode ??
-      ModePaiement.VIREMENT;
-    if (typeof value === 'number') return value as ModePaiement;
-
-    const numeric = Number(value);
-    if (!Number.isNaN(numeric)) return numeric as ModePaiement;
-
-    const labels: Record<string, ModePaiement> = {
-      virement: ModePaiement.VIREMENT,
-      cheque: ModePaiement.CHEQUE,
-      especes: ModePaiement.ESPECES,
-      carte: ModePaiement.CARTE,
-      prelevement: ModePaiement.PRELEVEMENT,
-      mobile: ModePaiement.Mobile,
-      autre: ModePaiement.AUTRE,
-    };
-
-    return labels[String(value).toLowerCase()] ?? ModePaiement.VIREMENT;
-  }
-
-  private assertFactureAcceptsPayment(facture: Facture): void {
-    if (Number(facture.status) === StatutFacture.ANNULEE) {
-      throw new BadRequestException(
-        'Impossible d enregistrer un paiement sur une facture annulee',
-      );
-    }
-  }
-
-  private getValidatedPaidAmount(
-    facture: Facture,
-    excludePaymentId?: string,
-  ): number {
-    return (facture.paiements ?? [])
-      .filter(
-        (p) => Number(p.status) === StatutPaiement.VALIDE && p.id !== excludePaymentId,
-      )
-      .reduce((sum, p) => sum + Number(p.montant ?? 0), 0);
-  }
-
-  private assertNoOverpayment(
-    facture: Facture,
-    amount: number,
-    excludePaymentId?: string,
-  ): void {
-    const alreadyPaid = this.getValidatedPaidAmount(facture, excludePaymentId);
-    const remaining = Number(facture.montantTTC) - alreadyPaid;
-
-    if (amount > remaining + 0.01) {
-      throw new BadRequestException(
-        `Le montant du paiement (${amount.toFixed(2)}) depasse le reste a payer (${remaining.toFixed(2)})`,
-      );
-    }
-  }
-
-  private async updateFactureStatus(
+  private async getValidatedTotalMinor(
+    manager: EntityManager,
     factureId: string,
-  ): Promise<Facture | null> {
-    const facture = await this.factureRepository.findOne({
-      where: { id: factureId },
-      relations: ['paiements', 'client', 'dossier'],
-    });
-    if (!facture) return null;
-    if (Number(facture.status) === StatutFacture.ANNULEE) return facture;
+  ): Promise<number> {
+    const row = await manager
+      .getRepository(Paiement)
+      .createQueryBuilder('payment')
+      .select('COALESCE(SUM(payment.montant), 0)', 'total')
+      .where('payment.facture_id = :factureId', { factureId })
+      .andWhere('payment.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .andWhere('payment.status = :status', {
+        status: StatutPaiement.VALIDE,
+      })
+      .getRawOne<{ total: string }>();
+    const total = Number(row?.total ?? 0);
+    return total > 0 ? this.toMinorUnits(total) : 0;
+  }
 
-    const totalPaye = this.getValidatedPaidAmount(facture);
-    const totalTtc = Number(facture.montantTTC);
-    const previousStatus = facture.status;
-
-    if (totalPaye <= 0) {
-      facture.status = StatutFacture.ENVOYEE;
-    } else if (totalPaye < totalTtc) {
-      facture.status = StatutFacture.PARTIELLEMENT_PAYEE;
-    } else {
-      facture.status = StatutFacture.PAYEE;
+  private assertReceivableFacture(facture: Facture): void {
+    if (facture.nature === InvoiceNature.CREDIT_NOTE) {
+      throw new BadRequestException('Un avoir ne peut pas recevoir de paiement');
     }
-
-    if (previousStatus !== facture.status) {
-      await this.factureRepository.save(facture);
+    if (
+      ![
+        StatutFacture.VALIDEE,
+        StatutFacture.PARTIELLEMENT_PAYEE,
+      ].includes(facture.status)
+    ) {
+      throw new BadRequestException(
+        'La facture doit être validée et non annulée avant de recevoir un paiement',
+      );
     }
+  }
 
-    return facture;
+  private async getEffectiveInvoiceTotalMinor(
+    manager: EntityManager,
+    facture: Facture,
+  ): Promise<number> {
+    const row = await manager
+      .getRepository(Facture)
+      .createQueryBuilder('credit')
+      .select('COALESCE(SUM(credit.montant_ttc), 0)', 'total')
+      .where('credit.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .andWhere('credit.original_invoice_id = :invoiceId', {
+        invoiceId: facture.id,
+      })
+      .andWhere('credit.nature = :nature', {
+        nature: InvoiceNature.CREDIT_NOTE,
+      })
+      .andWhere('credit.status = :status', {
+        status: StatutFacture.VALIDEE,
+      })
+      .andWhere('credit.deleted_at IS NULL')
+      .getRawOne<{ total: string }>();
+    const credited = Number(row?.total ?? 0);
+    const effective =
+      this.toMinorUnits(facture.montantTTC) -
+      (credited > 0 ? this.toMinorUnits(credited) : 0);
+    if (effective <= 0) {
+      throw new BadRequestException(
+        'La facture est intégralement soldée par avoir',
+      );
+    }
+    return effective;
+  }
+
+  private toMinorUnits(value: number | string): number {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      throw new BadRequestException('Le montant doit être strictement positif');
+    }
+    const scaled = numeric * 100;
+    const rounded = Math.round(scaled);
+    if (Math.abs(scaled - rounded) > 0.000001) {
+      throw new BadRequestException(
+        'Le montant ne peut pas contenir plus de deux décimales',
+      );
+    }
+    if (!Number.isSafeInteger(rounded)) {
+      throw new BadRequestException('Le montant dépasse la capacité autorisée');
+    }
+    return rounded;
+  }
+
+  private fromMinorUnits(value: number): number {
+    return value / 100;
+  }
+
+  private paymentAuditState(payment: Paiement): Record<string, unknown> {
+    return {
+      status: payment.status,
+      amount: payment.montant,
+      modePaiement: payment.modePaiement,
+      datePaiement: payment.datePaiement,
+      dateValeur: payment.dateValeur,
+      reference: payment.reference,
+    };
+  }
+
+  private async storePrivateProof(file: Express.Multer.File): Promise<{
+    storageKey: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+    sha256: string;
+  }> {
+    if (!file.buffer?.length) {
+      throw new BadRequestException('La preuve de paiement est vide');
+    }
+    const scan = await this.antivirusScanner.scan(file.buffer);
+    if (scan.status !== AntivirusStatus.CLEAN) {
+      throw new BadRequestException(
+        `Preuve refusée par le contrôle antivirus (${scan.status})`,
+      );
+    }
+    const tenantId = getCurrentTenantId();
+    const extension = extname(file.originalname || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9.]/g, '')
+      .slice(0, 12);
+    const storageKey = join(
+      String(tenantId),
+      'payments',
+      `${randomUUID()}${extension}`,
+    ).replace(/\\/g, '/');
+    const absolutePath = this.resolveStorageKey(storageKey);
+    await fs.mkdir(resolve(absolutePath, '..'), { recursive: true });
+    await fs.writeFile(absolutePath, file.buffer, { flag: 'wx' });
+    return {
+      storageKey,
+      originalName: file.originalname || 'preuve',
+      mimeType: file.mimetype || 'application/octet-stream',
+      size: file.buffer.length,
+      sha256: createHash('sha256').update(file.buffer).digest('hex'),
+    };
+  }
+
+  private resolveStorageKey(storageKey: string): string {
+    if (
+      !storageKey ||
+      storageKey.includes('://') ||
+      storageKey.startsWith('/') ||
+      storageKey.startsWith('\\')
+    ) {
+      throw new BadRequestException(
+        'La preuve historique n’est pas disponible dans le stockage privé',
+      );
+    }
+    const resolved = resolve(this.storageRoot, storageKey);
+    const rootPrefix = `${this.storageRoot.toLowerCase()}\\`;
+    if (
+      resolved.toLowerCase() !== this.storageRoot.toLowerCase() &&
+      !resolved.toLowerCase().startsWith(rootPrefix)
+    ) {
+      throw new BadRequestException('Chemin de preuve invalide');
+    }
+    return resolved;
+  }
+
+  private async deletePrivateFile(storageKey: string): Promise<void> {
+    try {
+      await fs.unlink(this.resolveStorageKey(storageKey));
+    } catch {
+      // La transaction métier reste la source de vérité. Un nettoyeur de
+      // fichiers orphelins peut reprendre ce cas sans masquer l'erreur initiale.
+    }
   }
 }

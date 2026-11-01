@@ -1,5 +1,6 @@
 // src/modules/notification/notification.service.ts
 import {
+  BadRequestException,
   forwardRef,
   Inject,
   Injectable,
@@ -48,7 +49,24 @@ export class NotificationService {
   // Créer une notification pour un utilisateur
   async create(
     createNotificationDto: CreateNotificationDto,
+    senderId: number,
   ): Promise<NotificationResponseDto> {
+    const [notification] = await this.createBulk(
+      {
+        user_ids: [createNotificationDto.user_id],
+        type: createNotificationDto.type,
+        title: createNotificationDto.title,
+        content: createNotificationDto.content,
+        data: createNotificationDto.data,
+        link: createNotificationDto.link,
+        priority: createNotificationDto.priority,
+        actions: createNotificationDto.actions,
+        image_url: createNotificationDto.image_url,
+      },
+      senderId,
+    );
+    return notification;
+    /*
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -61,10 +79,9 @@ export class NotificationService {
         content: createNotificationDto.content,
         data: createNotificationDto.data,
         link: createNotificationDto.link,
-        priority: (createNotificationDto.priority ??
-          'NORMAL') as Notification['priority'],
+        priority: (createNotificationDto.priority ?? 'NORMAL') as Notification['priority'],
         image_url: createNotificationDto.image_url,
-        actions: createNotificationDto.actions ?? [],
+        actions: createNotificationDto.actions ?? []
       });
 
       const savedNotification = await queryRunner.manager.save(notification);
@@ -86,7 +103,7 @@ export class NotificationService {
         ...savedNotification,
         // userNotificationId: savedUserNotification.id,
         is_read: false,
-        read_at: null,
+        read_at: null
       });
 
       // 4. Push temps réel via Socket.IO (best-effort)
@@ -101,9 +118,7 @@ export class NotificationService {
             'new_notification',
             payload,
           );
-          const unreadCount = await this.countUnread(
-            createNotificationDto.user_id,
-          );
+          const unreadCount = await this.countUnread(createNotificationDto.user_id);
           await this.mainGateway.sendToUser(
             createNotificationDto.user_id,
             'new_notification',
@@ -119,18 +134,17 @@ export class NotificationService {
         }
       }
 
-      this.logger.log(
-        `✅ Notification créée + push pour l'utilisateur ${createNotificationDto.user_id}`,
-      );
+      this.logger.log(`✅ Notification créée + push pour l'utilisateur ${createNotificationDto.user_id}`);
 
       return responseDto;
+
     } catch (error) {
       await queryRunner.rollbackTransaction();
       this.logger.error('❌ Erreur création notification:', error);
       throw error;
     } finally {
       await queryRunner.release();
-    }
+    }*/
   }
 
   // Créer une notification pour plusieurs utilisateurs (version optimisée)
@@ -138,6 +152,30 @@ export class NotificationService {
     createBulkDto: CreateBulkNotificationDto,
     senderId: number,
   ): Promise<NotificationResponseDto[]> {
+    const tenantId = getCurrentTenantId();
+    const recipientIds = [
+      ...new Set((createBulkDto.user_ids ?? []).map(Number)),
+    ].filter((id) => Number.isInteger(id) && id > 0);
+    if (!recipientIds.length) {
+      throw new BadRequestException('Au moins un destinataire est requis');
+    }
+    const recipients = await this.userRepository.find({
+      where: { id: In(recipientIds), tenant_id: tenantId },
+      select: ['id'],
+    });
+    if (recipients.length !== recipientIds.length) {
+      throw new NotFoundException(
+        'Un ou plusieurs destinataires sont introuvables',
+      );
+    }
+    const actor =
+      Number.isInteger(Number(senderId)) && Number(senderId) > 0
+        ? await this.userRepository.findOne({
+            where: { id: Number(senderId), tenant_id: tenantId },
+            select: ['id'],
+          })
+        : null;
+    createBulkDto = { ...createBulkDto, user_ids: recipientIds };
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -157,7 +195,7 @@ export class NotificationService {
           'NORMAL') as Notification['priority'],
         image_url: createBulkDto.image_url,
         actions: createBulkDto.actions ?? [],
-        user_id: senderId,
+        user_id: actor?.id ?? null,
       });
       const savedNotification = await queryRunner.manager.save(notification);
       this.logger.log(
@@ -278,7 +316,7 @@ export class NotificationService {
           actions: group.dto.actions,
           image_url: group.dto.image_url,
         },
-        1,
+        group.userIds[0],
       );
       results.push(...bulkResult);
     }

@@ -81,12 +81,12 @@ const VISIBLE_FACTURE_STATUSES = [
   StatutFacture.ENVOYEE,
   StatutFacture.PARTIELLEMENT_PAYEE,
   StatutFacture.PAYEE,
-  StatutFacture.IMPAYEE,
+  StatutFacture.VALIDEE,
 ];
 const PAYABLE_FACTURE_STATUSES = [
   StatutFacture.ENVOYEE,
   StatutFacture.PARTIELLEMENT_PAYEE,
-  StatutFacture.IMPAYEE,
+  StatutFacture.VALIDEE,
 ];
 
 /**
@@ -523,8 +523,6 @@ export class ClientPortalService {
         return 'Payée';
       case StatutFacture.PARTIELLEMENT_PAYEE:
         return 'Partiellement payée';
-      case StatutFacture.IMPAYEE:
-        return 'Impayée';
       default:
         return 'À régler';
     }

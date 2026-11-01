@@ -2,13 +2,23 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 
 import { AudienceTypeService } from './audience-type.service';
 import { AudienceTypeResponseDto } from './dto/audience-type-response.dto';
@@ -18,6 +28,7 @@ import { UpdateAudienceTypeDto } from './dto/update-audience-type.dto';
 @ApiTags('Audience Types')
 @ApiBearerAuth()
 @Controller('audience-types')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AudienceTypeController {
   constructor(private readonly service: AudienceTypeService) {}
 

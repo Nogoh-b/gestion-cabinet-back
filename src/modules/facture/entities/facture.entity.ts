@@ -7,30 +7,27 @@ import {
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { InvoiceType } from 'src/modules/invoice-type/entities/invoice-type.entity';
 import { StatutPaiement } from 'src/modules/paiement/dto/create-paiement.dto';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  OneToMany,
-  ManyToOne,
-  JoinColumn,
-  BeforeInsert,
-  Index,
-} from 'typeorm';
+import { Entity, Index, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn, BeforeInsert } from 'typeorm';
 
 import { Paiement } from '../../paiement/entities/paiement.entity';
-import { StatutFacture, TypeFacture } from '../dto/create-facture.dto';
+import {
+  InvoiceNature,
+  InvoiceSettlementDisposition,
+  StatutFacture,
+  TypeFacture,
+} from '../dto/create-facture.dto';
 import { InvoiceLine } from 'src/modules/case-workflow/entities/billing.entity';
 
 @Entity('factures')
-@Index('UQ_factures_tenant_numero', ['tenant_id', 'numero'], { unique: true })
+@Index('UQ_factures_tenant_numero', ['tenant_id', 'numero'], {
+  unique: true,
+})
 @BusinessTable({
   label: 'Factures',
   description:
@@ -45,6 +42,9 @@ export class Facture extends BaseEntity {
    * Non persistée en base.
    */
   notify_client?: boolean;
+
+  @Column({ name: 'notify_client_requested', default: false })
+  notifyClientRequested: boolean;
 
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
@@ -76,13 +76,6 @@ export class Facture extends BaseEntity {
   })
   client_id: number;
 
-  @ManyToOne(() => Step, (step) => step.factures, { nullable: true })
-  @JoinColumn({ name: 'step_id' })
-  step: Step;
-
-  @Column({ name: 'step_id', type: 'int', nullable: true })
-  step_id: number;
-
   @Column({
     type: 'enum',
     enum: TypeFacture,
@@ -92,7 +85,8 @@ export class Facture extends BaseEntity {
     label: 'Type de facture',
     description:
       'BD: 0=HONORAIRES, 1=FRAIS_PROCEDURE, 2=DILIGENCES, 3=AUTRES, 4=AVOIR (montant TTC négatif, vient en déduction de la facture d’origine). En SQL utiliser le nombre, pas le libellé.',
-    example: '0 = Honoraires, 1 = Frais de procédure, 2 = Diligences, 4 = Avoir',
+    example:
+      '0 = Honoraires, 1 = Frais de procédure, 2 = Diligences, 4 = Avoir',
     importance: 'critical',
     group: 'classification',
   })
@@ -128,7 +122,7 @@ export class Facture extends BaseEntity {
   })
   dateEcheance: Date;
 
-  @Column({ name: 'montant_ht', type: 'decimal', precision: 10, scale: 2 })
+  @Column({ name: 'montant_ht', type: 'decimal', precision: 18, scale: 2 })
   @BusinessColumn({
     label: 'Montant HT',
     description: 'Montant hors taxes de la facture',
@@ -150,7 +144,7 @@ export class Facture extends BaseEntity {
   })
   tauxTVA: number;
 
-  @Column({ name: 'montant_tva', type: 'decimal', precision: 10, scale: 2 })
+  @Column({ name: 'montant_tva', type: 'decimal', precision: 18, scale: 2 })
   @BusinessColumn({
     label: 'Montant TVA',
     description: 'Montant de la TVA (HT × taux TVA)',
@@ -161,7 +155,7 @@ export class Facture extends BaseEntity {
   })
   montantTVA: number;
 
-  @Column({ name: 'montant_ttc', type: 'decimal', precision: 10, scale: 2 })
+  @Column({ name: 'montant_ttc', type: 'decimal', precision: 18, scale: 2 })
   @BusinessColumn({
     label: 'Montant TTC',
     description: 'Montant total TTC de la facture (HT + TVA)',
@@ -199,12 +193,60 @@ export class Facture extends BaseEntity {
   @BusinessColumn({
     label: 'Statut',
     description:
-      'BD: 0=BROUILLON, 1=ENVOYEE, 2=PARTIELLEMENT_PAYEE, 3=PAYEE, 4=IMPAYEE, 5=ANNULEE. En SQL utiliser le nombre. Une facture annulée (5) sort de tous les totaux.',
+      'BD: 0=BROUILLON, 1=ENVOYEE, 2=PARTIELLEMENT_PAYEE, 3=PAYEE, 5=ANNULEE, 6=VALIDEE. Le retard est calculé et non stocké. Une facture annulée (5) sort de tous les totaux.',
     example: 'status = 3 pour une facture payée',
     importance: 'critical',
     group: 'état',
   })
   status: StatutFacture;
+
+  @Column({
+    name: 'nature',
+    type: 'enum',
+    enum: InvoiceNature,
+    default: InvoiceNature.STANDARD,
+  })
+  nature: InvoiceNature;
+
+  @Column({
+    name: 'settlement_disposition',
+    type: 'enum',
+    enum: InvoiceSettlementDisposition,
+    default: InvoiceSettlementDisposition.NONE,
+  })
+  settlementDisposition: InvoiceSettlementDisposition;
+
+  @Column({ name: 'original_invoice_id', type: 'uuid', nullable: true })
+  originalInvoiceId: string | null;
+
+  @ManyToOne(() => Facture, (invoice) => invoice.creditNotes, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({ name: 'original_invoice_id' })
+  originalInvoice: Facture | null;
+
+  @OneToMany(() => Facture, (invoice) => invoice.originalInvoice)
+  creditNotes: Facture[];
+
+  @Column({ name: 'disposition_reason', type: 'text', nullable: true })
+  dispositionReason: string | null;
+
+  @Column({
+    name: 'disposition_at',
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+  })
+  dispositionAt: Date | null;
+
+  @Column({
+    name: 'disposition_by',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  dispositionBy: string | null;
 
   @Column({ name: 'notes_internes', type: 'text', nullable: true })
   @BusinessColumn({
@@ -399,6 +441,20 @@ export class Facture extends BaseEntity {
       .reduce((sum, p) => sum + Number(p.montant), 0);
   }
 
+  get montantAvoirValide(): number {
+    return (this.creditNotes ?? [])
+      .filter(
+        (credit) =>
+          credit.nature === InvoiceNature.CREDIT_NOTE &&
+          ![
+            StatutFacture.BROUILLON,
+            StatutFacture.ENVOYEE,
+            StatutFacture.ANNULEE,
+          ].includes(credit.status),
+      )
+      .reduce((sum, credit) => sum + Number(credit.montantTTC), 0);
+  }
+
   @BusinessColumn({
     label: 'Reste à payer',
     description: 'Montant TTC - Montant payé',
@@ -408,7 +464,16 @@ export class Facture extends BaseEntity {
     group: 'financier',
   })
   get resteAPayer(): number {
-    return Number(this.montantTTC) - this.montantPaye;
+    if (
+      this.nature === InvoiceNature.CREDIT_NOTE ||
+      this.status === StatutFacture.ANNULEE
+    ) {
+      return 0;
+    }
+    return Math.max(
+      0,
+      Number(this.montantTTC) - this.montantAvoirValide - this.montantPaye,
+    );
   }
 
   @BusinessColumn({
@@ -435,7 +500,14 @@ export class Facture extends BaseEntity {
     group: 'financier',
   })
   get is_en_retard(): boolean {
-    return this.jours_retard > 0 && this.resteAPayer > 0;
+    return (
+      this.jours_retard > 0 &&
+      this.resteAPayer > 0 &&
+      [StatutFacture.VALIDEE, StatutFacture.PARTIELLEMENT_PAYEE].includes(
+        this.status,
+      ) &&
+      this.nature !== InvoiceNature.CREDIT_NOTE
+    );
   }
 
   @BusinessColumn({
@@ -446,14 +518,20 @@ export class Facture extends BaseEntity {
     group: 'état',
   })
   get statut_paiement(): StatutFacture {
-    if (this.montantPaye === 0) {
-      return StatutFacture.ENVOYEE;
-    } else if (
-      this.montantPaye > 0 &&
-      this.montantPaye < Number(this.montantTTC)
+    if (
+      this.nature === InvoiceNature.CREDIT_NOTE ||
+      this.status === StatutFacture.ANNULEE
     ) {
+      return this.status;
+    }
+    const netAmount = Number(this.montantTTC) - this.montantAvoirValide;
+    if (this.montantPaye === 0) {
+      return this.status === StatutFacture.VALIDEE
+        ? StatutFacture.VALIDEE
+        : StatutFacture.ENVOYEE;
+    } else if (this.montantPaye > 0 && this.montantPaye < netAmount) {
       return StatutFacture.PARTIELLEMENT_PAYEE;
-    } else if (this.montantPaye >= Number(this.montantTTC)) {
+    } else if (this.montantPaye >= netAmount) {
       return StatutFacture.PAYEE;
     }
     return this.status;
@@ -487,8 +565,8 @@ export class Facture extends BaseEntity {
       [StatutFacture.ENVOYEE]: 'Envoyée',
       [StatutFacture.PARTIELLEMENT_PAYEE]: 'Partiellement payée',
       [StatutFacture.PAYEE]: 'Payée',
-      [StatutFacture.IMPAYEE]: 'Impayée',
       [StatutFacture.ANNULEE]: 'Annulée',
+      [StatutFacture.VALIDEE]: 'Validée',
     };
     return labels[this.status] || String(this.status);
   }
@@ -503,23 +581,6 @@ export class Facture extends BaseEntity {
   get billing_rate(): number {
     if (this.montantHT === 0) return 0;
     return Math.round((this.montantTTC / this.montantHT) * 100);
-  }
-
-  // ==================== MÉTHODES MÉTIER ====================
-
-  ajouterPaiement(paiement: Paiement): void {
-    if (!this.paiements) this.paiements = [];
-    this.paiements.push(paiement);
-  }
-
-  private mettreAJourStatut(): void {
-    if (this.montantPaye === 0) {
-      this.status = StatutFacture.ENVOYEE;
-    } else if (this.montantPaye > 0 && this.montantPaye < this.montantTTC) {
-      this.status = StatutFacture.PARTIELLEMENT_PAYEE;
-    } else if (this.montantPaye >= this.montantTTC) {
-      this.status = StatutFacture.PAYEE;
-    }
   }
 
   @BeforeInsert()

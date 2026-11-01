@@ -1,4 +1,10 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { ClasseCompte, TypeCompte } from '../enums/comptabilite.enums';
 import { LigneEcriture } from './ligne-ecriture.entity';
@@ -8,6 +14,9 @@ import {
 } from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('comptes_comptables')
+@Index('UQ_accounts_tenant_number', ['tenant_id', 'numero'], {
+  unique: true,
+})
 @BusinessTable({
   label: 'Comptes comptables',
   description:

@@ -1,12 +1,22 @@
 // src/modules/auth/dto/reset-password.dto.ts
-import { IsNotEmpty, IsString, MinLength, Matches } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+  Matches,
+} from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ResetPasswordDto {
-  @ApiProperty()
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      'Adaptateur temporaire. Le navigateur utilise le cookie HttpOnly.',
+  })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  token: string;
+  token?: string;
 
   @ApiProperty({ example: 'NewPassword123!' })
   @IsString()

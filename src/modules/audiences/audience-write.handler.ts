@@ -292,7 +292,9 @@ export class AudienceWriteHandler extends BaseWriteHandler {
 
       // ── Cas A : nouvelle date fournie → renvoi daté + audience de remplacement ──
       if (postponedDate && postponedTime) {
-        audience.postpone(postponedDate, postponedTime, reason);
+        audience.status = AudienceStatus.POSTPONED;
+        audience.audience_date = postponedDate;
+        audience.audience_time = postponedTime;
         const savedOriginal = await this.audienceRepo.save(audience);
 
         const replacement = this.audienceRepo.create({
@@ -312,7 +314,6 @@ export class AudienceWriteHandler extends BaseWriteHandler {
           stageVisit_id: (audience as any).stageVisit_id,
           sub_stage_visit_id: (audience as any).sub_stage_visit_id,
           sub_stage_id: (audience as any).sub_stage_id,
-          step_id: audience.step_id,
           parent_audience_id: audience.id,
         } as Partial<Audience>);
         const savedReplacement = await this.audienceRepo.save(replacement);

@@ -7,6 +7,7 @@ import {
   IsDateString,
   Min,
   IsBoolean,
+  IsNotEmpty,
   IsArray,
   ValidateIf,
 } from 'class-validator';
@@ -22,9 +23,9 @@ export class CloseDossierDto {
   @Type(() => Date)
   outcome_date?: Date;
 
-  @IsOptional()
   @IsString()
-  outcome_notes?: string;
+  @IsNotEmpty()
+  outcome_notes: string;
 
   @IsOptional()
   @IsNumber()
@@ -39,16 +40,6 @@ export class CloseDossierDto {
   @IsOptional()
   @IsString()
   final_decision_text?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  appeal_possibility?: boolean;
-
-  @ValidateIf((o) => o.appeal_possibility === true)
-  @IsDateString()
-  @Type(() => Date)
-  @IsOptional()
-  appeal_deadline?: string;
 
   @ValidateIf((o) => o.outcome === DossierOutcome.SETTLED)
   @IsNumber()
@@ -69,6 +60,14 @@ export class CloseDossierDto {
   @IsBoolean()
   send_report_to_client?: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
+
+  @ValidateIf((dto) => dto.force === true)
+  @IsString()
+  @IsNotEmpty()
+  override_reason?: string;
   /** Motif obligatoire lorsque le contrôle V2 remonte des avertissements. */
   @IsOptional()
   @IsString()

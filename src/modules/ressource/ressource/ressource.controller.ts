@@ -17,6 +17,7 @@ import { CreateRessourceDto } from './dto/create-ressource.dto';
 import { RessourceService } from './ressource.service';
 
 @Controller('ressource')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class RessourceController {
   constructor(private readonly ressourceService: RessourceService) {}

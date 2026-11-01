@@ -16,8 +16,21 @@ export enum StatutFacture {
   ENVOYEE = 1,
   PARTIELLEMENT_PAYEE = 2,
   PAYEE = 3,
-  IMPAYEE = 4,
   ANNULEE = 5,
+  VALIDEE = 6,
+}
+
+export enum InvoiceNature {
+  STANDARD = 'STANDARD',
+  FINAL = 'FINAL',
+  CREDIT_NOTE = 'CREDIT_NOTE',
+}
+
+export enum InvoiceSettlementDisposition {
+  NONE = 'NONE',
+  CREDITED = 'CREDITED',
+  WAIVED = 'WAIVED',
+  BAD_DEBT = 'BAD_DEBT',
 }
 
 export enum TypeFacture {
@@ -51,6 +64,16 @@ export class CreateFactureDto {
   })
   @IsEnum(TypeFacture)
   type: TypeFacture = TypeFacture.HONORAIRES;
+
+  @ApiPropertyOptional({
+    enum: InvoiceNature,
+    description:
+      'Nature métier. Un avoir ne peut être créé que par la commande dédiée.',
+    default: InvoiceNature.STANDARD,
+  })
+  @IsEnum(InvoiceNature)
+  @IsOptional()
+  nature?: InvoiceNature = InvoiceNature.STANDARD;
 
   @ApiPropertyOptional({
     description:

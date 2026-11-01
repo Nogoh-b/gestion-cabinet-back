@@ -17,6 +17,7 @@ import { Between, DataSource, IsNull, LessThan, Repository, In } from 'typeorm';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { OutboxService } from '../outbox/outbox.service';
 
 /** Expéditeur système des notifications automatiques. */
 const SYSTEM_SENDER_ID = 1;
@@ -31,10 +32,9 @@ const ALERT_DAYS_BEFORE = new Set([7, 3, 1, 0]);
 const OVERDUE_ALERT_GRACE_DAYS = 3;
 
 /** Dossiers sans suivi : leurs diligences ne déclenchent plus d'alerte. */
-const INACTIVE_DOSSIER_STATUSES = new Set<number>([
+const INACTIVE_DOSSIER_STATUSES = new Set<string>([
   DossierStatus.CLOSED,
   DossierStatus.ARCHIVED,
-  DossierStatus.ABANDONED,
 ]);
 
 /** Durée de conservation du journal des alertes envoyées. */
@@ -79,10 +79,10 @@ export class ReminderScheduler {
     private readonly audienceRepo: Repository<Audience>,
     @InjectRepository(Diligence)
     private readonly diligenceRepo: Repository<Diligence>,
-    @InjectRepository(Dossier)
-    private readonly dossierRepo: Repository<Dossier>,
     private readonly notifications: NotificationService,
     private readonly tenantContext: TenantContext,
+    private readonly dataSource: DataSource,
+    private readonly outboxService: OutboxService,
     @InjectDataSource()
     private readonly db: DataSource,
   ) {}
@@ -113,7 +113,6 @@ export class ReminderScheduler {
   async runDeadlineAlerts(): Promise<void> {
     await this.forEachActiveCabinet(async (cabinetId) => {
       await this.remindDiligenceDeadlines(cabinetId);
-      await this.remindRecourseDeadlines(cabinetId);
     });
     await this.pruneDispatches();
   }
@@ -162,27 +161,26 @@ export class ReminderScheduler {
         a.dossier?.lawyer_id,
         ...(a.dossier?.collaborators?.map((c) => c.id) ?? []),
       ]);
-      if (recipients.length) {
-        await this.notifications.createBulk(
-          {
-            user_ids: recipients,
-            type: NotificationType.AUDIENCE_REMINDER,
-            title: "Rappel d'audience",
-            content:
-              `Audience du dossier ${a.dossier?.dossier_number ?? a.dossier_id} ` +
-              `le ${this.fmtDate(a.audience_date)} à ${a.audience_time}` +
-              (a.room ? ` (salle ${a.room})` : ''),
-            data: { audienceId: a.id, dossierId: a.dossier_id },
-            link: `/audiences/${a.id}`,
-            priority: 'HIGH',
-          },
-          SYSTEM_SENDER_ID,
+      if (!recipients.length) {
+        this.logger.warn(
+          `[Reminder] cabinet=${cabinetId} audience=${a.id} sans destinataire; rappel non acquitté`,
         );
+        continue;
       }
-      // Marque comme envoyé même sans destinataire pour ne pas réessayer en boucle.
-      await this.audienceRepo.update(a.id, {
-        reminder_sent: true,
-        reminder_sent_at: new Date(),
+
+      await this.dataSource.transaction(async (manager) => {
+        await this.outboxService.enqueue(manager, {
+          eventType: 'audience.reminder.requested',
+          aggregateType: 'Audience',
+          aggregateId: a.id,
+          idempotencyKey:
+            `audience-reminder:${a.id}:` +
+            `${a.starts_at_utc?.toISOString?.() ?? this.audienceDateTime(a)?.toISOString()}`,
+          payload: {
+            audienceId: a.id,
+            dossierId: Number(a.dossier_id),
+          },
+        });
       });
     }
 
@@ -276,7 +274,14 @@ export class ReminderScheduler {
 
       if (left >= 0) {
         if (!ALERT_DAYS_BEFORE.has(left)) continue;
-        if (!(await this.claim(cabinetId, 'diligence_due', `${d.id}:${deadline}:${left}`, today)))
+        if (
+          !(await this.claim(
+            cabinetId,
+            'diligence_due',
+            `${d.id}:${deadline}:${left}`,
+            today,
+          ))
+        )
           continue;
         await this.notifyDiligence(d, recipient, left);
         sent++;
@@ -287,7 +292,14 @@ export class ReminderScheduler {
       // (clé datée de l'échéance, pas du jour). Pas de résumé pour elle tant
       // qu'elle est dans ce délai : l'alerte individuelle suffit.
       if (-left <= OVERDUE_ALERT_GRACE_DAYS) {
-        if (await this.claim(cabinetId, 'diligence_overdue', String(d.id), deadline)) {
+        if (
+          await this.claim(
+            cabinetId,
+            'diligence_overdue',
+            String(d.id),
+            deadline,
+          )
+        ) {
           await this.notifyDiligence(d, recipient, left);
           sent++;
         }
@@ -297,7 +309,14 @@ export class ReminderScheduler {
     }
 
     for (const [recipient, overdue] of backlog) {
-      if (!(await this.claim(cabinetId, 'diligence_overdue_digest', String(recipient), today)))
+      if (
+        !(await this.claim(
+          cabinetId,
+          'diligence_overdue_digest',
+          String(recipient),
+          today,
+        ))
+      )
         continue;
       const oldest = overdue.reduce((a, b) =>
         new Date(a.deadline) <= new Date(b.deadline) ? a : b,
@@ -374,111 +393,10 @@ export class ReminderScheduler {
     // Dossier supprimé (soft delete) → relation non chargée.
     if (!d.dossier) return false;
     // Colonne ENUM MySQL : la valeur revient en chaîne ('8') → Number().
-    return !INACTIVE_DOSSIER_STATUSES.has(Number(d.dossier.status));
+    return !INACTIVE_DOSSIER_STATUSES.has(String(d.dossier.status));
   }
 
   // ── Délais de recours (appel / cassation) ────────────────────────────────
-
-  private async remindRecourseDeadlines(cabinetId: number): Promise<void> {
-    const { startToday, inDays } = this.dateWindow(7);
-
-    const appeals = await this.dossierRepo.find({
-      where: {
-        appeal_filed: false,
-        appeal_deadline: Between(startToday, inDays),
-      },
-    });
-    const cassations = await this.dossierRepo.find({
-      where: {
-        cassation_filed: false,
-        cassation_deadline: Between(startToday, inDays),
-      },
-    });
-
-    let sent = 0;
-    sent += await this.notifyRecourse(cabinetId, appeals, 'appeal', startToday);
-    sent += await this.notifyRecourse(cabinetId, cassations, 'cassation', startToday);
-    if (sent)
-      this.logger.log(
-        `[Reminder] cabinet=${cabinetId} — ${sent} alerte(s) de recours`,
-      );
-  }
-
-  private async notifyRecourse(
-    cabinetId: number,
-    dossiers: Dossier[],
-    kind: 'appeal' | 'cassation',
-    startToday: Date,
-  ): Promise<number> {
-    const label = kind === 'appeal' ? "d'appel" : 'de cassation';
-    const today = this.dayKey(startToday);
-    let sent = 0;
-    for (const d of dossiers) {
-      const deadline =
-        kind === 'appeal' ? d.appeal_deadline : d.cassation_deadline;
-      if (!deadline) continue;
-      const left = this.daysUntil(deadline, startToday);
-      if (!ALERT_DAYS_BEFORE.has(left)) continue;
-      if (!d.lawyer_id) continue;
-      if (
-        !(await this.claim(
-          cabinetId,
-          `recourse_${kind}`,
-          `${d.id}:${this.dayKey(deadline)}:${left}`,
-          today,
-        ))
-      )
-        continue;
-
-      await this.notifications.createBulk(
-        {
-          user_ids: [d.lawyer_id],
-          type: NotificationType.DOSSIER_DEADLINE,
-          title: `Délai ${label}`,
-          content:
-            `Le délai ${label} du dossier ${d.dossier_number} expire ${this.relDay(left)} ` +
-            `(${this.fmtDate(deadline)}).`,
-          data: { dossierId: d.id, kind, daysLeft: left },
-          link: `/dossiers/${d.id}`,
-          priority: left <= 1 ? 'URGENT' : 'HIGH',
-        },
-        SYSTEM_SENDER_ID,
-      );
-      sent++;
-    }
-    return sent;
-  }
-
-  // ── Journal des envois ───────────────────────────────────────────────────
-
-  /**
-   * Réserve un envoi : true si la ligne vient d'être créée, false si cet envoi
-   * a déjà eu lieu (autre passage, autre instance). Réserver avant de notifier
-   * préfère une alerte perdue (échec d'envoi) à une alerte répétée.
-   */
-  private async claim(
-    tenantId: number,
-    kind: string,
-    refKey: string,
-    day: string,
-  ): Promise<boolean> {
-    const result = await this.db.query(
-      'INSERT IGNORE INTO `reminder_dispatches` (`tenant_id`, `kind`, `ref_key`, `sent_on`) VALUES (?, ?, ?, ?)',
-      [tenantId, kind, refKey.slice(0, 160), day],
-    );
-    return Number(result?.affectedRows ?? 0) === 1;
-  }
-
-  private async pruneDispatches(): Promise<void> {
-    try {
-      await this.db.query(
-        'DELETE FROM `reminder_dispatches` WHERE `created_at` < DATE_SUB(NOW(), INTERVAL ? DAY)',
-        [DISPATCH_RETENTION_DAYS],
-      );
-    } catch (e: any) {
-      this.logger.warn(`[Reminder] purge du journal impossible : ${e?.message ?? e}`);
-    }
-  }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -497,6 +415,10 @@ export class ReminderScheduler {
 
   /** Combine audience_date (Date ou 'YYYY-MM-DD') + audience_time ('HH:mm'). */
   private audienceDateTime(a: Audience): Date | null {
+    if (a.starts_at_utc) {
+      const canonical = new Date(a.starts_at_utc);
+      return Number.isNaN(canonical.getTime()) ? null : canonical;
+    }
     if (!a.audience_date) return null;
     const datePart =
       a.audience_date instanceof Date
@@ -548,6 +470,37 @@ export class ReminderScheduler {
       });
     } catch {
       return String(date);
+    }
+  }
+
+  // ── Journal des envois ───────────────────────────────────────────────────
+
+  /**
+   * Réserve un envoi : true si la ligne vient d'être créée, false si cet envoi
+   * a déjà eu lieu (autre passage, autre instance). Réserver avant de notifier
+   * préfère une alerte perdue (échec d'envoi) à une alerte répétée.
+   */
+  private async claim(
+    tenantId: number,
+    kind: string,
+    refKey: string,
+    day: string,
+  ): Promise<boolean> {
+    const result = await this.db.query(
+      'INSERT IGNORE INTO `reminder_dispatches` (`tenant_id`, `kind`, `ref_key`, `sent_on`) VALUES (?, ?, ?, ?)',
+      [tenantId, kind, refKey.slice(0, 160), day],
+    );
+    return Number(result?.affectedRows ?? 0) === 1;
+  }
+
+  private async pruneDispatches(): Promise<void> {
+    try {
+      await this.db.query(
+        'DELETE FROM `reminder_dispatches` WHERE `created_at` < DATE_SUB(NOW(), INTERVAL ? DAY)',
+        [DISPATCH_RETENTION_DAYS],
+      );
+    } catch (e: any) {
+      this.logger.warn(`[Reminder] purge du journal impossible : ${e?.message ?? e}`);
     }
   }
 }

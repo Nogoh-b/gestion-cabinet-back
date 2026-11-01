@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import * as bcrypt from 'bcrypt';
 import * as readline from 'readline';
-import { dataSource } from 'src/data-source';
+import dataSource from 'src/data-source';
 import { assertStrongPassword } from 'src/modules/platform/common/platform-crypto';
 
 /**

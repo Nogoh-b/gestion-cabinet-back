@@ -1,4 +1,5 @@
 // src/modules/diligences/dto/single-diligence-stats.dto.ts
+import { DossierLifecycleStatus } from 'src/core/enums/dossier-status.enum';
 export class SingleDiligenceStatsDto {
   // Informations générales de la diligence
   diligence: {
@@ -23,7 +24,7 @@ export class SingleDiligenceStatsDto {
     objet: string;
     client: string;
     avocat: string;
-    statut: number;
+    statut: DossierLifecycleStatus;
   };
 
   // Avocat assigné
