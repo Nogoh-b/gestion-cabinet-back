@@ -10,15 +10,57 @@ type CollationAuditRow = {
   source_collation: string;
 };
 
+type DatabaseRow = {
+  db: string | null;
+};
+
 const TARGET_CHARACTER_SET = 'utf8mb4';
 const TARGET_COLLATION = 'utf8mb4_general_ci';
 
-function safeIdentifier(value: unknown, label: string): string {
+/**
+ * Encadre un identifiant MySQL de backticks.
+ *
+ * Un nom de base peut contenir un tiret (`cabisoft-dev`), un point ou des
+ * espaces : entre backticks, le seul caractère réellement interdit est le NUL,
+ * et un backtick interne s'échappe en le doublant.
+ */
+function quoteIdentifier(value: unknown, label: string): string {
   const identifier = String(value ?? '');
-  if (!/^[A-Za-z0-9_]+$/.test(identifier)) {
+  if (identifier.trim() === '') {
+    throw new Error(`${label} vide`);
+  }
+  if (identifier.includes('\u0000')) {
     throw new Error(`${label} invalide`);
   }
-  return identifier;
+  return `\`${identifier.replace(/`/g, '``')}\``;
+}
+
+/**
+ * Jeu de caractères et collation sont des mots-clés SQL non échappables :
+ * la liste blanche stricte reste donc justifiée pour ces valeurs.
+ */
+function safeKeyword(value: unknown, label: string): string {
+  const keyword = String(value ?? '');
+  if (!/^[A-Za-z0-9_]+$/.test(keyword)) {
+    throw new Error(`${label} invalide`);
+  }
+  return keyword;
+}
+
+/**
+ * Base réellement sélectionnée par la connexion. `DATABASE()` est déjà la
+ * source de vérité du SELECT sur `information_schema.SCHEMATA` ; s'en servir
+ * aussi pour l'ALTER évite tout décalage avec `connection.options.database`.
+ */
+async function currentDatabase(queryRunner: QueryRunner): Promise<string> {
+  const rows: DatabaseRow[] = await queryRunner.query(
+    'SELECT DATABASE() AS db',
+  );
+  const database = rows[0]?.db ?? null;
+  if (!database) {
+    throw new Error('Aucune base MySQL sélectionnée sur la connexion');
+  }
+  return database;
 }
 
 export class AlignMySqlDatabaseCollation1785168999000
@@ -27,8 +69,8 @@ export class AlignMySqlDatabaseCollation1785168999000
   name = 'AlignMySqlDatabaseCollation1785168999000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
-    const database = safeIdentifier(
-      queryRunner.connection.options.database,
+    const database = quoteIdentifier(
+      await currentDatabase(queryRunner),
       'Nom de base MySQL',
     );
     const rows: SchemaCollationRow[] = await queryRunner.query(
@@ -71,15 +113,15 @@ export class AlignMySqlDatabaseCollation1785168999000
     );
 
     await queryRunner.query(
-      `ALTER DATABASE \`${database}\`
+      `ALTER DATABASE ${database}
          CHARACTER SET ${TARGET_CHARACTER_SET}
          COLLATE ${TARGET_COLLATION}`,
     );
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
-    const database = safeIdentifier(
-      queryRunner.connection.options.database,
+    const database = quoteIdentifier(
+      await currentDatabase(queryRunner),
       'Nom de base MySQL',
     );
     const rows: CollationAuditRow[] = await queryRunner.query(
@@ -90,16 +132,16 @@ export class AlignMySqlDatabaseCollation1785168999000
     );
     const source = rows[0];
     if (source) {
-      const characterSet = safeIdentifier(
+      const characterSet = safeKeyword(
         source.source_character_set,
         'Jeu de caractères source',
       );
-      const collation = safeIdentifier(
+      const collation = safeKeyword(
         source.source_collation,
         'Collation source',
       );
       await queryRunner.query(
-        `ALTER DATABASE \`${database}\`
+        `ALTER DATABASE ${database}
            CHARACTER SET ${characterSet}
            COLLATE ${collation}`,
       );
