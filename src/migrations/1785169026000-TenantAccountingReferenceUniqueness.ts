@@ -103,16 +103,32 @@ export class TenantAccountingReferenceUniqueness1785169026000
     label: string,
   ): Promise<void> {
     const columns = columnNames.map((column) => `\`${column}\``).join(', ');
-    const rows = await queryRunner.query(
-      `SELECT ${columns}, COUNT(*) AS duplicate_count
-       FROM \`${tableName}\`
-       GROUP BY ${columns}
-       HAVING COUNT(*) > 1
-       LIMIT 1`,
-    );
+    const rows: Array<Record<string, unknown> & { duplicate_count: number }> =
+      await queryRunner.query(
+        `SELECT ${columns}, COUNT(*) AS duplicate_count,
+                MIN(id) AS first_id, MAX(id) AS last_id
+         FROM \`${tableName}\`
+         GROUP BY ${columns}
+         HAVING COUNT(*) > 1
+         ORDER BY duplicate_count DESC, first_id
+         LIMIT 10`,
+      );
     if (rows.length > 0) {
+      // Message exploitable : sans les clés fautives, l'opérateur doit
+      // reconstruire la requête de diagnostic avant de pouvoir débloquer.
+      const details = rows
+        .map((row) => {
+          const key = columnNames
+            .map((column) => `${column}=${String(row[column])}`)
+            .join(' ');
+          return `${key} (${row.duplicate_count} lignes, ids ${row.first_id}…${row.last_id})`;
+        })
+        .join(' ; ');
+      const more = rows.length === 10 ? ' (liste tronquée à 10 clés)' : '';
       throw new Error(
-        `Migration interrompue : des ${label} sont dupliqués dans un même cabinet`,
+        `Migration interrompue : des ${label} sont dupliqués dans un même cabinet. ` +
+          `Clés en doublon dans \`${tableName}\` : ${details}${more}. ` +
+          `Dédoublonner puis rejouer la migration.`,
       );
     }
   }
