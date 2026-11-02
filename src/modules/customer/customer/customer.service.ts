@@ -34,7 +34,7 @@ import {
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, DeepPartial, Repository } from 'typeorm';
 import {
   BadRequestException,
   ConflictException,
@@ -203,6 +203,19 @@ export class CustomersService extends BaseServiceV1<Customer> {
 
         const { mode: _mode, ...customerData } =
           createCustomerDto as CreateCustomerDto & { mode?: string };
+        // Champs calculés ou de lecture : jamais écrits depuis le formulaire.
+        for (const readOnlyField of [
+          'communications',
+          'documents',
+          'document_count',
+          'communication_count',
+          'civilite',
+          'dossiers_en_cours',
+          'chiffre_affaires',
+          'solde_en_cours',
+        ]) {
+          delete (customerData as Record<string, unknown>)[readOnlyField];
+        }
         const customer = manager.getRepository(Customer).create({
           ...customerData,
           email:
@@ -450,6 +463,18 @@ export class CustomersService extends BaseServiceV1<Customer> {
 
     // Gestion des relations et transformations
     const updateData: any = { ...dto };
+    for (const readOnlyField of [
+      'communications',
+      'documents',
+      'document_count',
+      'communication_count',
+      'civilite',
+      'dossiers_en_cours',
+      'chiffre_affaires',
+      'solde_en_cours',
+    ]) {
+      delete updateData[readOnlyField];
+    }
 
     // Mettre à jour la ville de localisation si fournie
     if (dto.location_city_id) {

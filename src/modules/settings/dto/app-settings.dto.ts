@@ -1,12 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsOptional,
   IsString,
-  IsObject,
   IsIn,
   IsInt,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
   Matches,
+  IsObject,
 } from 'class-validator';
 import {
   FONT_KEY_PATTERN,
@@ -21,6 +26,47 @@ import {
 
 const NUMBERING_STRATEGIES = ['yearly', 'monthly', 'continuous'] as const;
 type NumberingStrategy = (typeof NUMBERING_STRATEGIES)[number];
+
+export class SmtpConfigDto {
+  @ApiPropertyOptional({ example: 'smtp.example.com' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  host?: string;
+
+  @ApiPropertyOptional({ example: 465 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  port?: number;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  secure?: boolean;
+
+  @ApiPropertyOptional({ example: 'no-reply@example.com' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(320)
+  user?: string;
+
+  @ApiPropertyOptional({
+    description: 'Omettre ce champ pour conserver le secret existant.',
+    writeOnly: true,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1024)
+  pass?: string;
+
+  @ApiPropertyOptional({ example: '"Cabinet" <no-reply@example.com>' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  from?: string;
+}
 
 /**
  * DTO de configuration du cabinet (source UNIQUE — table `cabinets`).
@@ -193,8 +239,9 @@ export class AppSettingsDto {
 
   @ApiPropertyOptional({ example: null, nullable: true })
   @IsOptional()
-  @IsObject()
-  smtp_config?: object | null;
+  @ValidateNested()
+  @Type(() => SmtpConfigDto)
+  smtp_config?: SmtpConfigDto | null;
 
   // ── Templates ───────────────────────────────────────────────────────────
   @ApiPropertyOptional({ example: null, nullable: true })

@@ -13,8 +13,7 @@ import { StatsFilterDto } from 'src/core/types/base-stats.dto';
  * et ne renvoie donc jamais aucune ligne : la valeur doit être liée sous
  * forme de chaîne. Les littéraux SQL (`status = 0`) ne sont pas concernés.
  */
-const audienceStatusValue = (status: AudienceStatus): string =>
-  String(status);
+const audienceStatusValue = (status: AudienceStatus): string => String(status);
 
 @Injectable()
 export class AudienceStatsService extends BaseStatsService<Audience> {
@@ -44,7 +43,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       this.getDistributionByType(filters),
       this.getDistributionByJurisdiction(filters),
       this.getDistributionByDossier(filters),
-      this.getEvolution(filters, 'audience_date'),
+      this.getEvolution(filters, 'starts_at_utc'),
       this.getUpcomingAudiences(filters),
       this.getUpcomingAudiencesCount(filters),
       this.getPastAudiencesStats(filters),
@@ -193,19 +192,17 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       .select([
         'audience.id',
         // 'audience.title',
-        'audience.audience_date',
+        'audience.starts_at_utc',
         'audience.status',
         'jurisdiction.name',
         'dossier.dossier_number',
         'client',
       ])
-      // `audience_date` est une DATE : comparer à `new Date()` exclut les
-      // audiences du jour même (minuit < heure courante).
-      .where('audience.audience_date >= CURDATE()')
+      .where('audience.starts_at_utc >= :now', { now: new Date() })
       .andWhere('audience.status = :status', {
         status: audienceStatusValue(AudienceStatus.SCHEDULED),
       })
-      .orderBy('audience.audience_date', 'ASC')
+      .orderBy('audience.starts_at_utc', 'ASC')
       .limit(50);
 
     this.applyFilters(query, filters, 'audience');
@@ -215,7 +212,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     return results.map((a) => ({
       id: a.id,
       // title: a.title,
-      date: a.audience_date,
+      date: a.starts_at_utc,
       jurisdiction: a.jurisdiction?.name || 'Inconnue',
       dossierNumber: a.dossier?.dossier_number || 'N/A',
       clientName: a.dossier?.client?.full_name || 'Client inconnu',
@@ -240,7 +237,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
   ): SelectQueryBuilder<Audience> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
-      .where('audience.audience_date >= CURDATE()')
+      .where('audience.starts_at_utc >= :now', { now: new Date() })
       .andWhere('audience.status = :status', {
         status: audienceStatusValue(AudienceStatus.SCHEDULED),
       });
@@ -271,10 +268,11 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       .createQueryBuilder('audience')
       .select('COUNT(*)', 'total')
       .addSelect(
-        "SUM(CASE WHEN audience.status = '1' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)",
+        'SUM(CASE WHEN audience.status = :held THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)',
         'successRate',
       )
-      .where('audience.audience_date < CURDATE()');
+      .where('audience.starts_at_utc < :now', { now: new Date() })
+      .setParameter('held', audienceStatusValue(AudienceStatus.HELD));
 
     this.applyFilters(query, filters, 'audience');
 
@@ -293,20 +291,24 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
 
     const query = this.audienceRepository
       .createQueryBuilder('audience')
-      .select("DATE_FORMAT(audience.audience_date, '%Y-%m')", 'month')
+      .select("DATE_FORMAT(audience.starts_at_utc, '%Y-%m')", 'month')
       .addSelect(
-        "SUM(CASE WHEN audience.status = '0' THEN 1 ELSE 0 END)",
+        'SUM(CASE WHEN audience.status = :scheduled THEN 1 ELSE 0 END)',
         'scheduled',
       )
       .addSelect(
-        "SUM(CASE WHEN audience.status = '1' THEN 1 ELSE 0 END)",
+        'SUM(CASE WHEN audience.status = :held THEN 1 ELSE 0 END)',
         'held',
       )
-      .where('audience.audience_date BETWEEN :start AND :end', {
+      .where('audience.starts_at_utc BETWEEN :start AND :end', {
         start: startDate,
         end: endDate,
       })
-      .groupBy("DATE_FORMAT(audience.audience_date, '%Y-%m')")
+      .setParameters({
+        scheduled: audienceStatusValue(AudienceStatus.SCHEDULED),
+        held: audienceStatusValue(AudienceStatus.HELD),
+      })
+      .groupBy("DATE_FORMAT(audience.starts_at_utc, '%Y-%m')")
       .orderBy('month', 'ASC');
 
     this.applyFilters(query, filters, 'audience');
@@ -319,11 +321,11 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
   ): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
-      .select('DAYNAME(audience.audience_date)', 'dayOfWeek')
+      .select('DAYNAME(audience.starts_at_utc)', 'dayOfWeek')
       .addSelect('COUNT(*)', 'count')
-      .groupBy('DAYNAME(audience.audience_date)')
+      .groupBy('DAYNAME(audience.starts_at_utc)')
       .orderBy(
-        "FIELD(DAYNAME(audience.audience_date), 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')",
+        "FIELD(DAYNAME(audience.starts_at_utc), 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')",
       );
 
     this.applyFilters(query, filters, 'audience');

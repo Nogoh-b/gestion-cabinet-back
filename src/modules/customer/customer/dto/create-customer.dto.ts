@@ -8,6 +8,7 @@ import {
   IsOptional,
   MaxLength,
   IsEnum,
+  Allow,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -251,6 +252,7 @@ export class CreateCustomerDto {
     ],
   })
   @Expose()
+  @Allow()
   @Transform(({ obj }) => {
     if (!obj.communications) return undefined;
     return obj.communications.map((comm: any) => ({
@@ -287,6 +289,7 @@ export class CreateCustomerDto {
     ],
   })
   @Expose()
+  @Allow()
   @Transform(({ obj }) => {
     if (!obj.documents) return undefined;
     return obj.documents.map((doc: any) => ({
@@ -308,11 +311,13 @@ export class CreateCustomerDto {
   // ---------------- STATISTIQUES AMÉLIORÉES ----------------
   @ApiProperty({ example: 5, description: 'Nombre total de documents' })
   @Expose()
+  @Allow()
   @Transform(({ obj }) => obj.documents?.length || 0)
   document_count: number;
 
   @ApiProperty({ example: 3, description: 'Nombre de communications' })
   @Expose()
+  @Allow()
   @Transform(({ obj }) => obj.communications?.length || 0)
   communication_count: number;
 
@@ -323,6 +328,7 @@ export class CreateCustomerDto {
     required: false,
   })
   @Expose()
+  @Allow()
   civilite?: string; // Vous devrez ajouter ce champ dans l'entité
 
   @ApiProperty({
@@ -337,6 +343,7 @@ export class CreateCustomerDto {
     description: 'Nombre de dossiers en cours',
   })
   @Expose()
+  @Allow()
   @Transform(({ obj }) => {
     if (!obj.dossiers) return 0;
     return obj.dossiers.filter((d: any) => d.status !== 'closed' && d.is_active)
@@ -349,6 +356,7 @@ export class CreateCustomerDto {
     description: "Chiffre d'affaires total",
   })
   @Expose()
+  @Allow()
   @Transform(({ obj }) => obj.total_factures_amount || 0)
   chiffre_affaires: number;
 
@@ -357,6 +365,7 @@ export class CreateCustomerDto {
     description: 'Solde en cours',
   })
   @Expose()
+  @Allow()
   @Transform(({ obj }) => obj.outstanding_balance || 0)
   solde_en_cours: number;
   // Note: public_key and private_key are auto-generated and should not be in DTO

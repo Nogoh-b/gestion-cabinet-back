@@ -28,16 +28,8 @@ import { StageConfig } from './entities/stage-config.entity';
 import { InstanceMapperService } from './services/instance-sub-stage.service';
 import { StageVisit } from './entities/stage-visit.entity';
 import { SubStageVisit } from './entities/sub-stage-visit.entity';
-
-// Write handlers IA
-import { TaskWriteHandler } from './write/task-write.handler';
-import { ProcedureInstanceWriteHandler } from './write/procedure-instance-write.handler';
-import { ProcedureTemplateWriteHandler } from './write/procedure-template-write.handler';
-import { StageWriteHandler } from './write/stage-write.handler';
-import { SubStageWriteHandler } from './write/sub-stage-write.handler';
-import { TransitionWriteHandler } from './write/transition-write.handler';
-import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
-import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { ProcedureRequirementService } from './services/procedure-requirement.service';
+import { ProcedureTaskSubscriber } from './subscribers/procedure-task.subscriber';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { LegacyWorkflowMutationGuard } from './services/legacy-workflow-mutation.guard';
 
@@ -58,7 +50,6 @@ import { LegacyWorkflowMutationGuard } from './services/legacy-workflow-mutation
       Task,
       Dossier,
     ]),
-    AiDatabaseModule,
   ],
   controllers: [
     ProcedureTemplateController,
@@ -72,12 +63,8 @@ import { LegacyWorkflowMutationGuard } from './services/legacy-workflow-mutation
     TaskService,
     HistoryService,
     InstanceMapperService,
-    TaskWriteHandler,
-    ProcedureInstanceWriteHandler,
-    ProcedureTemplateWriteHandler,
-    StageWriteHandler,
-    SubStageWriteHandler,
-    TransitionWriteHandler,
+    ProcedureRequirementService,
+    ProcedureTaskSubscriber,
     LegacyWorkflowMutationGuard,
   ],
   exports: [
@@ -86,26 +73,8 @@ import { LegacyWorkflowMutationGuard } from './services/legacy-workflow-mutation
     WorkflowService,
     TaskService,
     HistoryService,
+    ProcedureRequirementService,
     TypeOrmModule,
   ],
 })
-export class ProcedureModule {
-  constructor(
-    private readonly registry: WriteHandlerRegistry,
-    private readonly taskHandler: TaskWriteHandler,
-    private readonly instanceHandler: ProcedureInstanceWriteHandler,
-    private readonly templateHandler: ProcedureTemplateWriteHandler,
-    private readonly stageHandler: StageWriteHandler,
-    private readonly subStageHandler: SubStageWriteHandler,
-    private readonly transitionHandler: TransitionWriteHandler,
-  ) {}
-
-  onModuleInit() {
-    this.registry.register(this.templateHandler);
-    this.registry.register(this.stageHandler);
-    this.registry.register(this.subStageHandler);
-    this.registry.register(this.transitionHandler);
-    this.registry.register(this.instanceHandler);
-    this.registry.register(this.taskHandler);
-  }
-}
+export class ProcedureModule {}

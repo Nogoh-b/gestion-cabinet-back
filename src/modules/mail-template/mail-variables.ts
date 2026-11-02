@@ -30,18 +30,11 @@ export interface MailVariableGroup {
 
 // ── Labels enums ─────────────────────────────────────────────────────────────
 
-export const DOSSIER_STATUS_LABELS: Record<number, string> = {
-  0: 'Ouvert',
-  1: 'Analyse préliminaire',
-  2: 'Amiable',
-  3: 'Contentieux',
-  4: 'Jugement',
-  5: 'Appel',
-  6: 'Cassation',
-  7: 'Exécution',
-  8: 'Clôturé',
-  9: 'Archivé',
-  10: 'Abandonné',
+export const DOSSIER_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Brouillon',
+  ACTIVE: 'Actif',
+  CLOSED: 'Clôturé',
+  ARCHIVED: 'Archivé',
 };
 
 export const DOSSIER_ACTION_STATUS_LABELS: Record<string, string> = {
@@ -108,7 +101,7 @@ export const MAIL_VARIABLE_GROUPS: MailVariableGroup[] = [
         label: 'Description',
         example: 'Conflit de propriété',
       },
-      { key: 'dossier.statut', label: 'Statut', example: 'Contentieux' },
+      { key: 'dossier.statut', label: 'Statut', example: 'Actif' },
       {
         key: 'dossier.etape',
         label: 'Étape en cours',
@@ -492,7 +485,7 @@ export function buildEntityMailContext(input: {
       objet: d?.object ?? '',
       description: d?.description ?? '',
       statut: DOSSIER_STATUS_LABELS[d?.status] ?? fmt(d?.status),
-      etape: d?.steps_summary?.current_step_title ?? '',
+      etape: d?.procedure_summary?.current_stage_name ?? '',
       date_ouverture: fmt(d?.opening_date),
       juridiction: d?.jurisdiction?.name ?? d?.court_name ?? '',
       partie_adverse: d?.opposing_party_name ?? '',

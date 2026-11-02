@@ -26,7 +26,11 @@ const _storage = new AsyncLocalStorage<TenantStore>();
  * explicite n'a eu lieu.
  */
 export function getCurrentTenantId(): number {
-  return _storage.getStore()?.tenantId ?? 1;
+  const tenantId = _storage.getStore()?.tenantId;
+  if (!tenantId) {
+    throw new Error('Aucun contexte cabinet actif');
+  }
+  return tenantId;
 }
 
 /**
@@ -49,6 +53,14 @@ export function hasActiveTenant(): boolean {
   return _storage.getStore() !== undefined;
 }
 
+/** Exécute une tâche technique (worker, scheduler) dans un cabinet explicite. */
+export function runWithTenantContext<T>(tenantId: number, fn: () => T): T {
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
+    throw new Error('Contexte cabinet technique invalide');
+  }
+  return _storage.run({ tenantId, explicit: true }, fn);
+}
+
 /**
  * TenantContext — stocke le tenantId courant par requête HTTP.
  *
@@ -68,12 +80,15 @@ export class TenantContext {
 
   /**
    * Exécute fn() dans un contexte lié au tenantId donné.
-   * @param tenantId  Identifiant du cabinet.
+   * @param tenantId  Identifiant du cabinet (entier strictement positif).
    * @param fn        Fonction à exécuter dans le contexte.
    * @param explicit  true (défaut) si le tenant a été résolu explicitement
    *                  (JWT, header...). Passer false pour un fallback par défaut.
    */
   run<T>(tenantId: number, fn: () => T, explicit = true): T {
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      throw new Error('Contexte cabinet invalide');
+    }
     return this.storage.run({ tenantId, explicit }, fn);
   }
 
@@ -82,9 +97,13 @@ export class TenantContext {
     return this.storage.run(undefined as any, fn);
   }
 
-  /** Retourne le tenantId du contexte courant (ou 1 par défaut) */
+  /** Retourne le tenantId du contexte courant. Échoue hors contexte. */
   getTenantId(): number {
-    return this.storage.getStore()?.tenantId ?? 1;
+    const tenantId = this.storage.getStore()?.tenantId;
+    if (!tenantId) {
+      throw new Error('Aucun contexte cabinet actif');
+    }
+    return tenantId;
   }
 
   /** Retourne le tenantId seulement s'il est explicitement résolu. */

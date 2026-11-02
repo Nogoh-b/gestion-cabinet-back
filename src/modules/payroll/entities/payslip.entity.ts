@@ -5,6 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { PayrollPeriod } from './payroll-period.entity';
 import {
@@ -14,6 +15,7 @@ import {
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { PayslipLine } from './payslip-line.entity';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
+import { User } from 'src/modules/iam/user/entities/user.entity';
 
 export enum PayslipStatus {
   DRAFT = 'draft',
@@ -21,7 +23,20 @@ export enum PayslipStatus {
   PAID = 'paid',
 }
 
+export enum PayslipPaymentMethod {
+  BANK_TRANSFER = 'bank_transfer',
+  CASH = 'cash',
+  MOBILE_MONEY = 'mobile_money',
+  CHECK = 'check',
+  OTHER = 'other',
+}
+
 @Entity('payslip')
+@Index(
+  'UQ_payslip_tenant_employee_period',
+  ['tenant_id', 'employee_id', 'period_id'],
+  { unique: true },
+)
 @BusinessTable({
   label: 'Fiches de paie',
   description:
@@ -82,7 +97,7 @@ export class Payslip extends TenantEntity {
   })
   period: PayrollPeriod;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2, name: 'gross_amount' })
+  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'gross_amount' })
   @BusinessColumn({
     label: 'Salaire brut',
     description: 'Montant brut avant déductions',
@@ -93,7 +108,7 @@ export class Payslip extends TenantEntity {
   })
   gross_amount: number;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2, name: 'net_amount' })
+  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'net_amount' })
   @BusinessColumn({
     label: 'Net à payer',
     description: 'Montant net après déductions et cotisations',
@@ -113,7 +128,12 @@ export class Payslip extends TenantEntity {
   })
   status: PayslipStatus;
 
-  @Column({ type: 'date', nullable: true, name: 'payment_date' })
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'payment_date',
+  })
   @BusinessColumn({
     label: 'Date de paiement',
     description: 'Date effective du versement du salaire',
@@ -121,7 +141,52 @@ export class Payslip extends TenantEntity {
     importance: 'medium',
     group: 'dates',
   })
-  payment_date: Date;
+  payment_date: Date | null;
+
+  @Column({
+    type: 'enum',
+    enum: PayslipPaymentMethod,
+    nullable: true,
+    name: 'payment_method',
+  })
+  payment_method: PayslipPaymentMethod | null;
+
+  @Column({
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+    name: 'payment_reference',
+  })
+  payment_reference: string | null;
+
+  @Column({ type: 'int', nullable: true, name: 'prepared_by_id' })
+  prepared_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'prepared_by_id' })
+  prepared_by: User | null;
+
+  @Column({ type: 'int', nullable: true, name: 'validated_by_id' })
+  validated_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'validated_by_id' })
+  validated_by: User | null;
+
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'validated_at',
+  })
+  validated_at: Date | null;
+
+  @Column({ type: 'int', nullable: true, name: 'paid_by_id' })
+  paid_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'paid_by_id' })
+  paid_by: User | null;
 
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({
@@ -130,11 +195,11 @@ export class Payslip extends TenantEntity {
     importance: 'low',
     group: 'audit',
   })
-  notes: string;
+  notes: string | null;
 
   @Column({
     type: 'decimal',
-    precision: 12,
+    precision: 18,
     scale: 2,
     nullable: true,
     name: 'total_employer_charges',
@@ -146,7 +211,7 @@ export class Payslip extends TenantEntity {
     importance: 'medium',
     group: 'financier',
   })
-  total_employer_charges: number;
+  total_employer_charges: number | null;
 
   @Column({ type: 'json', nullable: true })
   @BusinessColumn({
@@ -158,6 +223,9 @@ export class Payslip extends TenantEntity {
     ignored: true,
   })
   snapshot: Record<string, any> | null;
+
+  @Column({ type: 'json', nullable: true, name: 'contribution_snapshot' })
+  contribution_snapshot: Array<Record<string, unknown>> | null;
 
   @OneToMany(() => PayslipLine, (line) => line.payslip)
   lines: PayslipLine[];

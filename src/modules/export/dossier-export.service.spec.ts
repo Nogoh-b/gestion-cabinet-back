@@ -9,6 +9,7 @@ import type { ExportDossier, ExportManifest } from './export-format';
 import { InvoiceLine, BillableItem, DossierBillingProfile, DossierBillingRule } from '../case-workflow/entities/billing.entity';
 import { DossierAction, DossierActionDocumentLink } from '../case-workflow/entities/dossier-action.entity';
 import { User } from '../iam/user/entities/user.entity';
+import { runWithTenantContext } from 'src/core/tenant/tenant.context';
 
 // archiver est publié en ESM : remplacé par une archive factice.
 jest.mock('archiver', () => ({ ZipArchive: jest.fn() }));
@@ -111,7 +112,6 @@ function makeService(over: { dossiers?: any[]; findOne?: jest.Mock } = {}) {
     paiementRepo as any,
     audienceRepo as any,
     diligenceRepo as any,
-    repo([]) as any,
     db as any,
     sqlExporter as any,
     store as any,
@@ -253,7 +253,9 @@ describe('DossierExportService two-dossier ZIP', () => {
     const archive = fakeArchive();
     (ZipArchive as unknown as jest.Mock).mockImplementation(() => archive);
 
-    await service.streamZip(fakeRes(), [7, 8], admin as any);
+    await runWithTenantContext(1, () =>
+      service.streamZip(fakeRes(), [7, 8], admin as any),
+    );
     const names = [...archive.files.keys()];
 
     expect(names).toEqual(
@@ -306,7 +308,9 @@ describe('DossierExportService two-dossier ZIP', () => {
     const archive = fakeArchive();
     (ZipArchive as unknown as jest.Mock).mockImplementation(() => archive);
 
-    await service.streamZip(fakeRes(), [7], admin as any);
+    await runWithTenantContext(1, () =>
+      service.streamZip(fakeRes(), [7], admin as any),
+    );
 
     for (const name of ['index.html', 'app.js', 'style.css']) {
       expect(archive.files.get(name)?.length).toBeGreaterThan(0);
@@ -319,7 +323,9 @@ describe('DossierExportService two-dossier ZIP', () => {
     const archive = fakeArchive();
     (ZipArchive as unknown as jest.Mock).mockImplementation(() => archive);
 
-    await service.streamZip(fakeRes(), [7], admin as any);
+    await runWithTenantContext(1, () =>
+      service.streamZip(fakeRes(), [7], admin as any),
+    );
 
     expect([...archive.files.keys()]).toEqual(['README.txt']);
   });
@@ -369,7 +375,9 @@ describe('DossierExportService role scope', () => {
     const { service } = makeService({ findOne });
     findOne.mockClear();
 
-    await service.streamZip(fakeRes(), ids, user as any);
+    await runWithTenantContext(1, () =>
+      service.streamZip(fakeRes(), ids, user as any),
+    );
     const roots = [...new Set([...archive.files.keys()].map((name) => name.split('/')[0]))];
     // data/ et database/ accompagnent tout export non vide.
     if (roots.some((r) => r.startsWith('Dossier_'))) {
@@ -423,7 +431,10 @@ describe('DossierExportService server copy and quota', () => {
       }
     });
     const res = fakeRes();
-    return { ...ctx, archive, res, send: () => ctx.service.streamZip(res, [7], admin as any) };
+    return { ...ctx, archive, res, send: () =>
+      runWithTenantContext(1, () =>
+        ctx.service.streamZip(res, [7], admin as any),
+      ) };
   }
 
   it('keeps the ZIP under the tenant folder, records it and sends it', async () => {

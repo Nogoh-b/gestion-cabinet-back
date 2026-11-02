@@ -1,25 +1,21 @@
 import {
-  Controller,
-  Post,
-  UseGuards,
-  HttpCode,
-  Req,
-  HttpStatus,
-  Request,
-  Get,
+  BadRequestException,
   Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+  Request,
   ValidationPipe,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiBody,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiSecurity,
-} from '@nestjs/swagger'; // Ajouter
+import { Request as ExpressRequest, Response } from 'express';
+import { AuthGuard } from '@nestjs/passport';
+import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger'; // Ajouter
 import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -33,6 +29,14 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import {
+  clearPasswordResetCookie,
+  clearSessionCookies,
+  PASSWORD_RESET_COOKIE,
+  readCookie,
+  setPasswordResetCookie,
+  setSessionCookies,
+} from './session-cookie.util';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -41,28 +45,26 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
-  @UseGuards(AuthGuard('local'))
-  @Post('login')
   @ApiOperation({ summary: 'Authentification utilisateur' })
-  @ApiBody({
+  @ApiBody({ 
     type: LoginUserDto,
-    description: 'Credentials utilisateur',
+    description: 'Credentials utilisateur' 
   })
-  @ApiResponse({
-    status: 200,
+  @ApiResponse({ 
+    status: 200, 
     description: 'Connexion réussie',
-    type: LoginResponseDto,
+    type: LoginResponseDto
   })
-  /*@ApiResponse({ status: 401, description: 'Non autorisé' })
-  async login(@Body() loginUserDto: LoginUserDto) {
-    return this.authService.login(loginUserDto);
-  }*/
   @Public()
   @UseGuards(LocalAuthGuard)
   @Post('login')
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 tentatives / minute
-  async login(@Request() req) {
-    return this.authService.login(req.user);
+  async login(
+    @Request() req,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.login(req.user);
+    return this.attachSession(response, result);
   }
 
   /** 2e étape MFA : vérifie l'OTP de connexion et émet le token. */
@@ -71,8 +73,12 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 vérifications / minute
   @ApiOperation({ summary: 'Vérifier le code de connexion (MFA)' })
-  async verifyMfa(@Body() body: { email: string; otp: string }) {
-    return this.authService.verifyMfa(body?.email, body?.otp);
+  async verifyMfa(
+    @Body() body: { email: string; otp: string },
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.verifyMfa(body?.email, body?.otp);
+    return this.attachSession(response, result);
   }
 
   /** Active la double authentification pour le compte courant. */
@@ -84,13 +90,29 @@ export class AuthController {
     return this.authService.setMfa(req.user.userId ?? req.user.id, true);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('mfa/disable/challenge')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Demander le code de confirmation MFA' })
+  async requestMfaDisable(@Request() req) {
+    return this.authService.requestMfaDisable(
+      req.user.userId ?? req.user.id,
+    );
+  }
+
   /** Désactive la double authentification pour le compte courant. */
   @UseGuards(JwtAuthGuard)
   @Post('mfa/disable')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Désactiver la double authentification' })
-  async disableMfa(@Request() req) {
-    return this.authService.setMfa(req.user.userId ?? req.user.id, false);
+  async disableMfa(
+    @Request() req,
+    @Body() body: { otp: string },
+  ) {
+    return this.authService.disableMfa(
+      req.user.userId ?? req.user.id,
+      body?.otp,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -103,7 +125,7 @@ export class AuthController {
   async getProfile(@Request() req) {
     // req.user.sub est undefined ici : JwtStrategy remmappe payload.sub → id/userId.
     // On utilise req.user.userId (= employee ID) pour relire les permissions en DB.
-    const userId = req.user.userId ?? req.user.id;
+    const userId   = req.user.userId ?? req.user.id;
     const roleCode = req.user.role ?? null; // issu du JWT — évite un SELECT user inutile
     const fresh = await this.authService.getFreshProfile(userId, roleCode);
     return { ...req.user, ...fresh };
@@ -113,30 +135,45 @@ export class AuthController {
   @AllowClient()
   @AllowSuspended()
   @Get('me/permissions')
-  @ApiOperation({
-    summary: "Récupérer les permissions de l'utilisateur connecté",
-  })
+  @ApiOperation({ summary: 'Récupérer les permissions de l\'utilisateur connecté' })
   async getMyPermissions(@Request() req) {
-    const userId = req.user.userId ?? req.user.id;
+    const userId   = req.user.userId ?? req.user.id;
     const roleCode = req.user.role ?? null;
     const fresh = await this.authService.getFreshProfile(userId, roleCode);
     return { permissions: fresh.permissions };
   }
-
+  
   @Public()
   @UseGuards(AuthGuard('refresh'))
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refreshTokens(@Req() req: Request) {
-    // return this.authService.refreshTokens(req.user.sub, req.user.refreshToken);
+  async refreshTokens(
+    @Req() req: ExpressRequest,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const principal = (req as any).user;
+    const tokens = await this.authService.refreshTokens(
+      Number(principal.sub),
+      principal.refreshToken,
+      Number(principal.tenantId),
+    );
+    setSessionCookies(response, tokens);
+    return { authenticated: true };
   }
 
+  @UseGuards(JwtAuthGuard)
   @AllowClient()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async logout(@Req() req: Request) {
-    // await this.authService.logout(req.user.sub);
+  async logout(
+    @Req() req: ExpressRequest,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const principal = (req as any).user;
+    await this.authService.logout(principal.userId ?? principal.id);
+    clearSessionCookies(response);
   }
+
 
   @Public()
   @Post('forgot-password')
@@ -154,8 +191,15 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 vérifications / minute
   @ApiOperation({ summary: 'Vérifier le code OTP' })
   @ApiResponse({ status: 200, description: 'Code vérifié avec succès' })
-  async verifyOTP(@Body() verifyOtpDto: VerifyOtpDto) {
-    return this.authService.verifyOTP(verifyOtpDto);
+  async verifyOTP(
+    @Body() verifyOtpDto: VerifyOtpDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.verifyOTP(verifyOtpDto);
+    if (!result.token) return result;
+    setPasswordResetCookie(response, result.token);
+    const { token: _token, ...body } = result;
+    return body;
   }
 
   @Public()
@@ -164,8 +208,25 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 réinitialisations / minute
   @ApiOperation({ summary: 'Réinitialiser le mot de passe' })
   @ApiResponse({ status: 200, description: 'Mot de passe réinitialisé' })
-  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
-    return this.authService.resetPassword(resetPasswordDto);
+  async resetPassword(
+    @Req() request: ExpressRequest,
+    @Body() resetPasswordDto: ResetPasswordDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const token =
+      readCookie(request, PASSWORD_RESET_COOKIE) ??
+      resetPasswordDto.token;
+    if (!token) {
+      throw new BadRequestException(
+        'Session de réinitialisation absente ou expirée',
+      );
+    }
+    const result = await this.authService.resetPassword({
+      ...resetPasswordDto,
+      token,
+    });
+    clearPasswordResetCookie(response);
+    return this.attachSession(response, result);
   }
 
   /** Changement de mot de passe de l'utilisateur connecté (ancien mot de passe requis). */
@@ -200,7 +261,27 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 créations / minute
   @ApiOperation({ summary: 'Créer le mot de passe (invitation)' })
   @ApiResponse({ status: 200, description: 'Mot de passe créé' })
-  async setPassword(@Body() setPasswordDto: SetPasswordDto) {
-    return this.authService.setPassword(setPasswordDto);
+  async setPassword(
+    @Body() setPasswordDto: SetPasswordDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.setPassword(setPasswordDto);
+    return this.attachSession(response, result);
+  }
+
+  private attachSession(response: Response, result: any) {
+    if (!result?.access_token || !result?.refresh_token) {
+      return result;
+    }
+    setSessionCookies(response, {
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+    });
+    const {
+      refresh_token: _refreshToken,
+      access_token: _accessToken,
+      ...body
+    } = result;
+    return { ...body, authenticated: true };
   }
 }

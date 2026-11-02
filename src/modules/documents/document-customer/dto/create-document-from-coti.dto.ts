@@ -1,16 +1,9 @@
 import { Type } from 'class-transformer';
-import {
-  IsDate,
-  IsOptional,
-  IsEnum,
-  IsInt,
-  IsNotEmpty,
-  IsArray,
-  ArrayNotEmpty,
-  IsString,
-  ValidateNested,
-} from 'class-validator';
+import { IsDate, IsOptional, IsEnum, IsInt, IsNotEmpty, IsArray, ArrayNotEmpty, IsString, ValidateNested } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+
+
+
 
 export class KycSyncItemDto {
   @ApiProperty({ example: 'CUST001' })
@@ -30,16 +23,8 @@ export class KycSyncDto {
   @ApiProperty({
     type: [KycSyncItemDto],
     example: [
-      {
-        code_customer: 'CUST001',
-        personne_id: 97,
-        bank_system_idbank_system: 3,
-      },
-      {
-        code_customer: 'CUST002',
-        personne_id: 102,
-        bank_system_idbank_system: 1,
-      },
+      { code_customer: 'CUST001', personne_id: 97, bank_system_idbank_system: 3 },
+      { code_customer: 'CUST002', personne_id: 102, bank_system_idbank_system: 1 },
     ],
   })
   @IsArray()
@@ -48,6 +33,8 @@ export class KycSyncDto {
   @Type(() => KycSyncItemDto)
   items!: KycSyncItemDto[];
 }
+
+
 
 export enum DocTypeNameOnline {
   FRONT_CNI = 'front_cni',
@@ -70,6 +57,8 @@ export class CreateDocumentFromCotiDto {
   @IsDate()
   date_expired?: Date;
 
+  @IsOptional()
+  @IsInt()
   document_type_id?: number;
 
   @ApiProperty({
@@ -77,5 +66,7 @@ export class CreateDocumentFromCotiDto {
     type: 'string',
     format: 'binary',
   })
+  @IsOptional()
   file?: Express.Multer.File;
 }
+

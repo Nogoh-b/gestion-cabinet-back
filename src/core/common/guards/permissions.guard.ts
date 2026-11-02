@@ -28,6 +28,7 @@ export class PermissionsGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
     const { user } = request;
+    if (!user) return false;
 
     // Les codes plateforme (gestion des cabinets, catalogue des plans) ne sont
     // JAMAIS accordés à un utilisateur de cabinet, même admin ou SUPER_ADMIN :
@@ -40,8 +41,8 @@ export class PermissionsGuard implements CanActivate {
 
     const userPermissionCodes: string[] = Array.isArray(user.permissions)
       ? user.permissions
-      : (await this.userService.getUserPermissions(user.userId)).map(
-          (permission: any) => permission.code,
+      : (await this.userService.getUserPermissions(user.userId ?? user.id)).map(
+          (p: any) => p.code,
         );
     const allowed =
       !requiresPlatform &&

@@ -48,6 +48,8 @@ import { RoleSeeder } from './auth/seeders/role.seeder';
 import { JwtStrategy } from './auth/strategies/jwt.strategy';
 import { LocalStrategy } from './auth/strategies/local.strategy';
 import { AllExceptionsFilter } from './exceptions/all-exceptions.filter';
+import { RefreshStrategy } from './auth/strategies/refresh.strategy';
+import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { databaseConfig } from './config/database.config';
 import { getJwtSecret } from './config/secrets';
@@ -58,7 +60,6 @@ import { CoreNotificationsModule } from './notifications/core-notifications.modu
 import { OtpController } from './shared/controlers/otp.controller';
 import { EmailsModule } from './shared/emails/emails.module';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
-import { QueryLoggingInterceptor } from './shared/interceptors/query-logging.interceptor';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
 import { SignUploadUrlsInterceptor } from './shared/interceptors/sign-upload-urls.interceptor';
 import { EmailService } from './shared/services/email/email.service copy';
@@ -75,6 +76,13 @@ import { TenantRepositoryPatch } from './tenant/tenant-repository.patch';
 import { TenantResolverMiddleware } from './tenant/tenant-resolver.middleware';
 import { TenantContext } from './tenant/tenant.context';
 import { TenantInterceptor } from './tenant/tenant.interceptor';
+import { OutboxModule } from './outbox/outbox.module';
+import { AuditEvent } from './audit/audit-event.entity';
+import { AuditService } from './audit/audit.service';
+import { ResourcePolicyService } from './resource-policy.service';
+import { CookieOriginGuard } from './common/guards/cookie-origin.guard';
+import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { DossierMember } from 'src/modules/dossiers/entities/dossier-member.entity';
 import { RequestUserContext } from './security/request-user.context';
 import { RequestUserInterceptor } from './security/request-user.interceptor';
 import { RestrictedFieldsInterceptor } from './security/restricted-fields.interceptor';
@@ -100,9 +108,22 @@ import { RestrictedFieldsInterceptor } from './security/restricted-fields.interc
       }),
       inject: [ConfigService],
     }),
-    JwtModule.register({
-      secret: getJwtSecret(),
-      signOptions: { expiresIn: '30d' },
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET');
+        if (!secret) {
+          throw new Error('JWT_SECRET est obligatoire');
+        }
+        return {
+          secret,
+          signOptions: {
+            expiresIn: (configService.get<string>('JWT_EXPIRES_IN') ||
+              '1h') as any,
+          },
+        };
+      },
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -121,6 +142,9 @@ import { RestrictedFieldsInterceptor } from './security/restricted-fields.interc
       Customer,
       OtpOnlineLink,
       AuthToken,
+      AuditEvent,
+      Dossier,
+      DossierMember,
       ActivitiesUser,
     ]),
     PassportModule,
@@ -134,11 +158,13 @@ import { RestrictedFieldsInterceptor } from './security/restricted-fields.interc
     AiDatabaseModule,
     PlansModule,
     CoreNotificationsModule,
+    OutboxModule,
   ],
   controllers: [AuthController, OtpController],
   providers: [
     AuthService,
     LocalStrategy,
+    RefreshStrategy,
     PermissionSeeder,
     RoleSeeder,
     JwtStrategy,
@@ -152,9 +178,10 @@ import { RestrictedFieldsInterceptor } from './security/restricted-fields.interc
     ActivitiesUserService,
     PublicGuard,
     { provide: APP_GUARD, useClass: PublicGuard },
+    { provide: APP_GUARD, useClass: CookieOriginGuard },
+    { provide: APP_FILTER, useClass: TypeOrmExceptionFilter },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
-    { provide: 'APP_INTERCEPTOR', useClass: QueryLoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
     { provide: APP_INTERCEPTOR, useClass: SignUploadUrlsInterceptor },
     InitService,
@@ -169,6 +196,8 @@ import { RestrictedFieldsInterceptor } from './security/restricted-fields.interc
     TenantContext,
     TenantRepositoryPatch,
     TenantResolverMiddleware,
+    AuditService,
+    ResourcePolicyService,
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
     RequestUserContext,
     { provide: APP_INTERCEPTOR, useClass: RequestUserInterceptor },
@@ -204,6 +233,8 @@ import { RestrictedFieldsInterceptor } from './security/restricted-fields.interc
     TenantContext,
     RequestUserContext,
     CoreNotificationsModule,
+    AuditService,
+    ResourcePolicyService,
   ],
 })
 export class CoreModule {}

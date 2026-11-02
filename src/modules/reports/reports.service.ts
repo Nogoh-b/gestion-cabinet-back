@@ -22,9 +22,9 @@ import { canBypassConfidentiality } from '../dossiers/dossier-visibility';
 import { getCurrentRequestUser } from 'src/core/security/request-user.context';
 
 /** Statuts de facture « émise » (hors brouillon / annulée). */
-const FACTURE_SENT = [1, 2, 3, 4]; // ENVOYEE, PARTIELLEMENT_PAYEE, PAYEE, IMPAYEE
-/** Statuts de facture « impayée » (reste dû). */
-const FACTURE_UNPAID = [1, 2, 4]; // ENVOYEE, PARTIELLEMENT_PAYEE, IMPAYEE
+const FACTURE_SENT = [1, 2, 3, 6]; // ENVOYEE, PARTIELLEMENT_PAYEE, PAYEE, VALIDEE
+/** Créances validées avec un solde restant ; le retard est calculé. */
+const FACTURE_UNPAID = [2, 6]; // PARTIELLEMENT_PAYEE, VALIDEE
 
 /** Statuts de diligence encore « à traiter » (ni terminée, ni annulée). */
 const DILIGENCE_CLOSED = [

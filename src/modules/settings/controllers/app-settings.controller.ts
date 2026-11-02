@@ -1,4 +1,4 @@
-﻿import {
+import {
   BadRequestException,
   Body,
   Controller,
@@ -16,9 +16,7 @@ import { AllowClient } from 'src/core/decorators/allow-client.decorator';
 import { AppSettingsService } from '../services/app-settings.service';
 import { UserSettingsService } from '../services/user-settings.service';
 import { AppSettingsDto } from '../dto/app-settings.dto';
-import { serializeCabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { SmtpService } from 'src/core/shared/emails/smtp.service';
-import { maskSmtpConfig } from '../smtp-config.util';
 import { Request } from 'express';
 
 function isAdminRequest(req: Request): boolean {
@@ -58,14 +56,13 @@ function assertCanManageSettings(req: Request): void {
  * La configuration SMTP n'est renvoyée qu'à ceux qui gèrent les paramètres,
  * et son mot de passe est toujours masqué.
  */
-function settingsResponse(cabinet: any, includeSmtp: boolean): any {
-  const copy = { ...cabinet };
+function settingsResponse(view: any, includeSmtp: boolean): any {
+  // `view` provient de AppSettingsService.toResponse : la configuration SMTP y
+  // est déjà déchiffrée et réduite à une vue sans mot de passe.
+  const copy = { ...view };
   delete copy.ai_config;
-  if (includeSmtp) {
-    copy.smtp_config = maskSmtpConfig(copy.smtp_config);
-  } else {
-    delete copy.smtp_config;
-  }
+  delete copy.smtp_config_encrypted;
+  if (!includeSmtp) delete copy.smtp_config;
   return copy;
 }
 
@@ -120,15 +117,25 @@ export class AppSettingsController {
     private readonly smtpService: SmtpService,
   ) {}
 
+  /** Cabinet du jeton : aucun repli sur un cabinet par défaut. */
+  private tenantOf(req: Request): number {
+    const cabinetId = Number((req.user as any)?.tenantId);
+    if (!Number.isInteger(cabinetId) || cabinetId <= 0) {
+      throw new BadRequestException('Cabinet authentifié introuvable.');
+    }
+    return cabinetId;
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard)
   @AllowClient()
   @ApiOperation({ summary: 'Récupérer les paramètres du cabinet' })
   async get(@Req() req: Request) {
-    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
+    const cabinetId = this.tenantOf(req);
     const cabinet = await this.appSettingsService.findByCabinet(cabinetId);
-    const settings = serializeCabinet(
-      settingsResponse(cabinet, canManageSettings(req)),
+    const settings = settingsResponse(
+      this.appSettingsService.toResponse(cabinet),
+      canManageSettings(req),
     );
     return isClientUser(req.user) ? clientSettingsResponse(settings) : settings;
   }
@@ -138,7 +145,7 @@ export class AppSettingsController {
   @ApiOperation({ summary: "Mots du dictionnaire du cabinet (correcteur d'orthographe des éditeurs)" })
   async dictionary(@Req() req: Request) {
     if (isClientUser(req.user)) throw new ForbiddenException('Réservé aux membres du cabinet');
-    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
+    const cabinetId = this.tenantOf(req);
     return { words: await this.appSettingsService.dictionary(cabinetId) };
   }
 
@@ -150,7 +157,7 @@ export class AppSettingsController {
     if (isClientUser(req.user)) throw new ForbiddenException('Réservé aux membres du cabinet');
     const words = [...(Array.isArray(body?.words) ? body.words : []), ...(body?.word ? [body.word] : [])].slice(0, 100);
     if (!words.length) throw new BadRequestException('Aucun mot à ajouter');
-    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
+    const cabinetId = this.tenantOf(req);
     return { words: await this.appSettingsService.addDictionaryWords(cabinetId, words) };
   }
 
@@ -159,14 +166,14 @@ export class AppSettingsController {
   @ApiOperation({ summary: 'Mettre à jour les paramètres du cabinet' })
   async update(@Req() req: Request, @Body() dto: AppSettingsDto) {
     assertCanManageSettings(req);
-    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
+    const cabinetId = this.tenantOf(req);
     if (dto.ai_config !== undefined) {
       throw new BadRequestException(
         'La configuration IA est geree par la console plateforme (module Intelligence artificielle)',
       );
     }
     const updated = await this.appSettingsService.update(cabinetId, dto);
-    return serializeCabinet(settingsResponse(updated, true));
+    return settingsResponse(this.appSettingsService.toResponse(updated), true);
   }
 
   @Post('apply-appearance')
@@ -176,7 +183,7 @@ export class AppSettingsController {
   })
   async applyAppearance(@Req() req: Request) {
     assertCanManageSettings(req);
-    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
+    const cabinetId = this.tenantOf(req);
     const updated =
       await this.userSettingsService.applyCabinetAppearanceToMembers(cabinetId);
     return { updated };
@@ -187,9 +194,9 @@ export class AppSettingsController {
   @ApiOperation({ summary: 'Réinitialiser les paramètres du cabinet' })
   async reset(@Req() req: Request) {
     assertCanManageSettings(req);
-    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
+    const cabinetId = this.tenantOf(req);
     const reset = await this.appSettingsService.reset(cabinetId);
-    return serializeCabinet(settingsResponse(reset, true));
+    return settingsResponse(this.appSettingsService.toResponse(reset), true);
   }
 
   @Post('smtp/test')
@@ -199,7 +206,7 @@ export class AppSettingsController {
   })
   async testSmtp(@Req() req: Request, @Body() body: { to?: string }) {
     assertCanManageSettings(req);
-    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
+    const cabinetId = this.tenantOf(req);
     const to = body?.to || (req.user as any)?.email;
     return this.smtpService.sendTest(cabinetId, to);
   }

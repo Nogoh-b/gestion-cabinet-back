@@ -2,11 +2,15 @@ import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 import { Supplier } from './entities/supplier.entity';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { Branch } from '../agencies/branch/entities/branch.entity';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 @Injectable()
 export class SuppliersService extends BaseServiceV1<Supplier> {
@@ -23,28 +27,36 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
   /** Sans cela, la recherche visait `name` (absent de l'entité) et répondait 500. */
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      searchFields: ['company_name', 'contact_name', 'email', 'phone', 'supplier_code'],
+      searchFields: [
+        'company_name',
+        'contact_name',
+        'email',
+        'phone',
+        'supplier_code',
+      ],
       exactMatchFields: ['id', 'status', 'category'],
       dateRangeFields: ['created_at', 'updated_at'],
     };
   }
 
   async create(dto: CreateSupplierDto): Promise<Supplier> {
+    const tenantId = getCurrentTenantId();
     const entity = this.repository.create(dto);
     if (dto.branch_id) {
       const branch = await this.branchRepo.findOne({
-        where: { id: dto.branch_id },
+        where: { id: dto.branch_id, tenant_id: tenantId },
       });
       if (!branch) throw new NotFoundException('Agence non trouvée');
       entity.branch = branch;
     }
+    entity.tenant_id = tenantId;
     entity.supplier_code = await this.generateSupplierCode();
     return this.saveWithUniqueSupplierCode(entity);
   }
 
   findAll(): Promise<Supplier[]> {
     return this.repository.find({
-      where: { status: true },
+      where: { status: true, tenant_id: getCurrentTenantId() },
       relations: ['branch'],
       order: { company_name: 'ASC' },
     });
@@ -52,7 +64,7 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
 
   async findOne(id: number): Promise<Supplier> {
     const supplier = await this.repository.findOne({
-      where: { id },
+      where: { id, tenant_id: getCurrentTenantId() },
       relations: ['branch', 'invoices'],
     });
     if (!supplier) throw new NotFoundException('Fournisseur non trouvé');
@@ -63,7 +75,7 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
     const supplier = await this.findOne(id);
     if (dto.branch_id) {
       const branch = await this.branchRepo.findOne({
-        where: { id: dto.branch_id },
+        where: { id: dto.branch_id, tenant_id: getCurrentTenantId() },
       });
       if (!branch) throw new NotFoundException('Agence non trouvée');
       supplier.branch = branch;
@@ -72,14 +84,18 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
   }
 
   async remove(id: number): Promise<void> {
-    await this.repository.delete(id);
+    const supplier = await this.findOne(id);
+    supplier.status = false;
+    await this.repository.save(supplier);
   }
 
   private async generateSupplierCode(): Promise<string> {
+    const tenantId = getCurrentTenantId();
     const last = await this.repository
       .createQueryBuilder('supplier')
       .withDeleted()
       .where('supplier.supplier_code LIKE :prefix', { prefix: 'SUP-%' })
+      .andWhere('supplier.tenant_id = :tenantId', { tenantId })
       .orderBy('supplier.supplier_code', 'DESC')
       .getOne();
 
@@ -89,7 +105,7 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const supplier_code = `SUP-${String(sequence).padStart(3, '0')}`;
       const exists = await this.repository.findOne({
-        where: { supplier_code },
+        where: { supplier_code, tenant_id: tenantId },
         withDeleted: true,
       });
       if (!exists) return supplier_code;

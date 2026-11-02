@@ -1,4 +1,5 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import { runWithTenantContext } from 'src/core/tenant/tenant.context';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
   applyAudienceStatusChange,
@@ -31,11 +32,14 @@ function managerWith(found: Audience | null) {
   return { manager: manager as any, repository };
 }
 
+const inTenant = <T>(fn: () => Promise<T>): Promise<T> =>
+  runWithTenantContext(1, fn);
+
 describe('startAudienceWithManager', () => {
   it('passe SCHEDULED → IN_PROGRESS et horodate started_at', async () => {
     const { manager, repository } = managerWith(audience());
 
-    const saved = await startAudienceWithManager(manager, 7, {}, NOW);
+    const saved = await inTenant(() => startAudienceWithManager(manager, 7, {}, NOW));
 
     expect(saved.status).toBe(AudienceStatus.IN_PROGRESS);
     expect(saved.started_at).toEqual(NOW);
@@ -46,7 +50,9 @@ describe('startAudienceWithManager', () => {
   it('refuse une audience introuvable (autre cabinet ou hors portée)', async () => {
     const { manager } = managerWith(null);
 
-    await expect(startAudienceWithManager(manager, 7, {}, NOW)).rejects.toThrow(
+    await expect(
+      inTenant(() => startAudienceWithManager(manager, 7, {}, NOW)),
+    ).rejects.toThrow(
       NotFoundException,
     );
   });
@@ -54,7 +60,9 @@ describe('startAudienceWithManager', () => {
   it('borne la recherche au dossier de l’avocat', async () => {
     const { manager, repository } = managerWith(audience());
 
-    await startAudienceWithManager(manager, 7, { lawyer: { id: 3 } }, NOW);
+    await inTenant(() =>
+    startAudienceWithManager(manager, 7, { lawyer: { id: 3 } }, NOW),
+  );
 
     expect(repository.findOne).toHaveBeenCalledWith({
       where: { id: 7, tenant_id: 1, dossier: { lawyer: { id: 3 } } },
@@ -68,7 +76,9 @@ describe('startAudienceWithManager', () => {
   ])('refuse de démarrer une audience au statut %s', async (status) => {
     const { manager, repository } = managerWith(audience({ status }));
 
-    await expect(startAudienceWithManager(manager, 7, {}, NOW)).rejects.toThrow(
+    await expect(
+      inTenant(() => startAudienceWithManager(manager, 7, {}, NOW)),
+    ).rejects.toThrow(
       BadRequestException,
     );
     expect(repository.save).not.toHaveBeenCalled();
@@ -79,7 +89,9 @@ describe('startAudienceWithManager', () => {
       audience({ status: AudienceStatus.IN_PROGRESS }),
     );
 
-    await expect(startAudienceWithManager(manager, 7, {}, NOW)).rejects.toThrow(
+    await expect(
+      inTenant(() => startAudienceWithManager(manager, 7, {}, NOW)),
+    ).rejects.toThrow(
       /déjà en cours/,
     );
   });
@@ -89,7 +101,7 @@ describe('startAudienceWithManager', () => {
       audience({ audience_date: '2026-10-29' as any }),
     );
 
-    const saved = await startAudienceWithManager(manager, 7, {}, NOW);
+    const saved = await inTenant(() => startAudienceWithManager(manager, 7, {}, NOW));
 
     expect(saved.status).toBe(AudienceStatus.IN_PROGRESS);
   });
@@ -99,7 +111,7 @@ describe('startAudienceWithManager', () => {
       audience({ audience_date: '2026-10-20' as any }),
     );
 
-    const saved = await startAudienceWithManager(manager, 7, {}, NOW);
+    const saved = await inTenant(() => startAudienceWithManager(manager, 7, {}, NOW));
 
     expect(saved.status).toBe(AudienceStatus.IN_PROGRESS);
   });
@@ -112,7 +124,7 @@ describe('finishAudienceWithManager', () => {
       audience({ status: AudienceStatus.IN_PROGRESS, started_at: started }),
     );
 
-    const saved = await finishAudienceWithManager(manager, 7, {}, NOW);
+    const saved = await inTenant(() => finishAudienceWithManager(manager, 7, {}, NOW));
 
     expect(saved.status).toBe(AudienceStatus.HELD);
     expect(saved.started_at).toEqual(started);
@@ -123,7 +135,7 @@ describe('finishAudienceWithManager', () => {
     const { manager, repository } = managerWith(audience());
 
     await expect(
-      finishAudienceWithManager(manager, 7, {}, NOW),
+      inTenant(() => finishAudienceWithManager(manager, 7, {}, NOW)),
     ).rejects.toThrow(/en cours/);
     expect(repository.save).not.toHaveBeenCalled();
   });

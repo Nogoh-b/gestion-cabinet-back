@@ -127,7 +127,7 @@ import {
   UPDATE_TARGET_FIELD,
 } from './write/ambiguity.exception';
 import { parseValueList } from './write/plan-field-options';
-import { applyDossierNumberChoice } from '../../modules/dossiers/dossier-write.handler';
+import { applyDossierNumberChoice } from '../../modules/dossiers/dossier-number-choice';
 import { BaseWriteHandler } from './write/base-write-handler';
 import { outerJoinRetry } from './outer-join-fallback';
 import { extractPdfText } from './pdf-text';
@@ -1054,7 +1054,7 @@ export class AiDatabaseService implements OnModuleInit {
    */
   public async preloadSystemPrompt(): Promise<any> {
     this.logger.log('🔄 Préchargement du prompt système...');
-    const allTables = this.schemaMetadata.getAllVisibleTables();
+    const allTables = this.getAiVisibleTables();
     const schema = await this.getCompleteSchema(allTables);
 
     this.cachedSystemPrompt = `Tu es un expert SQL pour une base de données juridique.
@@ -1082,6 +1082,17 @@ export class AiDatabaseService implements OnModuleInit {
     this.schemaLoaded = true;
     return this.cachedSystemPrompt;
     // this.logger.log(`✅ Prompt système préchargé (${this.cachedSystemPrompt.length} caractères)`);
+  }
+
+  /**
+   * Liste publique des seules tables pouvant entrer dans le contexte de l'IA.
+   * Les tables IAM, secrets, audit, outbox et conversations sont exclues ici,
+   * avant meme la construction du schema ou du prompt.
+   */
+  public getAiVisibleTables(): string[] {
+    return this.aiPermissionService.filterAllowedTables(
+      this.schemaMetadata.getAllVisibleTables(),
+    );
   }
 
   /**
@@ -1372,9 +1383,7 @@ export class AiDatabaseService implements OnModuleInit {
     }
 
     const content = await this.resolveSqlResponse(messages, draft);
-    this.logger.log(
-      `Reponse SQL brute (200 chars): ${content.substring(0, 200)}`,
-    );
+    this.logger.debug('Reponse de generation SQL recue');
 
     let sqlQuery = this.extractSQL(content) || this.extractSQLRelaxed(content);
 
@@ -1386,20 +1395,15 @@ export class AiDatabaseService implements OnModuleInit {
 
     if (sqlQuery) {
       const normalizedLower = sqlQuery.toLowerCase().trim();
-      if (
-        !normalizedLower.startsWith('select') &&
-        !normalizedLower.includes('--')
-      ) {
-        this.logger.error(
-          `Requete non SELECT detectee: ${sqlQuery.substring(0, 100)}`,
-        );
+      if (!normalizedLower.startsWith('select') && !normalizedLower.includes('--')) {
+        this.logger.error('Requete IA non SELECT refusee');
         sqlQuery = '';
       }
     }
 
     if (!sqlQuery) {
       sqlQuery = this.generateFallbackQuery(question);
-      this.logger.warn(`Fallback SQL final utilise: ${sqlQuery}`);
+      this.logger.warn('Fallback SQL de lecture utilise');
     }
 
     // Normaliser les fonctions de date (CURDATE→CURDATE(), NOW→NOW(), etc.) dès la
@@ -1484,7 +1488,7 @@ ${schema}`;
 
     const userLine = renderSqlUserLine(this.metricsStorage?.getStore()?.userProfile);
     if (userLine) prompt = `${prompt}\n\n${userLine}`;
-    if (!tenantId || tenantId === 1) return prompt;
+    if (!tenantId) return prompt;
 
     return `${prompt}
 
@@ -1599,9 +1603,7 @@ ${rules}`;
         .replace(/[̀-ͯ]/g, '');
       for (const { regex, label } of entityRegexes) {
         if (regex.test(content)) {
-          this.logger.log(
-            `🔗 Follow-up résolu: "${question}" → entité "${label}" depuis l'historique`,
-          );
+          this.logger.log(`Contexte de suivi resolu pour le domaine ${label}`);
           return `[Contexte: la question porte sur les ${label}s mentionné(e)s précédemment] ${question}`;
         }
       }
@@ -4975,7 +4977,7 @@ ${lines.join('\n')}
     const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
     const params: any[] = [question];
     let tenantClause = '';
-    if (tenantId && tenantId !== 1) {
+    if (tenantId) {
       tenantClause = ' AND tenant_id = ?';
       params.push(tenantId);
     }
@@ -8475,7 +8477,7 @@ RÉPONSE (en français courant, langage métier):`;
         question,
         tables,
       );
-      this.logger.debug(`📤 token (no-results): "${msg.substring(0, 60)}"`);
+      this.logger.debug('Reponse sans resultat transmise');
       sendEvent('token', { text: msg });
       if (suggestions.length) sendEvent('suggestions', { suggestions });
       return msg;
@@ -8531,9 +8533,7 @@ RÉPONSE (en langage naturel):`;
           fullText += text;
           tokenCount++;
           if (tokenCount <= 3 || tokenCount % 10 === 0) {
-            this.logger.debug(
-              `🔤 [STREAM] token #${tokenCount}: "${text.replace(/\n/g, '\\n').substring(0, 30)}"`,
-            );
+            this.logger.debug(`[STREAM] token #${tokenCount}`);
           }
           this.recordOutput(text, true);
           sendEvent('token', { text });
@@ -8562,9 +8562,7 @@ RÉPONSE (en langage naturel):`;
         question,
         businessResults,
       );
-      this.logger.warn(
-        `⚠️ [STREAM] Analyse vide — fallback construit: ${fullText.substring(0, 80)}`,
-      );
+      this.logger.warn('[STREAM] Analyse vide - fallback construit');
       sendEvent('token', { text: fullText });
     }
 
@@ -8690,7 +8688,7 @@ RÉPONSE (en langage naturel):`;
       }
       if (!sql) {
         this.logger.warn(
-          `🧩 [DECOMP] "${sub.title}" → pas de SQL généré. Extrait réponse: ${content.replace(/\n/g, ' ').substring(0, 200)}`,
+          `[DECOMP] ${sub.title} - aucune requete de lecture generee`,
         );
         return null;
       }
@@ -9268,8 +9266,9 @@ ${legalContext}`
     };
 
     if (normalizedSpecificTables && normalizedSpecificTables.length > 0) {
-      const validTables = normalizedSpecificTables.filter((table) =>
-        this.schemaMetadata.hasTableMetadata(table),
+      const validTables = normalizedSpecificTables.filter(table =>
+        this.schemaMetadata.hasTableMetadata(table) &&
+        this.aiPermissionService.isTableAllowed(table)
       );
 
       if (validTables.length === 0) {
@@ -9278,8 +9277,10 @@ ${legalContext}`
         );
         return remember(this.getDefaultVisibleTables());
       }
-
-      return remember(this.expandWithRelatedTables(validTables));
+      
+      return remember(this.aiPermissionService.filterAllowedTables(
+        this.expandWithRelatedTables(validTables),
+      ));
     }
 
     const referenceTables = this.getReferenceTableHints(references);
@@ -9292,7 +9293,7 @@ ${legalContext}`
     const keywords = normalizedQuestion
       .split(/\s+/)
       .filter((k) => k.length >= 3 && !KEYWORD_STOPWORDS.has(k));
-    const visibleTables = this.schemaMetadata.getAllVisibleTables();
+    const visibleTables = this.getAiVisibleTables();
     const keywordStems = keywords.map((k) => this.stemKeyword(k));
     const keywordSquashed = keywordStems.map(squashRepeatedLetters);
     const effectiveTablesConfig =
@@ -9412,7 +9413,9 @@ ${legalContext}`
 
     if (referenceTables.length > 0) {
       const combined = [...new Set([...referenceTables, ...detectedTables])];
-      const expanded = this.expandWithRelatedTables(combined, 12);
+      const expanded = this.aiPermissionService.filterAllowedTables(
+        this.expandWithRelatedTables(combined, 12),
+      );
       this.logger.log(
         `Tables contraintes par references: ${expanded.join(', ')}`,
       );
@@ -9423,7 +9426,9 @@ ${legalContext}`
       return remember(this.getDefaultVisibleTables());
     }
 
-    return remember(this.expandWithRelatedTables(detectedTables));
+    return remember(this.aiPermissionService.filterAllowedTables(
+      this.expandWithRelatedTables(detectedTables),
+    ));
   }
 
   /**
@@ -9750,13 +9755,14 @@ ${facts.slice(0, 9000)}`
       role: ['user_role', 'role_permission', 'permission'],
     };
 
-    return [
-      ...new Set(
-        references
-          .flatMap((ref) => byType[String(ref.type ?? '').toLowerCase()] ?? [])
-          .filter((table) => this.schemaMetadata.hasTableMetadata(table)),
-      ),
-    ];
+    return [...new Set(
+      references
+        .flatMap(ref => byType[String(ref.type ?? '').toLowerCase()] ?? [])
+        .filter(table =>
+          this.schemaMetadata.hasTableMetadata(table) &&
+          this.aiPermissionService.isTableAllowed(table)
+        ),
+    )];
   }
 
   /**
@@ -9786,7 +9792,11 @@ ${facts.slice(0, 9000)}`
       if (!rel?.foreignKeys) continue;
       for (const fk of rel.foreignKeys) {
         const ref = fk.referencedTable;
-        if (ref && this.schemaMetadata.hasTableMetadata(ref)) out.add(ref);
+        if (
+          ref &&
+          this.schemaMetadata.hasTableMetadata(ref) &&
+          this.aiPermissionService.isTableAllowed(ref)
+        ) out.add(ref);
         if (out.size >= max) break;
       }
       if (out.size >= max) break;
@@ -9808,7 +9818,11 @@ ${facts.slice(0, 9000)}`
             fk?.referencedTable &&
             targets.has(String(fk.referencedTable).toLowerCase()),
         );
-        if (pointsToTarget && this.schemaMetadata.hasTableMetadata(child)) {
+        if (
+          pointsToTarget &&
+          this.schemaMetadata.hasTableMetadata(child) &&
+          this.aiPermissionService.isTableAllowed(child)
+        ) {
           out.add(child);
           if (out.size >= max) break;
         }
@@ -9822,7 +9836,7 @@ ${facts.slice(0, 9000)}`
    * Retourne la liste des tables visibles par défaut
    */
   private getDefaultVisibleTables(): string[] {
-    const allVisible = this.schemaMetadata.getAllVisibleTables();
+    const allVisible = this.getAiVisibleTables();
     // Retourner les 10 premières tables visibles
     return allVisible.slice(0, 10);
   }
@@ -9832,18 +9846,18 @@ ${facts.slice(0, 9000)}`
    */
   private async getCompleteSchema(tables: string[]): Promise<string> {
     // ✅ Filtrer pour ne garder que les tables avec métadonnées
-    const validTables = tables.filter((table) =>
-      this.schemaMetadata.hasTableMetadata(table),
-    );
-
+    const validTables = this.aiPermissionService.filterAllowedTables(tables)
+      .filter(table => this.schemaMetadata.hasTableMetadata(table));
+    
     if (validTables.length === 0) {
       this.logger.warn(
         `⚠️ Aucune table valide trouvée, utilisation des tables par défaut visibles`,
       );
       return this.getDefaultSchema();
     }
-
-    const cacheKey = validTables.sort().join(',');
+    
+    const tenantCacheScope = hasActiveTenant() ? getCurrentTenantId() : 'none';
+    const cacheKey = `${tenantCacheScope}:${validTables.sort().join(',')}`;
     const cached = this.schemaCache.get(cacheKey);
     const now = Date.now();
 
@@ -9892,7 +9906,7 @@ ${facts.slice(0, 9000)}`
    * Génère un schéma par défaut avec les tables visibles
    */
   private async getDefaultSchema(): Promise<string> {
-    const visibleTables = this.schemaMetadata.getAllVisibleTables();
+    const visibleTables = this.getAiVisibleTables();
     if (visibleTables.length === 0) {
       return '# Aucune table configurée\n\nVeuillez configurer les décorateurs BusinessTable sur vos entités.';
     }
@@ -9959,12 +9973,15 @@ ${facts.slice(0, 9000)}`
         meta = columnMetadata.get(col.COLUMN_NAME);
       }
       // Si la colonne a ignored=true, on l'exclut
-      return !meta?.ignored;
+      return !meta?.ignored && this.aiPermissionService.isColumnAllowed(col.COLUMN_NAME);
     });
 
     const foreignKeys = new Map<string, string>();
     for (const fk of relationships?.foreignKeys ?? []) {
-      if (!includedTables || includedTables.has(fk.referencedTable)) {
+      if (
+        (!includedTables || includedTables.has(fk.referencedTable)) &&
+        this.aiPermissionService.isTableAllowed(fk.referencedTable)
+      ) {
         foreignKeys.set(
           fk.column,
           `${fk.referencedTable}.${fk.referencedColumn}`,
@@ -10118,14 +10135,9 @@ ${facts.slice(0, 9000)}`
     // Compter les lignes
     let rowCount = 0;
     try {
-      const countResult = await this.dataSource.query(
-        `SELECT COUNT(*) as count FROM ${table}`,
-      );
-      rowCount = parseInt(countResult[0]?.count || '0');
-    } catch {
-      /* ignore */
-    }
-
+      rowCount = await this.countRowsForActiveTenant(table);
+    } catch { /* ignore */ }
+    
     const columnsSchema: ColumnSchema[] = [];
     const primaryKeys: string[] = [];
     const foreignKeysList: {
@@ -10136,7 +10148,10 @@ ${facts.slice(0, 9000)}`
     for (const col of columns) {
       // ✅ Vérifier si la colonne doit être ignorée
       const columnMeta = columnMetadataMap?.get(col.COLUMN_NAME);
-      if (columnMeta?.ignored === true) {
+      if (
+        columnMeta?.ignored === true ||
+        !this.aiPermissionService.isColumnAllowed(col.COLUMN_NAME)
+      ) {
         continue; // Ignorer cette colonne
       }
 
@@ -10190,7 +10205,11 @@ ${facts.slice(0, 9000)}`
         const fk = relationships.foreignKeys.find(
           (f: any) => f.column === col.COLUMN_NAME,
         );
-        if (fk && this.schemaMetadata.hasTableMetadata(fk.referencedTable)) {
+        if (
+          fk &&
+          this.schemaMetadata.hasTableMetadata(fk.referencedTable) &&
+          this.aiPermissionService.isTableAllowed(fk.referencedTable)
+        ) {
           isForeignKey = true;
           foreignKeyTo = {
             table: fk.referencedTable,
@@ -10235,7 +10254,9 @@ ${facts.slice(0, 9000)}`
   ): Promise<DatabaseSchema> {
     // Cache (TTL = CACHE_TTL) : getTableInfoJson déclenche COUNT(*) + information_schema
     // par table — coûteux à régénérer. Clé = liste de tables triée.
-    const cacheKey = [...tables].sort().join(',');
+    const allowedTables = this.aiPermissionService.filterAllowedTables(tables);
+    const tenantCacheScope = hasActiveTenant() ? getCurrentTenantId() : 'none';
+    const cacheKey = `${tenantCacheScope}:${[...allowedTables].sort().join(',')}`;
     const cachedJson = this.schemaJsonCache.get(cacheKey);
     if (cachedJson && Date.now() - cachedJson.timestamp < this.CACHE_TTL) {
       return cachedJson.value;
@@ -10243,12 +10264,9 @@ ${facts.slice(0, 9000)}`
 
     const relationships = this.relationshipsCache.get('all') || {};
     const resultTables: TableSchema[] = [];
-    const allRelationships: {
-      from: { table: string; column: string };
-      to: { table: string; column: string };
-    }[] = [];
-
-    for (const table of tables) {
+    const allRelationships: { from: { table: string; column: string }; to: { table: string; column: string } }[] = [];
+    
+    for (const table of allowedTables) {
       // ✅ Vérifier si la table n'est pas ignorée
       const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(table);
       this.logger.debug(`⏭️ Table (JSON): ${tableMeta}`);
@@ -10530,6 +10548,40 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
   }
 
   /**
+   * Compte les lignes sans jamais traverser la frontiere du cabinet actif.
+   * En dehors d'un contexte tenant, les tables metier retournent volontairement
+   * zero : le demarrage ne doit pas produire de metrique globale.
+   */
+  private async countRowsForActiveTenant(table: string): Promise<number> {
+    const normalized = String(table ?? '').trim().toLowerCase();
+    if (!/^[a-z_][a-z0-9_]*$/.test(normalized)) return 0;
+
+    const metadata = this.dataSource.entityMetadatas.find(
+      item => item.tableName?.toLowerCase() === normalized,
+    );
+    if (!metadata) return 0;
+
+    const tenantAware = this.getTenantTables().has(normalized);
+    let sql = `SELECT COUNT(*) as count FROM \`${normalized}\``;
+    let parameters: unknown[] = [];
+
+    if (tenantAware) {
+      if (!hasActiveTenant()) return 0;
+      const tenantId = getCurrentTenantId();
+      if (this.getSharedTenantTables().has(normalized) && tenantId !== 1) {
+        sql += ' WHERE tenant_id IN (1, ?)';
+      } else {
+        sql += ' WHERE tenant_id = ?';
+      }
+      parameters = [tenantId];
+    }
+
+    const result = await this.dataSource.query(sql, parameters);
+    const count = Number.parseInt(String(result?.[0]?.count ?? '0'), 10);
+    return Number.isFinite(count) ? count : 0;
+  }
+
+  /**
    * Sous-ensemble des tables tenant marquées @SharedAcrossTenants (référentiels
    * globaux seedés avec tenant_id = 1). En lecture, elles doivent être filtrées
    * par `tenant_id IN (1, X)` — comme le fait déjà TenantRepositoryPatch — sinon
@@ -10592,7 +10644,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
    */
   private buildTenantAwareSystemPrompt(tenantId: number | null): string {
     const base = this.cachedSystemPrompt ?? '';
-    if (!tenantId || tenantId === 1) return base;
+    if (!tenantId) return base;
 
     const tenantRule = `
     ⚠️ RÈGLE TENANT OBLIGATOIRE (ne jamais ignorer) :
@@ -10952,11 +11004,10 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
         rowCount: limitedResults.length,
       };
     } catch (error) {
-      const dbMessage = (error as unknown as any).message;
       this.logger.error(
-        `Erreur SQL après préparation: ${dbMessage}\nQuery:\n${execQuery}`,
+        'Echec d execution de la requete de lecture IA',
       );
-      throw new Error(`Erreur d'exécution: ${dbMessage}\nSQL: ${execQuery}`);
+      throw new Error("Erreur d'execution de la requete de lecture");
     }
   }
 
@@ -11001,12 +11052,13 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
       await this.dataSource.query(`EXPLAIN ${preparedQuery}`);
       return { valid: true };
     } catch (error) {
-      const dbMessage = (error as unknown as any).message;
-      const preparedQuery = this.prepareReadQuery(sqlQuery);
       this.logger.warn(
-        `Validation SQL invalide: ${dbMessage}\nQuery:\n${preparedQuery}`,
+        'Validation de la requete de lecture IA invalide',
       );
-      return { valid: false, error: `${dbMessage}\nSQL: ${preparedQuery}` };
+      return {
+        valid: false,
+        error: 'Requete de lecture invalide',
+      };
     }
   }
 
@@ -11038,19 +11090,14 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
         : 0,
       lastAnalyzed: new Date(),
     };
-
-    const effectiveTablesConfig =
-      this.projectConfig?.databaseTablesConfig ?? DatabaseTablesConfig;
-    const tables = (
-      effectiveTablesConfig.essentialTables ??
-      DatabaseTablesConfig.essentialTables
+    
+    const effectiveTablesConfig = this.projectConfig?.databaseTablesConfig ?? DatabaseTablesConfig;
+    const tables = this.aiPermissionService.filterAllowedTables(
+      effectiveTablesConfig.essentialTables ?? DatabaseTablesConfig.essentialTables,
     ).slice(0, 10);
     for (const table of tables) {
       try {
-        const result = await this.dataSource.query(
-          `SELECT COUNT(*) as count FROM ${table}`,
-        );
-        metrics.rowCounts[table] = parseInt(result[0]?.count || '0');
+        metrics.rowCounts[table] = await this.countRowsForActiveTenant(table);
       } catch (error) {
         // Ignorer
       }
@@ -11081,7 +11128,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
       tablesToUse = await this.detectRelevantTables(question, specificTables);
     } else {
       // Sinon, utiliser les tables visibles (cellesfgetTableInfoJson avec métadonnées)
-      tablesToUse = this.schemaMetadata.getAllVisibleTables();
+      tablesToUse = this.getAiVisibleTables();
     }
 
     this.logger.log(
@@ -11109,6 +11156,9 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
           // Ajouter les relations
           if (relationships[table]?.foreignKeys) {
             for (const fk of relationships[table].foreignKeys) {
+              if (!this.aiPermissionService.isTableAllowed(fk.referencedTable)) {
+                continue;
+              }
               result.relationships.push({
                 from: { table, column: fk.column },
                 to: { table: fk.referencedTable, column: fk.referencedColumn },

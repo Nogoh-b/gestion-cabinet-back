@@ -10,6 +10,7 @@ import {
   Put,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
@@ -21,8 +22,9 @@ import { ProcedureTemplateService } from '../services/procedure-template.service
 
 @ApiBearerAuth()
 @ApiTags('procedure-templates')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('procedure-templates')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions('manage_procedure_templates')
 export class ProcedureTemplateController {
   constructor(private readonly templateService: ProcedureTemplateService) {}
 
@@ -34,12 +36,25 @@ export class ProcedureTemplateController {
 
   @Get()
   @RequirePermissions('view_dossiers')
-  async findAll(@Query('activeOnly') activeOnly?: string) {
-    const activeFilter =
-      activeOnly === undefined
-        ? undefined
-        : ['true', '1', 'yes'].includes(String(activeOnly).toLowerCase());
-    return this.templateService.findAll(activeFilter);
+  async findAll(
+    @Query('activeOnly') activeOnly?: string,
+    @Query('procedure_type_id') procedureTypeId?: string,
+  ) {
+    if (procedureTypeId !== undefined) {
+      const parsedProcedureTypeId = Number(procedureTypeId);
+      if (
+        !Number.isInteger(parsedProcedureTypeId) ||
+        parsedProcedureTypeId < 1
+      ) {
+        throw new BadRequestException(
+          'procedure_type_id doit être un entier positif',
+        );
+      }
+      return this.templateService.findByProcedureTypeId(parsedProcedureTypeId);
+    }
+    return this.templateService.findAll(
+      activeOnly === undefined ? undefined : activeOnly === 'true',
+    );
   }
 
   @Get(':id')
@@ -57,19 +72,20 @@ export class ProcedureTemplateController {
     return this.templateService.update(id, dto);
   }
 
-  @Patch(':id/toggle-active')
-  @RequirePermissions('manage_settings')
-  async toggleActive(
-    @Param('id') id: string,
-    @Body('isActive') isActive: boolean,
-  ) {
-    return this.templateService.toggleActive(id, isActive);
-  }
-
   @Post(':id/duplicate')
   @RequirePermissions('manage_settings')
   async duplicate(@Param('id') id: string, @Body('name') name: string) {
     return this.templateService.duplicate(id, name);
+  }
+
+  @Post(':id/publish')
+  async publish(@Param('id') id: string) {
+    return this.templateService.publish(id);
+  }
+
+  @Post(':id/retire')
+  async retire(@Param('id') id: string) {
+    return this.templateService.retire(id);
   }
 
   @Delete(':id')

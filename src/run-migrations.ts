@@ -2,7 +2,7 @@
 // Point d'entrée prod (image sans ts-node) : `node dist/src/run-migrations.js`.
 // Quitte avec un code non nul en cas d'échec pour empêcher le démarrage
 // du serveur sur un schéma obsolète (fail-fast au boot du conteneur).
-import { dataSource } from './data-source';
+import dataSource from './data-source';
 
 async function main(): Promise<void> {
   await dataSource.initialize();

@@ -24,6 +24,7 @@ import {
   BUSINESS_METADATA_KEY,
   BusinessTableMetadata,
 } from '../../decorators/business-metadata.decorator';
+import { isAiLifecycleTable } from '../../../config/ai-database/ai-lifecycle-tables.config';
 
 @Injectable()
 export class AutoHandlerFactory implements OnModuleInit {
@@ -100,6 +101,13 @@ export class AutoHandlerFactory implements OnModuleInit {
       if (tableMeta.readOnly) {
         skippedIgnored++;
         this.logger.debug(`${tableName}: @BusinessTable(readOnly=true)`);
+        continue;
+      }
+
+      // Cycle de vie métier : écriture uniquement via les actions métier.
+      if (isAiLifecycleTable(tableName)) {
+        skippedIgnored++;
+        this.logger.debug(`${tableName}: table à cycle de vie (actions métier uniquement)`);
         continue;
       }
 

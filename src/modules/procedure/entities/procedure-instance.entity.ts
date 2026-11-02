@@ -57,6 +57,18 @@ export class ProcedureInstance extends TenantEntity {
   })
   templateId: string;
 
+  @Column({ name: 'template_family_id', type: 'uuid' })
+  templateFamilyId: string;
+
+  @Column({ name: 'template_version_id', type: 'uuid' })
+  templateVersionId: string;
+
+  @Column({ name: 'template_snapshot', type: 'json' })
+  templateSnapshot: Record<string, any>;
+
+  @Column({ name: 'template_snapshot_hash', type: 'char', length: 64 })
+  templateSnapshotHash: string;
+
   @ManyToOne(() => ProcedureTemplate)
   @JoinColumn({ name: 'templateId' })
   @BusinessColumn({
@@ -123,36 +135,6 @@ export class ProcedureInstance extends TenantEntity {
   @OneToMany(() => Task, (task) => task.instance, { cascade: true })
   tasks: Task[];
 
-  @Column({ type: 'simple-json', nullable: true })
-  @BusinessColumn({
-    label: 'Sous-étapes complétées (déprécié)',
-    description: 'Ancien champ. Utiliser stageVisits à la place.',
-    importance: 'low',
-    group: 'technique',
-    ignored: true,
-  })
-  completedSubStages: string[];
-
-  @Column({ type: 'simple-json', nullable: true })
-  @BusinessColumn({
-    label: 'Compteurs cycles (déprécié)',
-    description: 'Ancien champ. Utiliser stageVisits à la place.',
-    importance: 'low',
-    group: 'technique',
-    ignored: true,
-  })
-  cycleUsageCount: Record<string, number>;
-
-  @Column({ type: 'simple-json', nullable: true })
-  @BusinessColumn({
-    label: 'Métadonnées sous-étapes (déprécié)',
-    description: 'Ancien champ. Utiliser stageVisits à la place.',
-    importance: 'low',
-    group: 'technique',
-    ignored: true,
-  })
-  subStageMetadata: Record<string, any>;
-
   // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 
   @OneToMany(() => StageVisit, (visit) => visit.instance, { cascade: true })
@@ -214,6 +196,18 @@ export class ProcedureInstance extends TenantEntity {
   })
   get completedSubStagesCount(): number {
     return this.getAllCompletedSubStageIds().size;
+  }
+
+  @Expose()
+  @BusinessColumn({
+    label: 'Identifiants des sous-étapes complétées',
+    description:
+      'Projection calculée exclusivement depuis les visites d’étapes et de sous-étapes',
+    importance: 'high',
+    group: 'statistiques',
+  })
+  get completedSubStageIds(): string[] {
+    return [...this.getAllCompletedSubStageIds()].sort();
   }
 
   @Expose()
@@ -502,12 +496,8 @@ export class ProcedureInstance extends TenantEntity {
   get status_label(): string {
     const labels = {
       [InstanceStatus.ACTIVE]: 'Active',
-      [InstanceStatus.SUSPENDED]: 'Suspendue',
-      [InstanceStatus.CLOSED]: 'Fermée',
-      [InstanceStatus.ABANDONED]: 'Abandonnée',
       [InstanceStatus.COMPLETED]: 'Terminée',
-      [InstanceStatus.PAUSED]: 'En pause',
-      [InstanceStatus.IN_PROGRESS]: 'En progression',
+      [InstanceStatus.CANCELLED]: 'Annulée',
     };
     return labels[this.status] || this.status;
   }
@@ -642,9 +632,6 @@ export class ProcedureInstance extends TenantEntity {
           }
         }
       }
-      if (visit.completedSubStages) {
-        visit.completedSubStages.forEach((id) => completed.add(id));
-      }
     }
     return completed;
   }
@@ -660,13 +647,7 @@ export class ProcedureInstance extends TenantEntity {
             }
           }
         }
-        if (visit.completedSubStages) {
-          visit.completedSubStages.forEach((id) => completed.add(id));
-        }
       }
-    }
-    if (this.completedSubStages) {
-      this.completedSubStages.forEach((id) => completed.add(id));
     }
     return completed;
   }
@@ -687,15 +668,6 @@ export class ProcedureInstance extends TenantEntity {
   afterLoad() {
     if (!this.stageVisits) {
       this.stageVisits = [];
-    }
-    if (
-      this.completedSubStages &&
-      this.completedSubStages.length > 0 &&
-      this.stageVisits.length === 0
-    ) {
-      console.warn(
-        `Instance ${this.id}: Anciens champs détectés, migration recommandée`,
-      );
     }
   }
 
@@ -720,8 +692,6 @@ export class ProcedureInstance extends TenantEntity {
     const sortedStages = this.getSortedRealStages();
     const currentStageOrder = this.currentStage.order;
     const maxOrder = Math.max(...sortedStages.map((s) => s.order));
-    const lastStageByOrder = sortedStages.find((s) => s.order === maxOrder);
-
     // Critère 1: Ordre maximum
     if (currentStageOrder === maxOrder) {
       return {
@@ -732,14 +702,12 @@ export class ProcedureInstance extends TenantEntity {
     }
 
     // Critère 2: Pas de transitions sortantes
-    const hasOutgoingTransitions =
-      this.template.transitions?.some(
+    const outgoingTransitions =
+      this.template.transitions?.filter(
         (t) => t.fromStageId === this.currentStageId,
-      ) ?? false;
+      ) ?? [];
 
-    console.log(this.template.transitions.length, hasOutgoingTransitions);
-
-    if (!hasOutgoingTransitions) {
+    if (outgoingTransitions.length === 0) {
       return {
         isLast: true,
         reason: 'Aucune transition sortante définie',
@@ -747,24 +715,20 @@ export class ProcedureInstance extends TenantEntity {
       };
     }
 
-    // Critère 3: Vérifier les transitions disponibles
-    const availableTransitions =
-      this.template.transitions?.filter(
-        (t) =>
-          t.fromStageId === this.currentStageId &&
-          (!t.condition || this.evaluateCondition(t.condition)),
-      ) ?? [];
-
-    if (availableTransitions.length === 0) {
+    // Une entité ne possède pas le contexte métier nécessaire pour évaluer
+    // une condition. Cette responsabilité reste exclusivement dans
+    // WorkflowService, qui échoue de manière restrictive.
+    if (outgoingTransitions.every((transition) => transition.condition)) {
       return {
-        isLast: true,
-        reason: 'Aucune transition disponible actuellement',
-        confidence: 'medium',
+        isLast: false,
+        reason:
+          'Transitions conditionnelles à évaluer par le moteur de workflow',
+        confidence: 'low',
       };
     }
 
     // Critère 4: Toutes les transitions mènent à des étapes déjà visitées
-    const allTransitionsToVisitedStages = availableTransitions.every((t) => {
+    const allTransitionsToVisitedStages = outgoingTransitions.every((t) => {
       const hasVisited = this.stageVisits?.some(
         (v) => v.stageId === t.toStageId,
       );
@@ -807,13 +771,5 @@ export class ProcedureInstance extends TenantEntity {
       reason: 'Des transitions vers de nouvelles étapes existent',
       confidence: 'high',
     };
-  }
-  /**
-   * Évalue une condition (à implémenter selon vos besoins)
-   */
-  private evaluateCondition(condition: string): boolean {
-    // TODO: Implémenter l'évaluation des conditions
-    // Exemple: condition peut être "stage.completedSubStages.includes('xxx')"
-    return true;
   }
 }

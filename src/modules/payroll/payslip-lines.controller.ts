@@ -17,6 +17,7 @@ import { CreatePayslipLineDto } from './dto/create-payslip-line.dto';
 import { UpdatePayslipLineDto } from './dto/update-payslip-line.dto';
 
 @Controller('payslip-lines')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PayslipLinesController {
   constructor(private readonly service: PayslipLinesService) {}

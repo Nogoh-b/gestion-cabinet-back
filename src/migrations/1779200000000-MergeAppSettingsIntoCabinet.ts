@@ -15,16 +15,10 @@ export class MergeAppSettingsIntoCabinet1779200000000
   public async up(queryRunner: QueryRunner): Promise<void> {
     const COLUMNS: { name: string; ddl: string }[] = [
       { name: 'slogan', ddl: 'TEXT NULL' },
-      {
-        name: 'theme_name',
-        ddl: `ENUM('ocean','silver','yellow','forest','sunset','rose') NOT NULL DEFAULT 'ocean'`,
-      },
+      { name: 'theme_name', ddl: `ENUM('ocean','silver','yellow','forest','sunset','rose') NOT NULL DEFAULT 'ocean'` },
       { name: 'font_ui', ddl: `VARCHAR(50) NOT NULL DEFAULT 'inter'` },
       { name: 'font_heading', ddl: `VARCHAR(50) NOT NULL DEFAULT 'inter'` },
-      {
-        name: 'font_mono',
-        ddl: `VARCHAR(50) NOT NULL DEFAULT 'jetbrains_mono'`,
-      },
+      { name: 'font_mono', ddl: `VARCHAR(50) NOT NULL DEFAULT 'jetbrains_mono'` },
       { name: 'rccm', ddl: 'VARCHAR(100) NULL' },
       { name: 'nina', ddl: 'VARCHAR(100) NULL' },
       { name: 'bank_account', ddl: 'VARCHAR(100) NULL' },
@@ -33,15 +27,9 @@ export class MergeAppSettingsIntoCabinet1779200000000
       { name: 'currency', ddl: `VARCHAR(10) NOT NULL DEFAULT 'XAF'` },
       { name: 'invoice_prefix', ddl: `VARCHAR(20) NOT NULL DEFAULT 'FAC-'` },
       { name: 'invoice_padding', ddl: 'INT NOT NULL DEFAULT 4' },
-      {
-        name: 'invoice_numbering_strategy',
-        ddl: `ENUM('yearly','monthly','continuous') NOT NULL DEFAULT 'yearly'`,
-      },
+      { name: 'invoice_numbering_strategy', ddl: `ENUM('yearly','monthly','continuous') NOT NULL DEFAULT 'yearly'` },
       { name: 'dossier_prefix', ddl: `VARCHAR(20) NOT NULL DEFAULT 'DOS-'` },
-      {
-        name: 'working_hours_start',
-        ddl: `VARCHAR(5) NOT NULL DEFAULT '08:00'`,
-      },
+      { name: 'working_hours_start', ddl: `VARCHAR(5) NOT NULL DEFAULT '08:00'` },
       { name: 'working_hours_end', ddl: `VARCHAR(5) NOT NULL DEFAULT '17:00'` },
       { name: 'notification_email', ddl: 'TINYINT NOT NULL DEFAULT 1' },
       { name: 'notification_sms', ddl: 'TINYINT NOT NULL DEFAULT 0' },
@@ -61,24 +49,43 @@ export class MergeAppSettingsIntoCabinet1779200000000
       }
     }
 
-    // 2. Logo en LONGTEXT. Sur les bases synchronisées avant l'exécution des
-    // migrations, la colonne binaire `logo` peut déjà avoir remplacé
-    // `logo_url`; dans ce cas il ne faut ni recréer ni écraser le logo.
-    const hasLogoUrl = await queryRunner.hasColumn('cabinets', 'logo_url');
-    if (hasLogoUrl) {
+    // 2. Logo en LONGTEXT. Certaines bases créées avec `synchronize:true`
+    // possèdent déjà les colonnes binaires `logo` / `logo_mime`, sans avoir
+    // connu l'ancienne colonne texte `logo_url`.
+    if (await queryRunner.hasColumn('cabinets', 'logo_url')) {
       await queryRunner.query(
         `ALTER TABLE cabinets MODIFY logo_url LONGTEXT NULL`,
       );
+    } else {
+      await queryRunner.query(
+        `ALTER TABLE cabinets ADD COLUMN logo_url LONGTEXT NULL`,
+      );
     }
 
-    // 3. Recopie depuis app_settings (si la table existe encore)
-    const hasAppSettings = await queryRunner.hasTable('app_settings');
-    if (hasAppSettings) {
-      const mappings: Array<{ source: string; assignment: string }> = [
+    // 3. Recopie depuis app_settings (si la table existe encore). Les versions
+    // historiques de cette table n'ont pas toutes les mêmes colonnes : on ne
+    // sélectionne que celles qui existent réellement dans la base migrée.
+    const appSettingsTable = await queryRunner.getTable('app_settings');
+    if (appSettingsTable) {
+      const sourceColumns = new Set(
+        appSettingsTable.columns.map((column) => column.name),
+      );
+      if (!sourceColumns.has('cabinet_id')) {
+        throw new Error(
+          'Impossible de fusionner app_settings sans la colonne cabinet_id',
+        );
+      }
+
+      const mappings: { source: string; assignment: string }[] = [
         {
           source: 'cabinet_name',
           assignment:
             "c.name = COALESCE(NULLIF(NULLIF(a.cabinet_name, ''), 'MonCabinet'), c.name)",
+        },
+        {
+          source: 'cabinet_logo',
+          assignment:
+            "c.logo_url = COALESCE(NULLIF(a.cabinet_logo, ''), c.logo_url)",
         },
         {
           source: 'cabinet_address',
@@ -174,29 +181,22 @@ export class MergeAppSettingsIntoCabinet1779200000000
           assignment: 'c.dossier_template = a.dossier_template',
         },
       ];
-      if (
-        hasLogoUrl &&
-        (await queryRunner.hasColumn('app_settings', 'cabinet_logo'))
-      ) {
-        mappings.push({
-          source: 'cabinet_logo',
-          assignment:
-            "c.logo_url = COALESCE(NULLIF(a.cabinet_logo, ''), c.logo_url)",
-        });
+      const assignments = mappings
+        .filter(({ source }) => sourceColumns.has(source))
+        .map(({ assignment }) => assignment);
+
+      if (assignments.length === 0) {
+        throw new Error(
+          'Impossible de fusionner app_settings sans colonne de configuration reconnue',
+        );
       }
-      const assignments: string[] = [];
-      for (const mapping of mappings) {
-        if (await queryRunner.hasColumn('app_settings', mapping.source)) {
-          assignments.push(mapping.assignment);
-        }
-      }
-      if (assignments.length) {
-        await queryRunner.query(`
-          UPDATE cabinets c
-          JOIN app_settings a ON a.cabinet_id = c.id
-          SET ${assignments.join(',\n')}
-        `);
-      }
+
+      await queryRunner.query(`
+        UPDATE cabinets c
+        JOIN app_settings a ON a.cabinet_id = c.id
+        SET
+          ${assignments.join(',\n          ')}
+      `);
 
       // 4. Suppression de l'ancienne table
       await queryRunner.query(`DROP TABLE app_settings`);

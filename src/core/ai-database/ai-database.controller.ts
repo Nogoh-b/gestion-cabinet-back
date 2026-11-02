@@ -189,6 +189,8 @@ export class AiDatabaseController {
     @UploadedFiles() uploaded: QuestionFiles,
     @Res() res: Response,
   ): Promise<void> {
+    dto.intentMode = 'read';
+    dto.analyzeOnly = true;
     const t0 = Date.now();
     this.logger.log(`🕐 [SSE] askStream ENTRÉ à ${new Date().toISOString()}`);
 
@@ -209,14 +211,10 @@ export class AiDatabaseController {
       if (event === 'token') {
         tokenEmitCount++;
         if (tokenEmitCount <= 3 || tokenEmitCount % 20 === 0) {
-          this.logger.debug(
-            `📤 SSE → [token #${tokenEmitCount}] "${(data?.text ?? '').toString().substring(0, 30)}"`,
-          );
+          this.logger.debug(`SSE token #${tokenEmitCount}`);
         }
       } else {
-        this.logger.debug(
-          `📤 SSE → [${event}] ${JSON.stringify(data).substring(0, 100)}`,
-        );
+        this.logger.debug(`SSE evenement ${event}`);
       }
 
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -404,6 +402,8 @@ export class AiDatabaseController {
   @Post('analyze')
   @UseGuards(AiQuotaGuard)
   async analyze(@Body() dto: AskQuestionDto, @Req() req) {
+    dto.intentMode = 'read';
+    dto.analyzeOnly = true;
     const userId = req.user?.id || 'anonymous'; // Ton système d'auth
     return toChatPayload(
       await this.aiDbService.analyzeQuestion(dto, userId, undefined, req?.aiRequestLogId),
@@ -585,12 +585,12 @@ export class AiDatabaseController {
   @Get('visible-tables')
   @ApiOperation({ summary: 'Liste les tables visibles (avec métadonnées)' })
   async getVisibleTables() {
-    const tables = this.schemaMetadata.getAllVisibleTables();
+    const tables = this.aiDbService.getAiVisibleTables();
     return {
-      count: this.schemaMetadata.getVisibleTablesCount(),
+      count: tables.length,
       tables,
       schemaJSON: await this.aiDbService.getCompleteSchemaJson(tables),
-      details: this.schemaMetadata.getAllVisibleTables().map((table) => ({
+      details: tables.map(table => ({
         name: table,
         metadata: this.schemaMetadata.getTableMetadataForPrompt(table),
       })),

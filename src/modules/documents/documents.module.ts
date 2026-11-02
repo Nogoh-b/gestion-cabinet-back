@@ -20,6 +20,9 @@ import { DocumentTypeStatsService } from './document-type/document-type-stats.se
 import { ProcedureModule } from '../procedure/procedure.module';
 import { DocumentCustomerSubscriber } from './document-customer/subscribers/document-customer.subscriber';
 import { PlansModule } from '../plans/plans.module';
+import { DocumentVersion } from './document-customer/entities/document-version.entity';
+import { DocumentVersionService } from './document-customer/document-version.service';
+import { AntivirusScannerService } from './document-customer/antivirus-scanner.service';
 
 @Module({
   imports: [
@@ -28,6 +31,7 @@ import { PlansModule } from '../plans/plans.module';
       DocumentCustomer,
       DocumentCustomerVersion,
       DocumentCustomerNote,
+      DocumentVersion,
     ]),
     DocumentCategoryModule,
     forwardRef(() => CustomerModule),
@@ -42,6 +46,8 @@ import { PlansModule } from '../plans/plans.module';
     DocumentTypeService,
     DocumentCustomerService,
     DocumentNotesService,
+    DocumentVersionService,
+    AntivirusScannerService,
     DocumentStatsService,
     DocumentTypeStatsService,
     DocumentCustomerSubscriber,
@@ -49,6 +55,8 @@ import { PlansModule } from '../plans/plans.module';
   exports: [
     DocumentTypeService,
     DocumentCustomerService,
+    DocumentVersionService,
+    AntivirusScannerService,
     DocumentStatsService,
     TypeOrmModule,
   ],

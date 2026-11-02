@@ -11,6 +11,8 @@ import {
 } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
+import { User } from 'src/modules/iam/user/entities/user.entity';
+import { PayslipPaymentMethod } from './payslip.entity';
 
 /**
  * Cycle de vie d'une avance sur salaire.
@@ -77,7 +79,7 @@ export class SalaryAdvance extends TenantEntity {
   })
   employee: Employee;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2, name: 'amount' })
+  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'amount' })
   @BusinessColumn({
     label: "Montant de l'avance",
     description: 'Montant accordé au collaborateur',
@@ -90,7 +92,7 @@ export class SalaryAdvance extends TenantEntity {
 
   @Column({
     type: 'decimal',
-    precision: 12,
+    precision: 18,
     scale: 2,
     name: 'recovered_amount',
     default: 0,
@@ -130,7 +132,12 @@ export class SalaryAdvance extends TenantEntity {
   })
   status: SalaryAdvanceStatus;
 
-  @Column({ type: 'date', nullable: true, name: 'payment_date' })
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'payment_date',
+  })
   @BusinessColumn({
     label: 'Date de versement',
     description: "Date effective du versement de l'avance",
@@ -138,7 +145,70 @@ export class SalaryAdvance extends TenantEntity {
     importance: 'medium',
     group: 'dates',
   })
-  payment_date: Date;
+  payment_date: Date | null;
+
+  @Column({
+    type: 'enum',
+    enum: PayslipPaymentMethod,
+    nullable: true,
+    name: 'payment_method',
+  })
+  payment_method: PayslipPaymentMethod | null;
+
+  @Column({
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+    name: 'payment_reference',
+  })
+  payment_reference: string | null;
+
+  @Column({ type: 'int', nullable: true, name: 'requested_by_id' })
+  requested_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'requested_by_id' })
+  requested_by: User | null;
+
+  @Column({ type: 'int', nullable: true, name: 'approved_by_id' })
+  approved_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'approved_by_id' })
+  approved_by: User | null;
+
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'approved_at',
+  })
+  approved_at: Date | null;
+
+  @Column({ type: 'int', nullable: true, name: 'paid_by_id' })
+  paid_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'paid_by_id' })
+  paid_by: User | null;
+
+  @Column({ type: 'int', nullable: true, name: 'cancelled_by_id' })
+  cancelled_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'cancelled_by_id' })
+  cancelled_by: User | null;
+
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'cancelled_at',
+  })
+  cancelled_at: Date | null;
+
+  @Column({ type: 'text', nullable: true, name: 'cancellation_reason' })
+  cancellation_reason: string | null;
 
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({
@@ -147,7 +217,7 @@ export class SalaryAdvance extends TenantEntity {
     importance: 'low',
     group: 'audit',
   })
-  reason: string;
+  reason: string | null;
 
   @Column({ type: 'text', nullable: true, name: 'cancel_reason' })
   @BusinessColumn({

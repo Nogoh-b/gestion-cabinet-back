@@ -1,6 +1,4 @@
 import * as dotenv from 'dotenv';
-import { ExpressAdapter } from '@bull-board/express';
-import { BullBoardModule } from '@bull-board/nestjs';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { BullModule } from '@nestjs/bull';
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
@@ -9,15 +7,18 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { MulterModule } from '@nestjs/platform-express';
 
-import { ServeStaticModule } from '@nestjs/serve-static';
+
+
+
+
+
+
 
 import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { TenantResolverMiddleware } from './core/tenant/tenant-resolver.middleware';
 import { CoreModule } from './core/core.module';
 import { CabinetModule } from './modules/cabinet/cabinet.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
-import { ActivitiesModule } from './modules/activities/activities.module';
 import { AgenciesModule } from './modules/agencies/agencies.module';
 import { AudiencesModule } from './modules/audiences/audiences.module';
 import { ChatModule } from './modules/chat/chat.module';
@@ -26,7 +27,6 @@ import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { DossiersModule } from './modules/dossiers/dossiers.module';
 import { FactureModule } from './modules/facture/facture.module';
-import { FinancesModule } from './modules/finances/finances.module';
 import { GeographyModule } from './modules/geography/geography.module';
 import { IamModule } from './modules/iam/iam.module';
 import { NotificationModule } from './modules/notification/notification.module';
@@ -40,7 +40,6 @@ import { DiligenceModule } from './modules/diligence/diligence.module';
 import { FindingModule } from './modules/finding/finding.module';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/adapters/handlebars.adapter';
 import { join } from 'path';
-import { StatsModule } from './modules/stats/stats.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { SidebarModule } from './modules/sidebar/sidebar.module';
 import { helpers } from './utils/helper-template-maill';
@@ -109,7 +108,6 @@ dotenv.config();
     ClientPortalModule,
 
     // 5. Autres modules
-    ActivitiesModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env'],
@@ -133,10 +131,10 @@ dotenv.config();
           },
         },
         defaults: {
-          from: config.get<string>(
-            'MAIL_FROM',
-            '"No Reply" <no-reply@example.com>',
-          ),
+          from:
+            config.get<string>('SMTP_FROM') ??
+            config.get<string>('MAIL_FROM') ??
+            config.get<string>('SMTP_USER'),
         },
         template: {
           dir: join(
@@ -192,13 +190,15 @@ dotenv.config();
     BullModule.registerQueue({
       name: 'maintenance',
     }),
-    BullBoardModule.forRoot({
-      route: '/admin/queues',
-      adapter: ExpressAdapter,
-    }),
-    ActivitiesModule,
+    // SavingsAccountModule,
+    // ProviderModule,
+    // TransactionModule,
+    // PartnerModule,
+    // CommercialModule,
+    // RessourceModule,
+    // PersonnelModule,
+    // CreditModule,
     AudiencesModule,
-    FinancesModule,
     ProceduresModule,
     FactureModule,
     PaiementModule,
@@ -210,7 +210,6 @@ dotenv.config();
     InvoiceTypeModule,
     DiligenceModule,
     FindingModule,
-    StatsModule,
     DashboardModule,
     SidebarModule,
     ProcedureModule,
@@ -236,7 +235,6 @@ dotenv.config();
   ],
   controllers: [AppController],
   providers: [
-    AppService,
     // ThrottlerGuard AVANT SuspendedCabinetGuard : le rate limiting s'applique
     // en premier à toutes les routes (anti brute-force).
     {

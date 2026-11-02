@@ -1,13 +1,14 @@
 import {
   Column,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
-import { SourceModule } from '../enums/comptabilite.enums';
+import { SourceModule, StatutEcriture } from '../enums/comptabilite.enums';
 import { JournalComptable } from './journal.entity';
 import { ExerciceComptable } from './exercice.entity';
 import { LigneEcriture } from './ligne-ecriture.entity';
@@ -17,6 +18,12 @@ import {
 } from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('ecritures_comptables')
+@Index('UQ_ecritures_tenant_numero', ['tenant_id', 'numero'], {
+  unique: true,
+})
+@Index('UQ_ecritures_tenant_idempotency', ['tenant_id', 'idempotencyKey'], {
+  unique: true,
+})
 @BusinessTable({
   label: 'Écritures comptables',
   description:
@@ -35,7 +42,7 @@ export class Ecriture extends TenantEntity {
   })
   id: number;
 
-  @Column({ unique: true, length: 30 })
+  @Column({ length: 30 })
   @BusinessColumn({
     label: 'Numéro',
     description:
@@ -137,6 +144,37 @@ export class Ecriture extends TenantEntity {
     group: 'état',
   })
   isLocked: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: StatutEcriture,
+    default: StatutEcriture.DRAFT,
+  })
+  status: StatutEcriture;
+
+  @Column({ name: 'posted_at', type: 'datetime', precision: 6, nullable: true })
+  postedAt: Date | null;
+
+  @Column({
+    name: 'reversed_at',
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+  })
+  reversedAt: Date | null;
+
+  @Column({ name: 'reversal_of_id', type: 'int', nullable: true })
+  reversalOfId: number | null;
+
+  @ManyToOne(() => Ecriture, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'reversal_of_id' })
+  reversalOf: Ecriture | null;
+
+  @Column({ name: 'reversal_reason', type: 'text', nullable: true })
+  reversalReason: string | null;
+
+  @Column({ name: 'idempotency_key', length: 190 })
+  idempotencyKey: string;
 
   @OneToMany(() => LigneEcriture, (l) => l.ecriture, {
     cascade: true,

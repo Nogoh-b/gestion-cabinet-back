@@ -86,7 +86,10 @@ export class NotificationDispatcher {
    * persistance. Pas de transaction : le métier est déjà commité, on déclenche
    * les effets de bord.
    */
-  async dispatch(input: DispatchPayload): Promise<void> {
+  async dispatch(
+    input: DispatchPayload,
+    options: { throwOnError?: boolean } = {},
+  ): Promise<void> {
     // Compte du portail : retrouvé via la fiche client quand `user_id` manque,
     // pour que le client reçoive aussi la notification dans l'application.
     const payload: DispatchPayload = {
@@ -155,11 +158,14 @@ export class NotificationDispatcher {
           batches.push({ ids: staffInAppRecipients, link: payload.link });
         }
         if (clientInAppId) {
-          batches.push({ ids: [clientInAppId], link: this.clientLinkOf(payload) });
+          batches.push({
+            ids: [clientInAppId],
+            link: this.clientLinkOf(payload),
+          });
         }
         for (const batch of batches) {
-          await this.notificationService
-            .createBulk(
+          try {
+            await this.notificationService.createBulk(
               {
                 user_ids: batch.ids,
                 type: payload.event as any,
@@ -168,19 +174,20 @@ export class NotificationDispatcher {
                 data: {
                   entity: payload.entity,
                   changes: payload.changes,
-                },
+              },
                 link: batch.link,
                 priority: 'NORMAL',
               },
               payload.audience.lawyer_id ?? 1,
-            )
-            .then(() => this.logger.log(`  │  ✅ createBulk in-app OK`))
-            .catch((err) =>
-              this.logger.error(
-                `  │  ❌ In-app createBulk a échoué : ${err.message}`,
-                err.stack,
-              ),
             );
+            this.logger.log(`  │  ✅ createBulk in-app OK`);
+          } catch (err) {
+            this.logger.error(
+              `  │  ❌ In-app createBulk a échoué : ${(err as Error).message}`,
+              (err as Error).stack,
+            );
+            if (options.throwOnError) throw err;
+          }
         }
       } else {
         this.logger.log(
@@ -197,7 +204,11 @@ export class NotificationDispatcher {
         this.logger.log(
           `  ├─ [4/5] sendEmailsTo employés → ${emailEmployeeIds.length} utilisateur(s) : [${emailEmployeeIds.join(', ')}]`,
         );
-        await this.sendEmailsTo(emailEmployeeIds, payload);
+        await this.sendEmailsTo(
+          emailEmployeeIds,
+          payload,
+          options.throwOnError,
+        );
       } else {
         this.logger.log(
           `  ├─ [4/5] emails employés → aucun (préférences ou pas de cible)`,
@@ -215,7 +226,7 @@ export class NotificationDispatcher {
           this.logger.log(
             `  ├─ [5/5] sendClientEmail → client user_id=${client.user_id} email=${client.email ?? '?'}`,
           );
-          await this.sendClientEmail(client, payload);
+          await this.sendClientEmail(client, payload, options.throwOnError);
         }
       } else {
         this.logger.log(
@@ -230,7 +241,12 @@ export class NotificationDispatcher {
         `dispatch(${payload.event}) a échoué silencieusement : ${(err as Error).message}`,
         (err as Error).stack,
       );
+      if (options.throwOnError) throw err;
     }
+  }
+
+  async dispatchStrict(payload: DispatchPayload): Promise<void> {
+    return this.dispatch(payload, { throwOnError: true });
   }
 
   /**
@@ -275,7 +291,11 @@ export class NotificationDispatcher {
   /** Lien cliquable depuis un e-mail : les chemins relatifs sont préfixés. */
   private absoluteLink(link?: string): string {
     if (!link || !link.startsWith('/')) return link ?? '';
-    const base = (process.env.APP_FRONTEND_URL || process.env.FRONTEND_URL || '')
+    const base = (
+      process.env.APP_FRONTEND_URL ||
+      process.env.FRONTEND_URL ||
+      ''
+    )
       .trim()
       .replace(/\/$/, '');
     return base ? `${base}${link}` : link;
@@ -359,8 +379,8 @@ export class NotificationDispatcher {
       html:
         `<h2>${escapeHtml(payload.title)}</h2><p>${escapeHtml(payload.content)}</p>` +
         (payload.link
-        ? `<p><a href="${this.absoluteLink(payload.link)}">Ouvrir</a></p>`
-        : ''),
+          ? `<p><a href="${this.absoluteLink(payload.link)}">Ouvrir</a></p>`
+          : ''),
     };
   }
 
@@ -464,6 +484,7 @@ export class NotificationDispatcher {
   private async sendEmailsTo(
     userIds: number[],
     payload: DispatchPayload,
+    throwOnError = false,
   ): Promise<void> {
     const users = await this.userRepo.find({
       where: userIds.map((id) => ({ id })),
@@ -487,28 +508,28 @@ export class NotificationDispatcher {
       `  │  envoi mail employés → subject="${subject}" | recipients=[${recipients.join(', ')}]`,
     );
 
-    await this.mailService
-      .sendDirect({
+    try {
+      await this.mailService.sendDirect({
         to: recipients,
         subject,
         html,
-      })
-      .then(() =>
-        this.logger.log(
-          `  │  ✅ mails employés envoyés | count=${recipients.length}`,
-        ),
-      )
-      .catch((err) =>
-        this.logger.error(
-          `sendEmailsTo([${recipients.join(',')}]) a échoué : ${err.message}`,
-          err.stack,
-        ),
+      });
+      this.logger.log(
+        `  │  ✅ mails employés envoyés | count=${recipients.length}`,
       );
+    } catch (err) {
+      this.logger.error(
+        `sendEmailsTo([${recipients.join(',')}]) a échoué : ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+      if (throwOnError) throw err;
+    }
   }
 
   private async sendClientEmail(
     client: NonNullable<DispatchAudience['client']>,
     payload: DispatchPayload,
+    throwOnError = false,
   ): Promise<void> {
     let to = client.email;
     if (!to && client.user_id) {
@@ -531,24 +552,28 @@ export class NotificationDispatcher {
     // Rendu du template mail (DB ou fallback HTML) — lien vers l'espace client
     const { subject, html } = await this.renderEmail(
       // Sans compte du portail, aucun lien : l'espace client leur est fermé.
-      { ...payload, link: client.user_id ? this.clientLinkOf(payload) : undefined },
+      {
+        ...payload,
+        link: client.user_id ? this.clientLinkOf(payload) : undefined,
+      },
       'client',
     );
     this.logger.log(`  │  envoi mail client → subject="${subject}" | to=${to}`);
 
-    await this.mailService
-      .sendDirect({
+    try {
+      await this.mailService.sendDirect({
         to,
         subject,
         html,
-      })
-      .then(() => this.logger.log(`  │  ✅ mail client envoyé → ${to}`))
-      .catch((err) =>
-        this.logger.error(
-          `sendClientEmail(${to}) a échoué : ${err.message}`,
-          err.stack,
-        ),
+      });
+      this.logger.log(`  │  ✅ mail client envoyé → ${to}`);
+    } catch (err) {
+      this.logger.error(
+        `sendClientEmail(${to}) a échoué : ${(err as Error).message}`,
+        (err as Error).stack,
       );
+      if (throwOnError) throw err;
+    }
   }
 
   private describeAudience(audience: DispatchAudience): string {

@@ -923,7 +923,7 @@ export class EntityResolverService {
           if (isText && !isSystem && !col.isPrimary) {
             fields[col.propertyName] = text.trim();
             this.logger.debug(
-              `📝 Fallback: champ "${col.propertyName}" ← "${text}"`,
+              `Fallback applique au champ ${col.propertyName}`,
             );
             break;
           }

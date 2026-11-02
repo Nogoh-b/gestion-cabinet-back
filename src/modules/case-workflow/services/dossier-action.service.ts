@@ -624,7 +624,8 @@ export class DossierActionService {
       legacy &&
       (normalizedResult.includes('HELD') || normalizedResult.includes('TENUE'))
     ) {
-      audience.mark_as_held(undefined, 'held');
+      audience.status = AudienceStatus.HELD;
+      audience.outcome = 'held';
     }
     await audienceRepository.save(audience);
   }

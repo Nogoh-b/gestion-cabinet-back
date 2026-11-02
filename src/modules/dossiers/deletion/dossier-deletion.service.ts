@@ -588,11 +588,11 @@ const SOFT_TABLES = new Set([
 ]);
 
 function isLocked(dossier: any) {
-  const status = Number(dossier.status);
+  const status = dossier.status as DossierStatus;
   return (
     status === DossierStatus.CLOSED ||
     status === DossierStatus.ARCHIVED ||
-    !!Number(dossier.is_archived ?? 0)
+    !!dossier.is_closed
   );
 }
 

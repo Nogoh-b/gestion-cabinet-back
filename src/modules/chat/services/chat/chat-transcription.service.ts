@@ -166,7 +166,7 @@ export class ChatTranscriptionService {
   /** Pièce que l'on sait transcrire (audio WAV ou MP3, moteur configuré). */
   canTranscribe(attachment: Pick<Attachment, 'fileType' | 'mimeType' | 'fileName'>): boolean {
     const audio = attachment.fileType === AttachmentType.AUDIO || (attachment.mimeType ?? '').startsWith('audio/');
-    return audio && !!audioFormat(attachment.mimeType, attachment.fileName) && !!this.transcription?.engine().available;
+    return audio && !!audioFormat(attachment.mimeType ?? '', attachment.fileName ?? '') && !!this.transcription?.engine().available;
   }
 
   /** Marque les pièces audio « en attente » et les met en file. */
@@ -208,7 +208,7 @@ export class ChatTranscriptionService {
       await this.save(attachment, { transcriptStatus: TranscriptStatus.PROCESSING });
       try {
         const buffer = await fs.readFile(attachment.filePath);
-        const format = audioFormat(attachment.mimeType, attachment.fileName);
+        const format = audioFormat(attachment.mimeType ?? '', attachment.fileName ?? '');
         if (format === 'mp3' && buffer.length > MAX_MP3_BYTES) {
           throw new Error('MP3 trop long pour être transcrit');
         }

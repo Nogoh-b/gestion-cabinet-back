@@ -3,7 +3,6 @@ import { DataSource } from 'typeorm';
 import { hiddenResponseFields } from 'src/core/security/restricted-fields';
 import { DossierSqlExporter, type DossierSqlScope, sqlLiteral } from './dossier-sql.exporter';
 import { Dossier } from '../dossiers/entities/dossier.entity';
-import { Step } from '../dossiers/entities/step.entity';
 import { Audience } from '../audiences/entities/audience.entity';
 import { Diligence } from '../diligence/entities/diligence.entity';
 import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
@@ -139,7 +138,6 @@ function meta(
 
 const METADATA = new Map<unknown, ReturnType<typeof meta>>([
   [Dossier, meta('dossiers', { columns: { opening_date: { type: 'date' }, client_id: { isNullable: false } } })],
-  [Step, meta('step', { junctions: [['step_documents', 'step_id']] })],
   [DocumentCustomer, meta('document_customer')],
   [DocumentCustomerVersion, meta('document_customer_versions')],
   [DocumentCustomerNote, meta('document_customer_notes')],
@@ -198,7 +196,6 @@ describe('DossierSqlExporter', () => {
       dossiers: [
         { id: 7, tenant_id: 5, dossier_number: 'DOS-7', object: tricky, client_id: 83, lawyer_id: 31, jurisdiction_id: 4, procedure_type_id: 2, procedure_subtype_id: null, budget_estimate: '500000.00', opening_date: new Date(2026, 0, 15), deleted_at: null },
       ],
-      step: [{ id: 70, tenant_id: 5, dossier_id: 7, title: 'Ouverture', metadata: '{"a":1}' }],
       document_customer: [
         { id: 700, tenant_id: 5, dossier_id: 7, name: 'Assignation.pdf', deleted_at: null },
         { id: 701, tenant_id: 5, dossier_id: 7, name: 'Supprimé', deleted_at: new Date() },
@@ -254,7 +251,7 @@ describe('DossierSqlExporter', () => {
     const statements = parseInserts(sql);
     expect(statements.map((s) => s.table)).toEqual(
       expect.arrayContaining([
-        'dossiers', 'step', 'document_customer', 'document_customer_versions', 'audiences',
+        'dossiers', 'document_customer', 'document_customer_versions', 'audiences',
         'audience_documents', 'diligences', 'factures', 'invoice_lines', 'paiements',
         'dossier_billing_profiles', 'billable_items', 'dossier_actions',
         'dossier_action_document_links', 'customer', 'user', 'employee', 'jurisdictions', 'procedure_types',

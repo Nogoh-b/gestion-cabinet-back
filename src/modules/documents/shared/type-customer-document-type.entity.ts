@@ -1,5 +1,5 @@
 import { TypeCustomer } from 'src/modules/customer/type-customer/entities/type_customer.entity';
-import { Entity, PrimaryColumn, ManyToOne } from 'typeorm';
+import { Entity, JoinColumn, PrimaryColumn, ManyToOne } from 'typeorm';
 import { DocumentType } from '../document-type/entities/document-type.entity';
 
 @Entity('type_customer_document_type')
@@ -13,9 +13,20 @@ export class TypeCustomerDocumentType {
   @ManyToOne(
     () => TypeCustomer,
     (typeCustomer) => typeCustomer.requiredDocuments,
+    {
+      onDelete: 'CASCADE',
+    },
   )
+  @JoinColumn({ name: 'type_customer_id' })
   typeCustomer: TypeCustomer;
 
-  @ManyToOne(() => DocumentType, (document_type) => document_type.customerTypes)
+  @ManyToOne(
+    () => DocumentType,
+    (document_type) => document_type.customerTypes,
+    {
+      onDelete: 'CASCADE',
+    },
+  )
+  @JoinColumn({ name: 'document_type_id' })
   document_type: DocumentType;
 }

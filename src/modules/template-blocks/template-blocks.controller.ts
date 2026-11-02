@@ -25,6 +25,7 @@ import { TemplateBlock } from './entities/template-block.entity';
 
 @ApiTags('Template Blocks')
 @Controller('template-blocks')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class TemplateBlocksController {
   constructor(private readonly service: TemplateBlocksService) {}

@@ -66,7 +66,7 @@ export class LigneEcriture {
   })
   compte: CompteComptable;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
   @BusinessColumn({
     label: 'Débit',
     description: 'Montant au débit',
@@ -76,7 +76,7 @@ export class LigneEcriture {
   })
   debit: number;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
   @BusinessColumn({
     label: 'Crédit',
     description: 'Montant au crédit',

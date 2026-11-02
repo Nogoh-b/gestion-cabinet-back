@@ -39,16 +39,7 @@ import {
  */
 const dossierStatusValue = (status: DossierStatus): string => String(status);
 
-export const ACTIVE_DOSSIER_STATUSES = [
-  DossierStatus.OPEN,
-  DossierStatus.PRELIMINARY_ANALYSIS,
-  DossierStatus.AMICABLE,
-  DossierStatus.LITIGATION,
-  DossierStatus.JUDGMENT,
-  DossierStatus.APPEAL,
-  DossierStatus.CASSATION,
-  DossierStatus.EXECUTION,
-].map(dossierStatusValue);
+export const ACTIVE_DOSSIER_STATUSES = [DossierStatus.ACTIVE].map(dossierStatusValue);
 
 const CLOSED_DOSSIER_FILTER =
   '(dossier.lifecycle_phase = :closedPhase OR (dossier.workflow_engine = :legacyEngine AND dossier.status = :closedStatus))';
@@ -117,7 +108,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
         '(dossier.workflow_engine = :v2Engine OR dossier.status IN (:...statuses))',
         {
           v2Engine: WorkflowEngine.ACTIONS_V2,
-          statuses: ACTIVE_DOSSIER_STATUSES,
+          statuses: [DossierStatus.ACTIVE],
         },
       )
       .andWhere('dossier.lifecycle_phase != :closedPhase', {
@@ -160,21 +151,15 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
     const statusLabels = {
-      [DossierStatus.OPEN]: 'Ouvert',
-      [DossierStatus.AMICABLE]: 'Amiable',
-      [DossierStatus.LITIGATION]: 'Contentieux',
-      // [DossierStatus.DECISION]: 'Décision',
-      [DossierStatus.APPEAL]: 'Recours',
+      [DossierStatus.DRAFT]: 'Brouillon',
+      [DossierStatus.ACTIVE]: 'Actif',
       [DossierStatus.CLOSED]: 'Clôturé',
       [DossierStatus.ARCHIVED]: 'Archivé',
     };
 
     const statusColors = {
-      [DossierStatus.OPEN]: '#3b82f6',
-      [DossierStatus.AMICABLE]: '#10b981',
-      [DossierStatus.LITIGATION]: '#f59e0b',
-      // [DossierStatus.DECISION]: '#8b5cf6',
-      [DossierStatus.APPEAL]: '#ef4444',
+      [DossierStatus.DRAFT]: '#94a3b8',
+      [DossierStatus.ACTIVE]: '#3b82f6',
       [DossierStatus.CLOSED]: '#6b7280',
       [DossierStatus.ARCHIVED]: '#9ca3af',
     };
@@ -185,7 +170,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       percentage: this.calculatePercentage(parseInt(r.count), total),
       color: statusColors[r.status],
       id: r.status,
-      code: DossierStatus[r.status],
+      code: r.status,
     }));
   }
 
@@ -378,11 +363,8 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     const byStatus = await byStatusQuery.getRawMany();
 
     const statusLabels = {
-      [DossierStatus.OPEN]: 'Ouvert',
-      [DossierStatus.AMICABLE]: 'Amiable',
-      [DossierStatus.LITIGATION]: 'Contentieux',
-      // [DossierStatus.DECISION]: 'Décision',
-      [DossierStatus.APPEAL]: 'Recours',
+      [DossierStatus.DRAFT]: 'Brouillon',
+      [DossierStatus.ACTIVE]: 'Actif',
       [DossierStatus.CLOSED]: 'Clôturé',
       [DossierStatus.ARCHIVED]: 'Archivé',
     };
@@ -558,7 +540,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
         '(dossier.workflow_engine = :v2Engine OR dossier.status IN (:...activeStatuses))',
         {
           v2Engine: WorkflowEngine.ACTIONS_V2,
-          activeStatuses: ACTIVE_DOSSIER_STATUSES,
+          activeStatuses: [DossierStatus.ACTIVE],
         },
       )
       .andWhere('dossier.lifecycle_phase != :closedPhase', {
@@ -926,7 +908,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       [StatutFacture.ENVOYEE]: 'Envoyée',
       [StatutFacture.PARTIELLEMENT_PAYEE]: 'Partiellement payée',
       [StatutFacture.PAYEE]: 'Payée',
-      [StatutFacture.IMPAYEE]: 'Impayée',
+      [StatutFacture.VALIDEE]: 'Validée',
       [StatutFacture.ANNULEE]: 'Annulée',
     };
 

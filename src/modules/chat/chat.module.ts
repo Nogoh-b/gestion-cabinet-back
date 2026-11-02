@@ -14,6 +14,8 @@ import {
   ChatTranscriptionProcessor,
   ChatTranscriptionService,
 } from './services/chat/chat-transcription.service';
+import { ChatAttachmentStorageService } from './services/chat/chat-attachment-storage.service';
+import { AntivirusScannerService } from '../documents/document-customer/antivirus-scanner.service';
 
 @Module({
   imports: [
@@ -21,7 +23,13 @@ import {
     BullModule.registerQueue({ name: CHAT_TRANSCRIPTION_QUEUE }),
     forwardRef(() => AgenciesModule),
   ],
-  providers: [ChatService, ChatTranscriptionService, ChatTranscriptionProcessor],
+  providers: [
+    ChatService,
+    ChatTranscriptionService,
+    ChatTranscriptionProcessor,
+    ChatAttachmentStorageService,
+    AntivirusScannerService,
+  ],
   exports: [ChatService, TypeOrmModule],
   controllers: [ChatController],
 })

@@ -35,7 +35,7 @@ describe('Dossier - calculs de facturation', () => {
   it('exclut les factures annulées du DTO utilisé par la page Facturation', () => {
     const dto = plainToInstance(DossierResponseDto, {
       factures: [
-        facture(StatutFacture.IMPAYEE, 90_000),
+        facture(StatutFacture.ENVOYEE, 90_000),
         facture(StatutFacture.ANNULEE, 30_000),
       ],
     });

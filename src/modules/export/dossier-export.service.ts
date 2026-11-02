@@ -38,7 +38,6 @@ import {
   AudienceType1,
 } from '../audiences/entities/audience.entity';
 import { Diligence } from '../diligence/entities/diligence.entity';
-import { Step, StepStatus, StepType } from '../dossiers/entities/step.entity';
 import {
   type HiddenFields,
   type RestrictedFieldsUser,
@@ -136,19 +135,19 @@ const AUDIENCE_TYPE_LABELS: Record<number, string> = {
 };
 
 const STEP_STATUS_LABELS: Record<number, string> = {
-  [StepStatus.PENDING]: 'En attente',
-  [StepStatus.IN_PROGRESS]: 'En cours',
-  [StepStatus.COMPLETED]: 'Terminé',
-  [StepStatus.CANCELLED]: 'Annulé',
+  [-1]: 'En attente',
+  [0]: 'En cours',
+  [1]: 'Terminé',
+  [2]: 'Annulé',
 };
 
 const STEP_TYPE_LABELS: Record<string, string> = {
-  [StepType.OPENING]: 'Ouverture',
-  [StepType.AMIABLE]: 'Amiable',
-  [StepType.CONTENTIOUS]: 'Contentieux',
-  [StepType.DECISION]: 'Décision',
-  [StepType.APPEAL]: 'Appel',
-  [StepType.CLOSURE]: 'Clôture',
+  opening: 'Ouverture',
+  amiable: 'Amiable',
+  contentious: 'Contentieux',
+  decision: 'Décision',
+  appeal: 'Appel',
+  closure: 'Clôture',
 };
 
 const PAYMENT_MODE_LABELS: Record<number, string> = {
@@ -305,7 +304,6 @@ export class DossierExportService {
     private readonly audienceRepo: Repository<Audience>,
     @InjectRepository(Diligence)
     private readonly diligenceRepo: Repository<Diligence>,
-    @InjectRepository(Step) private readonly stepRepo: Repository<Step>,
     // Actions, facturation, comptes : `getRepository` passe aussi par le
     // filtre tenant (patch de Repository.prototype).
     @InjectDataSource() private readonly db: DataSource,
@@ -564,13 +562,8 @@ export class DossierExportService {
       relations: ['assigned_lawyer'],
       order: { deadline: 'ASC' } as any,
     });
-    const steps = await this.stepRepo.find({
-      where: { dossier_id: id } as any,
-      relations: showInvoices
-        ? ['documents', 'diligences', 'audiences', 'factures']
-        : ['documents', 'diligences', 'audiences'],
-      order: { id: 'ASC' } as any,
-    });
+    // Modèle « step » retiré par la refonte : plus de section étapes.
+    const steps: any[] = [];
     const invoiceLines = factureIds.length
       ? await this.db.getRepository(InvoiceLine).find({
           where: { facture_id: In(factureIds) },
@@ -1233,7 +1226,7 @@ export class DossierExportService {
     docPaths: Map<number, string>;
     audiences: Audience[];
     diligences: Diligence[];
-    steps: Step[];
+    steps: any[];
     actions: DossierAction[];
     actionDocs: Map<string, DossierActionDocumentLink[]>;
     actionAudiences: Map<string, DossierActionAudienceLink[]>;

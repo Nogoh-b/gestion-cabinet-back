@@ -36,11 +36,6 @@ import { DossiersModule } from '../dossiers/dossiers.module';
 import { NotificationModule } from '../notification/notification.module';
 import { AgenciesModule } from '../agencies/agencies.module';
 import { PlansModule } from '../plans/plans.module';
-import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
-import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
-import { PayrollPeriodWriteHandler } from './payroll-period-write.handler';
-import { PayslipWriteHandler } from './payslip-write.handler';
-import { PayslipLineWriteHandler } from './payslip-line-write.handler';
 
 @Module({
   imports: [
@@ -57,7 +52,6 @@ import { PayslipLineWriteHandler } from './payslip-line-write.handler';
     AgenciesModule,
     DossiersModule,
     PlansModule,
-    AiDatabaseModule,
     NotificationModule,
   ],
   controllers: [
@@ -80,9 +74,6 @@ import { PayslipLineWriteHandler } from './payslip-line-write.handler';
     PayrollGenerationService,
     PayrollStatsService,
     HrNotificationsService,
-    PayrollPeriodWriteHandler,
-    PayslipWriteHandler,
-    PayslipLineWriteHandler,
   ],
   exports: [
     PayrollPeriodsService,
@@ -96,17 +87,4 @@ import { PayslipLineWriteHandler } from './payslip-line-write.handler';
     PayrollStatsService,
   ],
 })
-export class PayrollModule {
-  constructor(
-    private readonly registry: WriteHandlerRegistry,
-    private readonly periodHandler: PayrollPeriodWriteHandler,
-    private readonly payslipHandler: PayslipWriteHandler,
-    private readonly lineHandler: PayslipLineWriteHandler,
-  ) {}
-
-  onModuleInit() {
-    this.registry.register(this.periodHandler);
-    this.registry.register(this.payslipHandler);
-    this.registry.register(this.lineHandler);
-  }
-}
+export class PayrollModule {}
