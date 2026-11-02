@@ -17,6 +17,7 @@ import { AudienceDecisionService } from './audience-decision.service';
 import { AudienceWriteHandler } from './audience-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { PlansModule } from '../plans/plans.module';
+import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { AudienceRecording } from './recordings/audience-recording.entity';
 import {
   AudienceRecordingsController,
@@ -56,6 +57,7 @@ import { LegalDeadlineWarningListener } from './legal-deadline-warning.listener'
     forwardRef(() => DossiersModule),
     forwardRef(() => ProcedureModule),
     PlansModule,
+    AiDatabaseModule,
   ],
   // Enregistrements d'abord : `GET /audiences/recording-config` avant `GET /audiences/:id`.
   controllers: [
