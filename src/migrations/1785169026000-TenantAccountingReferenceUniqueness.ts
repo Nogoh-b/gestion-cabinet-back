@@ -9,6 +9,29 @@ export class TenantAccountingReferenceUniqueness1785169026000
   implements MigrationInterface
 {
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Un référentiel comptable semé deux fois pour un même cabinet crée des
+    // lignes strictement identiques : on les fusionne (références repointées
+    // vers la plus ancienne) au lieu de bloquer. Les vrais conflits (même clé
+    // mais contenu différent) restent signalés par assertNoDuplicates.
+    await this.mergeExactDuplicates(
+      queryRunner,
+      'exercices_comptables',
+      ['tenant_id', 'annee'],
+      [{ table: 'ecritures_comptables', column: 'exercice_id', onUpdate: true }],
+    );
+    await this.mergeExactDuplicates(
+      queryRunner,
+      'journaux_comptables',
+      ['tenant_id', 'code', 'typeJournal'],
+      [{ table: 'ecritures_comptables', column: 'journal_id', onUpdate: true }],
+    );
+    await this.mergeExactDuplicates(
+      queryRunner,
+      'comptes_comptables',
+      ['tenant_id', 'numero'],
+      [{ table: 'lignes_ecriture_comptable', column: 'compte_id' }],
+    );
+
     await this.assertNoDuplicates(
       queryRunner,
       'comptes_comptables',
@@ -94,6 +117,44 @@ export class TenantAccountingReferenceUniqueness1785169026000
       );
       if (index) await queryRunner.dropIndex(tableName, index);
     }
+  }
+
+  /**
+   * Fusionne les lignes dupliquées sur `keyColumns` : la plus ancienne (MIN(id))
+   * est conservée, les tables référençantes sont repointées, les autres sont
+   * supprimées. `onUpdate` : la table référençante a un `updated_at ON UPDATE`
+   * qu'il faut neutraliser pour ne pas réécrire l'historique.
+   */
+  private async mergeExactDuplicates(
+    queryRunner: QueryRunner,
+    tableName: string,
+    keyColumns: string[],
+    references: Array<{ table: string; column: string; onUpdate?: boolean }>,
+  ): Promise<void> {
+    if (!(await queryRunner.hasTable(tableName))) return;
+    const keys = keyColumns.map((column) => `\`${column}\``).join(', ');
+    const sameKey = keyColumns
+      .map((column) => `dup.\`${column}\` <=> keep.\`${column}\``)
+      .join(' AND ');
+    const keepers = `(SELECT ${keys}, MIN(id) AS keep_id
+                      FROM \`${tableName}\` GROUP BY ${keys}) keep`;
+
+    for (const ref of references) {
+      if (!(await queryRunner.hasTable(ref.table))) continue;
+      const touch = ref.onUpdate ? ', r.`updated_at` = r.`updated_at`' : '';
+      await queryRunner.query(
+        `UPDATE \`${ref.table}\` r
+           JOIN \`${tableName}\` dup ON r.\`${ref.column}\` = dup.id
+           JOIN ${keepers} ON ${sameKey}
+            SET r.\`${ref.column}\` = keep.keep_id${touch}
+          WHERE dup.id <> keep.keep_id`,
+      );
+    }
+    await queryRunner.query(
+      `DELETE dup FROM \`${tableName}\` dup
+         JOIN ${keepers} ON ${sameKey}
+        WHERE dup.id <> keep.keep_id`,
+    );
   }
 
   private async assertNoDuplicates(

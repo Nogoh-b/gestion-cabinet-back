@@ -8,6 +8,8 @@ export class SecurePayrollLifecycle1785169030000
   implements MigrationInterface
 {
   public async up(queryRunner: QueryRunner): Promise<void> {
+    await this.archiveDuplicatePayslips(queryRunner);
+
     const duplicates = await queryRunner.query(
       `SELECT tenant_id, employee_id, period_id, COUNT(*) AS duplicate_count
        FROM payslip
@@ -90,6 +92,74 @@ export class SecurePayrollLifecycle1785169030000
         }),
       );
     }
+  }
+
+  /**
+   * Plusieurs bulletins pour un même (cabinet, collaborateur, période) bloquent
+   * l'index unique. On garde le plus avancé (payé > validé > brouillon, puis
+   * celui qui a des lignes, puis le plus récent) et on déplace les autres, avec
+   * leurs lignes, dans des tables d'archive : rien n'est perdu, tout reste
+   * restaurable à la main.
+   */
+  private async archiveDuplicatePayslips(
+    queryRunner: QueryRunner,
+  ): Promise<void> {
+    const rows: Array<{
+      id: number;
+      tenant_id: number;
+      employee_id: number;
+      period_id: number;
+      status: string;
+      line_count: number;
+    }> = await queryRunner.query(
+      `SELECT p.id, p.tenant_id, p.employee_id, p.period_id, p.status,
+              (SELECT COUNT(*) FROM payslip_line l WHERE l.payslip_id = p.id)
+                AS line_count
+         FROM payslip p
+         JOIN (SELECT tenant_id, employee_id, period_id FROM payslip
+                GROUP BY tenant_id, employee_id, period_id
+               HAVING COUNT(*) > 1) d
+           ON d.tenant_id = p.tenant_id AND d.employee_id = p.employee_id
+          AND d.period_id = p.period_id`,
+    );
+    if (rows.length === 0) return;
+
+    const rank: Record<string, number> = { paid: 2, validated: 1, draft: 0 };
+    const groups = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const key = `${row.tenant_id}:${row.employee_id}:${row.period_id}`;
+      groups.set(key, [...(groups.get(key) ?? []), row]);
+    }
+    const losers: number[] = [];
+    for (const group of groups.values()) {
+      group.sort(
+        (a, b) =>
+          (rank[b.status] ?? 0) - (rank[a.status] ?? 0) ||
+          Number(b.line_count > 0) - Number(a.line_count > 0) ||
+          b.id - a.id,
+      );
+      losers.push(...group.slice(1).map((row) => row.id));
+    }
+
+    await queryRunner.query(
+      'CREATE TABLE IF NOT EXISTS payslip_duplicate_archive LIKE payslip',
+    );
+    await queryRunner.query(
+      'CREATE TABLE IF NOT EXISTS payslip_line_duplicate_archive LIKE payslip_line',
+    );
+    const ids = losers.join(', ');
+    await queryRunner.query(
+      `INSERT IGNORE INTO payslip_duplicate_archive
+       SELECT * FROM payslip WHERE id IN (${ids})`,
+    );
+    await queryRunner.query(
+      `INSERT IGNORE INTO payslip_line_duplicate_archive
+       SELECT * FROM payslip_line WHERE payslip_id IN (${ids})`,
+    );
+    await queryRunner.query(
+      `DELETE FROM payslip_line WHERE payslip_id IN (${ids})`,
+    );
+    await queryRunner.query(`DELETE FROM payslip WHERE id IN (${ids})`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
