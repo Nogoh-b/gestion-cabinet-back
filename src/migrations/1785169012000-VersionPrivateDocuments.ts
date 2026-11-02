@@ -3,6 +3,16 @@ import { promises as fs } from 'fs';
 import { basename, isAbsolute, join, resolve } from 'path';
 import { MigrationInterface, QueryRunner, TableColumn } from 'typeorm';
 
+/**
+ * `document_customer.status` est un `ENUM('0','1','2','3','4')` : un littéral
+ * numérique y désigne l'INDEX du membre, donc `status = 0` visait la valeur
+ * d'erreur '' (« Data truncated for column 'status' »). La forme chaîne désigne
+ * la valeur elle-même (cf. `src/core/shared/utils/enum-value.ts`) ;
+ * `'0'` = `DocumentCustomerStatus.PENDING`, cohérent avec la mise en
+ * quarantaine de la version et le re-scan antivirus demandé.
+ */
+const PENDING_STATUS = '0';
+
 export class VersionPrivateDocuments1785169012000
   implements MigrationInterface
 {
@@ -118,50 +128,71 @@ export class VersionPrivateDocuments1785169012000
       }
 
       const buffer = await fs.readFile(sourcePath);
-      const versionId = randomUUID();
-      const storageKey = [
-        document.tenant_id,
-        document.dossier_id ?? 'unassigned',
-        document.id,
-        versionId,
-      ].join('/');
-      const targetPath = resolve(storageRoot, storageKey);
-      await fs.mkdir(resolve(targetPath, '..'), { recursive: true });
-      await fs.copyFile(sourcePath, targetPath);
-      const sha256 = createHash('sha256').update(buffer).digest('hex');
-      const originalName = (
-        document.name ||
-        basename(sourcePath) ||
-        `document-${document.id}`
-      ).slice(0, 255);
-      await queryRunner.query(
-        `INSERT INTO document_versions (
-          id, tenant_id, document_id, version_number, storage_key,
-          original_name, detected_mime, size_bytes, sha256, author_id,
-          status, antivirus_status, quarantine_reason
-        ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 'QUARANTINED',
-                  'UNAVAILABLE', ?)` ,
-        [
-          versionId,
+
+      // Reprise après échec : chaque DDL de cette migration (CREATE TABLE,
+      // ALTER TABLE) valide implicitement la transaction MySQL, donc une
+      // exécution interrompue peut laisser une ligne `document_versions` déjà
+      // commitée. On la réutilise au lieu d'en insérer une seconde, que
+      // `uq_document_version` rejetterait.
+      const existing: Array<{ id: string; sha256: string }> =
+        await queryRunner.query(
+          `SELECT id, sha256 FROM document_versions
+            WHERE tenant_id = ? AND document_id = ? AND version_number = 1
+            LIMIT 1`,
+          [document.tenant_id, document.id],
+        );
+      let versionId = existing[0]?.id;
+      const sha256 =
+        existing[0]?.sha256 ??
+        createHash('sha256').update(buffer).digest('hex');
+
+      if (!versionId) {
+        versionId = randomUUID();
+        const storageKey = [
           document.tenant_id,
+          document.dossier_id ?? 'unassigned',
           document.id,
-          storageKey,
-          originalName,
-          document.file_mimetype || 'application/octet-stream',
-          buffer.length,
-          sha256,
-          document.uploaded_by_id,
-          'Reprise historique : analyse antivirus obligatoire avant revue',
-        ],
-      );
+          versionId,
+        ].join('/');
+        const targetPath = resolve(storageRoot, storageKey);
+        await fs.mkdir(resolve(targetPath, '..'), { recursive: true });
+        await fs.copyFile(sourcePath, targetPath);
+        const originalName = (
+          document.name ||
+          basename(sourcePath) ||
+          `document-${document.id}`
+        ).slice(0, 255);
+        await queryRunner.query(
+          `INSERT INTO document_versions (
+            id, tenant_id, document_id, version_number, storage_key,
+            original_name, detected_mime, size_bytes, sha256, author_id,
+            status, antivirus_status, quarantine_reason
+          ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 'QUARANTINED',
+                    'UNAVAILABLE', ?)`,
+          [
+            versionId,
+            document.tenant_id,
+            document.id,
+            storageKey,
+            originalName,
+            document.file_mimetype || 'application/octet-stream',
+            buffer.length,
+            sha256,
+            document.uploaded_by_id,
+            'Reprise historique : analyse antivirus obligatoire avant revue',
+          ],
+        );
+      }
+
       await queryRunner.query(
         `UPDATE document_customer
          SET current_version_id = ?, version = 1, is_current_version = 1,
-             status = 0, file_path = NULL, file_url = NULL,
+             status = ?, file_path = NULL, file_url = NULL,
              file_size = ?, file_mimetype = ?
          WHERE id = ? AND tenant_id = ?`,
         [
           versionId,
+          PENDING_STATUS,
           buffer.length,
           document.file_mimetype || 'application/octet-stream',
           document.id,

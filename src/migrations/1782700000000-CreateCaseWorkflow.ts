@@ -495,10 +495,14 @@ export class CreateCaseWorkflow1782700000000 implements MigrationInterface {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
+    // `dossiers.status` est un ENUM('0'…'10') : un entier nu y désigne l'INDEX
+    // du membre, donc `IN (8, 9)` visait '7' (Exécution) et '8' (Clôture). La
+    // forme chaîne vise 8 = Clôture et 9 = Archive (cf.
+    // src/core/shared/utils/enum-value.ts).
     await queryRunner.query(`
       UPDATE dossiers
          SET lifecycle_phase = CASE
-           WHEN status IN (8, 9) THEN 'CLOSED'
+           WHEN status IN ('8', '9') THEN 'CLOSED'
            ELSE 'OPENING'
          END
        WHERE workflow_engine = 'LEGACY'
