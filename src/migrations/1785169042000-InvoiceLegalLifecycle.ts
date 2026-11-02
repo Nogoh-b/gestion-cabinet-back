@@ -8,10 +8,32 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class InvoiceLegalLifecycle1785169042000
   implements MigrationInterface
 {
+  /**
+   * Définition exacte de `factures.id` : une clé étrangère exige un type et une
+   * collation identiques, or l'id est un `varchar(36)` sur MySQL mais un `uuid`
+   * natif sur MariaDB ≥ 10.7 (errno 150 avec un CHAR(36) en dur).
+   */
+  private async invoiceIdDefinition(
+    queryRunner: QueryRunner,
+  ): Promise<string> {
+    const [column] = await queryRunner.query(
+      `SELECT COLUMN_TYPE AS type, CHARACTER_SET_NAME AS charset,
+              COLLATION_NAME AS collation
+         FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'factures' AND COLUMN_NAME = 'id'`,
+    );
+    if (!column) return 'CHAR(36)';
+    return column.charset
+      ? `${column.type} CHARACTER SET ${column.charset} COLLATE ${column.collation}`
+      : column.type;
+  }
+
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const invoiceId = await this.invoiceIdDefinition(queryRunner);
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS invoice_status_legacy_audit (
-        invoice_id CHAR(36) NOT NULL,
+        invoice_id ${invoiceId} NOT NULL,
         tenant_id INT NOT NULL,
         legacy_status VARCHAR(32) NOT NULL,
         migrated_status VARCHAR(32) NOT NULL,
@@ -65,7 +87,7 @@ export class InvoiceLegalLifecycle1785169042000
       ADD COLUMN settlement_disposition
         ENUM('NONE','CREDITED','WAIVED','BAD_DEBT')
         NOT NULL DEFAULT 'NONE' AFTER nature,
-      ADD COLUMN original_invoice_id CHAR(36) NULL
+      ADD COLUMN original_invoice_id ${invoiceId} NULL
         AFTER settlement_disposition,
       ADD COLUMN disposition_reason TEXT NULL AFTER original_invoice_id,
       ADD COLUMN disposition_at DATETIME(6) NULL AFTER disposition_reason,
