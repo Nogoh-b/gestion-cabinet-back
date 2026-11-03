@@ -949,7 +949,8 @@ export class AuthService {
         throw new Error('JWT_REFRESH_SECRET est obligatoire');
       }
       const [accessToken, nextRefreshToken] = await Promise.all([
-        this.jwtService.signAsync(payload, { expiresIn: '15m' }),
+        // Même durée que generateTokens() : JWT_EXPIRES_IN du JwtModule.
+        this.jwtService.signAsync(payload),
         this.jwtService.signAsync(payload, {
           secret: refreshSecret,
           expiresIn: '7d',
