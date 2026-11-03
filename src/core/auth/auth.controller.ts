@@ -158,7 +158,7 @@ export class AuthController {
       Number(principal.tenantId),
     );
     setSessionCookies(response, tokens);
-    return { authenticated: true };
+    return { access_token: tokens.accessToken, authenticated: true };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -277,11 +277,10 @@ export class AuthController {
       accessToken: result.access_token,
       refreshToken: result.refresh_token,
     });
-    const {
-      refresh_token: _refreshToken,
-      access_token: _accessToken,
-      ...body
-    } = result;
+    // Le front envoie encore le jeton en Bearer (localStorage) : access_token
+    // reste dans la réponse tant qu'il n'est pas passé aux cookies. Le jeton
+    // de renouvellement, lui, ne voyage que par cookie HttpOnly.
+    const { refresh_token: _refreshToken, ...body } = result;
     return { ...body, authenticated: true };
   }
 }

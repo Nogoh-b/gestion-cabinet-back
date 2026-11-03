@@ -972,9 +972,9 @@ export class AuthService {
     }
 
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync(payload, {
-        expiresIn: '15m',
-      }),
+      // Durée JWT_EXPIRES_IN (signOptions du JwtModule) : le front ne sait pas
+      // encore renouveler le jeton, 15 min le déconnecterait en pleine saisie.
+      this.jwtService.signAsync(payload),
       this.jwtService.signAsync(payload, {
         secret: refreshSecret,
         expiresIn: '7d',
