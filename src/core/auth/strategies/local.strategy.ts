@@ -21,11 +21,10 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
     username: string,
     password: string,
   ): Promise<any> {
-    // resolvedTenantId est posé par TenantResolverMiddleware avant les guards
-    const tenantId = (req as any)['resolvedTenantId'] as number | undefined;
-    if (!tenantId) {
-      throw new UnauthorizedException('Le code cabinet est obligatoire');
-    }
+    // resolvedTenantId est posé par TenantResolverMiddleware avant les guards.
+    // Sans cabinet (/auth/login global), 1 déclenche la connexion globale de
+    // validateUser() : le cabinet est déduit du compte qui matche.
+    const tenantId: number = (req as any)['resolvedTenantId'] ?? 1;
     const user = await this.authService.validateUser(username, password, tenantId);
     if (!user) {
       throw new UnauthorizedException(
