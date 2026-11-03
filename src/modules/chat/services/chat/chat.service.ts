@@ -806,7 +806,6 @@ export class ChatService {
         'dossier.dossier_number',
         'dossier.object',
         'dossier.status',
-        'dossier.is_archived',
         'dossier.workflow_engine',
         'dossier.lifecycle_phase',
       ])

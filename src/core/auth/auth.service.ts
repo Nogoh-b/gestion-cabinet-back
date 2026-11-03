@@ -530,18 +530,48 @@ export class AuthService {
    */
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ success: boolean; message: string }> {
     const { email } = forgotPasswordDto;
-    const tenantId = this.tenantContext.getTenantId();
 
     // Vérifier si l'utilisateur existe
-    const user = await this.usersService.findByEmailForPasswordReset(email, tenantId);
+    const user = await this.findUserForPasswordReset(email);
     if (!user) {
       // Pour des raisons de sécurité, on ne révèle pas si l'email existe ou non
-      return { 
-        success: true, 
-        message: 'Si un compte existe avec cet email, vous recevrez un code de réinitialisation.' 
+      return {
+        success: true,
+        message: 'Si un compte existe avec cet email, vous recevrez un code de réinitialisation.'
       };
     }
 
+    // Le reste du flux (OTP, template de mail) s'exécute dans le cabinet du
+    // compte, y compris quand la demande arrive sans cabinet (connexion globale).
+    return this.tenantContext.run(user.tenant_id, () =>
+      this.sendPasswordResetOtp(email, user),
+    );
+  }
+
+  /**
+   * Compte à réinitialiser. Avec un cabinet résolu (header, sous-domaine,
+   * /t/<code>) la recherche est bornée à ce cabinet ; sans cabinet (connexion
+   * globale) elle est globale, premier compte par id (même règle que le login).
+   */
+  private async findUserForPasswordReset(email: string): Promise<any | null> {
+    let tenantId: number | undefined;
+    try {
+      tenantId = this.tenantContext.getTenantId();
+    } catch {
+      tenantId = undefined;
+    }
+    if (tenantId) {
+      return this.usersService.findByEmailForPasswordReset(email, tenantId);
+    }
+    return this.tenantContext.runWithoutTenant(() =>
+      this.usersService.findByEmailForPasswordReset(email),
+    );
+  }
+
+  private async sendPasswordResetOtp(
+    email: string,
+    user: any,
+  ): Promise<{ success: boolean; message: string }> {
     // Créer un OTP
     const { otp, expiresAt } = await this.authTokenService.createOTP(email, 'reset_password');
 
@@ -624,11 +654,11 @@ export class AuthService {
     }
 
     // Récupérer l'utilisateur
-    const user = await this.usersService.findByEmailForPasswordReset(email, this.tenantContext.getTenantId());
+    const user = await this.findUserForPasswordReset(email);
     if (!user) {
       throw new UnauthorizedException('Utilisateur non trouvé');
     }
-    const userTenantId = (user as any).tenant_id ?? this.tenantContext.getTenantId();
+    const userTenantId = user.tenant_id;
 
     // Hasher le nouveau mot de passe
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -727,11 +757,11 @@ export class AuthService {
     }
 
     // Récupérer l'utilisateur
-    const user = await this.usersService.findByEmailForPasswordReset(email, this.tenantContext.getTenantId());
+    const user = await this.findUserForPasswordReset(email);
     if (!user) {
       throw new UnauthorizedException('Utilisateur non trouvé');
     }
-    const userTenantId = (user as any).tenant_id ?? this.tenantContext.getTenantId();
+    const userTenantId = user.tenant_id;
 
     // Vérifier si l'utilisateur a déjà un mot de passe
     if (user.password) {

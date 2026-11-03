@@ -169,7 +169,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getTotalHT(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .select(this.netRecognizedExpression('facture.montantHT'), 'total')
+      .select(this.netRecognizedExpression('facture.montant_ht'), 'total')
       .setParameters(this.financialStatusParameters());
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
@@ -179,7 +179,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getTotalTTC(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .select(this.netRecognizedExpression('facture.montantTTC'), 'total')
+      .select(this.netRecognizedExpression('facture.montant_ttc'), 'total')
       .setParameters(this.financialStatusParameters());
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
@@ -209,7 +209,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .createQueryBuilder('facture')
       .select(
         `COALESCE(SUM(GREATEST(
-          facture.montantTTC
+          facture.montant_ttc
           - COALESCE((
               SELECT SUM(payment_amount.montant)
               FROM paiements payment_amount
@@ -621,8 +621,8 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .select("DATE_FORMAT(facture.dateFacture, '%Y-%m')", 'month')
-      .addSelect(this.netRecognizedExpression('facture.montantHT'), 'totalHT')
-      .addSelect(this.netRecognizedExpression('facture.montantTTC'), 'totalTTC')
+      .addSelect(this.netRecognizedExpression('facture.montant_ht'), 'totalHT')
+      .addSelect(this.netRecognizedExpression('facture.montant_ttc'), 'totalTTC')
       .addSelect(
         'SUM(CASE WHEN facture.status = :paid THEN facture.montantTTC ELSE 0 END)',
         'totalPaid',

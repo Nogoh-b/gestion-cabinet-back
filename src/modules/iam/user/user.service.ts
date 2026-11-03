@@ -176,7 +176,8 @@ export class UsersService {
       .leftJoinAndSelect('user.customer', 'customer')
       .leftJoinAndSelect('user.roleAssignments', 'roleAssignment')
       .leftJoinAndSelect('roleAssignment.role', 'role')
-      .where('user.email = :email', { email });
+      .where('user.email = :email', { email })
+      .orderBy('user.id', 'ASC');
 
     // Isolation stricte : quand un tenant est connu, on filtre TOUJOURS
     // dessus (y compris tenant 1). Sans filtre, un reset mot de passe
