@@ -42,7 +42,7 @@ export class ProgrammerAudienceSkill extends GuidedWriteSkill {
     keywords: ['audience', 'programmer', 'planifier', 'agenda', 'tribunal', 'renvoi'],
   };
   protected readonly table = 'audiences';
-  protected readonly instruction = "Créer UNE audience (INSERT audiences) pour le dossier mentionné.";
+  protected readonly instruction = "Créer UNE audience (INSERT audiences) pour le dossier mentionné. Une audience à moins de 48 heures exige late_scheduling_reason : reprends le motif de la demande, sans l'inventer.";
 }
 
 @Injectable()

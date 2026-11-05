@@ -71,7 +71,11 @@ import {
 } from 'src/core/resource-policy.service';
 import { OutboxService } from 'src/core/outbox/outbox.service';
 import { AuditService } from 'src/core/audit/audit.service';
-import { normalizeAudienceSchedule } from './audience-schedule.util';
+import {
+  assertAudienceScheduleAllowed,
+  normalizeAudienceSchedule,
+  rescheduleAudience,
+} from './audience-schedule.util';
 
 @Injectable()
 export class AudiencesService extends BaseServiceV1<Audience> {
@@ -199,7 +203,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     // Vérifier si l'audience est compatible avec le statut actuel
     this.validateAudienceForDossierStatus(dossier, dto.type as AudienceType1);
     const schedule = normalizeAudienceSchedule(dto);
-    this.assertAudienceScheduleAllowed(
+    assertAudienceScheduleAllowed(
       schedule.startsAtUtc,
       actor,
       dto.late_scheduling_reason,
@@ -341,35 +345,6 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     }
   }
 
-  private assertAudienceScheduleAllowed(
-    startsAtUtc: Date,
-    actor: ResourceActor,
-    lateReason?: string,
-  ): void {
-    const delayMs = startsAtUtc.getTime() - Date.now();
-    if (delayMs <= 0) {
-      throw new BadRequestException(
-        "La date de l'audience doit être strictement future",
-      );
-    }
-    if (delayMs >= 48 * 60 * 60 * 1000) return;
-
-    const canScheduleLate =
-      actor.role === 'admin' ||
-      actor.permissions?.includes('schedule_audience_under_48h') ||
-      actor.permissions?.includes('SUPER_ADMIN');
-    if (!canScheduleLate) {
-      throw new BadRequestException(
-        'Une audience créée à moins de 48 heures exige une permission de dérogation',
-      );
-    }
-    if (!lateReason || lateReason.trim().length < 10) {
-      throw new BadRequestException(
-        'Le motif de création tardive est obligatoire et doit être explicite',
-      );
-    }
-  }
-
   /**
    * Le dossier ne porte aucune phase procédurale. Le type d'audience est
    * contrôlé par les exigences du template ; ici seul le cycle administratif
@@ -484,24 +459,23 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       dto.audience_time !== undefined ||
       dto.timezone !== undefined
     ) {
-      const schedule = normalizeAudienceSchedule({
-        starts_at_utc: dto.starts_at_utc ?? audience.starts_at_utc,
-        timezone: dto.timezone ?? audience.timezone,
-        audience_date: dto.audience_date ?? audience.audience_date,
-        audience_time: dto.audience_time ?? audience.audience_time,
-      });
-      this.assertAudienceScheduleAllowed(
-        schedule.startsAtUtc,
-        actor,
-        dto.late_scheduling_reason,
-      );
+      const { schedule, moved } = rescheduleAudience(audience, dto);
+      if (moved) {
+        assertAudienceScheduleAllowed(
+          schedule.startsAtUtc,
+          actor,
+          dto.late_scheduling_reason,
+        );
+      }
       audience.starts_at_utc = schedule.startsAtUtc;
       audience.timezone = schedule.timezone;
       audience.audience_date = schedule.legacyDate as unknown as Date;
       audience.audience_time = schedule.legacyTime;
-      audience.reminder_sent = false;
-      audience.reminder_sent_at = null;
-      rescheduledAt = schedule.startsAtUtc;
+      if (moved) {
+        audience.reminder_sent = false;
+        audience.reminder_sent_at = null;
+        rescheduledAt = schedule.startsAtUtc;
+      }
     }
 
     // ✅ VÉRIFICATION: Si on tente de marquer l'audience comme tenue (HELD)
@@ -659,7 +633,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     actor: ResourceActor,
   ): Promise<{ original: Audience; replacement: Audience }> {
     const schedule = normalizeAudienceSchedule(dto);
-    this.assertAudienceScheduleAllowed(
+    assertAudienceScheduleAllowed(
       schedule.startsAtUtc,
       actor,
       dto.late_scheduling_reason ?? dto.reason,

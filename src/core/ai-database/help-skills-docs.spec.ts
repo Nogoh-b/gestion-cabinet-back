@@ -53,6 +53,15 @@ describe('Guides des compétences et des modes du chat', () => {
     ['À quoi servent les actions recommandées ?', 'competences'],
     ['Comment réduire la carte du courrier ?', 'competences'],
     ['Comment corriger la réponse d’une compétence ?', 'competences'],
+    // 04/11/2026 : audience en direct, documents d’audience, transcription.
+    ['Comment démarrer une audience ?', 'audiences'],
+    ['Comment enregistrer le son de l’audience ?', 'audiences'],
+    ['Comment terminer une audience en cours ?', 'audiences'],
+    ['Comment rédiger le procès-verbal d’audience depuis le chat ?', 'competences-rapports-agenda'],
+    ['Comment faire un projet de décision d’audience ?', 'competences-rapports-agenda'],
+    ['Comment transcrire un entretien ?', 'competences-analyse'],
+    ['Comment transcrire un fichier audio ?', 'competences-analyse'],
+    ['Quelle est la liste des compétences ?', 'competences'],
   ])('« %s » → %s', (question, expected) => {
     expect(top(question)).toBe(expected);
   });

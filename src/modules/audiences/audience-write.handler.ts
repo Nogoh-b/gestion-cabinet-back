@@ -24,6 +24,23 @@ import {
   ValidationResult,
 } from 'src/core/ai-database/interface/entity-write-handler.interface';
 import { applyAudienceStatusChange } from './audience-workflow';
+import { AiDatabasePermissionService } from 'src/core/ai-database/ai-database-permission.service';
+import {
+  assertAudienceScheduleAllowed,
+  isLateAudienceStart,
+  normalizeAudienceSchedule,
+  rescheduleAudience,
+} from './audience-schedule.util';
+
+/** Jour civil d'une valeur du plan (une `Date` vient d'une date relative, en heure locale). */
+function scheduleDay(value: unknown): string {
+  if (!(value instanceof Date)) return String(value ?? '').slice(0, 10);
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+}
+
+const lateReasonOf = (fields: Record<string, any>): string =>
+  String(fields.late_scheduling_reason || fields.reason || '').trim();
 
 /**
  * Handler custom pour les audiences.
@@ -34,6 +51,9 @@ import { applyAudienceStatusChange } from './audience-workflow';
  *   - Transitions automatiques :
  *     · status=HELD sans decision_date → today
  *     · status=POSTPONED → vérifier postponed_to
+ *   - Date : mêmes règles que le formulaire (future, motif et dérogation sous
+ *     48 h). Une audience déjà tenue, reportée ou annulée peut être consignée
+ *     au passé (reprise de fiches existantes).
  */
 @Injectable()
 export class AudienceWriteHandler extends BaseWriteHandler {
@@ -43,6 +63,7 @@ export class AudienceWriteHandler extends BaseWriteHandler {
     entityResolver: EntityResolverService,
     @InjectRepository(Audience)
     private readonly audienceRepo: Repository<Audience>,
+    private readonly permissions: AiDatabasePermissionService,
   ) {
     super('audiences', dataSource, schemaMetadata, entityResolver);
   }
@@ -110,7 +131,55 @@ export class AudienceWriteHandler extends BaseWriteHandler {
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);
     }
+    fields.push({
+      name: 'late_scheduling_reason',
+      label: 'Motif de la création à moins de 48 heures',
+      type: 'string',
+      required: false,
+      description:
+        "Obligatoire si l'audience commence dans moins de 48 heures (10 caractères au moins). À reprendre de la demande, jamais à inventer.",
+      example: 'Audience fixée en urgence par le greffe ce matin',
+    });
     return fields;
+  }
+
+  /** Motif à faire saisir dans la carte de confirmation (audience à moins de 48 h). */
+  requiredPlanFields(operation: {
+    operation?: string;
+    fields?: Record<string, any>;
+  }): Record<string, string> {
+    const fields = operation.fields ?? {};
+    if (operation.operation !== 'INSERT' || !fields.audience_date) return {};
+    if (lateReasonOf(fields)) return {};
+    try {
+      const { startsAtUtc } = normalizeAudienceSchedule({
+        audience_date: scheduleDay(fields.audience_date),
+        audience_time: parseLenientTime(fields.audience_time) || undefined,
+      });
+      return isLateAudienceStart(startsAtUtc)
+        ? { late_scheduling_reason: 'Obligatoire : audience à moins de 48 heures' }
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** Mêmes droits que le formulaire, lus depuis le profil de l'utilisateur. */
+  private async assertScheduleAllowed(
+    startsAtUtc: Date,
+    userId: string,
+    lateReason: string,
+  ): Promise<void> {
+    const { isAdmin, permissions } =
+      await this.permissions.getAccessProfile(userId);
+    assertAudienceScheduleAllowed(
+      startsAtUtc,
+      {
+        role: isAdmin ? 'admin' : undefined,
+        permissions: [...permissions.keys()],
+      },
+      lateReason,
+    );
   }
 
   async validateFields(
@@ -215,18 +284,41 @@ export class AudienceWriteHandler extends BaseWriteHandler {
       this.filterKnownColumns(fields),
     );
 
+    const status =
+      safeFields.status !== undefined
+        ? Number(safeFields.status)
+        : AudienceStatus.SCHEDULED;
+    const schedule = normalizeAudienceSchedule({
+      audience_date: scheduleDay(safeFields.audience_date),
+      audience_time: safeFields.audience_time,
+    });
+    const lateReason = lateReasonOf(fields);
+    const late = isLateAudienceStart(schedule.startsAtUtc);
+    if (status === AudienceStatus.SCHEDULED) {
+      await this.assertScheduleAllowed(
+        schedule.startsAtUtc,
+        userId,
+        lateReason,
+      );
+    }
+
     const data = {
       ...safeFields,
-      audience_date: new Date(safeFields.audience_date),
-      audience_time: safeFields.audience_time || '09:00',
+      audience_date: schedule.legacyDate as unknown as Date,
+      audience_time: schedule.legacyTime,
+      starts_at_utc: schedule.startsAtUtc,
+      timezone: schedule.timezone,
+      notes:
+        late && lateReason
+          ? [safeFields.notes, `Audience à moins de 48 heures. Motif : ${lateReason}`]
+              .filter(Boolean)
+              .join('\n')
+          : safeFields.notes,
       type:
         safeFields.type !== undefined
           ? Number(safeFields.type)
           : AudienceType1.HEARING,
-      status:
-        safeFields.status !== undefined
-          ? Number(safeFields.status)
-          : AudienceStatus.SCHEDULED,
+      status,
       reminder_sent: safeFields.reminder_sent ?? false,
     };
 
@@ -292,14 +384,26 @@ export class AudienceWriteHandler extends BaseWriteHandler {
 
       // ── Cas A : nouvelle date fournie → renvoi daté + audience de remplacement ──
       if (postponedDate && postponedTime) {
+        const schedule = normalizeAudienceSchedule({
+          audience_date: scheduleDay(postponedDate),
+          audience_time: postponedTime,
+          timezone: audience.timezone,
+        });
+        await this.assertScheduleAllowed(
+          schedule.startsAtUtc,
+          userId,
+          lateReasonOf(fields),
+        );
         audience.status = AudienceStatus.POSTPONED;
         audience.audience_date = postponedDate;
         audience.audience_time = postponedTime;
         const savedOriginal = await this.audienceRepo.save(audience);
 
         const replacement = this.audienceRepo.create({
-          audience_date: postponedDate,
-          audience_time: postponedTime,
+          audience_date: schedule.legacyDate as unknown as Date,
+          audience_time: schedule.legacyTime,
+          starts_at_utc: schedule.startsAtUtc,
+          timezone: schedule.timezone,
           jurisdiction_id: audience.jurisdiction_id,
           room: safeFields.room ?? audience.room,
           type: audience.type,
@@ -348,6 +452,31 @@ export class AudienceWriteHandler extends BaseWriteHandler {
         data: savedPostponed,
         message: `Audience ${entityId} marquée comme reportée${reason ? ` (motif : ${reason})` : ''}. Nouvelle date à fixer ultérieurement.`,
       };
+    }
+
+    if (
+      safeFields.audience_date !== undefined ||
+      safeFields.audience_time !== undefined
+    ) {
+      const { schedule, moved } = rescheduleAudience(audience, {
+        ...(safeFields.audience_date !== undefined && {
+          audience_date: scheduleDay(safeFields.audience_date),
+        }),
+        audience_time: safeFields.audience_time,
+      });
+      if (moved) {
+        await this.assertScheduleAllowed(
+          schedule.startsAtUtc,
+          userId,
+          lateReasonOf(fields),
+        );
+        audience.reminder_sent = false;
+        audience.reminder_sent_at = null;
+      }
+      safeFields.audience_date = schedule.legacyDate;
+      safeFields.audience_time = schedule.legacyTime;
+      audience.starts_at_utc = schedule.startsAtUtc;
+      audience.timezone = schedule.timezone;
     }
 
     // Entrée/sortie du statut « En cours » (mêmes règles que Démarrer/Terminer).

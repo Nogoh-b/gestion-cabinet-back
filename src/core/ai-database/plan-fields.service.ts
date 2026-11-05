@@ -147,7 +147,9 @@ export class PlanFieldsService {
     if (op.operation === 'ACTION') return this.describeAction(all, index, op);
     const meta = this.metadataFor(op.entity);
     const entityLabel = (meta && this.schemaMetadata.getTableLabel(meta.tableName)) || humanize(op.entity ?? '');
-    const fields = op.fields ?? {};
+    // Champ exigé par le handler et absent du plan : à faire saisir dans la carte.
+    const required: Record<string, string> = (this.registry.getHandler(op.entity) as any)?.requiredPlanFields?.(op) ?? {};
+    const fields = { ...op.fields, ...Object.fromEntries(Object.keys(required).map((name) => [name, ''])) };
     const descriptors: PlanFieldDescriptor[] = [];
     const references = meta ? this.referenceMap(meta) : new Map<string, ReferenceInfo>();
     const handlerLabels = await this.handlerLabels(op.entity);
@@ -188,6 +190,9 @@ export class PlanFieldsService {
     await this.addPreviousValues(op, meta, descriptors).catch((error: Error) => {
       this.logger.debug(`Valeurs actuelles de l'opération ${index} non lues : ${error.message}`);
     });
+    for (const descriptor of descriptors) {
+      if (required[descriptor.name]) Object.assign(descriptor, { secondary: false, note: required[descriptor.name] });
+    }
     return {
       index,
       entityLabel,

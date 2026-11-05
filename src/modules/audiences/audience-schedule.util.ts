@@ -3,6 +3,11 @@ import { BadRequestException } from '@nestjs/common';
 export const DEFAULT_AUDIENCE_TIMEZONE =
   process.env.DEFAULT_LEGAL_TIMEZONE || 'Africa/Ndjamena';
 
+const LATE_SCHEDULING_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+/** Heure retenue quand aucune n'est saisie. */
+export const DEFAULT_AUDIENCE_TIME = '09:00';
+
 export interface AudienceScheduleInput {
   starts_at_utc?: string | Date;
   timezone?: string;
@@ -151,7 +156,7 @@ export function normalizeAudienceSchedule(
     }
     startsAtUtc = new Date(input.starts_at_utc);
   } else {
-    if (!input.audience_date || !input.audience_time) {
+    if (!input.audience_date) {
       throw new BadRequestException(
         'starts_at_utc est requis (date/heure historiques acceptées temporairement)',
       );
@@ -162,7 +167,7 @@ export function normalizeAudienceSchedule(
         : String(input.audience_date).slice(0, 10);
     startsAtUtc = zonedLocalDateTimeToUtc(
       datePart,
-      input.audience_time,
+      input.audience_time || DEFAULT_AUDIENCE_TIME,
       timezone,
     );
   }
@@ -174,4 +179,71 @@ export function normalizeAudienceSchedule(
     timezone,
   );
   return { startsAtUtc, timezone, legacyDate, legacyTime };
+}
+
+/** Début dans les 48 prochaines heures : un motif devient obligatoire. */
+export function isLateAudienceStart(
+  startsAtUtc: Date,
+  now: Date = new Date(),
+): boolean {
+  const delayMs = startsAtUtc.getTime() - now.getTime();
+  return delayMs > 0 && delayMs < LATE_SCHEDULING_WINDOW_MS;
+}
+
+/** Règles de date communes aux écrans et au chat. */
+export function assertAudienceScheduleAllowed(
+  startsAtUtc: Date,
+  actor: { role?: string; permissions?: string[] },
+  lateReason?: string,
+): void {
+  if (startsAtUtc.getTime() <= Date.now()) {
+    throw new BadRequestException(
+      "La date de l'audience doit être strictement future",
+    );
+  }
+  if (!isLateAudienceStart(startsAtUtc)) return;
+
+  const canScheduleLate =
+    actor.role === 'admin' ||
+    actor.permissions?.includes('schedule_audience_under_48h') ||
+    actor.permissions?.includes('SUPER_ADMIN');
+  if (!canScheduleLate) {
+    throw new BadRequestException(
+      'Une audience à moins de 48 heures exige une permission de dérogation',
+    );
+  }
+  if (!lateReason || lateReason.trim().length < 10) {
+    throw new BadRequestException(
+      "Un motif d'au moins 10 caractères est obligatoire pour une audience à moins de 48 heures",
+    );
+  }
+}
+
+/**
+ * Horaire d'une audience après modification. Une date ou une heure saisie prime
+ * sur l'instant enregistré ; `moved` dit si l'audience change réellement de
+ * moment (les formulaires renvoient toujours la date, même inchangée).
+ */
+export function rescheduleAudience(
+  current: AudienceScheduleInput,
+  change: AudienceScheduleInput,
+): { schedule: NormalizedAudienceSchedule; moved: boolean } {
+  const localChange =
+    !change.starts_at_utc && (!!change.audience_date || !!change.audience_time);
+  const timezone = change.timezone ?? current.timezone;
+  const schedule = normalizeAudienceSchedule({
+    starts_at_utc:
+      change.starts_at_utc ?? (localChange ? undefined : current.starts_at_utc),
+    timezone,
+    audience_date: change.audience_date ?? current.audience_date,
+    audience_time: change.audience_time ?? current.audience_time,
+  });
+  const previous =
+    current.starts_at_utc || current.audience_date
+      ? normalizeAudienceSchedule(current).startsAtUtc
+      : null;
+  return {
+    schedule,
+    moved: schedule.startsAtUtc.getTime() !== previous?.getTime(),
+  };
 }

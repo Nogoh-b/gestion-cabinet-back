@@ -1,7 +1,7 @@
 ---
 id: competences-analyse
-title: Compétences « Analyse juridique » (jugement, conclusions, chronologie, contrat, mentions, chances, comparables, plaidoirie)
-keywords: lire un jugement, lecture de jugement, analyser une decision, dispositif du jugement, delais de recours du jugement, enregistrer la decision, repondre aux conclusions, conclusions adverses, conclusions en reponse, moyens adverses, chronologie du dossier, chronologie des faits, contradictions entre pieces, frise des faits, auditer un contrat, audit de contrat, clauses a risque, clauses manquantes, comparer deux versions, comparaison de contrat, controler les mentions, mentions obligatoires, nullite d'un acte, evaluer les chances, chances de succes, probabilite de succes, analyse preliminaire, dossiers comparables, dossiers similaires, precedents du cabinet, dossier de plaidoirie, preparer une plaidoirie, questions du juge
+title: Compétences « Analyse juridique » (jugement, conclusions, chronologie, contrat, mentions, chances, comparables, plaidoirie, transcription)
+keywords: transcrire un enregistrement, transcrire un audio, transcrire un entretien, transcrire une reunion, transcription d'un entretien, fichier audio, enregistrer et transcrire, bouton micro, dictee en direct, lire un jugement, lecture de jugement, analyser une decision, dispositif du jugement, delais de recours du jugement, enregistrer la decision, repondre aux conclusions, conclusions adverses, conclusions en reponse, moyens adverses, chronologie du dossier, chronologie des faits, contradictions entre pieces, frise des faits, auditer un contrat, audit de contrat, clauses a risque, clauses manquantes, comparer deux versions, comparaison de contrat, controler les mentions, mentions obligatoires, nullite d'un acte, evaluer les chances, chances de succes, probabilite de succes, analyse preliminaire, dossiers comparables, dossiers similaires, precedents du cabinet, dossier de plaidoirie, preparer une plaidoirie, questions du juge
 paths: /chat
 ---
 
@@ -10,7 +10,7 @@ paths: /chat
 Ces compétences sont une **aide à la décision** : l'avocat vérifie avant d'agir. Elles s'appuient sur les pièces (texte lu, y compris les scans par reconnaissance de caractères) et sur la **base juridique de la plateforme** ; sans extrait pertinent, elles n'inventent aucun article et signalent ce qu'il faut vérifier. Les pièces confidentielles ne sont pas lues.
 
 ## Lire un jugement
-- Joignez la décision (PDF, Word ou photo) ou mentionnez-la avec **@** › Documents ; mentionnez le **@dossier** pour l'enregistrer. Indiquez la date de signification si vous la connaissez (« signifié le 10/10/2026 »).
+- Joignez la décision (PDF, Word ou photo), mentionnez-la avec **@** › Documents ou collez son texte ; mentionnez le **@dossier** pour l'enregistrer. Avec une **@audience** et sans pièce, la décision saisie sur l'audience est lue, sinon le dispositif prononcé dans sa transcription. Indiquez la date de signification si vous la connaissez (« signifié le 10/10/2026 »).
 - Résultat : juridiction, date, nature (contradictoire, par défaut…), parties, **dispositif** recopié, tableau des **condamnations** (débiteur, créancier, objet, montant), issue pour le client, **délais de recours calculés** (voir Calculer un délai de procédure) et points d'attention.
 - Avec un dossier, la carte propose : enregistrer la décision sur le dossier (décision finale, date limite d'appel ou de cassation) et **créer une diligence par délai à venir** (priorité critique). Droit requis : consulter les dossiers ; l'écriture est contrôlée comme une modification manuelle.
 
@@ -44,3 +44,10 @@ Ces compétences sont une **aide à la décision** : l'avocat vérifie avant d'a
 ## Dossier de plaidoirie
 - Mentionnez l'**@audience** (ou le dossier) et vos axes.
 - Résultat : faits, problématique, moyens (fondement, pièces), pièces clés, **questions probables du juge** avec réponses, objections adverses et parades, points de vigilance, conclusion orale — en PDF « Dossier de plaidoirie » prêt à imprimer.
+
+## Transcrire un enregistrement
+- **Bouton micro** de la saisie : **Dictée en direct** écrit votre voix dans la saisie, **Enregistrer et transcrire** enregistre depuis le navigateur, **Transcrire un fichier audio…** part d'un fichier. Mentionnez éventuellement un **@client**, un **@dossier** ou une **@audience**.
+- Avec une **@audience** enregistrée, ses segments transcrits sont assemblés. S'ils ne le sont pas encore, la compétence demande de les transcrire depuis le bloc **Enregistrement audio** de la fiche.
+- Résultat : carte studio avec la transcription (« Intervenant N : » quand plusieurs voix sont repérées), **Word**, **PDF**, classement dans le dossier. La carte permet aussi de copier le texte ou de l'insérer dans le message.
+- Étapes suivantes : **Compte rendu**, **Procès-verbal**, **Synthèse et points clés** ; pour une audience, **Compte rendu d'audience**, et, à partir de ses enregistrements, **Rapport d'audience** et **Projet de décision**.
+- La transcription est automatique : relisez les noms propres, les montants et les dates. Les passages inaudibles et les segments manquants sont signalés.

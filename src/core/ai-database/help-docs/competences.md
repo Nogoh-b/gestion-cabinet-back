@@ -1,7 +1,7 @@
 ---
 id: competences
 title: Compétences du chat (menu « # »)
-keywords: actions recommandees, boutons sous la reponse, que faire ensuite, reduire la carte, carte en plein ecran, agrandir la carte, brouillon perdu, brouillon garde, retrouver mon brouillon, inserer une reference, corriger la reponse d'une competence, demander sur une reponse, modifier un courrier redige, graphique dans le chat, courbe, camembert, relire un document redige, competence, competences, les competences, menu diese, touche diese, bouton eclair, choisir une competence, liste des competences, quelles competences, que peut faire une competence, competence introuvable, competence absente, retirer la competence, utiliser une competence, carte a valider, actions guidees, outils juridiques, competence en attente, en attente de precision, competence sans diese, recapitulatif des actions menees, actions menees sur le dossier
+keywords: liste des competences, toutes les competences, quelles sont les competences, actions recommandees, boutons sous la reponse, que faire ensuite, reduire la carte, carte en plein ecran, agrandir la carte, brouillon perdu, brouillon garde, retrouver mon brouillon, inserer une reference, corriger la reponse d'une competence, demander sur une reponse, modifier un courrier redige, graphique dans le chat, courbe, camembert, relire un document redige, competence, competences, les competences, menu diese, touche diese, bouton eclair, choisir une competence, liste des competences, quelles competences, que peut faire une competence, competence introuvable, competence absente, retirer la competence, utiliser une competence, carte a valider, actions guidees, outils juridiques, competence en attente, en attente de precision, competence sans diese, recapitulatif des actions menees, actions menees sur le dossier
 paths: /chat
 ---
 
@@ -30,11 +30,11 @@ Une **compétence** est une action spécialisée et guidée du chat : envoyer un
 | Famille | Compétences |
 |---|---|
 | **Communication** | Envoyer un e-mail · Préparer un WhatsApp · Message à l'espace client · Message à un collaborateur · Envoyer une facture · Relancer les impayés |
-| **Documents** | Créer / modifier un document (Word / PDF ; modèles, courrier, mise en demeure, création de modèle, modification versionnée) · Traduire (français ↔ anglais) · Version bilingue FR \| EN · Anonymiser un document |
-| **Analyse juridique** | Lire un jugement · Répondre aux conclusions adverses · Chronologie et contradictions · Auditer un contrat · Contrôler les mentions d'un acte · Évaluer les chances du dossier · Dossiers comparables · Dossier de plaidoirie |
+| **Documents** | Créer / modifier un document (Word / PDF ; modèles, courrier, mise en demeure, création de modèle, modification versionnée) · Traduire (français ↔ anglais) · Version bilingue FR \| EN · Anonymiser un document · Modèles (mails et PDF) |
+| **Analyse juridique** | Lire un jugement · Répondre aux conclusions adverses · Chronologie et contradictions · Auditer un contrat · Contrôler les mentions d'un acte · Évaluer les chances du dossier · Dossiers comparables · Dossier de plaidoirie · Transcrire un enregistrement |
 | **Calculs & actes** | Calculer un délai de procédure · Décompte de créance · Requête en injonction de payer · Convention d'honoraires |
 | **Facturation** | Configurer la facturation · Devis d'honoraires |
-| **Rapports & exports** | Rapport d'activité · État des impayés · Exporter un dossier (ZIP) · Compte rendu d'audience |
+| **Rapports & exports** | Rapport d'activité · État des impayés · Exporter un dossier (ZIP) · Compte rendu d'audience · Rapport / procès-verbal d'audience · Projet de décision d'audience |
 | **Agenda & tâches** | Programmer une audience · Reporter une audience · Créer une diligence · Enregistrer un paiement |
 
 Chaque famille a son guide détaillé : demandez par exemple « comment fonctionne la compétence Lire un jugement ? » ou « à quoi sert le décompte de créance ? ».
