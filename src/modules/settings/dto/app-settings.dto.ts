@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsNumber,
   IsOptional,
   IsString,
   IsIn,
@@ -183,6 +184,68 @@ export class AppSettingsDto {
   @IsOptional()
   @IsString()
   currency?: string;
+
+  @ApiPropertyOptional({ example: 'FCFA', nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  currency_symbol?: string | null;
+
+  @ApiPropertyOptional({ enum: ['before', 'after'], example: 'after' })
+  @IsOptional()
+  @IsIn(['before', 'after'])
+  currency_symbol_position?: 'before' | 'after';
+
+  @ApiPropertyOptional({ example: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(4)
+  currency_decimals?: number;
+
+  @ApiPropertyOptional({ example: ' ' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(5)
+  currency_thousands_sep?: string;
+
+  @ApiPropertyOptional({ example: ',' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(5)
+  currency_decimal_sep?: string;
+
+  // ── Facturation par défaut ────────────────────────────────────────────────
+  @ApiPropertyOptional({ example: 19.25 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  default_tva_rate?: number;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  dossier_opening_fee_enabled?: boolean;
+
+  @ApiPropertyOptional({ example: 25000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  dossier_opening_fee?: number;
+
+  @ApiPropertyOptional({ example: 19.25 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  dossier_opening_fee_tva?: number;
+
+  @ApiPropertyOptional({ example: "Frais d'ouverture de dossier", nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  dossier_opening_fee_label?: string | null;
 
   // ── Numérotation ──────────────────────────────────────────────────────────
   @ApiPropertyOptional({ example: 'FAC-' })

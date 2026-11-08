@@ -198,8 +198,10 @@ export class AuthController {
     const result = await this.authService.verifyOTP(verifyOtpDto);
     if (!result.token) return result;
     setPasswordResetCookie(response, result.token);
-    const { token: _token, ...body } = result;
-    return body;
+    // Le jeton reste aussi dans le corps tant que le front, servi sur un autre
+    // domaine que l'API, ne peut pas renvoyer le cookie (même compromis que
+    // access_token à la connexion).
+    return result;
   }
 
   @Public()

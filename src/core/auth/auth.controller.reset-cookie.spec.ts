@@ -9,7 +9,7 @@ describe('AuthController password reset cookie contract', () => {
       clearCookie: jest.fn(),
     }) as any;
 
-  it('places the reset token in an HttpOnly cookie and removes it from the body', async () => {
+  it('places the reset token in an HttpOnly cookie and keeps it in the body for the cross-origin front', async () => {
     const authService = {
       verifyOTP: jest.fn().mockResolvedValue({
         success: true,
@@ -32,8 +32,8 @@ describe('AuthController password reset cookie contract', () => {
     expect(result).toEqual({
       success: true,
       message: 'Code vérifié',
+      token: 'server-only-reset-token',
     });
-    expect(result).not.toHaveProperty('token');
     expect(res.cookie).toHaveBeenCalledWith(
       PASSWORD_RESET_COOKIE,
       'server-only-reset-token',

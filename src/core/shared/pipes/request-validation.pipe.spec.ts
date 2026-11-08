@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsOptional, IsString } from 'class-validator';
 import { AskQuestionDto } from '../../ai-database/dto/ask-question.dto';
 import { CreateDocumentCustomerDto } from '../../../modules/documents/document-customer/dto/create-document-customer.dto';
 import {
@@ -14,6 +14,11 @@ class SearchOnlyDto {
   search?: string;
 }
 
+class EmailDto {
+  @IsEmail()
+  email!: string;
+}
+
 describe('RequestValidationPipe', () => {
   const pipe = new RequestValidationPipe();
 
@@ -26,11 +31,20 @@ describe('RequestValidationPipe', () => {
     expect(result).toEqual({ search: 'client' });
   });
 
-  it('conserve le rejet des propriétés inconnues dans un body', async () => {
+  it('retire les propriétés inconnues d’un body sans les refuser', async () => {
+    const result = await pipe.transform(
+      { id: 3, code: 'abcd', search: 'client', unexpected: true },
+      { type: 'body', metatype: SearchOnlyDto, data: undefined },
+    );
+
+    expect(result).toEqual({ search: 'client' });
+  });
+
+  it('refuse toujours une valeur invalide pour un champ déclaré', async () => {
     await expect(
       pipe.transform(
-        { search: 'client', unexpected: true },
-        { type: 'body', metatype: SearchOnlyDto, data: undefined },
+        { email: 'pas-un-email', id: 3 },
+        { type: 'body', metatype: EmailDto, data: undefined },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
