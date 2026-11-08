@@ -184,6 +184,16 @@ export class ActionDefinition extends TenantEntity {
   })
   required_relations: Record<string, unknown> | null;
 
+  @Column({ name: 'resource_hints', type: 'json', nullable: true })
+  @BusinessColumn({
+    label: 'Conseils de fiches',
+    description:
+      'Fiches liées à créer ou mettre à jour en fin d’action (audience, document, diligence, dossier). Vide : conseils par défaut du catalogue.',
+    importance: 'low',
+    group: 'configuration',
+  })
+  resource_hints: Array<Record<string, unknown>> | null;
+
   @Column({ name: 'default_due_days', type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Délai par défaut',

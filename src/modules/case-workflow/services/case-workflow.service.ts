@@ -7,8 +7,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { canEndDossierAction } from '../action-end-policy';
+import { resourceHintsFor } from '../resource-hints';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { UserRole } from 'src/core/enums/user-role.enum';
+import { getCurrentRequestUser } from 'src/core/security/request-user.context';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import {
   Audience,
@@ -673,7 +675,10 @@ export class CaseWorkflowService {
     const responsibleById = new Map(
       responsibles.map((responsible) => [
         Number(responsible.id),
-        { id: Number(responsible.id), full_name: responsible.full_name || responsible.email },
+        {
+          id: Number(responsible.id),
+          full_name: responsible.full_name || responsible.email,
+        },
       ]),
     );
     const now = Date.now();
@@ -682,12 +687,14 @@ export class CaseWorkflowService {
       return {
         ...action,
         can_end: canEndDossierAction(action, dossier, user.id),
-        responsible: responsibleById.get(Number(action.responsible_user_id)) ?? null,
+        responsible:
+          responsibleById.get(Number(action.responsible_user_id)) ?? null,
         is_assigned_to_me:
           action.responsible_user_id != null &&
           Number(action.responsible_user_id) === Number(user.id),
         is_overdue: deadlineState.isOverdue,
         overdue_days: deadlineState.overdueDays,
+        resource_hints: resourceHintsFor(action.definition),
         document_links: actionDocumentLinks.filter(
           (link) => link.action_id === action.id,
         ),
@@ -860,6 +867,19 @@ export class CaseWorkflowService {
       )
       .slice(0, 30);
 
+    // Montants facturables réservés à « Voir les éléments facturables ».
+    const requestUser = getCurrentRequestUser();
+    const canViewBilling =
+      !requestUser ||
+      requestUser.role === UserRole.ADMIN ||
+      !!requestUser.permissions?.some((permission) =>
+        [
+          'SUPER_ADMIN',
+          'view_billable_items',
+          'manage_billable_items',
+        ].includes(permission),
+      );
+
     return {
       mode: isV2 ? 'ACTIONS_V2' : 'LEGACY',
       dossier: {
@@ -902,32 +922,37 @@ export class CaseWorkflowService {
       diligences,
       invoices,
       activity: unifiedActivity,
-      billableItems: billableItems
-        .sort(
-          (left, right) =>
-            right.occurred_at.getTime() - left.occurred_at.getTime(),
-        )
-        .slice(0, 30),
-      financialSummary: {
-        toInvoice: billableItems
-          .filter((item) => item.status === BillableItemStatus.TO_INVOICE)
-          .reduce((sum, item) => sum + Number(item.gross_amount), 0),
-        needsReview: billableItems
-          .filter((item) => item.status === BillableItemStatus.NEEDS_REVIEW)
-          .reduce((sum, item) => sum + Number(item.gross_amount), 0),
-        invoiced: billableItems
-          .filter((item) => item.status === BillableItemStatus.INVOICED)
-          .reduce((sum, item) => sum + Number(item.gross_amount), 0),
-        unpaid: invoices
-          .filter(
-            (invoice) =>
-              ![StatutFacture.PAYEE, StatutFacture.ANNULEE].includes(
-                invoice.status,
-              ),
-          )
-          .reduce((sum, invoice) => sum + Number(invoice.resteAPayer), 0),
-        currency: billableItems[0]?.currency ?? invoices[0]?.currency ?? 'XAF',
-      },
+      billableItems: !canViewBilling
+        ? []
+        : billableItems
+            .sort(
+              (left, right) =>
+                right.occurred_at.getTime() - left.occurred_at.getTime(),
+            )
+            .slice(0, 30),
+      financialSummary: !canViewBilling
+        ? null
+        : {
+            toInvoice: billableItems
+              .filter((item) => item.status === BillableItemStatus.TO_INVOICE)
+              .reduce((sum, item) => sum + Number(item.gross_amount), 0),
+            needsReview: billableItems
+              .filter((item) => item.status === BillableItemStatus.NEEDS_REVIEW)
+              .reduce((sum, item) => sum + Number(item.gross_amount), 0),
+            invoiced: billableItems
+              .filter((item) => item.status === BillableItemStatus.INVOICED)
+              .reduce((sum, item) => sum + Number(item.gross_amount), 0),
+            unpaid: invoices
+              .filter(
+                (invoice) =>
+                  ![StatutFacture.PAYEE, StatutFacture.ANNULEE].includes(
+                    invoice.status,
+                  ),
+              )
+              .reduce((sum, invoice) => sum + Number(invoice.resteAPayer), 0),
+            currency:
+              billableItems[0]?.currency ?? invoices[0]?.currency ?? 'XAF',
+          },
       quickLinks: {
         documents: `/documents?dossier_id=${dossierId}`,
         audiences: `/audiences?dossier_id=${dossierId}`,
@@ -975,11 +1000,13 @@ export class CaseWorkflowService {
         where: {
           tenant_id: tenantId,
           dossier_id: String(dossierId),
-          status: In([
-            AudienceStatus.SCHEDULED,
-            AudienceStatus.IN_PROGRESS,
-            AudienceStatus.POSTPONED,
-          ].map(audienceStatusParam)),
+          status: In(
+            [
+              AudienceStatus.SCHEDULED,
+              AudienceStatus.IN_PROGRESS,
+              AudienceStatus.POSTPONED,
+            ].map(audienceStatusParam),
+          ),
         },
         relations: ['children_audiences'],
       }),
@@ -1314,11 +1341,13 @@ export class CaseWorkflowService {
             where: {
               tenant_id: tenantId,
               dossier_id: String(dossierId),
-              status: In([
-            AudienceStatus.SCHEDULED,
-            AudienceStatus.IN_PROGRESS,
-            AudienceStatus.POSTPONED,
-          ].map(audienceStatusParam)),
+              status: In(
+                [
+                  AudienceStatus.SCHEDULED,
+                  AudienceStatus.IN_PROGRESS,
+                  AudienceStatus.POSTPONED,
+                ].map(audienceStatusParam),
+              ),
             },
             relations: ['children_audiences'],
           }),
@@ -1586,10 +1615,7 @@ export class CaseWorkflowService {
     const tenantId = getCurrentTenantId();
     const dossier = await this.dossierRepository.findOne({
       where: { id: dossierId, tenant_id: tenantId },
-      relations: [
-        'procedureInstance',
-        'procedureInstance.currentStage',
-      ],
+      relations: ['procedureInstance', 'procedureInstance.currentStage'],
     });
     if (!dossier) throw new NotFoundException('Dossier introuvable');
     await this.assertConfidentialAccess(dossier, user);

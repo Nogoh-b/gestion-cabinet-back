@@ -24,6 +24,7 @@ import {
   ActionTransitionDto,
   ApplyWorkflowMigrationDto,
   AdjustBillableItemDto,
+  EditBillableItemDto,
   CloseDossierV2Dto,
   CompleteDossierActionDto,
   CreateActionFamilyDto,
@@ -703,6 +704,22 @@ export class BillableItemsController {
   @RequirePermissions('view_billable_items')
   summary() {
     return this.billingService.getItemsSummary();
+  }
+
+  @Patch(':id')
+  @RequirePermissions('manage_billable_items')
+  edit(
+    @Param('id') id: string,
+    @Body() dto: EditBillableItemDto,
+    @Headers('idempotency-key') key: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.billingService.editItem(
+      id,
+      dto,
+      requireIdempotencyKey(key),
+      actorId(user),
+    );
   }
 
   @Post(':id/review')

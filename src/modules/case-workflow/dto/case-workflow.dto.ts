@@ -132,6 +132,11 @@ export class CreateActionDefinitionDto {
   @IsObject()
   required_relations?: Record<string, unknown>;
 
+  /** Conseils de fiches en fin d'action ; [] = aucun, null = défauts. */
+  @IsOptional()
+  @IsArray()
+  resource_hints?: Array<Record<string, unknown>> | null;
+
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -194,6 +199,11 @@ export class ReviseActionDefinitionDto {
   @IsOptional()
   @IsObject()
   required_relations?: Record<string, unknown>;
+
+  /** Conseils de fiches en fin d'action ; [] = aucun, null = défauts. */
+  @IsOptional()
+  @IsArray()
+  resource_hints?: Array<Record<string, unknown>> | null;
 
   @IsOptional()
   @IsInt()
@@ -707,6 +717,39 @@ export class ReviewBillableItemDto {
   @IsNumber()
   @IsPositive()
   quantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  tax_rate?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+
+  @IsInt()
+  @Min(1)
+  expected_version: number;
+}
+
+/** Correction manuelle d'une ligne encore ouverte (à revoir ou à facturer). */
+export class EditBillableItemDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(255)
+  label?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  quantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  unit_price?: number;
 
   @IsOptional()
   @IsNumber()

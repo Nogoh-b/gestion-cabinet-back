@@ -34,6 +34,7 @@ import {
   ReviseRecommendationRuleDto,
 } from '../dto/case-workflow.dto';
 import { findForbiddenJsonLogicOperator } from '../case-workflow.logic';
+import { resourceHintsFor, sanitizeResourceHints } from '../resource-hints';
 
 const FAMILY_DEFAULTS = [
   ['DOCUMENT_DRAFTING', 'Rédaction et production documentaire'],
@@ -1284,6 +1285,12 @@ export class ActionCatalogService {
           : { tenant_id: tenantId, family_id: family.id, is_active: true },
         order: { code: 'ASC', version: 'DESC' },
       });
+      // Conseils de fiches effectifs (ceux du cabinet, sinon les défauts) pour l'éditeur.
+      for (const definition of definitions) {
+        Object.assign(definition, {
+          effective_resource_hints: resourceHintsFor(definition),
+        });
+      }
       (
         family as ActionFamily & { definitions: ActionDefinition[] }
       ).definitions = includeInactive
@@ -1432,11 +1439,7 @@ export class ActionCatalogService {
     // v1 supprimée logiquement : on la restaure (elle seule entrerait en
     // collision avec l'insertion d'une nouvelle v1).
     if (existing) {
-      return this.restoreSoftDeleted(
-        this.ruleRepository,
-        existing,
-        attributes,
-      );
+      return this.restoreSoftDeleted(this.ruleRepository, existing, attributes);
     }
 
     return this.ruleRepository.save(
@@ -1694,6 +1697,11 @@ export class ActionCatalogService {
       },
       allowed_results: dto.allowed_results ?? [],
       required_relations: dto.required_relations ?? null,
+      resource_hints: Array.isArray(dto.resource_hints)
+        ? (sanitizeResourceHints(dto.resource_hints) as unknown as Array<
+            Record<string, unknown>
+          >)
+        : null,
       default_due_days: dto.default_due_days ?? null,
       default_priority: dto.default_priority ?? ActionPriority.NORMAL,
       is_required: dto.is_required ?? false,
@@ -1832,13 +1840,11 @@ export class ActionCatalogService {
       // La version suivante doit tenir compte des lignes soft-deleted : une
       // version supprimée logiquement occupe toujours la clé
       // (tenant_id, code, version) et ferait échouer l'insertion.
-      const highest = await manager
-        .getRepository(ActionDefinition)
-        .findOne({
-          where: { tenant_id: tenantId, code: source.code },
-          order: { version: 'DESC' },
-          withDeleted: true,
-        });
+      const highest = await manager.getRepository(ActionDefinition).findOne({
+        where: { tenant_id: tenantId, code: source.code },
+        order: { version: 'DESC' },
+        withDeleted: true,
+      });
       const nextVersion =
         Math.max(source.version, highest?.version ?? source.version) + 1;
 
@@ -1869,6 +1875,14 @@ export class ActionCatalogService {
           allowed_results: dto.allowed_results ?? source.allowed_results,
           required_relations:
             dto.required_relations ?? source.required_relations,
+          resource_hints:
+            dto.resource_hints === undefined
+              ? source.resource_hints
+              : Array.isArray(dto.resource_hints)
+                ? (sanitizeResourceHints(
+                    dto.resource_hints,
+                  ) as unknown as Array<Record<string, unknown>>)
+                : null,
           default_due_days: dto.default_due_days ?? source.default_due_days,
           default_priority: dto.default_priority ?? source.default_priority,
           is_required: dto.is_required ?? source.is_required,
@@ -1877,8 +1891,7 @@ export class ActionCatalogService {
           default_professional_treatment:
             dto.default_professional_treatment ??
             source.default_professional_treatment,
-          may_have_expenses:
-            dto.may_have_expenses ?? source.may_have_expenses,
+          may_have_expenses: dto.may_have_expenses ?? source.may_have_expenses,
           may_have_disbursements:
             dto.may_have_disbursements ?? source.may_have_disbursements,
           billing_mode: dto.billing_mode ?? source.billing_mode,

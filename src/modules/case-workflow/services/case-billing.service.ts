@@ -64,6 +64,7 @@ import {
   RecalculateBillableItemsDto,
   SwitchBillingModeDto,
   ReviewBillableItemDto,
+  EditBillableItemDto,
   ReviseDossierBillingRuleDto,
   UpdateBillingProfileDto,
   ValidateResultFeeDto,
@@ -85,7 +86,11 @@ import { calculateActionBilling } from '../case-workflow.logic';
 export interface ProfileSyncSummary {
   updated_items: string[];
   created_items: string[];
-  updated_invoices: Array<{ label: string; facture_id: string; numero: string }>;
+  updated_invoices: Array<{
+    label: string;
+    facture_id: string;
+    numero: string;
+  }>;
   locked_invoices: Array<{ label: string; facture_id: string; numero: string }>;
   needs_review: string[];
   /** Éléments d'actions encore ouverts, à passer par « Recalculer ». */
@@ -170,8 +175,7 @@ export class CaseBillingService {
           // Le montant saisi à l'ouverture appartient au dossier et prime
           // toujours sur le tarif par défaut du cabinet.
           opening_fee: openingFee,
-          opening_fee_enabled:
-            openingFee != null && Number(openingFee) > 0,
+          opening_fee_enabled: openingFee != null && Number(openingFee) > 0,
           opening_fee_included_in_fixed_fee: false,
           default_vacation_rate: null,
           result_fee_enabled: false,
@@ -348,6 +352,10 @@ export class CaseBillingService {
       ).some((key) => before[key] !== after[key]);
       const currencyChanged =
         !!profile.currency && item.currency !== profile.currency;
+
+      // Une ligne corrigée à la main garde ses montants.
+      if (openStatuses.includes(item.status) && isManuallyEdited(item))
+        continue;
 
       if (openStatuses.includes(item.status)) {
         const reviewResolved =
@@ -806,11 +814,9 @@ export class CaseBillingService {
     actorUserId: number,
   ): Promise<BillableItem | null> {
     const tenantId = getCurrentTenantId();
-    const profile = await manager
-      .getRepository(DossierBillingProfile)
-      .findOne({
-        where: { tenant_id: tenantId, dossier_id: dossier.id },
-      });
+    const profile = await manager.getRepository(DossierBillingProfile).findOne({
+      where: { tenant_id: tenantId, dossier_id: dossier.id },
+    });
     const mode = profile?.mode ?? BillingMode.FIXED;
     if (mode === BillingMode.HOURLY) return null;
     const repository = manager.getRepository(BillableItem);
@@ -823,9 +829,7 @@ export class CaseBillingService {
       profile?.fixed_fee != null ? Number(profile.fixed_fee) : null;
     const taxRate = Number(profile?.vat_rate ?? 0);
     const reviewReason =
-      amount == null || amount <= 0
-        ? 'Montant du forfait manquant'
-        : null;
+      amount == null || amount <= 0 ? 'Montant du forfait manquant' : null;
     const net = reviewReason ? 0 : this.round(amount as number);
     const tax = this.round((net * taxRate) / 100);
     const item = await repository.save(
@@ -1054,10 +1058,9 @@ export class CaseBillingService {
     });
     const approved =
       reportApproved ??
-      [
-        ExpenseReportStatus.APPROVED,
-        ExpenseReportStatus.REIMBURSED,
-      ].includes(expenseLine.expense_report?.status);
+      [ExpenseReportStatus.APPROVED, ExpenseReportStatus.REIMBURSED].includes(
+        expenseLine.expense_report?.status,
+      );
     const profile = expenseLine.dossier_id
       ? await manager.getRepository(DossierBillingProfile).findOne({
           where: {
@@ -1154,9 +1157,7 @@ export class CaseBillingService {
         reviewReasons.push('Action associée introuvable dans ce dossier');
       }
     }
-    const reviewReason = reviewReasons.length
-      ? reviewReasons.join('. ')
-      : null;
+    const reviewReason = reviewReasons.length ? reviewReasons.join('. ') : null;
     const values: Partial<BillableItem> = {
       tenant_id: tenantId,
       dossier_id: dossier.id,
@@ -1201,9 +1202,7 @@ export class CaseBillingService {
       invoice_line_id: null,
     };
     const item = await repository.save(
-      existing
-        ? Object.assign(existing, values)
-        : repository.create(values),
+      existing ? Object.assign(existing, values) : repository.create(values),
     );
     await this.appendExpenseSyncEvent(
       manager,
@@ -1332,7 +1331,8 @@ export class CaseBillingService {
       ? profile?.rebill_disbursements !== false
       : profile?.rebill_expenses !== false;
     let ineligibleReason: string | null = null;
-    if (!approved) ineligibleReason = 'La facture fournisseur n’est pas approuvée';
+    if (!approved)
+      ineligibleReason = 'La facture fournisseur n’est pas approuvée';
     else if (!invoice.is_rebillable)
       ineligibleReason = 'La dépense fournisseur n’est pas refacturable';
     else if (!invoice.dossier_id)
@@ -1387,7 +1387,9 @@ export class CaseBillingService {
     const reviewReasons: string[] = [];
     const net = this.round(Number(invoice.amount_ht ?? 0));
     const gross = this.round(Number(invoice.amount_ttc ?? 0));
-    const tax = this.round(Number(invoice.amount_tva ?? Math.max(0, gross - net)));
+    const tax = this.round(
+      Number(invoice.amount_tva ?? Math.max(0, gross - net)),
+    );
     if (gross <= 0 || net < 0 || gross < net) {
       reviewReasons.push('Montant réel de la dépense incohérent');
     }
@@ -1406,7 +1408,8 @@ export class CaseBillingService {
           dossier_id: invoice.dossier_id!,
         },
       });
-      if (!action) reviewReasons.push('Action associée introuvable dans ce dossier');
+      if (!action)
+        reviewReasons.push('Action associée introuvable dans ce dossier');
     }
 
     const reviewReason = reviewReasons.length ? reviewReasons.join('. ') : null;
@@ -1456,9 +1459,7 @@ export class CaseBillingService {
       invoice_line_id: null,
     };
     const item = await repository.save(
-      existing
-        ? Object.assign(existing, values)
-        : repository.create(values),
+      existing ? Object.assign(existing, values) : repository.create(values),
     );
     await this.appendSupplierInvoiceSyncEvent(
       manager,
@@ -1805,8 +1806,7 @@ export class CaseBillingService {
         source_type: sourceType,
         source_id: idempotencyKey,
         category,
-        calculation_mode:
-          dto.calculation_mode ?? BillingCalculationMode.FIXED,
+        calculation_mode: dto.calculation_mode ?? BillingCalculationMode.FIXED,
         unit_label: dto.unit_label?.trim() || null,
         action_id: dto.action_id ?? null,
         billing_rule_id: null,
@@ -2430,6 +2430,118 @@ export class CaseBillingService {
     });
   }
 
+  /**
+   * Correction manuelle d'une ligne ouverte (libellé, quantité, prix, TVA).
+   * La ligne est marquée `manualEdit` : « Recalculer » et la resynchro du
+   * profil ne l'écrasent plus. Les lignes réservées ou facturées passent par
+   * un ajustement.
+   */
+  async editItem(
+    itemId: string,
+    dto: EditBillableItemDto,
+    idempotencyKey: string,
+    actorUserId: number,
+  ): Promise<BillableItem> {
+    const tenantId = getCurrentTenantId();
+    const eventKey = `BILLABLE_ITEM_EDITED:${idempotencyKey}`;
+    const priorEvent = await this.eventRepository.findOne({
+      where: { tenant_id: tenantId, idempotency_key: eventKey },
+    });
+    if (priorEvent?.aggregate_id === itemId) {
+      const priorItem = await this.itemRepository.findOne({
+        where: { id: itemId, tenant_id: tenantId },
+      });
+      if (priorItem) return priorItem;
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(BillableItem);
+      const item = await repository
+        .createQueryBuilder('item')
+        .setLock('pessimistic_write')
+        .where('item.id = :itemId', { itemId })
+        .andWhere('item.tenant_id = :tenantId', { tenantId })
+        .getOne();
+      if (!item) throw new NotFoundException('Élément facturable introuvable');
+      if (
+        ![
+          BillableItemStatus.NEEDS_REVIEW,
+          BillableItemStatus.TO_INVOICE,
+        ].includes(item.status)
+      ) {
+        throw new ConflictException(
+          'Seules les lignes à revoir ou à facturer se modifient. Pour une ligne réservée ou facturée, passez par un ajustement.',
+        );
+      }
+      if (dto.expected_version !== item.lock_version) {
+        throw new ConflictException(
+          'Cet élément facturable a été modifié. Rechargez la page.',
+        );
+      }
+
+      const before = {
+        label: item.label,
+        quantity: Number(item.quantity),
+        unit_price: Number(item.unit_price),
+        tax_rate: Number(item.tax_rate),
+        gross_amount: Number(item.gross_amount),
+        status: item.status,
+      };
+      const label = dto.label?.trim() || item.label;
+      const quantity = Number(dto.quantity ?? item.quantity ?? 1);
+      const unitPrice = Number(dto.unit_price ?? item.unit_price ?? 0);
+      const taxRate = Number(dto.tax_rate ?? item.tax_rate ?? 0);
+      const net = this.round(quantity * unitPrice);
+      const tax = this.round((net * taxRate) / 100);
+
+      item.label = label;
+      item.quantity = quantity;
+      item.unit_price = unitPrice;
+      item.net_amount = net;
+      item.tax_rate = taxRate;
+      item.tax_amount = tax;
+      item.gross_amount = this.round(net + tax);
+      if (item.status === BillableItemStatus.NEEDS_REVIEW && unitPrice > 0) {
+        item.status = BillableItemStatus.TO_INVOICE;
+        item.review_reason = null;
+      }
+      item.calculation_snapshot = {
+        ...(item.calculation_snapshot ?? {}),
+        manualEdit: {
+          quantity,
+          unitPrice,
+          taxRate,
+          note: dto.note?.trim() || null,
+          actorUserId,
+          editedAt: new Date().toISOString(),
+        },
+      };
+      const saved = await repository.save(item);
+
+      await this.eventService.append(manager, {
+        dossierId: item.dossier_id,
+        eventType: 'BILLABLE_ITEM_EDITED',
+        aggregateType: 'BillableItem',
+        aggregateId: item.id,
+        actorUserId,
+        payload: {
+          before,
+          after: {
+            label,
+            quantity,
+            unit_price: unitPrice,
+            tax_rate: taxRate,
+            gross_amount: saved.gross_amount,
+            status: saved.status,
+          },
+          note: dto.note?.trim() || null,
+        },
+        idempotencyKey: eventKey,
+      });
+      return saved;
+    });
+  }
+
   async validateResultFee(
     dossierId: number,
     dto: ValidateResultFeeDto,
@@ -2588,6 +2700,14 @@ export class CaseBillingService {
           });
           continue;
         }
+        if (isManuallyEdited(item)) {
+          results.push({
+            billable_item_id: id,
+            changed: false,
+            skipped_reason: 'Ligne corrigée à la main : montant conservé',
+          });
+          continue;
+        }
         if (item.source_type !== BillableSourceType.ACTION) {
           results.push({
             billable_item_id: id,
@@ -2725,9 +2845,7 @@ export class CaseBillingService {
         .map((facture) => +new Date(facture.dateEcheance))
         .filter((time) => Number.isFinite(time))
         .sort((a, b) => b - a)[0];
-      deadline = latest
-        ? new Date(latest).toISOString().slice(0, 10)
-        : null;
+      deadline = latest ? new Date(latest).toISOString().slice(0, 10) : null;
     }
     const items = await this.itemRepository.find({
       where: {
@@ -2915,7 +3033,10 @@ export class CaseBillingService {
       ? manager.getRepository(CaseWorkflowEvent)
       : this.eventRepository;
     const priorEvent = await repo.findOne({
-      where: { tenant_id: tenantId, idempotency_key: `INVOICE:${idempotencyKey}` },
+      where: {
+        tenant_id: tenantId,
+        idempotency_key: `INVOICE:${idempotencyKey}`,
+      },
     });
     const priorInvoiceId = (priorEvent?.payload as any)?.invoiceId;
     if (typeof priorInvoiceId !== 'string') return null;
@@ -3060,8 +3181,7 @@ export class CaseBillingService {
               }
             : items.length
               ? {
-                  tauxTVA:
-                    net !== 0 ? this.round((tax / net) * 100) : 0,
+                  tauxTVA: net !== 0 ? this.round((tax / net) * 100) : 0,
                   montantTVA: tax,
                   montantTTC: this.round(net + tax),
                 }
@@ -3170,7 +3290,12 @@ export class CaseBillingService {
         ? [initialPaiement]
         : await manager
             .getRepository(Paiement)
-            .find({ where: { facture: { id: facture.id }, tenant_id: tenantId } as any });
+            .find({
+              where: {
+                facture: { id: facture.id },
+                tenant_id: tenantId,
+              } as any,
+            });
       return Object.assign(facture, { lines, paiements });
     });
   }
@@ -3466,4 +3591,12 @@ export class CaseBillingService {
       completed_at: a.completed_at,
     }));
   }
+}
+
+/** Vrai si la ligne a été corrigée à la main (PATCH /billable-items/:id). */
+export function isManuallyEdited(
+  item: Pick<BillableItem, 'calculation_snapshot'>,
+): boolean {
+  return !!(item.calculation_snapshot as Record<string, unknown> | null)
+    ?.manualEdit;
 }
