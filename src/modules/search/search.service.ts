@@ -22,6 +22,10 @@ import {
   SearchType,
   SearchUser,
 } from './search.dto';
+import {
+  accessibleDossierIds,
+  canSeeAllDossiers,
+} from '../dossiers/dossier-membership-scope';
 
 const PAGE_SIZE = 10;
 const CLIENT_NAME =
@@ -89,7 +93,24 @@ export class GlobalSearchService {
       : [];
   }
 
-  private query(type: SearchType, user: SearchUser, q: string) {
+  /**
+   * Dossiers que l'appelant peut ouvrir (null : tous). Un non-membre ne doit
+   * ni trouver un dossier ni les fiches qui y sont rattachées.
+   */
+  private async memberDossierIds(user: SearchUser): Promise<number[] | null> {
+    if (canSeeAllDossiers(user as any)) return null;
+    const actorId = Number(user.userId ?? user.id);
+    if (!Number.isInteger(actorId)) return [-1];
+    const ids = await accessibleDossierIds(this.db, user as any);
+    return ids.length > 0 ? ids : [-1];
+  }
+
+  private query(
+    type: SearchType,
+    user: SearchUser,
+    q: string,
+    memberIds: number[] | null,
+  ) {
     const entity = {
       dossiers: Dossier,
       clients: Customer,
@@ -113,9 +134,15 @@ export class GlobalSearchService {
       if (type === 'dossiers') {
         qb.innerJoin(Dossier, 'd', 'd.id = r.id AND d.tenant_id = :tenantId');
         addDossierVisibilityCondition(qb, 'd');
+        if (memberIds) qb.andWhere('d.id IN (:...memberIds)', { memberIds });
       } else {
         qb.leftJoin('r.dossier', 'd', 'd.tenant_id = :tenantId');
         addRelatedDossierVisibilityCondition(qb, 'r');
+        if (memberIds) {
+          qb.andWhere('(r.dossier_id IS NULL OR r.dossier_id IN (:...memberIds))', {
+            memberIds,
+          });
+        }
         // Never expose a record whose dossier was deleted or belongs to another tenant.
         qb.andWhere('(r.dossier_id IS NULL OR d.id IS NOT NULL)');
         if (!this.can(user, 'view_dossiers'))
@@ -196,10 +223,16 @@ export class GlobalSearchService {
       audiences: 'view_audiences',
       factures: 'view_factures',
     };
+    if (!SEARCH_TYPES.some((type) => this.can(user, permissions[type]))) {
+      return { results: [], counts, page, hasNext: false };
+    }
+    const memberIds = this.can(user, 'view_dossiers')
+      ? await this.memberDossierIds(user)
+      : [];
     const groups = await Promise.all(
       SEARCH_TYPES.map(async (type) => {
         if (!this.can(user, permissions[type])) return [];
-        const qb = this.query(type, user, q.trim());
+        const qb = this.query(type, user, q.trim(), memberIds);
         const [rows, count] = await Promise.all([
           qb
             .clone()
@@ -256,6 +289,7 @@ export class GlobalSearchService {
             .leftJoin('d.client', 'c', 'c.tenant_id = :tenantId');
           this.dossierSelect(dossiers);
           addDossierVisibilityCondition(dossiers, 'd');
+          if (memberIds) dossiers.andWhere('d.id IN (:...memberIds)', { memberIds });
           const contexts = await dossiers.orderBy('d.id', 'ASC').getRawMany();
           results.forEach((result) => {
             result.dossiers = contexts

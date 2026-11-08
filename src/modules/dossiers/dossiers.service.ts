@@ -48,7 +48,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { addDossierVisibilityCondition } from './dossier-visibility';
-import { dossierClientScope, dossierRoleScope } from './dossier-role-scope';
+import {
+  canSeeAllDossiers,
+  dossierMembershipScope,
+  isDossierMemberOrResponsible,
+} from './dossier-membership-scope';
 import { DossierAccessGrant } from './entities/dossier-access-grant.entity';
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
@@ -604,7 +608,10 @@ export class DossiersService extends BaseServiceV1<Dossier> {
   }
 
   async findAll(searchDto: DossierSearchDto, user: User): Promise<any[]> {
-    const whereConditions = this.buildWhereConditions(searchDto, user);
+    const whereConditions = this.buildWhereConditions(
+      searchDto,
+      await this.buildAccessScope(user),
+    );
 
     const dossiers = await this.dossierRepository.find({
       where: whereConditions.length > 0 ? whereConditions : undefined,
@@ -630,7 +637,10 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     searchDto: DossierSearchDto,
     user: User,
   ): Promise<PaginatedResult<DossierResponseDto>> {
-    const whereConditions = this.buildWhereConditions(searchDto, user);
+    const whereConditions = this.buildWhereConditions(
+      searchDto,
+      await this.buildAccessScope(user),
+    );
 
     return this.paginationService.paginateWithTransformer(
       this.dossierRepository,
@@ -660,9 +670,8 @@ export class DossiersService extends BaseServiceV1<Dossier> {
    */
   private buildWhereConditions(
     searchDto: DossierSearchDto,
-    user: User,
+    scope: FindOptionsWhere<Dossier>,
   ): FindOptionsWhere<Dossier>[] {
-    const scope = this.buildRoleScope(user);
 
     const filters: SearchFilter[] = [];
 
@@ -691,23 +700,18 @@ export class DossiersService extends BaseServiceV1<Dossier> {
   }
 
   /**
-   * Portée imposée par le rôle de l'appelant, à fusionner dans chaque
-   * branche du `where` (cf. buildWhereConditions). Règle partagée avec
-   * l'export ZIP : cf. dossier-role-scope.ts.
+   * Portée imposée à l'appelant, à fusionner dans chaque branche du `where`
+   * (cf. buildWhereConditions) : dossiers dont il est membre, sauf admin et
+   * « Voir tous les dossiers ». Cf. dossier-membership-scope.ts.
    */
-  private buildRoleScope(user: User): FindOptionsWhere<Dossier> {
-    return dossierRoleScope(user as any);
-  }
-
-  /** Client : uniquement ses propres dossiers. */
-  private buildClientScope(user: User): FindOptionsWhere<Dossier> {
-    return dossierClientScope(user as any);
+  private buildAccessScope(user: User): Promise<FindOptionsWhere<Dossier>> {
+    return dossierMembershipScope(this.dataSource, user as any);
   }
 
   /**
-   * GET /dossiers/search : recherche générique, bornée pour un client à ses
-   * propres dossiers. Le personnel garde la recherche sur tout le cabinet
-   * (liste des dossiers du back-office).
+   * GET /dossiers/search : recherche générique, bornée aux dossiers de
+   * l'appelant (client : les siens ; personnel : ceux dont il est membre,
+   * sauf admin et « Voir tous les dossiers »).
    */
   async searchForUser(
     criteria: SearchCriteria,
@@ -720,7 +724,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       paginationParams,
       undefined,
       undefined,
-      this.buildClientScope(user),
+      await this.buildAccessScope(user),
     );
   }
 
@@ -738,7 +742,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
 
     // Contrôle d'accès : client ne peut voir que ses propres dossiers
     if (user) {
-      this.checkDossierAccess(dossier, user);
+      await this.checkDossierAccess(dossier, user);
     }
 
     await this.attachInvoicePayments(dossier);
@@ -854,7 +858,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       throw new NotFoundException('Dossier non trouvé');
     }
 
-    this.checkDossierAccess(dossier, user);
+    await this.checkDossierAccess(dossier, user);
 
     // Les membres passent par la commande dédiée (syncCollaborators), appelée
     // après l'enregistrement des autres champs et seulement s'ils changent.
@@ -871,15 +875,26 @@ export class DossiersService extends BaseServiceV1<Dossier> {
         'La décision finale se renseigne uniquement par la commande de clôture',
       );
     }
+    // Seul un vrai changement compte : le formulaire de modification renvoie
+    // aussi les valeurs inchangées.
+    const changes = (value: unknown, current: unknown) =>
+      value !== undefined && String(value ?? '') !== String(current ?? '');
+    const dateChanges = (value: unknown, current: unknown) =>
+      value !== undefined &&
+      String(value ?? '').slice(0, 10) !==
+        (current ? new Date(current as string).toISOString().slice(0, 10) : '');
+    const previousLawyerId = dossier.lawyer_id ?? dossier.lawyer?.id ?? null;
+    const lawyerChanged = changes(updateDossierDto.lawyer_id, previousLawyerId);
+    // L'administrateur peut changer l'avocat responsable à tout moment.
+    const isAdmin = (user as any)?.role === UserRole.ADMIN;
     if (
       dossier.status !== DossierStatus.DRAFT &&
-      (updateDossierDto.client_id !== undefined ||
-        updateDossierDto.lawyer_id !== undefined ||
-        updateDossierDto.procedure_type_id !== undefined ||
-        updateDossierDto.procedure_subtype_id !== undefined ||
-        updateDossierDto.jurisdiction !== undefined ||
-        updateDossierDto.jurisdiction_id !== undefined ||
-        updateDossierDto.opening_date !== undefined)
+      (changes(updateDossierDto.client_id, dossier.client_id) ||
+        (lawyerChanged && !isAdmin) ||
+        changes(updateDossierDto.procedure_type_id, dossier.procedure_type_id) ||
+        changes(updateDossierDto.procedure_subtype_id, dossier.procedure_subtype_id) ||
+        changes(updateDossierDto.jurisdiction_id, dossier.jurisdiction_id) ||
+        dateChanges(updateDossierDto.opening_date, dossier.opening_date))
     ) {
       throw new BadRequestException(
         "Le client, l'avocat responsable, la juridiction, le type de procédure et la date d'ouverture sont verrouillés après activation",
@@ -1022,14 +1037,91 @@ export class DossiersService extends BaseServiceV1<Dossier> {
         return saved;
       },
     );
+    if (lawyerChanged) {
+      await this.transferResponsible(
+        id,
+        previousLawyerId,
+        Number(updateDossierDto.lawyer_id) || null,
+        user,
+      );
+    }
     if (collaboratorsChanged) {
       // Synchronise aussi le chat du dossier.
       return this.syncCollaborators(id, requestedCollaboratorIds ?? [], user);
     }
-    if (updateDossierDto.lawyer_id) {
+    if (lawyerChanged) {
       await this.dossierChatSync.sync(updatedDossier.id);
     }
     return this.mapToResponseDto(updatedDossier);
+  }
+
+  /**
+   * Nouvel avocat responsable : sa ligne `dossier_members` passe RESPONSIBLE,
+   * l'ancien responsable perd ce rôle (il reste membre s'il est collaborateur),
+   * puis chacun est prévenu.
+   */
+  private async transferResponsible(
+    dossierId: number,
+    previousId: number | null,
+    nextId: number | null,
+    user: User,
+  ): Promise<void> {
+    const tenantId = getCurrentTenantId();
+    let previousStillMember = false;
+    await this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(DossierMember);
+      const dossier = await manager.findOne(Dossier, {
+        where: { id: dossierId },
+        relations: ['collaborators'],
+      });
+      const collaboratorIds = new Set(
+        (dossier?.collaborators ?? []).map((collaborator) => Number(collaborator.id)),
+      );
+      if (previousId != null) {
+        const previous = await repository.findOne({
+          where: { dossierId, userId: Number(previousId) },
+        });
+        if (previous && previous.role === DossierMemberRole.RESPONSIBLE) {
+          previousStillMember = collaboratorIds.has(Number(previousId));
+          if (previousStillMember) {
+            previous.role = DossierMemberRole.COLLABORATOR;
+          } else {
+            previous.revokedAt = new Date();
+            previous.revokedBy = Number((user as any)?.id) || null;
+          }
+          await repository.save(previous);
+        }
+      }
+      if (nextId != null) {
+        const next =
+          (await repository.findOne({ where: { dossierId, userId: nextId } })) ??
+          repository.create({
+            tenant_id: tenantId,
+            dossierId,
+            userId: nextId,
+            confidentialityLevel: dossier?.confidentiality_level ? 1 : 0,
+            validFrom: new Date(),
+            validUntil: null,
+          } as Partial<DossierMember>);
+        next.role = DossierMemberRole.RESPONSIBLE;
+        next.revokedAt = null;
+        next.revokedBy = null;
+        await repository.save(next);
+      }
+      await this.auditService.append(manager, {
+        actorId: (user as any)?.id,
+        action: 'dossier.responsible.changed',
+        resourceType: 'Dossier',
+        resourceId: dossierId,
+        dossierId,
+        beforeState: { lawyerId: previousId },
+        afterState: { lawyerId: nextId },
+      });
+    });
+    await this.dossierChatSync.notifyMembershipChange(dossierId, {
+      responsibleId: nextId,
+      removed: previousId != null && !previousStillMember ? [Number(previousId)] : [],
+    });
   }
 
   /** Vérifie que le dossier existe et qu'il est visible pour l'utilisateur courant. */
@@ -1055,7 +1147,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       if (!dossier) {
         throw new NotFoundException(`Dossier ${id} non trouvé`);
       }
-      this.checkDossierAccess(dossier, user);
+      await this.checkDossierAccess(dossier, user);
       if (dossier.status !== DossierStatus.DRAFT) {
         throw new BadRequestException(
           'Seul un dossier brouillon peut être supprimé',
@@ -1106,7 +1198,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       if (!dossier) {
         throw new NotFoundException(`Dossier ${id} non trouvé`);
       }
-      this.checkDossierAccess(dossier, user);
+      await this.checkDossierAccess(dossier, user);
       if (dossier.status !== DossierStatus.DRAFT) {
         throw new BadRequestException(
           `Seul un dossier brouillon peut être activé (cycle actuel : ${dossier.status})`,
@@ -1322,7 +1414,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       if (!dossier) {
         throw new NotFoundException(`Dossier ${id} non trouvé`);
       }
-      this.checkDossierAccess(dossier, user);
+      await this.checkDossierAccess(dossier, user);
       if (dossier.status !== DossierStatus.CLOSED) {
         throw new BadRequestException(
           'Seul un dossier clôturé peut être rouvert',
@@ -1380,7 +1472,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       if (!dossier) {
         throw new NotFoundException(`Dossier ${id} non trouvé`);
       }
-      this.checkDossierAccess(dossier, user);
+      await this.checkDossierAccess(dossier, user);
       if (dossier.workflow_engine === WorkflowEngine.ACTIONS_V2) {
         throw new ConflictException(
           'Un dossier V2 doit être clôturé ou réouvert depuis le contrôle de clôture.',
@@ -1585,11 +1677,15 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     return subtype && Number(subtype.parent_id) === Number(typeId);
   }
 
-  private checkDossierAccess(dossier: Dossier, user: User): void {
+  /**
+   * Accès à une fiche dossier : admin et « Voir tous les dossiers » partout,
+   * client sur ses dossiers, personnel uniquement s'il est membre actif
+   * (dossier_members), avocat responsable ou collaborateur affecté.
+   */
+  private async checkDossierAccess(dossier: Dossier, user: User): Promise<void> {
     const authUser = user as any;
 
-    // Admin : accès total
-    if (authUser.role === UserRole.ADMIN) return;
+    if (canSeeAllDossiers(authUser)) return;
 
     // Client : accès uniquement à ses propres dossiers (via customerId du JWT)
     if (authUser.role === UserRole.CLIENT) {
@@ -1609,9 +1705,12 @@ export class DossiersService extends BaseServiceV1<Dossier> {
           collaborator.user?.id === authUser.id ||
           collaborator.id === authUser.id,
       ) ?? false;
+    if (isOwner || isCollaborator) return;
 
-    if (!isOwner && !isCollaborator) {
-      throw new ForbiddenException('Accès non autorisé à ce dossier');
+    if (
+      !(await isDossierMemberOrResponsible(this.dataSource, dossier, Number(authUser.id)))
+    ) {
+      throw new ForbiddenException("Vous n'êtes pas membre de ce dossier");
     }
   }
 
@@ -1668,6 +1767,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
   async getCollaboratorDossiers(
     collaboratorIdParam: number | string,
     paginationParams?: PaginationParamsDto,
+    user?: User,
   ): Promise<DossierResponseDto[] | any> {
     // Pas de ValidationPipe global : l'identifiant de la route et page/limit
     // arrivent en texte ('10' + '10' = '1010', 5 !== '5').
@@ -1701,6 +1801,12 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       .leftJoinAndSelect('dossier.procedure_subtype', 'procedure_subtype')
       .where('collaborator.id = :collaboratorId', { collaboratorId })
       .orderBy('dossier.created_at', 'DESC');
+    // Seuls les dossiers que l'appelant peut lui-même ouvrir.
+    const scope = user ? await this.buildAccessScope(user) : {};
+    const scopedIds = (scope as { id?: { value?: number[] } }).id?.value;
+    if (Array.isArray(scopedIds)) {
+      queryBuilder.andWhere('dossier.id IN (:...scopedIds)', { scopedIds });
+    }
     // Isolation multi-tenant : limitée aux dossiers du cabinet courant.
     addTenantCondition(queryBuilder, 'dossier');
     // Confidentialité : un collaborateur affecté à un dossier confidentiel ne
@@ -1810,7 +1916,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     }
 
     if (user) {
-      this.checkDossierAccess(dossier, user);
+      await this.checkDossierAccess(dossier, user);
     }
 
     if (dossier.is_closed) {
@@ -1878,6 +1984,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     });
     // Seule la relation ManyToMany change : pas d'afterUpdate, synchro explicite.
     await this.dossierChatSync.sync(saved.id);
+    await this.dossierChatSync.notifyMembershipChange(saved.id, { added: [empId] });
 
     return this.mapToResponseDto(saved);
   }
@@ -1913,7 +2020,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     }
 
     if (user) {
-      this.checkDossierAccess(dossier, user);
+      await this.checkDossierAccess(dossier, user);
     }
 
     if (dossier.is_closed) {
@@ -1961,6 +2068,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     });
     // Seule la relation ManyToMany change : pas d'afterUpdate, synchro explicite.
     await this.dossierChatSync.sync(saved.id);
+    await this.dossierChatSync.notifyMembershipChange(saved.id, { removed: [empId] });
 
     return this.mapToResponseDto(saved);
   }
@@ -1990,7 +2098,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     }
 
     if (user) {
-      this.checkDossierAccess(dossier, user);
+      await this.checkDossierAccess(dossier, user);
     }
 
     if (dossier.is_closed) {
@@ -2014,6 +2122,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     }
 
     dossier.collaborators = employees;
+    let memberChanges: Array<Record<string, any>> = [];
     const saved = await this.dataSource.transaction(async (manager) => {
       const persisted = await manager.save(dossier);
       const repository = manager.getRepository(DossierMember);
@@ -2075,10 +2184,19 @@ export class DossiersService extends BaseServiceV1<Dossier> {
           },
         });
       }
+      memberChanges = changed;
       return persisted;
     });
     // Seule la relation ManyToMany change : pas d'afterUpdate, synchro explicite.
     await this.dossierChatSync.sync(saved.id);
+    await this.dossierChatSync.notifyMembershipChange(saved.id, {
+      added: memberChanges
+        .filter((change) => change.action === 'ADDED' || change.action === 'RESTORED')
+        .map((change) => change.userId),
+      removed: memberChanges
+        .filter((change) => change.action === 'REVOKED')
+        .map((change) => change.userId),
+    });
 
     return this.mapToResponseDto(saved);
   }
@@ -2194,7 +2312,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       if (!dossier) {
         throw new NotFoundException(`Dossier ${id} non trouvé`);
       }
-      this.checkDossierAccess(dossier, user);
+      await this.checkDossierAccess(dossier, user);
       if (dossier.status !== DossierStatus.ACTIVE) {
         throw new BadRequestException(
           `Seul un dossier actif peut être clôturé (cycle actuel : ${dossier.status})`,
@@ -2383,7 +2501,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     throw new NotFoundException(`Dossier ${id} non trouvé`);
   }
 
-  this.checkDossierAccess(dossier, user);
+  await this.checkDossierAccess(dossier, user);
     if (dossier.workflow_engine === WorkflowEngine.ACTIONS_V2) {
       throw new ConflictException(
         'Ce dossier utilise le parcours V2. Utilisez le contrôle de clôture dans Traitement.',

@@ -108,6 +108,43 @@ export class CaseWorkflowNotificationsService {
 
   // ── Traitements de l'action ────────────────────────────────────────────────
 
+  /**
+   * Changement de responsable par l'administration : le nouveau responsable
+   * est prévenu qu'elle lui est confiée, l'ancien qu'elle lui est retirée
+   * (jamais l'auteur du geste).
+   */
+  async actionReassigned(
+    action: DossierAction,
+    previousResponsibleId: number | null,
+    actorId?: number,
+  ): Promise<void> {
+    const data = {
+      actionId: action.id,
+      dossierId: action.dossier_id,
+      status: action.status,
+      previousResponsibleId,
+      responsibleId: action.responsible_user_id,
+    };
+    await this.send(this.recipients(action, actorId), {
+      type: NotificationType.DOSSIER_ACTION_ASSIGNED,
+      title: 'Action qui vous est confiée',
+      content: `L'action « ${action.title} » vous a été confiée.`,
+      data,
+      link: this.link(action),
+      priority: 'HIGH',
+    });
+    if (previousResponsibleId && previousResponsibleId !== actorId) {
+      await this.send([previousResponsibleId], {
+        type: NotificationType.DOSSIER_ACTION_ASSIGNED,
+        title: 'Action confiée à un autre membre',
+        content: `L'action « ${action.title} » a été confiée à un autre membre du dossier.`,
+        data,
+        link: this.link(action),
+        priority: 'NORMAL',
+      });
+    }
+  }
+
   /** L'action passe à « en cours » : le responsable est prévenu. */
   async actionStarted(
     action: DossierAction,

@@ -46,6 +46,7 @@ ReviewBillableItemDto,
   ReviseLegacyWorkflowMappingDto,
   ReviseRecommendationRuleDto,
   UpdateBillingProfileDto,
+  ReassignDossierActionDto,
   UpdateDossierActionDetailsDto,
   UpdateActionFamilyDto,
   UpdateCaseWorkflowFeatureDto,
@@ -440,6 +441,27 @@ export class DossierActionsController {
       dto,
       requireIdempotencyKey(key),
       actorId(user),
+    );
+  }
+
+  /** L'administration confie l'action à un autre membre du dossier. */
+  @Patch(':id/responsible')
+  @RequirePermissions('update_dossier_action')
+  reassignResponsible(
+    @Param('id') id: string,
+    @Body() dto: ReassignDossierActionDto,
+    @Headers('idempotency-key') key: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.actionService.reassignResponsible(
+      id,
+      dto,
+      requireIdempotencyKey(key),
+      {
+        id: actorId(user),
+        role: (user as any)?.role,
+        permissions: (user as any)?.permissions,
+      },
     );
   }
 

@@ -541,7 +541,7 @@ export class ChatService {
     if (attachments.length > 0) {
       await this.attachmentRepository.update(
         { id: In(attachments.map((a) => a.id)) },
-        { message: { id: savedMessage.id } as Message },
+        { message: { id: savedMessage.id } },
       );
     }
 

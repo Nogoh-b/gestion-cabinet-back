@@ -31,6 +31,7 @@ export const ROLES_CONFIG: {
       'edit_dossier',
       'delete_dossier',
       'assign_dossier',
+      'view_all_dossiers',
       'view_dossier_confidential',
       'view_dossier_actions',
       'create_dossier_action',

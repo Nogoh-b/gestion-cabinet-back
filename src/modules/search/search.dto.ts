@@ -50,6 +50,9 @@ export interface GlobalSearchResult {
 }
 
 export interface SearchUser {
+  /** Identifiant de l'utilisateur (JWT) : borne la recherche à ses dossiers. */
+  id?: number;
+  userId?: number;
   tenantId: number;
   role: string;
   permissions: string[];

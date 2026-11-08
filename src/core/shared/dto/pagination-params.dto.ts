@@ -32,14 +32,15 @@ export class PaginationParamsDto {
     description: "Nombre d'éléments par page",
     example: 10,
     minimum: 1,
-    maximum: 100,
+    maximum: 500,
     default: 10,
   })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(1)
-  @Max(100)
+  // Le calendrier (un mois) et l'export d'audiences demandent jusqu'à 500 lignes.
+  @Max(500)
   limit?: number = 10;
 
   @ApiPropertyOptional({

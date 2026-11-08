@@ -25,6 +25,10 @@ export const PERMISSION_DEFINITIONS: {
     description: 'Assigner un dossier à un avocat',
   },
   {
+    code: 'view_all_dossiers',
+    description: "Voir tous les dossiers du cabinet, même sans en être membre (hors dossiers confidentiels)",
+  },
+  {
     code: 'view_dossier_confidential',
     description: "Voir les informations confidentielles d'un dossier",
   },

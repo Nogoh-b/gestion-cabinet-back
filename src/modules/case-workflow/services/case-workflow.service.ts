@@ -33,6 +33,7 @@ import { StatutPaiement } from 'src/modules/paiement/dto/create-paiement.dto';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { DossierAccessGrant } from 'src/modules/dossiers/entities/dossier-access-grant.entity';
 import { canBypassConfidentiality } from 'src/modules/dossiers/dossier-visibility';
+import { assertDossierMembership } from 'src/modules/dossiers/dossier-membership-scope';
 import { DataSource, In, IsNull, Repository } from 'typeorm';
 import {
   BillableItemStatus,
@@ -187,6 +188,8 @@ export class CaseWorkflowService {
     dossier: Dossier,
     user: User,
   ): Promise<void> {
+    // D'abord l'appartenance : un non-membre n'ouvre pas l'espace du dossier.
+    await assertDossierMembership(this.dataSource, dossier, user as any);
     if (!dossier.confidentiality_level) return;
     if (canBypassConfidentiality()) return;
 
@@ -653,12 +656,36 @@ export class CaseWorkflowService {
         : [[], [], []];
 
     audiences.reverse();
+    // Responsable affiché même s'il n'est ni avocat ni collaborateur du dossier.
+    const responsibleIds = [
+      ...new Set(
+        actions
+          .map((action) => Number(action.responsible_user_id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    ];
+    const responsibles = responsibleIds.length
+      ? await this.dataSource.getRepository(User).find({
+          where: { id: In(responsibleIds) },
+          select: ['id', 'full_name', 'email'],
+        })
+      : [];
+    const responsibleById = new Map(
+      responsibles.map((responsible) => [
+        Number(responsible.id),
+        { id: Number(responsible.id), full_name: responsible.full_name || responsible.email },
+      ]),
+    );
     const now = Date.now();
     const workspaceActions = actions.map((action) => {
       const deadlineState = getActionDeadlineState(action, now);
       return {
         ...action,
         can_end: canEndDossierAction(action, dossier, user.id),
+        responsible: responsibleById.get(Number(action.responsible_user_id)) ?? null,
+        is_assigned_to_me:
+          action.responsible_user_id != null &&
+          Number(action.responsible_user_id) === Number(user.id),
         is_overdue: deadlineState.isOverdue,
         overdue_days: deadlineState.overdueDays,
         document_links: actionDocumentLinks.filter(

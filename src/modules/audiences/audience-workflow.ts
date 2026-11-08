@@ -1,6 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-import { EntityManager, FindOptionsWhere } from 'typeorm';
+import { EntityManager, FindOptionsWhere, IsNull } from 'typeorm';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { Audience, AudienceStatus } from './entities/audience.entity';
 import { normalizeAudienceSchedule } from './audience-schedule.util';
@@ -114,13 +114,13 @@ async function loadScopedAudience(
   audienceId: number,
   scope: AudienceDossierScope,
 ): Promise<Audience> {
+  const base = { id: audienceId, tenant_id: getCurrentTenantId() };
   const audience = await manager.getRepository(Audience).findOne({
-    where: {
-      id: audienceId,
-      tenant_id: getCurrentTenantId(),
-      // Un avocat n'agit que sur les audiences de ses dossiers.
-      ...(Object.keys(scope).length ? { dossier: scope } : {}),
-    },
+    // Un membre n'agit que sur les audiences de ses dossiers ; une audience
+    // sans dossier reste accessible.
+    where: Object.keys(scope).length
+      ? [{ ...base, dossier: scope }, { ...base, dossier_id: IsNull() }]
+      : base,
   });
   if (!audience) {
     throw new NotFoundException(`Audience ${audienceId} introuvable`);

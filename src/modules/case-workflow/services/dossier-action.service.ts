@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { UserRole } from 'src/core/enums/user-role.enum';
+import { getCurrentRequestUser } from 'src/core/security/request-user.context';
 import { InjectRepository } from '@nestjs/typeorm';
 import { isDuplicateKeyError } from 'src/core/shared/utils/db-error.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
@@ -18,6 +19,10 @@ import { postponeAudienceWithManager } from 'src/modules/audiences/audience-work
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { DossierAccessGrant } from 'src/modules/dossiers/entities/dossier-access-grant.entity';
 import { canBypassConfidentiality } from 'src/modules/dossiers/dossier-visibility';
+import {
+  assertDossierMembership,
+  isDossierMemberOrResponsible,
+} from 'src/modules/dossiers/dossier-membership-scope';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import {
@@ -42,6 +47,7 @@ import {
   CreateDossierActionDto,
   DeferRecommendationDto,
   ExtendDossierActionDeadlineDto,
+  ReassignDossierActionDto,
   UpdateDossierActionDetailsDto,
 } from '../dto/case-workflow.dto';
 import { ActionDefinition } from '../entities/action-catalog.entity';
@@ -337,6 +343,8 @@ export class DossierActionService {
       ],
     });
     if (!dossier) throw new NotFoundException('Dossier introuvable');
+    // D'abord l'appartenance : un non-membre ne voit ni ne modifie les actions.
+    await assertDossierMembership(manager, dossier);
     if (!dossier.confidentiality_level) return dossier;
     if (canBypassConfidentiality()) return dossier;
 
@@ -1067,6 +1075,103 @@ export class DossierActionService {
     return action;
   }
 
+  /**
+   * L'administration confie l'action à un autre membre du dossier, à tout
+   * moment tant qu'elle n'est ni terminée ni annulée. La diligence liée suit,
+   * l'opération est journalisée et les deux responsables sont prévenus.
+   */
+  async reassignResponsible(
+    actionId: string,
+    dto: ReassignDossierActionDto,
+    idempotencyKey: string,
+    actor: { id: number; role?: string; permissions?: string[] },
+  ): Promise<DossierAction> {
+    const isAdmin =
+      actor.role === UserRole.ADMIN || actor.permissions?.includes('SUPER_ADMIN');
+    if (!isAdmin) {
+      throw new ForbiddenException(
+        "Seul un administrateur peut changer le responsable d'une action",
+      );
+    }
+    const tenantId = getCurrentTenantId();
+    let previousResponsibleId: number | null = null;
+    let changed = false;
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const eventKey = `ACTION_REASSIGNED:${idempotencyKey}`;
+      const prior = await manager.getRepository(CaseWorkflowEvent).findOne({
+        where: { tenant_id: tenantId, idempotency_key: eventKey },
+      });
+      const repository = manager.getRepository(DossierAction);
+      if (prior) {
+        const existing = await repository.findOne({
+          where: { id: actionId, tenant_id: tenantId },
+          relations: ['definition'],
+        });
+        if (existing) return existing;
+      }
+      const action = await repository
+        .createQueryBuilder('action')
+        .leftJoinAndSelect('action.definition', 'definition')
+        .setLock('pessimistic_write')
+        .where('action.id = :actionId AND action.tenant_id = :tenantId', {
+          actionId,
+          tenantId,
+        })
+        .getOne();
+      if (!action) throw new NotFoundException('Action introuvable');
+      const dossier = await this.assertConfidentialDossierAccess(
+        manager,
+        action.dossier_id,
+        actor.id,
+      );
+      if (action.lock_version !== dto.expected_version) {
+        throw new ConflictException(
+          'Cette action a été modifiée. Rechargez le dossier.',
+        );
+      }
+      if (
+        [DossierActionStatus.COMPLETED, DossierActionStatus.CANCELLED].includes(
+          action.status,
+        )
+      ) {
+        throw new ConflictException(
+          "Le responsable d'une action terminée ou annulée ne peut plus changer",
+        );
+      }
+      const nextId = Number(dto.responsible_user_id);
+      if (!(await isDossierMemberOrResponsible(manager, dossier, nextId))) {
+        throw new BadRequestException(
+          "Le nouveau responsable doit être membre du dossier (ajoutez-le d'abord comme collaborateur)",
+        );
+      }
+      previousResponsibleId = action.responsible_user_id ?? null;
+      if (Number(previousResponsibleId) === nextId) return action;
+
+      action.responsible_user_id = nextId;
+      const result = await repository.save(action);
+      await this.syncLinkedDiligence(manager, result);
+      await this.eventService.append(manager, {
+        dossierId: result.dossier_id,
+        eventType: 'DOSSIER_ACTION_RESPONSIBLE_CHANGED',
+        aggregateType: 'DossierAction',
+        aggregateId: result.id,
+        actorUserId: actor.id,
+        payload: { from: previousResponsibleId, to: nextId },
+        idempotencyKey: eventKey,
+      });
+      changed = true;
+      return result;
+    });
+    if (changed) {
+      await this.workflowNotifications.actionReassigned(
+        saved,
+        previousResponsibleId,
+        actor.id,
+      );
+    }
+    return saved;
+  }
+
   async updateDetails(
     actionId: string,
     dto: UpdateDossierActionDetailsDto,
@@ -1477,6 +1582,17 @@ export class DossierActionService {
     recommendation: DossierRecommendation | null;
     billableItem: BillableItem | null;
   }> {
+    // La facturation se choisit avec « Gérer les éléments facturables » ;
+    // sans ce droit, la règle du profil de facturation s'applique.
+    const requestUser = getCurrentRequestUser();
+    if (
+      requestUser &&
+      requestUser.role !== UserRole.ADMIN &&
+      !requestUser.permissions?.includes('SUPER_ADMIN') &&
+      !requestUser.permissions?.includes('manage_billable_items')
+    ) {
+      dto = { ...dto, billing_decision: undefined, billing_reason: undefined };
+    }
     const tenantId = getCurrentTenantId();
     const result = await this.dataSource.transaction(async (manager) => {
       const repository = manager.getRepository(DossierAction);

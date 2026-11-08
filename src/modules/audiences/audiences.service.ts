@@ -62,10 +62,8 @@ import {
   postponeAudienceWithManager,
   startAudienceWithManager,
 } from './audience-workflow';
-import {
-  DossierScopeUser,
-  dossierRoleScope,
-} from '../dossiers/dossier-role-scope';
+import { DossierScopeUser } from '../dossiers/dossier-role-scope';
+import { dossierMembershipScope } from '../dossiers/dossier-membership-scope';
 import {
   ResourceActor,
   ResourcePolicyService,
@@ -770,14 +768,24 @@ export class AudiencesService extends BaseServiceV1<Audience> {
   }
 
   /**
+   * Dossiers sur lesquels l'appelant agit : ceux dont il est membre (avocat
+   * responsable, collaborateur), tous pour l'admin et « Voir tous les
+   * dossiers », les siens pour un client.
+   */
+  private dossierScope(user?: DossierScopeUser | null) {
+    return dossierMembershipScope(this.repository.manager.connection, user as any);
+  }
+
+  /**
    * ▶️ Démarrer une audience (SCHEDULED → IN_PROGRESS)
    */
   async start(
     id: number,
     user?: DossierScopeUser | null,
   ): Promise<AudienceResponseDto | any> {
+    const scope = await this.dossierScope(user);
     await this.repository.manager.transaction((manager) =>
-      startAudienceWithManager(manager, id, dossierRoleScope(user)),
+      startAudienceWithManager(manager, id, scope),
     );
     return this.findInProgressOne(id);
   }
@@ -789,8 +797,9 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     id: number,
     user?: DossierScopeUser | null,
   ): Promise<AudienceResponseDto | any> {
+    const scope = await this.dossierScope(user);
     await this.repository.manager.transaction((manager) =>
-      finishAudienceWithManager(manager, id, dossierRoleScope(user)),
+      finishAudienceWithManager(manager, id, scope),
     );
     return this.findOneV1(
       id,
@@ -806,7 +815,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
   async findInProgress(
     user?: DossierScopeUser | null,
   ): Promise<AudienceResponseDto[]> {
-    const scope = dossierRoleScope(user);
+    const scope = await this.dossierScope(user);
     const audiences = await this.repository.find({
       where: {
         status: audienceStatusParam(AudienceStatus.IN_PROGRESS),
@@ -829,7 +838,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     in_progress: AudienceResponseDto[];
     scheduled: AudienceResponseDto[];
   }> {
-    const scope = dossierRoleScope(user);
+    const scope = await this.dossierScope(user);
     const day = (offset: number) => {
       const date = new Date();
       date.setDate(date.getDate() + offset);

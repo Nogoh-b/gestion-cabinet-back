@@ -1,3 +1,4 @@
+import { In, IsNull } from 'typeorm';
 import { describe, expect, it, jest } from '@jest/globals';
 import { runWithTenantContext } from 'src/core/tenant/tenant.context';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
@@ -57,15 +58,17 @@ describe('startAudienceWithManager', () => {
     );
   });
 
-  it('borne la recherche au dossier de l’avocat', async () => {
+  it('borne la recherche aux dossiers du membre, audiences sans dossier comprises', async () => {
     const { manager, repository } = managerWith(audience());
+    const scope = { id: In([4, 9]) };
 
-    await inTenant(() =>
-    startAudienceWithManager(manager, 7, { lawyer: { id: 3 } }, NOW),
-  );
+    await inTenant(() => startAudienceWithManager(manager, 7, scope, NOW));
 
     expect(repository.findOne).toHaveBeenCalledWith({
-      where: { id: 7, tenant_id: 1, dossier: { lawyer: { id: 3 } } },
+      where: [
+        { id: 7, tenant_id: 1, dossier: scope },
+        { id: 7, tenant_id: 1, dossier_id: IsNull() },
+      ],
     });
   });
 

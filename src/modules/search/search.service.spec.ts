@@ -8,12 +8,15 @@ import { Facture } from '../facture/entities/facture.entity';
 import { RequestUserContext } from 'src/core/security/request-user.context';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import * as membership from '../dossiers/dossier-membership-scope';
 
 describe('GlobalSearchService', () => {
   let service: GlobalSearchService;
   let db: any;
   let builders: any[];
   const user: SearchUser = {
+    id: 1,
+    userId: 1,
     tenantId: 8,
     role: 'avocat',
     permissions: [
@@ -32,6 +35,8 @@ describe('GlobalSearchService', () => {
   };
 
   beforeEach(() => {
+    // Le membre (avocat) est rattaché au seul dossier 42.
+    jest.spyOn(membership, 'accessibleDossierIds').mockResolvedValue([42]);
     builders = [];
     const rows = new Map<any, any[]>([
       [Dossier, [{ id: 42, title: 'DOS-2026-042', ...context }]],
@@ -56,6 +61,7 @@ describe('GlobalSearchService', () => {
             'offset',
             'limit',
             'clone',
+            'distinct',
           ].forEach((method) => {
             qb[method] = jest.fn(() => qb);
           });
@@ -123,7 +129,9 @@ describe('GlobalSearchService', () => {
       { userId: 9, role: 'avocat', permissions: user.permissions },
       () => service.search({ q: 'contrat', page: 2 }, user),
     );
-    for (const qb of builders) {
+    const searchBuilders = builders.filter((qb) => qb.alias === 'r');
+    expect(searchBuilders).toHaveLength(5);
+    for (const qb of searchBuilders) {
       expect(qb.where).toHaveBeenCalledWith(
         expect.stringContaining('tenant_id = :tenantId'),
         { tenantId: 8 },
@@ -134,10 +142,38 @@ describe('GlobalSearchService', () => {
           { __visibilityUserId: 9 },
         );
       }
-      if (qb.alias === 'r') {
-        expect(qb.offset).toHaveBeenCalledWith(10);
-        expect(qb.limit).toHaveBeenCalledWith(10);
-      }
+      expect(qb.offset).toHaveBeenCalledWith(10);
+      expect(qb.limit).toHaveBeenCalledWith(10);
+    }
+  });
+
+  it('borne dossiers et fiches liées aux dossiers dont l’appelant est membre', async () => {
+    await service.search({ q: 'contrat', page: 1 }, user);
+    const dossierQuery = builders.find(
+      (qb) => qb.entity === Dossier && qb.alias === 'r',
+    );
+    expect(dossierQuery.andWhere).toHaveBeenCalledWith('d.id IN (:...memberIds)', {
+      memberIds: [42],
+    });
+    const audienceQuery = builders.find(
+      (qb) => qb.entity === Audience && qb.alias === 'r',
+    );
+    expect(audienceQuery.andWhere).toHaveBeenCalledWith(
+      '(r.dossier_id IS NULL OR r.dossier_id IN (:...memberIds))',
+      { memberIds: [42] },
+    );
+  });
+
+  it('« Voir tous les dossiers » ne borne pas la recherche', async () => {
+    await service.search(
+      { q: 'contrat', page: 1 },
+      { ...user, permissions: [...user.permissions, 'view_all_dossiers'] },
+    );
+    for (const qb of builders) {
+      expect(qb.andWhere).not.toHaveBeenCalledWith(
+        expect.stringContaining('memberIds'),
+        expect.anything(),
+      );
     }
   });
 

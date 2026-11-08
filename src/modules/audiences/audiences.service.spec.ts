@@ -1,3 +1,5 @@
+import { In } from 'typeorm';
+import * as membership from '../dossiers/dossier-membership-scope';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { BadRequestException } from '@nestjs/common';
 import { UserRole } from 'src/core/enums/user-role.enum';
@@ -170,20 +172,24 @@ describe('AudiencesService - commandes métier', () => {
   describe('findInProgress', () => {
     function withRepository() {
       const find = jest.fn(async (_options: unknown) => []);
-      (service as any).repository = { find };
+      (service as any).repository = { find, manager: { connection: {} } };
       return find;
     }
 
-    it('borne un avocat aux audiences de ses dossiers', async () => {
+    it('borne un membre aux audiences des dossiers dont il est membre', async () => {
       const find = withRepository();
+      const scope = jest
+        .spyOn(membership, 'dossierMembershipScope')
+        .mockResolvedValue({ id: In([4, 9]) });
 
       await service.findInProgress({ id: 3, role: UserRole.AVOCAT });
+      scope.mockRestore();
 
       expect(find).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             status: audienceStatusParam(AudienceStatus.IN_PROGRESS),
-            dossier: { lawyer: { id: 3 } },
+            dossier: { id: In([4, 9]) },
           },
         }),
       );

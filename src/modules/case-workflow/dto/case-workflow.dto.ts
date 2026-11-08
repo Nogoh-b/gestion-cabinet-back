@@ -343,6 +343,17 @@ export class UpdateDossierActionDetailsDto {
   previous_actions?: ActionDependencyDto[];
 }
 
+/** Changement de responsable d'une action (administration). */
+export class ReassignDossierActionDto {
+  @IsInt()
+  @Min(1)
+  expected_version: number;
+
+  @IsInt()
+  @Min(1)
+  responsible_user_id: number;
+}
+
 export class CreateRecommendationRuleDto {
   @IsString()
   @MaxLength(100)

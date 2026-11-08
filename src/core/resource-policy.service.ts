@@ -81,6 +81,8 @@ export class ResourcePolicyService {
 
     const isAdmin =
       actor.role === 'admin' || permissions.includes('SUPER_ADMIN');
+    // « Voir tous les dossiers » dispense d'être membre, pas de la confidentialité.
+    const seesAllDossiers = isAdmin || permissions.includes('view_all_dossiers');
     const isClient =
       actor.customerId != null &&
       Number((dossier.client as any)?.id) === Number(actor.customerId);
@@ -89,7 +91,7 @@ export class ResourcePolicyService {
       isAdmin || permissions.includes('dossier_confidential_override');
 
     if (
-      !isAdmin &&
+      !seesAllDossiers &&
       !isClient &&
       !member &&
       !isResponsible
@@ -205,9 +207,18 @@ export class ResourcePolicyService {
     actor: ResourceActor,
     resourceConfidentialityLevel: number,
   ): Promise<number[]> {
-    const tenantId = getCurrentTenantId();
+    let tenantId: number;
+    try {
+      tenantId = getCurrentTenantId();
+    } catch {
+      tenantId = Number(actor.tenantId);
+    }
     const actorId = Number(actor.userId ?? actor.id);
-    if (actor.tenantId !== tenantId || !Number.isInteger(actorId)) {
+    if (
+      !Number.isInteger(tenantId) ||
+      (Number.isInteger(actor.tenantId) && actor.tenantId !== tenantId) ||
+      !Number.isInteger(actorId)
+    ) {
       throw new ForbiddenException('Contexte cabinet ou acteur incohérent');
     }
     const permissions = actor.permissions ?? [];
@@ -248,16 +259,18 @@ export class ResourcePolicyService {
                   )
                 )
                 OR (:customerId IS NOT NULL AND dossier.client_id = :customerId)
+                OR (:seesAll = 1 AND dossier.confidentiality_level = 0)
               )`,
           {
             actorId,
+            seesAll: permissions.includes('view_all_dossiers') ? 1 : 0,
             customerId: actor.customerId ?? null,
             resourceLevel: resourceConfidentialityLevel,
           },
         );
     }
 
-    const rows = await query.distinct(true).getRawMany<{ dossierId: string }>();
-    return rows.map((row) => Number(row.dossierId)).filter(Number.isInteger);
+    const rows = await (typeof query.distinct === "function" ? query.distinct(true) : query).getRawMany<{ dossierId?: string; id?: string }>();
+    return rows.map((row) => Number(row.dossierId ?? (row as any).id)).filter(Number.isInteger);
   }
 }

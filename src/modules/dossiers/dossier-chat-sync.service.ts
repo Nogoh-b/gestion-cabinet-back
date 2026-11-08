@@ -252,70 +252,87 @@ export class DossierChatSyncService
       }
     }
 
-    // La création est déjà notifiée (« dossier créé ») et le rattrapage ne
-    // notifie personne. L'auteur de l'action n'est pas prévenu de son propre
-    // ajout ou retrait.
-    if (options.notifyAdded === false || result.created) return;
-    const actorId = getCurrentRequestUser()?.userId;
-    const added = result.added.filter((id) => id !== actorId);
-    const removed = result.removed.filter((id) => id !== actorId);
-    if (!added.length && !removed.length) return;
+    // Les avis d'ajout / retrait suivent l'appartenance réelle au dossier
+    // (notifyMembershipChange, appelée par DossiersService), plus le
+    // différentiel du chat que le traitement asynchrone (outbox) peut vider.
+  }
 
-    const mailDossier =
-      (await this.dataSource.manager
-        .findOne(Dossier, {
-          where: { id: dossier.id },
-          relations: ['client', 'lawyer', 'collaborators'],
-        })
-        .catch(() => null)) ?? dossier;
+  /**
+   * Prévient les membres ajoutés, retirés ou nommés responsables d'un dossier
+   * (in-app + e-mail). L'auteur de l'action n'est pas prévenu de son propre
+   * changement ; les administrateurs ne reçoivent pas un « Vous avez été
+   * ajouté » qui ne les concerne pas.
+   */
+  async notifyMembershipChange(
+    dossierId: number,
+    change: { added?: number[]; removed?: number[]; responsibleId?: number | null },
+  ): Promise<void> {
+    const actorId = getCurrentRequestUser()?.userId;
+    const others = (ids: number[] = []) =>
+      [...new Set(ids.map(Number))].filter((id) => Number.isInteger(id) && id !== actorId);
+    const responsibleId =
+      change.responsibleId != null && Number(change.responsibleId) !== actorId
+        ? Number(change.responsibleId)
+        : null;
+    const added = others(change.added).filter((id) => id !== responsibleId);
+    const removed = others(change.removed);
+    if (!added.length && !removed.length && responsibleId == null) return;
+
+    const dossier = await runWithoutRequestUser(() =>
+      this.dataSource.manager.findOne(Dossier, {
+        where: { id: dossierId },
+        relations: ['client', 'lawyer', 'collaborators'],
+      }),
+    ).catch(() => null);
+    if (!dossier) return;
     const emailContext = buildEntityMailContext({
-      dossier: mailDossier,
+      dossier,
       resourceType: 'dossier',
-      resource: mailDossier as any,
+      resource: dossier as any,
     });
     const content = dossier.object?.trim() || '';
-
-    if (added.length) {
-      await this.notificationDispatcher
+    const send = (
+      event: NotifiableEvent,
+      title: string,
+      ids: number[],
+      link = `/dossiers/${dossier.id}`,
+    ) =>
+      this.notificationDispatcher
         .dispatch({
-          event: NotifiableEvent.COLLABORATOR_ADDED,
-          title: `Vous avez été ajouté au dossier ${dossier.dossier_number}`,
+          event,
+          title,
           content,
-          link: `/dossiers/${dossier.id}`,
-          audience: { lawyer_id: null, collaborator_ids: added },
+          link,
+          audience: { lawyer_id: null, collaborator_ids: ids, admin_ids_override: [] },
           entity: { type: 'dossier', id: dossier.id },
           emailContext,
         })
         .catch((err) =>
-          this.logger.warn(
-            `Notification d'ajout au dossier ignorée : ${err?.message}`,
-          ),
+          this.logger.warn(`Notification de membre du dossier ignorée : ${err?.message}`),
         );
+
+    if (responsibleId != null) {
+      await send(
+        NotifiableEvent.COLLABORATOR_ADDED,
+        `Vous êtes l'avocat responsable du dossier ${dossier.dossier_number}`,
+        [responsibleId],
+      );
+    }
+    if (added.length) {
+      await send(
+        NotifiableEvent.COLLABORATOR_ADDED,
+        `Vous avez été ajouté au dossier ${dossier.dossier_number}`,
+        added,
+      );
     }
     if (removed.length) {
-      // Seul le membre retiré est prévenu ; un dossier confidentiel ne lui
-      // est plus accessible, le lien mène alors à la liste.
-      await this.notificationDispatcher
-        .dispatch({
-          event: NotifiableEvent.COLLABORATOR_REMOVED,
-          title: `Vous avez été retiré du dossier ${dossier.dossier_number}`,
-          content,
-          link: dossier.confidentiality_level
-            ? '/dossiers'
-            : `/dossiers/${dossier.id}`,
-          audience: {
-            lawyer_id: null,
-            collaborator_ids: removed,
-            admin_ids_override: [],
-          },
-          entity: { type: 'dossier', id: dossier.id },
-          emailContext,
-        })
-        .catch((err) =>
-          this.logger.warn(
-            `Notification de retrait du dossier ignorée : ${err?.message}`,
-          ),
-        );
+      // Un dossier qui n'est plus accessible : le lien mène à la liste.
+      await send(
+        NotifiableEvent.COLLABORATOR_REMOVED,
+        `Vous avez été retiré du dossier ${dossier.dossier_number}`,
+        removed,
+        '/dossiers',
+      );
     }
   }
 

@@ -36,6 +36,7 @@ export enum NotificationType {
   DOSSIER_ACTION_ON_HOLD = 'dossier_action_on_hold',
   DOSSIER_ACTION_CANCELLED = 'dossier_action_cancelled',
   DOSSIER_ACTION_DEADLINE_EXTENDED = 'dossier_action_deadline_extended',
+  DOSSIER_ACTION_ASSIGNED = 'dossier_action_assigned',
   // ── RH : permissions (congés) et avances sur salaire ────────────────────────
   EMPLOYEE_LEAVE_REQUESTED = 'employee_leave_requested',
   EMPLOYEE_LEAVE_APPROVED = 'employee_leave_approved',

@@ -440,10 +440,12 @@ export class DossiersController {
   async getDossiersByCollaborator(
     @Param('collaboratorId') collaboratorId: number,
     @Query() paginationParams: PaginationParamsDto,
+    @CurrentUser() user: User,
   ) {
     return this.dossiersService.getCollaboratorDossiers(
       collaboratorId,
       paginationParams,
+      user,
     );
   }
 

@@ -120,6 +120,7 @@ describe('DossierChatSyncService', () => {
       10,
       expect.anything(),
     );
+    await service.notifyMembershipChange(7, { added: [2, 3], removed: [4] });
     expect(dispatcher.dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         event: 'collaborator_added',

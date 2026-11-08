@@ -11,6 +11,7 @@ export enum Permission {
   DELETE_DOSSIER = 'delete_dossier',
   EXPORT_DOSSIER = 'export_dossier',
   ASSIGN_DOSSIER = 'assign_dossier',
+  VIEW_ALL_DOSSIERS = 'view_all_dossiers',
   VIEW_DOSSIER_CONFIDENTIAL = 'view_dossier_confidential',
   VIEW_DOSSIER_ACTIONS = 'view_dossier_actions',
   CREATE_DOSSIER_ACTION = 'create_dossier_action',
