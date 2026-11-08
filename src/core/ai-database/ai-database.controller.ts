@@ -189,7 +189,6 @@ export class AiDatabaseController {
     @UploadedFiles() uploaded: QuestionFiles,
     @Res() res: Response,
   ): Promise<void> {
-    dto.intentMode = 'read';
     dto.analyzeOnly = true;
     const t0 = Date.now();
     this.logger.log(`🕐 [SSE] askStream ENTRÉ à ${new Date().toISOString()}`);
@@ -402,7 +401,6 @@ export class AiDatabaseController {
   @Post('analyze')
   @UseGuards(AiQuotaGuard)
   async analyze(@Body() dto: AskQuestionDto, @Req() req) {
-    dto.intentMode = 'read';
     dto.analyzeOnly = true;
     const userId = req.user?.id || 'anonymous'; // Ton système d'auth
     return toChatPayload(

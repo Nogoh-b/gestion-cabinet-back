@@ -20,6 +20,7 @@ import {
   AUDIO_RECORDING_DEFAULTS,
   sanitizeAudioRecordingPatch,
 } from './audio-recording.setting';
+import { SITE_DEFAULTS, SITE_HOME_REDIRECTS } from './site-home.setting';
 
 /** Valeurs par défaut (et typage) des paramètres plateforme modifiables. */
 export const PLATFORM_SETTING_DEFAULTS = {
@@ -66,6 +67,8 @@ export const PLATFORM_SETTING_DEFAULTS = {
   cabinet_sidebar: { ...CABINET_SIDEBAR_DEFAULTS },
   /** Enregistrement audio segmenté des audiences (tous les cabinets). */
   audio: { ...AUDIO_RECORDING_DEFAULTS },
+  /** Mini-site public : redirection de la page d'accueil vers l'espace. */
+  site: { ...SITE_DEFAULTS },
 };
 
 export type PlatformSettings = typeof PLATFORM_SETTING_DEFAULTS;
@@ -168,6 +171,13 @@ export class PlatformSettingsService {
         out.plan_block_metric = value.plan_block_metric;
       }
       return out;
+    }
+    if (key === 'site') {
+      if (value.home_redirect === undefined) return {};
+      if (!SITE_HOME_REDIRECTS.includes(value.home_redirect)) {
+        throw new BadRequestException('Redirection de la page d’accueil invalide.');
+      }
+      return { home_redirect: value.home_redirect };
     }
     if (key === 'audio') {
       try {

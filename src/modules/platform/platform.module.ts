@@ -25,6 +25,7 @@ import { PlatformAdminsService } from './admins/platform-admins.service';
 import { PlatformAdminsController } from './admins/platform-admins.controller';
 import { PlatformSettingsService } from './settings/platform-settings.service';
 import { PlatformSettingsController } from './settings/platform-settings.controller';
+import { PublicSiteSettingsController } from './settings/public-site-settings.controller';
 import { PlatformBackupsController } from './backups/platform-backups.controller';
 import { PlatformCabinetsService } from './cabinets/platform-cabinets.service';
 import { PlatformCabinetsController } from './cabinets/platform-cabinets.controller';
@@ -81,6 +82,7 @@ import { PlatformAssistantService } from './assistant/platform-assistant.service
     PlatformAdminsController,
     PlatformAuditController,
     PlatformSettingsController,
+    PublicSiteSettingsController,
     PlatformBackupsController,
     PlatformCabinetsController,
     PlatformSubscriptionsController,
