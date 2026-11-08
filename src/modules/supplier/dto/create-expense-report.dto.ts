@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import {
   IsString,
   IsNotEmpty,
@@ -41,6 +42,7 @@ export class CreateExpenseReportDto {
   })
   @IsDateString()
   @IsNotEmpty()
+  @Type(() => String)
   submission_date: Date;
 
   @ApiPropertyOptional({

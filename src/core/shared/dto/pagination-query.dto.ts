@@ -60,7 +60,7 @@ export class PaginationQueryDto {
   })
   @IsOptional()
   @IsDateString()
-  @Type(() => Date)
+  @Type(() => String)
   from?: Date;
 
   @ApiPropertyOptional({
@@ -71,11 +71,11 @@ export class PaginationQueryDto {
   })
   @IsOptional()
   @IsDateString()
-  @Type(() => Date)
+  @Type(() => String)
   to?: Date;
   @IsOptional()
   @IsDateString()
-  @Type(() => Date)
+  @Type(() => String)
   to1?: Date;
 
   @ApiPropertyOptional({ description: 'status', example: 1 })

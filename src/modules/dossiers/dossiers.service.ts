@@ -856,11 +856,16 @@ export class DossiersService extends BaseServiceV1<Dossier> {
 
     this.checkDossierAccess(dossier, user);
 
-    if (updateDossierDto.collaborator_ids !== undefined) {
-      throw new BadRequestException(
-        'Utilisez la commande dédiée de synchronisation des membres du dossier',
+    // Les membres passent par la commande dédiée (syncCollaborators), appelée
+    // après l'enregistrement des autres champs et seulement s'ils changent.
+    const requestedCollaboratorIds = updateDossierDto.collaborator_ids;
+    delete (updateDossierDto as { collaborator_ids?: number[] }).collaborator_ids;
+    const collaboratorsChanged =
+      requestedCollaboratorIds !== undefined &&
+      !sameIdSet(
+        requestedCollaboratorIds,
+        (dossier.collaborators ?? []).map((collaborator) => collaborator.id),
       );
-    }
     if (updateDossierDto.final_decision !== undefined) {
       throw new BadRequestException(
         'La décision finale se renseigne uniquement par la commande de clôture',
@@ -1017,8 +1022,11 @@ export class DossiersService extends BaseServiceV1<Dossier> {
         return saved;
       },
     );
-    // Si seuls les collaborateurs ont changé, afterUpdate n'a pas été émis.
-    if (updateDossierDto.collaborator_ids || updateDossierDto.lawyer_id) {
+    if (collaboratorsChanged) {
+      // Synchronise aussi le chat du dossier.
+      return this.syncCollaborators(id, requestedCollaboratorIds ?? [], user);
+    }
+    if (updateDossierDto.lawyer_id) {
       await this.dossierChatSync.sync(updatedDossier.id);
     }
     return this.mapToResponseDto(updatedDossier);
@@ -2663,4 +2671,11 @@ export class DossiersService extends BaseServiceV1<Dossier> {
 
     return data;
   }
+}
+
+/** Même ensemble d'identifiants, quel que soit l'ordre ou le type (texte / nombre). */
+export function sameIdSet(a: Array<number | string>, b: Array<number | string>): boolean {
+  const left = new Set(a.map(Number));
+  const right = new Set(b.map(Number));
+  return left.size === right.size && [...left].every((id) => right.has(id));
 }

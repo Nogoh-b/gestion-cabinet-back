@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import {
   IsString,
   IsNotEmpty,
@@ -18,11 +19,13 @@ export class CreatePayrollPeriodDto {
   @ApiProperty({ example: '2026-03-01' })
   @IsDateString()
   @IsNotEmpty()
+  @Type(() => String)
   start_date: Date;
 
   @ApiProperty({ example: '2026-03-31' })
   @IsDateString()
   @IsNotEmpty()
+  @Type(() => String)
   end_date: Date;
 
   @ApiPropertyOptional({ example: 2 })

@@ -1,4 +1,4 @@
-import { DossiersService } from './dossiers.service';
+import { DossiersService, sameIdSet } from './dossiers.service';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { UserRole } from 'src/core/enums/user-role.enum';
 import {
@@ -110,24 +110,12 @@ describe('DossiersService - modèle administratif', () => {
     ).rejects.toThrow('verrouillés après activation');
   });
 
-  it('impose la commande dédiée pour modifier les membres', async () => {
-    dossierRepository.findOne.mockResolvedValue({
-      id: 12,
-      status: DossierStatus.DRAFT,
-      client_id: 7,
-      lawyer_id: 9,
-      procedure_type_id: 2,
-      procedure_subtype_id: 3,
-      jurisdiction_id: 4,
-    });
-
-    await expect(
-      service.update(
-        12,
-        { collaborator_ids: [22] } as any,
-        { id: 1, role: UserRole.ADMIN } as any,
-      ),
-    ).rejects.toThrow('commande dédiée');
+  it('ne passe par la commande des membres que si la liste change', () => {
+    // update() délègue collaborator_ids à syncCollaborators quand l'ensemble diffère.
+    expect(sameIdSet([22, 9], ['9', 22])).toBe(true);
+    expect(sameIdSet([], [])).toBe(true);
+    expect(sameIdSet([22], [22, 23])).toBe(false);
+    expect(sameIdSet([22, 22], [22])).toBe(true);
   });
 
   it("crée la facture d'ouverture dans la transaction d'activation", async () => {

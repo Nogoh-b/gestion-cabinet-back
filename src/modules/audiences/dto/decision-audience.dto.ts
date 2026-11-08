@@ -32,6 +32,7 @@ export class DecisionAudienceDto {
   @ApiProperty({ description: 'Date de la décision', required: false })
   @IsOptional()
   @IsDateString()
+  @Type(() => String)
   decision_date?: Date;
 
   @ApiProperty({ description: 'Observations sur la décision', required: false })

@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { IsInt, IsDateString, IsOptional } from 'class-validator';
 export class ResetPasswordRequestDto {
@@ -19,5 +20,6 @@ export class CreateEmployeeDto {
 
   @ApiProperty()
   @IsDateString()
+  @Type(() => String)
   hire_date: Date;
 }

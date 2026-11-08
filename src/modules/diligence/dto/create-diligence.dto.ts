@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 // src/modules/diligences/dto/create-diligence.dto.ts
 import {
   IsString,
@@ -71,6 +72,7 @@ export class CreateDiligenceDto {
   })
   @IsDateString()
   @IsNotEmpty()
+  @Type(() => String)
   start_date: Date;
 
   @ApiProperty({
@@ -79,6 +81,7 @@ export class CreateDiligenceDto {
   })
   @IsDateString()
   @IsNotEmpty()
+  @Type(() => String)
   deadline: Date;
 
   @ApiPropertyOptional({

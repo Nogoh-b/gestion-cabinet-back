@@ -20,7 +20,7 @@ export class CloseDossierDto {
 
   @IsOptional()
   @IsDateString()
-  @Type(() => Date)
+  @Type(() => String)
   outcome_date?: Date;
 
   @IsString()

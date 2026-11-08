@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 // src/modules/findings/dto/create-finding.dto.ts
 import {
   IsString,
@@ -104,6 +105,7 @@ export class CreateFindingDto {
   })
   @IsDateString()
   @IsOptional()
+  @Type(() => String)
   due_date?: Date;
 
   @ApiPropertyOptional({

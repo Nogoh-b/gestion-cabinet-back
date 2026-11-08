@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 // create-dossier-referral.dto.ts
 import {
   IsNotEmpty,
@@ -58,14 +59,16 @@ export class CreateDossierReferralDto {
   @IsOptional()
   commission_amount?: number;
 
-  @ApiProperty({ enum: CommissionBasis, example: CommissionBasis.COLLECTED_HT })
+  // Absente (utilisateur sans accès aux commissions) : « Encaissé HT » par défaut en base.
+  @ApiPropertyOptional({ enum: CommissionBasis, example: CommissionBasis.COLLECTED_HT })
   @IsEnum(CommissionBasis)
-  @IsNotEmpty()
-  commission_basis: CommissionBasis;
+  @IsOptional()
+  commission_basis?: CommissionBasis;
 
   @ApiProperty({ example: '2026-04-15', description: "Date d'apport" })
   @IsDateString()
   @IsNotEmpty()
+  @Type(() => String)
   referral_date: Date;
 
   @ApiPropertyOptional({ example: 'Conditions spéciales...' })
