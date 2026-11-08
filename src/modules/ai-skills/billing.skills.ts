@@ -505,7 +505,6 @@ export class ConfigurerFacturationAiAction implements AiActionHandler {
   readonly definition: AiActionDefinition = {
     name: 'configurer_facturation',
     entity: 'dossiers',
-    skillOnly: true,
     label: 'Configuration de la facturation',
     description: "Applique le profil de facturation proposé au dossier (même enregistrement que l'onglet Facturation).",
     permission: Permission.MANAGE_BILLABLE_ITEMS,

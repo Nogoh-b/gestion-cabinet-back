@@ -44,7 +44,7 @@ describe('Note du planner pour les fichiers joints', () => {
   it('les fichiers sont la source : un dossier par affaire, client avant dossier, fichier source cité', () => {
     const note = uploadedFilePlannerNote(names, 'lie le contenu de ses fichiers et crée les différents dossiers');
     expect(note).toContain('« fiche OVAMBE.png », « fiche MBARGA.png »');
-    expect(note).toContain('un INSERT dossiers par fichier');
+    expect(note).toContain('une ACTION ouvrir_dossier par fichier');
     expect(note).toContain('INSERT customer');
     expect(note).toContain('"sourceFiles"');
     expect(note).toContain('ne prévois aucune opération sur document_customer');

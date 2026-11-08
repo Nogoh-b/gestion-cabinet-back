@@ -8,6 +8,10 @@ import {
   Optional,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
+import {
+  BUSINESS_METADATA_KEY,
+  BusinessTableMetadata,
+} from '../decorators/business-metadata.decorator';
 
 import { WriteOperation, WritePlan } from './dto/analysis-response.dto';
 
@@ -944,7 +948,25 @@ export class GenericWriteService {
       `⚙️ Aucun handler pour "${operation.entity}" → écriture générique TypeORM`,
     );
 
+    this.assertGenericWriteAllowed(operation.entity);
     return this.executeGeneric(operation, resolvedFields, userId, queryRunner);
+  }
+
+  /**
+   * Les tables `readOnly` sont des tables de consultation : leurs écritures
+   * passent par les services métier (ex. un seul profil de facturation par
+   * dossier, géré par `CaseBillingService`), jamais par un `repo.save` brut.
+   */
+  private assertGenericWriteAllowed(entity: string): void {
+    const metadata = this.dataSource.entityMetadatas.find((item) => item.tableName === entity);
+    const table = metadata
+      ? (Reflect.getMetadata(BUSINESS_METADATA_KEY, metadata.target) as BusinessTableMetadata | undefined)
+      : undefined;
+    if (table?.readOnly) {
+      throw new BadRequestException(
+        `« ${table.label ?? entity} » ne peut pas être écrit directement par l'IA : passez par l'action métier correspondante.`,
+      );
+    }
   }
 
   /**

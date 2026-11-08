@@ -1,3 +1,4 @@
+import { assertCanEndDossierAction } from '../action-end-policy';
 import {
   BadRequestException,
   ConflictException,
@@ -1205,6 +1206,9 @@ export class DossierActionService {
         actorUserId,
       );
       await this.ensureLegacyWorkflowLocked(manager, dossier);
+      if (target === DossierActionStatus.CANCELLED) {
+        assertCanEndDossierAction(action, dossier, actorUserId);
+      }
       if (action.lock_version !== dto.expected_version)
         throw new ConflictException(
           'Cette action a été modifiée. Rechargez le dossier.',
@@ -1492,6 +1496,7 @@ export class DossierActionService {
         actorUserId,
       );
       await this.ensureLegacyWorkflowLocked(manager, dossier);
+      assertCanEndDossierAction(action, dossier, actorUserId);
       const existingEvent = await manager
         .getRepository(CaseWorkflowEvent)
         .findOne({

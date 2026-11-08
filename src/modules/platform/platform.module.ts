@@ -51,6 +51,8 @@ import { PlatformAiController } from './ai/platform-ai.controller';
 import { PlatformSampleDataService } from './sample-data/platform-sample-data.service';
 import { PlatformCabinetDataController } from './sample-data/platform-cabinet-data.controller';
 import { DossierDeletionService } from '../dossiers/deletion/dossier-deletion.service';
+import { PlatformAssistantController } from './assistant/platform-assistant.controller';
+import { PlatformAssistantService } from './assistant/platform-assistant.service';
 
 /**
  * Espace PLATEFORME (super admin) : comptes, rôles, audit, paramètres,
@@ -93,6 +95,7 @@ import { DossierDeletionService } from '../dossiers/deletion/dossier-deletion.se
     PlatformAiCreditsController,
     PlatformCabinetAiCreditsController,
     PlatformCabinetDataController,
+    PlatformAssistantController,
   ],
   providers: [
     PlatformJwtStrategy,
@@ -112,6 +115,7 @@ import { DossierDeletionService } from '../dossiers/deletion/dossier-deletion.se
     PlatformAiUsageService,
     PlatformReferenceAiService,
     PlatformSampleDataService,
+    PlatformAssistantService,
     // Sans état (DataSource seule) : fourni ici pour ne pas importer DossiersModule.
     DossierDeletionService,
   ],

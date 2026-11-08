@@ -12,6 +12,9 @@ import { join } from 'path';
  *
  * Pour documenter un nouveau module : ajouter un fichier `.md` dans
  * `help-docs/` (voir `help-docs/README.md`), aucun code à modifier.
+ *
+ * La lecture n'est pas récursive : un sous-dossier forme une base distincte,
+ * désignée par `dir` (`help-docs/platform/` n'est jamais servi aux cabinets).
  */
 
 export interface HelpDoc {
@@ -35,16 +38,15 @@ export interface HelpDocMatch {
  * `dist` peut être périmée : le dossier source, toujours à jour, est préféré
  * s'il existe. En production seule la copie de `dist` existe.
  */
-function resolveDocsDir(): string | null {
+function resolveDocsDir(subDir = ''): string | null {
   const candidates = [
-    join(process.cwd(), 'src', 'core', 'ai-database', 'help-docs'),
-    join(__dirname, 'help-docs'),
+    join(process.cwd(), 'src', 'core', 'ai-database', 'help-docs', subDir),
+    join(__dirname, 'help-docs', subDir),
   ];
   return candidates.find((dir) => existsSync(dir)) ?? null;
 }
 
-let cache: HelpDoc[] | null = null;
-let cacheLoadedAt = 0;
+const caches = new Map<string, { docs: HelpDoc[]; loadedAt: number }>();
 /** Hors production, les documents sont relus au plus toutes les 5 s (édition à chaud). */
 const DEV_REFRESH_MS = 5000;
 
@@ -90,23 +92,24 @@ function parseDoc(raw: string, fallbackId: string): HelpDoc | null {
   };
 }
 
-export function loadHelpDocs(): HelpDoc[] {
+export function loadHelpDocs(subDir = ''): HelpDoc[] {
+  const cached = caches.get(subDir);
   const fresh =
     process.env.NODE_ENV === 'production' ||
-    Date.now() - cacheLoadedAt < DEV_REFRESH_MS;
-  if (cache && fresh) return cache;
-  cacheLoadedAt = Date.now();
-  const dir = resolveDocsDir();
-  if (!dir) return (cache = []);
-
-  cache = readdirSync(dir)
-    .filter((file) => file.endsWith('.md') && file.toLowerCase() !== 'readme.md')
-    .sort()
-    .map((file) =>
-      parseDoc(readFileSync(join(dir, file), 'utf8'), file.slice(0, -3)),
-    )
-    .filter((doc): doc is HelpDoc => !!doc);
-  return cache;
+    Date.now() - (cached?.loadedAt ?? 0) < DEV_REFRESH_MS;
+  if (cached && fresh) return cached.docs;
+  const dir = resolveDocsDir(subDir);
+  const docs = dir
+    ? readdirSync(dir)
+        .filter((file) => file.endsWith('.md') && file.toLowerCase() !== 'readme.md')
+        .sort()
+        .map((file) =>
+          parseDoc(readFileSync(join(dir, file), 'utf8'), file.slice(0, -3)),
+        )
+        .filter((doc): doc is HelpDoc => !!doc)
+    : [];
+  caches.set(subDir, { docs, loadedAt: Date.now() });
+  return docs;
 }
 
 /** Sépare la question de l'utilisateur du bloc « CONTEXTE DE LA PAGE » ajouté en aval. */
@@ -136,14 +139,14 @@ function containsPhrase(haystack: string, phrase: string): boolean {
 
 export function matchHelpDocs(
   enrichedQuestion: string,
-  options: { limit?: number; minScore?: number } = {},
+  options: { limit?: number; minScore?: number; dir?: string } = {},
 ): HelpDocMatch[] {
-  const { limit = 2, minScore = 1 } = options;
+  const { limit = 2, minScore = 1, dir } = options;
   const { question, pathname } = splitPageContext(enrichedQuestion);
   const normalized = normalizeHelpText(question);
   if (!normalized) return [];
 
-  const scored = loadHelpDocs().map((doc): HelpDocMatch => {
+  const scored = loadHelpDocs(dir).map((doc): HelpDocMatch => {
     let score = 0;
     for (const keyword of doc.keywords) {
       if (containsPhrase(normalized, keyword)) score += keywordWeight(keyword);
@@ -172,8 +175,8 @@ export function matchHelpDocs(
 }
 
 /** Liste des sujets documentés, pour orienter l'utilisateur quand rien ne correspond. */
-export function listHelpTopics(): string[] {
-  return loadHelpDocs().map((doc) => doc.title);
+export function listHelpTopics(dir?: string): string[] {
+  return loadHelpDocs(dir).map((doc) => doc.title);
 }
 
 export function buildHelpSystemPrompt(docs: HelpDoc[]): string {

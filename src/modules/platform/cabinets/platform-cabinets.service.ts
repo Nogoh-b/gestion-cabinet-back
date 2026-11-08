@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { TenantContext } from 'src/core/tenant/tenant.context';
 import { WorkflowEngine } from 'src/modules/case-workflow/case-workflow.enums';
 import { AuthService } from 'src/core/auth/auth.service';
@@ -23,7 +23,9 @@ import {
   EmailCabinetDto,
   ExtendSubscriptionDto,
   GrantFreePeriodDto,
+  GrantUnlimitedDto,
   PlatformCabinetQueryDto,
+  RevokeUnlimitedDto,
 } from './dto/platform-cabinet.dto';
 
 /** Acteur « admin plateforme » pour l'historique d'abonnement. */
@@ -195,6 +197,7 @@ export class PlatformCabinetsService {
     return {
       ...row,
       subscription,
+      unlimited_granted: subscription ? await this.subscriptions.isUnlimitedGrant(subscription) : false,
       quota,
       counts: mapNumbers(counts[0]),
       revenue: {
@@ -298,6 +301,36 @@ export class PlatformCabinetsService {
       dto.note,
     );
     return this.done(cabinetId, 'subscription.free_period', before, `${dto.months} mois offert(s)`);
+  }
+
+  async grantUnlimited(cabinetId: number, dto: GrantUnlimitedDto, admin: PlatformPrincipal) {
+    const before = await this.snapshot(cabinetId);
+    await this.subscriptions.grantUnlimitedByPlatform(
+      cabinetId,
+      { planId: dto.plan_id, note: dto.note },
+      platformActor(admin),
+    );
+    return this.done(
+      cabinetId,
+      'subscription.unlimited_grant',
+      before,
+      `Abonnement illimité offert${dto.note ? ` : ${dto.note}` : ''}`,
+    );
+  }
+
+  async revokeUnlimited(cabinetId: number, dto: RevokeUnlimitedDto, admin: PlatformPrincipal) {
+    const before = await this.snapshot(cabinetId);
+    await this.subscriptions.revokeUnlimitedByPlatform(
+      cabinetId,
+      { until: dto.until, note: dto.note },
+      platformActor(admin),
+    );
+    return this.done(
+      cabinetId,
+      'subscription.unlimited_revoke',
+      before,
+      `Abonnement illimité retiré${dto.note ? ` : ${dto.note}` : ''}`,
+    );
   }
 
   async changePlan(cabinetId: number, dto: ChangeCabinetPlanDto, admin: PlatformPrincipal) {
@@ -537,6 +570,12 @@ export class PlatformCabinetsService {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  /** Empreinte de l'état cabinet + abonnement : change dès qu'un des deux bouge. */
+  async stateVersion(cabinetId: number): Promise<string> {
+    const snapshot = await this.snapshot(cabinetId);
+    return createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+  }
 
   private async ensureCabinet(cabinetId: number) {
     const [row] = await this.db.query('SELECT id FROM cabinets WHERE id = ?', [cabinetId]);

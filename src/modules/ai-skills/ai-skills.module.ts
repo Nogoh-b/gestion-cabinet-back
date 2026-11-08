@@ -8,6 +8,9 @@ import type { AiSkillHandler, AiSkillTargetType } from 'src/core/ai-database/ski
 import { AiActionRegistry, type AiActionHandler } from 'src/core/ai-database/write/ai-action.registry';
 import { AudiencesModule } from '../audiences/audiences.module';
 import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
+import { DossiersModule } from '../dossiers/dossiers.module';
+import { ReferralModule } from '../referral/referral.module';
+import { OuvrirDossierAiAction } from './ouvrir-dossier.action';
 import { ChatModule } from '../chat/chat.module';
 import { ClientPortalModule } from '../client-portal/client-portal.module';
 import { DocumentsModule } from '../documents/documents.module';
@@ -68,7 +71,7 @@ import {
   VersionBilingueSkill,
 } from './legal-tools.skills';
 
-const ACTIONS = [EnvoyerEmailAiAction, MessagePortailAiAction, MessageCollaborateurAiAction, ReporterAudienceAiAction, ConfigurerFacturationAiAction];
+const ACTIONS = [EnvoyerEmailAiAction, MessagePortailAiAction, MessageCollaborateurAiAction, ReporterAudienceAiAction, ConfigurerFacturationAiAction, OuvrirDossierAiAction];
 
 /** Ordre du menu « # » dans chaque famille. */
 const SKILLS = [
@@ -133,6 +136,8 @@ const SKILLS = [
     PdfTemplatesModule,
     TemplateBlocksModule,
     ReportsModule,
+    DossiersModule,
+    ReferralModule,
     // Facturation des dossiers (profil, éléments facturables) : même service que l'onglet Facturation.
     forwardRef(() => CaseWorkflowModule),
   ],

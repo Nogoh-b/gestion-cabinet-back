@@ -225,7 +225,7 @@ export class DecompteCreanceSkill implements AiSkillHandler {
   readonly definition: AiSkillDefinition = {
     code: 'decompte_creance',
     label: 'Décompte de créance',
-    description: 'Principal, intérêts, frais et acomptes arrêtés à une date, en PDF',
+    description: 'Principal, intérêts, frais et acomptes arrêtés à une date, en Word ou PDF',
     icon: 'calculator',
     category: 'actes',
     targets: ['facture', 'dossier', 'client'],
@@ -333,7 +333,7 @@ Réponds UNIQUEMENT en JSON :
     }];
     return {
       type: 'document_draft',
-      markdown: `${markdown}\n\nLe décompte est prêt en PDF ci-dessous.`,
+      markdown: `${markdown}\n\nLe décompte est prêt dans la carte ci-dessous : modifiez-le si besoin, puis téléchargez-le en Word ou en PDF.`,
       draft: inlineDraft({ layout: 'skill_note', name: 'Décompte de créance', title: 'Décompte de créance', info, sender, raw: { bodyContent: bodyHtml } }),
       followUps,
     };
@@ -412,7 +412,7 @@ Réponds UNIQUEMENT en JSON :
     };
     return {
       type: 'document_draft',
-      markdown: `${markdown}\n\nLe décompte est prêt en PDF ci-dessous.`,
+      markdown: `${markdown}\n\nLe décompte est prêt dans la carte ci-dessous : modifiez-le si besoin, puis téléchargez-le en Word ou en PDF.`,
       draft: inlineDraft({ layout: 'skill_note', name: 'Décompte de créance', title: 'Décompte de créance', info, sender, raw: { bodyContent: bodyHtml } }),
       followUps: [{
         label: 'Rédiger la requête en injonction de payer',
@@ -434,7 +434,7 @@ export class InjonctionPayerSkill implements AiSkillHandler {
   readonly definition: AiSkillDefinition = {
     code: 'injonction_payer',
     label: 'Requête en injonction de payer',
-    description: 'Requête OHADA (AUPSRVE, art. 4) avec décompte, prête en PDF',
+    description: 'Requête OHADA (AUPSRVE, art. 4) avec décompte, en Word ou PDF',
     icon: 'gavel',
     category: 'actes',
     targets: ['dossier', 'facture', 'client'],
@@ -481,13 +481,14 @@ Réponds UNIQUEMENT en JSON :
     const missing = strList(draft.manquants);
     return {
       type: 'document_draft',
-      markdown: `Voici la requête aux fins d'injonction de payer. Relisez-la dans la carte avant de la générer.${missing.length ? `\n\n**À compléter :**\n${missing.map((item) => `- ${item}`).join('\n')}` : ''}`,
+      markdown: `Voici la requête aux fins d'injonction de payer. Relisez-la et complétez-la dans la carte, puis téléchargez-la en Word ou en PDF.${missing.length ? `\n\n**À compléter :**\n${missing.map((item) => `- ${item}`).join('\n')}` : ''}`,
       draft: inlineDraft({
         layout: 'skill_acte',
         name: 'Requête en injonction de payer',
         title: "Requête aux fins d'injonction de payer",
         info,
         sender,
+        checks: missing,
         editable: [
           { name: 'juridiction', label: 'Juridiction', kind: 'text', value: str(draft.juridiction, 300) },
           { name: 'partiesBlock', label: 'Parties', kind: 'longtext', value: str(draft.parties, 3000) },
@@ -561,7 +562,7 @@ ${DRAFTING_RULES}
 Réponds UNIQUEMENT en JSON : {"parties": "ENTRE … ET …", "corps": "articles de la convention"}`, 3500);
     return {
       type: 'document_draft',
-      markdown: `Voici la convention d'honoraires du **${info.label}**${profile ? ', fondée sur son profil de facturation' : ' (aucun profil de facturation : montants à convenir)'}. Relisez-la puis générez le PDF à faire signer.`,
+      markdown: `Voici la convention d'honoraires du **${info.label}**${profile ? ', fondée sur son profil de facturation' : ' (aucun profil de facturation : montants à convenir)'}. Relisez-la dans la carte, puis téléchargez-la en Word ou en PDF pour la faire signer.`,
       draft: inlineDraft({
         layout: 'skill_convention',
         name: "Convention d'honoraires",
@@ -674,9 +675,9 @@ Réponds UNIQUEMENT en JSON : {"entites": [{"valeur": "", "type": "personne|soci
         preview,
         '```',
         '',
-        mapping.length ? `**Table de correspondance** (confidentielle : elle n'apparaît pas dans le PDF)\n\n${markdownTable(['Donnée d’origine', 'Pseudonyme'], mapping.map((m) => [m.original, m.pseudonym]))}` : '',
+        mapping.length ? `**Table de correspondance** (confidentielle : elle n'apparaît pas dans le document)\n\n${markdownTable(['Donnée d’origine', 'Pseudonyme'], mapping.map((m) => [m.original, m.pseudonym]))}` : '',
         '',
-        'Vérifiez le texte dans la carte : corrigez toute donnée oubliée avant de générer le PDF.',
+        'Vérifiez le texte dans la carte : corrigez toute donnée oubliée avant de télécharger le document.',
       ].join('\n'),
       draft: inlineDraft({
         layout: 'skill_note',
@@ -712,7 +713,7 @@ export class VersionBilingueSkill implements AiSkillHandler {
   readonly definition: AiSkillDefinition = {
     code: 'version_bilingue',
     label: 'Version bilingue FR | EN',
-    description: 'Le texte et sa traduction côte à côte, en PDF',
+    description: 'Le texte et sa traduction côte à côte, en Word ou PDF',
     icon: 'columns',
     category: 'documents',
     placeholder: 'Joignez l’acte ou citez le passage à présenter en français et en anglais',
@@ -752,8 +753,8 @@ Réponds UNIQUEMENT en JSON : {"traductions": ["traduction du paragraphe 1", "�
         `**Version bilingue de « ${source.name} »** — ${pairs.length} paragraphe(s), traduits depuis le ${from === 'fr' ? 'français' : 'anglais'}.`,
         '',
         markdownTable(['Français', 'English'], pairs.slice(0, 3).map(([fr, en]) => [fr.slice(0, 220), en.slice(0, 220)])),
-        pairs.length > 3 ? `\n… et ${pairs.length - 3} autre(s) paragraphe(s) dans le PDF.` : '',
-        translations.length !== paragraphs.length ? '\n⚠️ Certains paragraphes n’ont pas été traduits : vérifiez le PDF.' : '',
+        pairs.length > 3 ? `\n… et ${pairs.length - 3} autre(s) paragraphe(s) dans le document.` : '',
+        translations.length !== paragraphs.length ? '\n⚠️ Certains paragraphes n’ont pas été traduits : vérifiez le document.' : '',
       ].join('\n'),
       draft: inlineDraft({
         layout: 'skill_bilingue',

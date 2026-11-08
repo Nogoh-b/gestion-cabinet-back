@@ -74,7 +74,7 @@ export class CaseWorkflowNotificationsService {
 
   /** Lien profond vers l'action dans l'espace dossier (même ancre que la diligence). */
   private link(action: DossierAction): string {
-    return `/dossiers/${action.dossier_id}?tab=steps#action-${action.id}`;
+    return `/dossiers/${action.dossier_id}#action-${action.id}`;
   }
 
   // ── Diffusion ──────────────────────────────────────────────────────────────

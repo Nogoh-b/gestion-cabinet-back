@@ -1,6 +1,8 @@
 // src/modules/ai-skills/skill-templates.ts
 import type { DocumentDraft, InlinePdfTemplate } from 'src/core/ai-database/skills/ai-skill.types';
 import { todayFr } from 'src/core/ai-database/skills/skill-helpers';
+import { isRichHtml } from 'src/core/shared/html/sanitize-rich-html';
+import { documentHtml, fillTemplateValues, templateVariableNames } from './document-markup';
 import { customerName, draftAudience, TargetInfo } from './skill-targets.service';
 
 /**
@@ -12,11 +14,9 @@ import { customerName, draftAudience, TargetInfo } from './skill-targets.service
 
 const SIGNATURE = `
   {{#if signatoryName}}
-  <div style="margin-top:28px; text-align:right;">
-    <div>Fait le {{date_fmt}}</div>
-    <div style="font-weight:bold; margin-top:6px;">{{signatoryName}}</div>
-    <div style="font-size:9px; color:#64748b;">{{signatoryTitle}}</div>
-  </div>
+  <p style="margin-top:28px; text-align:right;">Fait le {{date_fmt}}</p>
+  <p style="text-align:right; font-weight:bold;">{{signatoryName}}</p>
+  <p style="text-align:right; font-size:9px; color:#64748b;">{{signatoryTitle}}</p>
   {{/if}}`;
 
 const LAYOUTS: Record<string, { variant: string; body: string; orientation?: 'portrait' | 'landscape' }> = {
@@ -171,6 +171,29 @@ export interface InlineDraftInput {
   editable?: Array<{ name: string; label: string; kind: 'text' | 'longtext'; value: string }>;
   /** Autres variables fixes (juridiction, référence…). */
   extra?: Record<string, string>;
+  /** Points à compléter, affichés dans la carte. */
+  checks?: string[];
+}
+
+/**
+ * HTML final du document : ces brouillons n'ont pas de fiche, le chat ne saurait
+ * remplir aucune variable. Toutes sont donc résolues ici, conditions comprises
+ * (une variable non fournie vaut vide), avec l'échappement de la carte PDF.
+ */
+function renderInlineHtml(
+  body: string,
+  variables: Record<string, string>,
+  input: Pick<InlineDraftInput, 'editable' | 'raw'>,
+): string {
+  const kinds = new Map((input.editable ?? []).map((field) => [field.name, field.kind]));
+  const values: Record<string, string> = Object.fromEntries(templateVariableNames(body).map((name) => [name, '']));
+  for (const [name, value] of Object.entries(variables)) {
+    if (input.raw?.[name] !== undefined) values[name] = value;
+    else if (kinds.get(name) === 'longtext') values[name] = isRichHtml(value) ? value : documentHtml(value);
+    else values[name] = pdfText(value).replace(/\n/g, '<br/>');
+  }
+  // Accolades d'un texte cité ou anonymisé : du texte, jamais un champ à remplir.
+  return fillTemplateValues(body, values).replace(/\{\{\s*([^{}]*?)\s*\}\}/g, '[$1]').replace(/\{\{/g, '{').trim();
 }
 
 export function inlineDraft(input: InlineDraftInput): DocumentDraft {
@@ -178,6 +201,16 @@ export function inlineDraft(input: InlineDraftInput): DocumentDraft {
   const dossier = info?.dossier;
   const suffix = dossier?.dossier_number ?? (info?.client ? customerName(info.client) : '');
   const editable = input.editable ?? [];
+  const variables: Record<string, string> = {
+    date_fmt: todayFr(),
+    signatoryName: sender.name,
+    signatoryTitle: [sender.title, sender.cabinetName].filter(Boolean).join(' — '),
+    documentSubtitle: dossier ? `Dossier ${dossier.dossier_number}${dossier.object ? ` — ${dossier.object}` : ''}` : '',
+    ...input.extra,
+    ...Object.fromEntries(editable.map((field) => [field.name, field.value])),
+    ...input.raw,
+  };
+  const template = inlineTemplate(input.layout, input.name, input.title);
   return {
     templateId: 0,
     templateCode: input.layout,
@@ -186,18 +219,26 @@ export function inlineDraft(input: InlineDraftInput): DocumentDraft {
     ...(dossier && { dossierId: dossier.id, dossierLabel: dossier.dossier_number }),
     ...(dossier && draftAudience(info) && { audience: draftAudience(info) }),
     fileName: `${input.name}${suffix ? ` - ${suffix}` : ''}`.slice(0, 120),
-    variables: {
-      date_fmt: todayFr(),
-      signatoryName: sender.name,
-      signatoryTitle: [sender.title, sender.cabinetName].filter(Boolean).join(' — '),
-      documentSubtitle: dossier ? `Dossier ${dossier.dossier_number}${dossier.object ? ` — ${dossier.object}` : ''}` : '',
-      ...input.extra,
-      ...Object.fromEntries(editable.map((field) => [field.name, field.value])),
-      ...input.raw,
-    },
+    variables,
     editable: editable.map(({ name, label, kind }) => ({ name, label, kind })),
     rawVariables: Object.keys(input.raw ?? {}),
-    template: inlineTemplate(input.layout, input.name, input.title),
+    template,
     ...(info?.client && { recipient: { type: 'client', id: info.client.id, label: customerName(info.client) } }),
+    studio: {
+      mode: 'document',
+      html: renderInlineHtml(template.body_html, variables, input),
+      title: template.title,
+      // Mêmes réglages qu'un document rédigé (les tailles explicites de la mise en page réduiraient le texte à 9 pt).
+      layout: {
+        orientation: template.orientation,
+        paper_size: template.paper_size,
+        font_family: null,
+        header_block_id: null,
+        footer_block_id: null,
+        font_size: 11,
+      },
+      checks: input.checks ?? [],
+      suggestTemplate: true,
+    },
   };
 }

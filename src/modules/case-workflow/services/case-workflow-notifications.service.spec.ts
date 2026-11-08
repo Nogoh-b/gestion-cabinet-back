@@ -33,7 +33,7 @@ describe('CaseWorkflowNotificationsService', () => {
       expect.objectContaining({
         user_ids: [15],
         type: NotificationType.DOSSIER_ACTION_STARTED,
-        link: '/dossiers/42?tab=steps#action-action-1',
+        link: '/dossiers/42#action-action-1',
       }),
       1,
     );

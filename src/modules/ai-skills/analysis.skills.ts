@@ -243,7 +243,7 @@ Réponds UNIQUEMENT en JSON :
       '',
       markdownTable(['Moyen adverse', 'Réponse proposée'], answers.slice(0, 12).map((a: any) => [str(a.moyen, 160), str(a.reponse, 280)])),
       strList(draft.a_verifier).length ? `\n**À vérifier avant dépôt**\n${strList(draft.a_verifier).map((item) => `- ${item}`).join('\n')}` : '',
-      '\nLe projet complet est dans la carte : relisez-le, puis générez le PDF ou classez-le dans le dossier.',
+      '\nLe projet complet est dans la carte : relisez-le, puis téléchargez-le en Word ou en PDF, ou classez-le dans le dossier.',
     ].join('\n');
     return {
       type: 'document_draft',

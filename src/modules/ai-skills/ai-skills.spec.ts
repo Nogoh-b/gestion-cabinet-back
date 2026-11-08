@@ -235,6 +235,41 @@ describe('Compétence « WhatsApp »', () => {
     await expect(skill.run(context)).rejects.toThrow(BadRequestException);
     await expect(skill.run(context)).rejects.toThrow('pas abouti');
   });
+
+  it('révise le message de la carte par le modèle et garde le numéro modifié', async () => {
+    const skill = new WhatsappSkill(targetsMock() as any);
+    const context = ctx({
+      question: 'Rends le ton plus chaleureux',
+      params: { revise: { text: 'Bonjour, RDV demain.', phone: '699000111' } },
+    });
+    (context.llm.complete as jest.Mock).mockResolvedValue('{"text": "Bonjour **Monsieur**, à demain avec plaisir."}');
+
+    const outcome: any = await skill.run(context);
+
+    const prompt = (context.llm.complete as jest.Mock).mock.calls[0][0];
+    expect(prompt).toContain('Tu modifies un message WhatsApp');
+    expect(prompt).toContain('Bonjour, RDV demain.');
+    expect(prompt).toContain('Rends le ton plus chaleureux');
+    expect(prompt).toContain('Mise en forme WhatsApp');
+    expect(outcome.type).toBe('message_draft');
+    // Syntaxe WhatsApp (*gras*), numéro saisi dans la carte, fiche reprise pour la révision suivante.
+    expect(outcome.draft).toMatchObject({
+      text: 'Bonjour *Monsieur*, à demain avec plaisir.',
+      phone: '699000111',
+      target: { type: 'dossier', id: 91 },
+    });
+  });
+
+  it('sans numéro dans la carte, garde celui de la fiche ; `text` seul saute toujours le modèle', async () => {
+    const skill = new WhatsappSkill(targetsMock() as any);
+    const revised = ctx({ params: { revise: { text: 'Bonjour.', phone: '' } } });
+    (revised.llm.complete as jest.Mock).mockResolvedValue('{"text": "Bonjour Monsieur."}');
+    await expect(skill.run(revised)).resolves.toMatchObject({ draft: { phone: '677123456' } });
+
+    const direct = ctx({ params: { text: 'Déjà rédigé.' } });
+    await expect(skill.run(direct)).resolves.toMatchObject({ draft: { text: 'Déjà rédigé.' } });
+    expect(direct.llm.complete).not.toHaveBeenCalled();
+  });
 });
 
 describe('Compétence « Message à un collaborateur »', () => {

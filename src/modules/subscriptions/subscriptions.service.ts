@@ -262,6 +262,7 @@ export class SubscriptionsService {
     couponCode?: string | null,
   ): Promise<Subscription> {
     const current = await this.getRawCurrent(cabinetId);
+    if (current && actor.type === 'cabinet_user') await this.assertNotOfferedUnlimited(current);
     const planId = current?.plan_id ?? null;
     const targetCycle = cycle ?? current?.billing_cycle ?? 'monthly';
     const plan = planId
@@ -386,6 +387,9 @@ export class SubscriptionsService {
 
     const targetPlanId = opts.planId ?? current.plan_id;
     const targetCycle = opts.cycle ?? current.billing_cycle;
+    if (targetPlanId !== current.plan_id || targetCycle !== current.billing_cycle) {
+      await this.assertNotOfferedUnlimited(current);
+    }
 
     // Changement de plan → vraie nouvelle période.
     if (targetPlanId !== current.plan_id) {
@@ -1661,6 +1665,11 @@ export class SubscriptionsService {
         "Paiement en attente : enregistrez le paiement ou changez le plan sans facturation avant de prolonger.",
       );
     }
+    if (!sub.ends_at) {
+      throw new BadRequestException(
+        "Cet abonnement est illimité : il n'y a pas de date de fin à prolonger.",
+      );
+    }
     const now = new Date();
     const base =
       sub.ends_at && new Date(sub.ends_at).getTime() > now.getTime()
@@ -1726,9 +1735,13 @@ export class SubscriptionsService {
     }
     const sub = await this.getRawCurrent(cabinetId);
     if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
+    if (!sub.ends_at) {
+      throw new BadRequestException(
+        "Cet abonnement est illimité : il n'y a pas de mois à offrir.",
+      );
+    }
     const now = new Date();
-    const base =
-      sub.ends_at && new Date(sub.ends_at) > now ? new Date(sub.ends_at) : now;
+    const base = new Date(sub.ends_at) > now ? new Date(sub.ends_at) : now;
     return this.extendByPlatform(
       cabinetId,
       { until: addMonths(base, m) },
@@ -1771,7 +1784,8 @@ export class SubscriptionsService {
     current.plan_id = plan.id;
     current.plan = plan;
     current.billing_cycle = cycle;
-    current.amount = planPriceForCycle(plan, cycle);
+    // Un abonnement illimité reste offert, quel que soit le plan.
+    current.amount = current.ends_at ? planPriceForCycle(plan, cycle) : 0;
     const saved = await this.subRepo.save(current);
     const pending = await this.payRepo.findOne({
       where: { subscription_id: saved.id, kind: 'subscription', status: 'pending' },
@@ -1799,6 +1813,144 @@ export class SubscriptionsService {
   }
 
   /**
+   * Offre un abonnement illimité : plan choisi, sans date de fin ni facturation.
+   * L'abonnement courant est converti sur place (une échéance due est annulée,
+   * le cabinet bloqué pour paiement ou échéance est débloqué) ; une suspension
+   * manuelle reste en place. Un paiement déclaré à valider bloque l'opération :
+   * de l'argent a peut-être été reçu.
+   */
+  async grantUnlimitedByPlatform(
+    cabinetId: number,
+    input: { planId: number; note?: string },
+    actor: SubscriptionActor,
+  ): Promise<Subscription> {
+    await this.requireCabinet(cabinetId);
+    const plan = await this.planRepo.findOne({ where: { id: input.planId } });
+    if (!plan) throw new NotFoundException('Plan introuvable');
+    const current = await this.getRawCurrent(cabinetId);
+    if (current && !current.ends_at && current.plan_id === plan.id && (await this.isUnlimitedGrant(current))) {
+      throw new BadRequestException('Ce cabinet a déjà ce plan en illimité.');
+    }
+    const before = current
+      ? {
+          plan_id: current.plan_id,
+          billing_cycle: current.billing_cycle,
+          amount: Number(current.amount),
+          status: current.status,
+          is_trial: current.is_trial,
+          ends_at: current.ends_at,
+          trial_ends_at: current.trial_ends_at,
+          auto_renew: current.auto_renew,
+        }
+      : null;
+
+    if (current) {
+      const declared = await this.payRepo.count({
+        where: { subscription_id: current.id, kind: 'subscription', status: 'awaiting_validation' },
+      });
+      if (declared) {
+        throw new BadRequestException(
+          "Un paiement déclaré attend validation : validez-le ou rejetez-le avant d'offrir l'illimité.",
+        );
+      }
+      await this.payRepo.update(
+        { subscription_id: current.id, kind: 'subscription', status: 'pending' },
+        { status: 'cancelled', notes: 'Échéance annulée : abonnement illimité offert' },
+      );
+    }
+
+    const sub =
+      current ??
+      this.subRepo.create({
+        cabinet_id: cabinetId,
+        billing_cycle: 'monthly',
+        started_at: new Date(),
+        currency: await this.resolveCurrency(cabinetId),
+        created_by: actor.type,
+      });
+    sub.plan_id = plan.id;
+    sub.plan = plan;
+    sub.status = 'active';
+    sub.ends_at = null;
+    sub.trial_ends_at = null;
+    sub.is_trial = false;
+    sub.amount = 0;
+    sub.auto_renew = false;
+    sub.cancel_reason = null;
+    sub.discount_cycles_remaining = null;
+    const saved = await this.subRepo.save(sub);
+    await this.syncCabinet(cabinetId, saved);
+    await this.events.record({
+      cabinetId,
+      subscriptionId: saved.id,
+      type: 'unlimited_granted',
+      actor,
+      payload: { plan_id: plan.id, before, note: input.note ?? null },
+    });
+    return saved;
+  }
+
+  /**
+   * Retire l'illimité offert : l'abonnement redevient payant à son tarif et
+   * reçoit une date de fin (`until`, sinon l'ancienne échéance si elle est à
+   * venir, sinon un cycle complet pour laisser au cabinet le temps de régler).
+   */
+  async revokeUnlimitedByPlatform(
+    cabinetId: number,
+    input: { until?: string; note?: string },
+    actor: SubscriptionActor,
+  ): Promise<Subscription> {
+    const sub = await this.getRawCurrent(cabinetId);
+    if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
+    const grant = await this.lastUnlimitedGrant(sub);
+    if (!grant) throw new BadRequestException("Cet abonnement n'est pas un illimité offert.");
+
+    const now = new Date();
+    const previous = grant.payload?.before?.ends_at ? new Date(grant.payload.before.ends_at) : null;
+    let newEnds = previous && previous > now ? previous : addCycle(now, sub.billing_cycle);
+    if (input.until) {
+      newEnds = new Date(input.until);
+      if (Number.isNaN(newEnds.getTime()) || newEnds <= now) {
+        throw new BadRequestException('La nouvelle date de fin doit être dans le futur.');
+      }
+    }
+    const plan = sub.plan ?? (await this.planRepo.findOne({ where: { id: sub.plan_id } }));
+    sub.ends_at = newEnds;
+    sub.amount = planPriceForCycle(plan, sub.billing_cycle);
+    sub.auto_renew = true;
+    const saved = await this.subRepo.save(sub);
+    await this.events.record({
+      cabinetId,
+      subscriptionId: saved.id,
+      type: 'unlimited_revoked',
+      actor,
+      payload: { after: { ends_at: saved.ends_at, amount: Number(saved.amount) }, note: input.note ?? null },
+    });
+    return saved;
+  }
+
+  /** Événement d'octroi encore en vigueur pour cet abonnement sans fin, ou null. */
+  private async lastUnlimitedGrant(sub: Subscription) {
+    if (sub.ends_at) return null;
+    const last = await this.events.findLast(sub.cabinet_id, ['unlimited_granted', 'unlimited_revoked']);
+    return last?.type === 'unlimited_granted' && last.subscription_id === sub.id ? last : null;
+  }
+
+  /** Vrai si l'abonnement sans fin vient d'un « Offrir l'illimité » (et pas d'un plan gratuit). */
+  async isUnlimitedGrant(sub: Subscription): Promise<boolean> {
+    return !!(await this.lastUnlimitedGrant(sub));
+  }
+
+  /** Le libre-service remplacerait l'offre par une période payante : passer par la plateforme. */
+  private async assertNotOfferedUnlimited(sub: Subscription): Promise<void> {
+    if (await this.isUnlimitedGrant(sub)) {
+      throw new BadRequestException(
+        'Votre abonnement illimité est offert : contactez le support pour le modifier.',
+      );
+    }
+  }
+
+  /**
    * Résiliation par la plateforme :
    *  - `immediate` : abonnement annulé et cabinet suspendu (manuel) ;
    *  - sinon : pas de reconduction, l'accès court jusqu'à la fin de période.
@@ -1810,6 +1962,11 @@ export class SubscriptionsService {
   ): Promise<Subscription> {
     const sub = await this.getRawCurrent(cabinetId);
     if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
+    if (!input.immediate && !sub.ends_at) {
+      throw new BadRequestException(
+        "Abonnement illimité sans fin de période : résiliez immédiatement ou retirez d'abord l'illimité.",
+      );
+    }
     sub.auto_renew = false;
     sub.cancel_reason = input.reason?.slice(0, 255) || null;
     if (input.immediate) {

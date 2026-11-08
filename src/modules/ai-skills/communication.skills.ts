@@ -326,14 +326,18 @@ export class WhatsappSkill implements AiSkillHandler {
     const info = await this.targets.load(target);
     if (!info.client) return { type: 'clarify', markdown: `⚠️ ${info.label} n'est rattaché à aucun client.` };
 
-    let text = str(ctx.params.text, 3000);
+    // Carte : message et numéro affichés, à retoucher selon la demande (`text` seul saute le modèle).
+    const revise = ctx.params.revise && typeof ctx.params.revise === 'object'
+      ? { text: str(ctx.params.revise.text, 3000), phone: str(ctx.params.revise.phone, 40) }
+      : null;
+    let text = revise ? '' : str(ctx.params.text, 3000);
     if (!text) {
-      const draft = await draftJson<{ text?: string }>(ctx, `Tu rédiges un message WhatsApp envoyé par un cabinet d'avocats à son client.
+      const draft = await draftJson<{ text?: string }>(ctx, `Tu ${revise?.text ? 'modifies' : 'rédiges'} un message WhatsApp envoyé par un cabinet d'avocats à son client.
 
 ${await factsBlock(this.targets, info, ctx)}
 
 ${linksBlock(contextLinks(info))}
-
+${revise?.text ? `\nMessage actuel, à modifier selon la demande (garde ce qu'elle ne vise pas) :\n"""\n${revise.text}\n"""\n` : ''}
 ${requestBlock(ctx)}
 
 ${await legalBlockFor(ctx)}
@@ -351,13 +355,21 @@ Réponds UNIQUEMENT en JSON (retours à la ligne écrits \\n) : {"text": "le mes
       throw new BadRequestException(
         'La rédaction du message WhatsApp n’a pas abouti. Reformulez votre demande.',
       );
-    const phone = info.phone ?? '';
+    const phone = revise?.phone || (info.phone ?? '');
     return {
       type: 'message_draft',
       markdown: phone
         ? `Voici le message WhatsApp pour **${info.recipientName}**. Relisez-le, puis cliquez sur « Ouvrir WhatsApp » pour l'envoyer depuis votre téléphone ou WhatsApp Web.`
         : `Voici le message WhatsApp pour **${info.recipientName}**. Aucun numéro n'est enregistré sur sa fiche : saisissez-le dans la carte.`,
-      draft: { channel: 'whatsapp', customerId: info.client.id, recipientName: info.recipientName, phone, phones: customerPhones(info.client), text },
+      draft: {
+        channel: 'whatsapp',
+        customerId: info.client.id,
+        recipientName: info.recipientName,
+        phone,
+        phones: customerPhones(info.client),
+        text,
+        target: { type: info.type, id: info.id, label: info.label },
+      },
     };
   }
 }

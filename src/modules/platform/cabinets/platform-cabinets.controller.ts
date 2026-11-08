@@ -27,7 +27,9 @@ import {
   EmailCabinetDto,
   ExtendSubscriptionDto,
   GrantFreePeriodDto,
+  GrantUnlimitedDto,
   PlatformCabinetQueryDto,
+  RevokeUnlimitedDto,
   SuspendCabinetDto,
   UpdateCabinetSidebarBadgesDto,
   UpdateCabinetWorkflowDto,
@@ -159,6 +161,32 @@ export class PlatformCabinetsController {
     @CurrentPlatformAdmin() admin: PlatformPrincipal,
   ) {
     return this.service.grantFreePeriod(id, dto, admin);
+  }
+
+  @Post(':id/grant-unlimited')
+  @HttpCode(HttpStatus.OK)
+  @PlatformRoles('owner', 'finance')
+  @PlatformAudit({ action: 'subscription.unlimited_grant', ...CABINET })
+  @ApiOperation({ summary: 'Offrir un abonnement illimité (plan choisi, sans date de fin)' })
+  grantUnlimited(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: GrantUnlimitedDto,
+    @CurrentPlatformAdmin() admin: PlatformPrincipal,
+  ) {
+    return this.service.grantUnlimited(id, dto, admin);
+  }
+
+  @Post(':id/revoke-unlimited')
+  @HttpCode(HttpStatus.OK)
+  @PlatformRoles('owner', 'finance')
+  @PlatformAudit({ action: 'subscription.unlimited_revoke', ...CABINET })
+  @ApiOperation({ summary: 'Retirer un abonnement illimité offert' })
+  revokeUnlimited(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RevokeUnlimitedDto,
+    @CurrentPlatformAdmin() admin: PlatformPrincipal,
+  ) {
+    return this.service.revokeUnlimited(id, dto, admin);
   }
 
   @Post(':id/change-plan')

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 // Entities
@@ -21,7 +21,10 @@ import { DossiersModule } from '../dossiers/dossiers.module';
 import { ReferrersService } from './referral.service';
 import { ReferrersController } from './referral.controller';
 import { ReferralCommissionListener } from './referral-commission.listener';
+import { ReferrerWriteHandler } from './referrer-write.handler';
 import { User } from '../iam/user/entities/user.entity';
+import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 
 @Module({
   imports: [
@@ -31,6 +34,7 @@ import { User } from '../iam/user/entities/user.entity';
       ReferralCommission,
       User,
     ]),
+    AiDatabaseModule,
     AgenciesModule,
     CustomerModule,
     DossiersModule,
@@ -47,6 +51,7 @@ import { User } from '../iam/user/entities/user.entity';
     ReferralCommissionsService,
     ReferrersService,
     ReferralCommissionListener,
+    ReferrerWriteHandler,
   ],
   exports: [
     DossierReferralsService,
@@ -54,4 +59,13 @@ import { User } from '../iam/user/entities/user.entity';
     ReferrersService,
   ],
 })
-export class ReferralModule {}
+export class ReferralModule implements OnModuleInit {
+  constructor(
+    private readonly registry: WriteHandlerRegistry,
+    private readonly handler: ReferrerWriteHandler,
+  ) {}
+
+  onModuleInit() {
+    this.registry.register(this.handler);
+  }
+}

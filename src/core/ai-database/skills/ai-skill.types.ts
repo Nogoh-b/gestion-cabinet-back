@@ -258,6 +258,8 @@ export interface MessageDraft {
   phones?: Array<{ label: string; value: string }>;
   text: string;
   references?: DraftReference[];
+  /** Fiche visée, reprise par une demande de modification depuis la carte. */
+  target?: { type: string; id: number | string; label: string };
 }
 
 /**

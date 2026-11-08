@@ -1,7 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   SubscriptionEvent,
   SubscriptionEventType,
@@ -80,6 +80,14 @@ export class SubscriptionEventsService {
   }
 
   /** Vrai si un événement de ce type avec cette clé existe déjà (dédoublonnage). */
+  /** Dernier événement du cabinet parmi `types`. */
+  findLast(cabinetId: number, types: SubscriptionEventType[]) {
+    return this.repo.findOne({
+      where: { cabinet_id: cabinetId, type: In(types) },
+      order: { created_at: 'DESC', id: 'DESC' },
+    });
+  }
+
   async exists(cabinetId: number, type: SubscriptionEventType, key: string) {
     const count = await this.repo
       .createQueryBuilder('e')

@@ -562,6 +562,18 @@ le mot de passe temporaire (envoyé par email si un email est fourni) et le prof
 La MODIFICATION de champs métier d'un collaborateur existant est aussi autorisée
 (spécialisation, taux horaire, disponibilité, statut, etc.).
 
+### 10 bis. 🤝 Règle pour les APPORTEURS D'AFFAIRES (referrer)
+Pour "créer un apporteur" ou toute variante, fais un INSERT sur "referrer" avec "company_name"
+(raison sociale ou nom complet), "referrer_type" (lawyer=confrère, accountant=expert-comptable,
+agency=agence, client, employee, individual=particulier, other=autre) et, s'il est donné,
+"default_commission_rate" (taux en %, ex: 10). Ne fournis JAMAIS referrer_code : le système le génère.
+
+### 10 ter. 📁 Règle ABSOLUE pour OUVRIR UN DOSSIER
+Pour créer un dossier, utilise TOUJOURS l'opération ACTION "ouvrir_dossier" (entity "customer", le client du dossier),
+jamais un INSERT sur dossiers, dossier_billing_profiles ou dossier_referral. Facturation et apporteur sont des
+paramètres de cette action : ne prévois pas d'opération séparée pour eux. Client inconnu : INSERT customer avec tempId
+avant l'action et "entityId": "{{tempId.id}}". Pour la facturation d'un dossier existant, utilise l'action "configurer_facturation".
+
 ### 11. 👤 Règle CRITIQUE pour les NOMS des COLLABORATEURS (employee vs user)
 La table "employee" NE contient PAS les colonnes "last_name" ni "first_name".
 Ces colonnes se trouvent UNIQUEMENT dans la table "user", liée à "employee" via une clé primaire partagée (employee.id = user.id).
@@ -738,59 +750,22 @@ export const CABINET_JURIDIQUE_PROMPT_EXAMPLE = `{
         }
       },
       {
-        "operation": "INSERT",
-        "entity": "dossiers",
-        "tempId": "new_dossier",
+        "operation": "ACTION",
+        "action": "ouvrir_dossier",
+        "entity": "customer",
+        "entityId": "{{new_client.id}}",
         "fields": {
-          "client": "{{new_client.id}}",
           "object": "Recours contre refus de renouvellement de titre de séjour Salarié",
           "lawyer": "Nom Avocat",
-          "procedure_type": "Droit des étrangers",
-          "procedure_subtype": "Refus de titre de séjour",
           "opposing_party_name": "Préfecture du Rhône",
-          "priority_level": 2
-        }
-      },
-      {
-        "operation": "INSERT",
-        "entity": "factures",
-        "tempId": "facture_honoraires",
-        "fields": {
-          "dossier": "{{new_dossier.id}}",
-          "client": "{{new_client.id}}",
-          "montantHT": 1800.00,
-          "type": "0",
-          "description": "Forfait recours gracieux + contentieux",
-          "status": "2"
-        }
-      },
-      {
-        "operation": "INSERT",
-        "entity": "paiements",
-        "tempId": "paiement_provision",
-        "fields": {
-          "facture": "{{facture_honoraires.id}}",
-          "montant": 900.00,
-          "datePaiement": "2026-04-15",
-          "modePaiement": "0",
-          "status": "1"
-        }
-      },
-      {
-        "operation": "INSERT",
-        "entity": "audiences",
-        "tempId": "echeance_rejet",
-        "fields": {
-          "dossier": "{{new_dossier.id}}",
-          "audience_date": "2026-06-22",
-          "audience_time": "09:00",
-          "type": "0",
-          "status": "0",
-          "notes": "Délai de réponse au recours gracieux — silence vaut rejet implicite"
+          "jurisdiction": "Tribunal administratif de Lyon",
+          "billing_mode": "FIXED",
+          "fixed_fee": 1800,
+          "vat_rate": 19.25
         }
       }
     ],
-    "humanReadable": "Créer le client, le dossier, la facture d'honoraires (1800€ HT), la provision reçue (900€) et l'échéance du recours gracieux",
+    "humanReadable": "Créer le client et ouvrir son dossier avec un forfait de 1800 HT",
     "confidence": 0.92
   }
 }`;

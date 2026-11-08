@@ -3,6 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { createHash } from 'crypto';
 import { subMonths } from 'date-fns';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { DossierLifecyclePhase } from 'src/modules/case-workflow/case-workflow.enums';
 import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
@@ -354,7 +355,12 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     dossier: Dossier,
     _audienceType: AudienceType1,
   ): void {
-    if (dossier.status !== DossierStatus.ACTIVE) {
+    // Parcours V2 : l'ouverture validée fait entrer le dossier en traitement,
+    // sans passage par l'activation du template de procédure.
+    if (
+      dossier.status !== DossierStatus.ACTIVE &&
+      dossier.lifecycle_phase !== DossierLifecyclePhase.TREATMENT
+    ) {
       throw new BadRequestException(
         `Une audience ne peut être créée que sur un dossier actif. Cycle actuel : ${dossier.status}`,
       );

@@ -74,8 +74,8 @@ export function uploadedFilePlannerNote(fileNames: string[], question: string): 
     : `La demande ne réclame pas le classement des fichiers : ne prévois aucune opération sur document_customer ni documents.`;
   return `\n\n--- ${several ? 'FICHIERS JOINTS' : 'FICHIER JOINT'} ---
 ${several ? `Les fichiers ${names} accompagnent` : `Le fichier ${names} accompagne`} la demande. Leur texte figure plus haut, chacun sous son nom (« Fichier joint #N (nom=…) ») : ce sont les données à enregistrer.
-- Une demande de création à partir de leur contenu (« crée les dossiers », « les différents dossiers », « un dossier pour chaque fichier ») crée un enregistrement par affaire décrite${several ? ' : en général un INSERT dossiers par fichier' : ''}. Ne fusionne jamais deux affaires.
-- Un dossier exige son client : si le fichier décrit le client, prévois d'abord un INSERT customer (l'application réutilise un client existant identique) avec un tempId, puis "client_id": "{{tempId.id}}" et "dependsOn" dans le dossier ; sinon recopie exactement le nom du client.
+- Une demande de création à partir de leur contenu (« crée les dossiers », « les différents dossiers », « un dossier pour chaque fichier ») crée un enregistrement par affaire décrite${several ? ' : en général une ACTION ouvrir_dossier par fichier' : ''}. Ne fusionne jamais deux affaires.
+- Un dossier exige son client : si le fichier décrit le client, prévois d'abord un INSERT customer (l'application réutilise un client existant identique) avec un tempId, puis "entityId": "{{tempId.id}}" et "dependsOn" dans l'action ouvrir_dossier ; sinon vise le client par "match" avec son nom exact.
 - Ajoute à chaque opération "sourceFiles": ["nom exact du fichier"] dont viennent ses données.
 - ${filing}
 ---`;

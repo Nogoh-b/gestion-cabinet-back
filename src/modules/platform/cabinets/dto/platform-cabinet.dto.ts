@@ -98,6 +98,26 @@ export class GrantFreePeriodDto {
   note?: string;
 }
 
+export class GrantUnlimitedDto {
+  @ApiProperty({ description: 'Plan offert sans date de fin' })
+  @IsInt()
+  plan_id: number;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(500)
+  note?: string;
+}
+
+export class RevokeUnlimitedDto {
+  @ApiPropertyOptional({ description: 'Nouvelle date de fin (sinon : ancienne échéance à venir, ou un cycle)' })
+  @IsOptional() @IsDateString()
+  until?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(500)
+  note?: string;
+}
+
 export class ChangeCabinetPlanDto {
   @ApiProperty()
   @IsInt()

@@ -9,6 +9,8 @@ export const DOMAIN_KEYWORDS: AiDatabaseProjectConfig['domainKeywords'] = [
   // Entités principales
   'dossier',
   'dossiers',
+  'apporteur',
+  'apporteurs',
   'client',
   'clients',
   'customer',
@@ -245,6 +247,8 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
         'Dossiers du cabinet. Le traitement courant est suivi par dossier_actions et dossier_recommendations.',
       customer: 'Clients (particuliers et entreprises)',
       employee: 'Avocats et collaborateurs',
+      referrer:
+        "Apporteurs d'affaires. Création via INSERT sur referrer (company_name, referrer_type, default_commission_rate) — le code est généré.",
       audiences: 'Audiences programmees',
       step: 'Etapes procedurales',
       factures:

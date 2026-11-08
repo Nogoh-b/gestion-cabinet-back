@@ -76,6 +76,15 @@ export function parseReferenceAiReply(
   content: unknown,
   truncated = false,
 ): ReferenceAiResult | null {
+  return parseAiJsonReply(content, truncated, normalize);
+}
+
+/** Lit l'unique objet JSON racine d'une réponse de modèle, validé par `normalize`. */
+export function parseAiJsonReply<T>(
+  content: unknown,
+  truncated: boolean,
+  normalize: (value: unknown) => T | null,
+): T | null {
   if (truncated) return null;
   if (record(content)) return normalize(content);
   const text = withoutReasoning(referenceReplyText(content));
@@ -88,7 +97,7 @@ export function parseReferenceAiReply(
     /* Locate a complete root object inside Markdown or introductory prose. */
   }
   if (text.startsWith('[')) return null;
-  const candidates: ReferenceAiResult[] = [];
+  const candidates: T[] = [];
   let start = -1,
     depth = 0,
     quoted = false,

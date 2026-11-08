@@ -14,6 +14,8 @@ export type SubscriptionEventType =
   | 'cycle_changed'
   | 'extended'
   | 'free_period_granted'
+  | 'unlimited_granted'
+  | 'unlimited_revoked'
   | 'trial_ended'
   | 'expired'
   | 'suspended'

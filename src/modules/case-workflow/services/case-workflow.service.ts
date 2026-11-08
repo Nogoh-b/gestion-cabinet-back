@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { canEndDossierAction } from '../action-end-policy';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
@@ -116,6 +117,9 @@ const DEFAULT_LEGACY_MAPPINGS: Array<{
   },
   { pattern: 'cloture', definitionCode: 'PREPARE_CLOSURE', priority: 70 },
 ];
+
+/** Étape ancienne sans correspondance : reprise comme action à analyser, sans bloquer le passage en V2. */
+const LEGACY_FALLBACK_DEFINITION = 'ANALYSE_DOSSIER';
 
 export type ClosureFinding = Record<string, unknown> & {
   code: string;
@@ -493,9 +497,10 @@ export class CaseWorkflowService {
         order: { created_at: 'DESC' },
         take: 30,
       }),
+      // Les 20 plus récentes (à venir et reportées), remises en ordre chronologique.
       this.audienceRepository.find({
         where: { tenant_id: tenantId, dossier_id: String(dossierId) },
-        order: { audience_date: 'ASC' },
+        order: { audience_date: 'DESC' },
         take: 20,
       }),
       this.documentRepository.find({
@@ -647,11 +652,13 @@ export class CaseWorkflowService {
           ])
         : [[], [], []];
 
+    audiences.reverse();
     const now = Date.now();
     const workspaceActions = actions.map((action) => {
       const deadlineState = getActionDeadlineState(action, now);
       return {
         ...action,
+        can_end: canEndDossierAction(action, dossier, user.id),
         is_overdue: deadlineState.isOverdue,
         overdue_days: deadlineState.overdueDays,
         document_links: actionDocumentLinks.filter(
@@ -1558,12 +1565,13 @@ export class CaseWorkflowService {
       ],
     });
     if (!dossier) throw new NotFoundException('Dossier introuvable');
+    await this.assertConfidentialAccess(dossier, user);
     if (dossier.workflow_engine === WorkflowEngine.ACTIONS_V2)
       throw new ConflictException('Le dossier utilise déjà le parcours V2');
     const mappings = (await this.ensureDefaultLegacyMappings()).filter(
       (mapping) => mapping.is_active,
     );
-    const mappingVersion = `curated-db-v1:${mappings.reduce((sum, mapping) => sum + mapping.lock_version, 0)}`;
+    const mappingVersion = `curated-db-v2:${mappings.reduce((sum, mapping) => sum + mapping.lock_version, 0)}`;
     const existingPreview = await this.migrationRepository.findOne({
       where: {
         tenant_id: tenantId,
@@ -1601,11 +1609,11 @@ export class CaseWorkflowService {
         typeof label === 'string' && label.trim().length > 0,
     );
     const proposedActions = labels.map((label) => {
-      const definitionCode = this.mapLegacyLabel(label, mappings);
       return {
         legacyLabel: label,
-        definitionCode,
-        requiresMapping: !definitionCode,
+        definitionCode:
+          this.mapLegacyLabel(label, mappings) ?? LEGACY_FALLBACK_DEFINITION,
+        requiresMapping: false,
       };
     });
     const legacySnapshot = {
@@ -1666,6 +1674,11 @@ export class CaseWorkflowService {
         return run;
       if (run.status !== MigrationRunStatus.PREVIEWED)
         throw new ConflictException('Cet aperçu ne peut pas être appliqué');
+      const dossierToMigrate = await manager
+        .getRepository(Dossier)
+        .findOne({ where: { id: dossierId, tenant_id: tenantId } });
+      if (!dossierToMigrate) throw new NotFoundException('Dossier introuvable');
+      await this.assertConfidentialAccess(dossierToMigrate, user);
       const proposed = this.readProposedActions(run.preview_result);
       if (proposed.some((item) => item.requiresMapping))
         throw new BadRequestException(
@@ -1711,7 +1724,8 @@ export class CaseWorkflowService {
               definition_label: definition.label,
               definition_version: definition.version,
               title: item.legacyLabel,
-              responsible_user_id: this.actorId(user),
+              responsible_user_id:
+                dossierToMigrate.lawyer_id ?? this.actorId(user),
               status: DossierActionStatus.TODO,
               priority: definition.default_priority,
               is_required: definition.is_required,

@@ -14,11 +14,12 @@ import {
   deadlineOperations,
   DelaisProcedureSkill,
   detectLanguage,
+  InjonctionPayerSkill,
   resolveDeadlines,
   splitParagraphs,
   VersionBilingueSkill,
 } from './legal-tools.skills';
-import { htmlTable, inlineDraft, pdfText } from './skill-templates';
+import { htmlTable, inlineDraft, inlineTemplate, pdfText } from './skill-templates';
 import type { TargetInfo } from './skill-targets.service';
 
 const TODAY = new Date(2026, 9, 20); // 20 octobre 2026
@@ -263,5 +264,82 @@ describe('Mises en page PDF des compétences', () => {
     const draft = inlineDraft({ layout: 'skill_acte', name: 'Conclusions', title: 'Conclusions en réponse', info: dossierInfo(), sender: { name: 'Me Kaby', title: 'Avocat', cabinetName: 'Cabinet Kaby' } });
     expect(draft).toMatchObject({ templateCode: 'skill_acte', dossierId: 91, template: { title: 'CONCLUSIONS EN RÉPONSE', entity_type: 'general' } });
     expect(draft.variables.signatoryName).toBe('Me Kaby');
+  });
+});
+
+describe('Brouillons des compétences dans le studio', () => {
+  const sender = { name: 'Me Kaby', title: 'Avocat', cabinetName: 'Cabinet Kaby' };
+
+  it('rend le HTML final : aucune variable ni condition pour le chat', () => {
+    const draft = inlineDraft({
+      layout: 'skill_acte',
+      name: 'Requête',
+      title: 'Requête',
+      info: dossierInfo(),
+      sender,
+      checks: ['Domicile du débiteur'],
+      editable: [
+        { name: 'juridiction', label: 'Juridiction', kind: 'text', value: 'TPI <Douala> & Bonanjo' },
+        { name: 'partiesBlock', label: 'Parties', kind: 'longtext', value: 'Le créancier\n\nCONTRE le débiteur' },
+        { name: 'bodyContent', label: 'Corps', kind: 'longtext', value: 'EXPOSÉ\n\n**Les faits** du litige.' },
+      ],
+    });
+    const { studio } = draft;
+    expect(studio).toMatchObject({ mode: 'document', title: 'REQUÊTE', checks: ['Domicile du débiteur'], suggestTemplate: true, layout: { orientation: 'portrait', font_size: 11 } });
+    expect(studio!.html).not.toContain('{{');
+    expect(studio!.html).toContain('TPI ‹Douala› &amp; Bonanjo');
+    expect(studio!.html).toContain('<strong>Les faits</strong> du litige.');
+    expect(studio!.html).toContain('SOUS TOUTES RÉSERVES');
+    expect(studio!.html).toContain('Me Kaby');
+    // Variable non fournie (référence) : sa condition disparaît avec elle.
+    expect(studio!.html).not.toContain('font-size:9px; color:#475569;');
+    // Anciens messages et carte PDF : données inchangées.
+    expect(draft.variables.juridiction).toBe('TPI <Douala> & Bonanjo');
+    expect(draft.editable.map((field) => field.name)).toEqual(['juridiction', 'partiesBlock', 'bodyContent']);
+  });
+
+  it.each(['skill_note', 'skill_acte', 'skill_convention', 'skill_bilingue'] as const)('%s : rien ne reste à remplir, même sans donnée', (layout) => {
+    expect(inlineTemplate(layout, 'N', 'T').body_html).toContain('{{');
+    const { studio } = inlineDraft({ layout, name: 'N', title: 'T', sender: { name: '', title: '', cabinetName: '' } });
+    expect(studio!.html).not.toContain('{{');
+  });
+
+  it('les accolades d’un texte repris restent du texte, sans champ pour le chat', () => {
+    const { studio } = inlineDraft({
+      layout: 'skill_note',
+      name: 'Document anonymisé',
+      title: 'Document anonymisé',
+      sender,
+      editable: [{ name: 'bodyContent', label: 'Texte', kind: 'longtext', value: 'Bonjour {{client.full_name}}, voir {{#if x}}.' }],
+    });
+    expect(studio!.html).toContain('Bonjour [client.full_name], voir [#if x].');
+    expect(studio!.html).not.toContain('{{');
+  });
+
+  it('un corps HTML construit par la compétence passe tel quel', () => {
+    const { studio } = inlineDraft({ layout: 'skill_note', name: 'Note', title: 'Note', sender, raw: { bodyContent: '<table><tr><td>Principal</td></tr></table>' } });
+    expect(studio!.html).toContain('<table><tr><td>Principal</td></tr></table>');
+  });
+
+  it('la version bilingue s’ouvre en paysage', async () => {
+    const skill = new VersionBilingueSkill(targetsMock() as any);
+    const context = ctx({ references: [], documents: [{ name: 'bail.docx', content: 'Le preneur paie le loyer.\n\nLe bail est conclu pour trois ans.' }] });
+    (context.llm.complete as jest.Mock).mockResolvedValue('{"traductions": ["The lessee pays the rent.", "The lease is concluded for three years."]}');
+    const outcome: any = await skill.run(context);
+    expect(outcome.draft.studio.layout.orientation).toBe('landscape');
+    expect(outcome.draft.studio.html).toContain('The lessee pays the rent.');
+  });
+
+  it('injonction de payer : les informations manquantes sont des points à vérifier', async () => {
+    const skill = new InjonctionPayerSkill(targetsMock() as any);
+    const context = ctx();
+    (context.llm.complete as jest.Mock).mockResolvedValue(JSON.stringify({
+      juridiction: 'À Monsieur le Président du TPI de Douala', parties: 'SARL X CONTRE SARL Y', expose: 'Faits.', fondement: 'Contrat.',
+      decompte: 'Principal : 100', demande: 'PAR CES MOTIFS : payer', pieces: ['Contrat'], manquants: ['Siège du débiteur'],
+    }));
+    const outcome: any = await skill.run(context);
+    expect(outcome.draft.studio.checks).toEqual(['Siège du débiteur']);
+    expect(outcome.draft.studio.html).not.toContain('{{');
+    expect(outcome.markdown).not.toMatch(/générer|générez/i);
   });
 });

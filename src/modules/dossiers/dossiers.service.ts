@@ -342,14 +342,8 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       }
     }
 
-    const workflowFeature = tenantId
-      ? await this.caseWorkflowFeatureRepository.findOne({
-          where: { tenant_id: tenantId },
-        })
-      : null;
-    const useActionsV2 = Boolean(
-      workflowFeature?.enabled && workflowFeature.default_for_new_dossiers,
-    );
+    // Tout nouveau dossier suit le parcours V2, quel que soit le réglage du cabinet.
+    const useActionsV2: boolean = true;
     const {
       notes: _notes,
       mode: _mode,
@@ -523,7 +517,15 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       const existing = await this.billingProfileRepository.findOne({
         where: { tenant_id: tenantId, dossier_id: dossier.id },
       });
-      if (existing) return;
+      if (existing) {
+        const provided = Object.fromEntries(
+          Object.entries(initial).filter(([, value]) => value !== undefined),
+        );
+        await this.billingProfileRepository.save(
+          Object.assign(existing, provided),
+        );
+        return;
+      }
 
       const cabinet = await this.cabinetRepository.findOne({
         where: { id: tenantId },
