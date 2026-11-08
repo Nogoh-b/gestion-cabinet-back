@@ -12,6 +12,7 @@ import { extname, join, resolve } from 'path';
 import {
   DataSource,
   EntityManager,
+  In,
   Repository,
 } from 'typeorm';
 
@@ -31,8 +32,10 @@ import {
   StatutFacture,
 } from '../facture/dto/create-facture.dto';
 import { Facture } from '../facture/entities/facture.entity';
+import { AllocateDossierPaymentDto } from './dto/allocation-paiement.dto';
 import {
   CreatePaiementDto,
+  ModePaiement,
   StatutPaiement,
 } from './dto/create-paiement.dto';
 import { PaiementResponseDto } from './dto/paiement-response.dto';
@@ -201,6 +204,194 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       }
       throw error;
     }
+  }
+
+  /**
+   * Encaissement groupé d'un dossier : factures cochées (`allocations`) ou
+   * montant global ventilé sur les factures validées les plus anciennes.
+   * Chaque part devient un paiement créé puis validé (audit, contrôle du
+   * solde), comme un encaissement saisi facture par facture. Un reliquat non
+   * ventilable est renvoyé, sans avoir automatique.
+   */
+  async allocateDossierPayment(
+    dossierId: number,
+    dto: AllocateDossierPaymentDto,
+    actor: PaymentActor = {},
+  ): Promise<{
+    reference: string;
+    allocations: Array<{
+      facture_id: string;
+      numero: string;
+      montant: number;
+      paid_after: number;
+      remaining_after: number;
+      status: StatutFacture;
+    }>;
+    total_allocated: number;
+    unallocated: number;
+    avoir: null;
+  }> {
+    const tenantId = getCurrentTenantId();
+    const manual = Array.isArray(dto.allocations) && dto.allocations.length > 0;
+    const autoTotalMinor = this.toMinorUnits(Number(dto.montant_total ?? 0));
+    if (!manual && !(autoTotalMinor > 0)) {
+      throw new BadRequestException(
+        'Indiquez des factures à encaisser ou un montant global à ventiler',
+      );
+    }
+    if (manual && autoTotalMinor > 0) {
+      throw new BadRequestException(
+        'Choisissez soit des factures cochées, soit un montant global',
+      );
+    }
+
+    // Factures encaissables du dossier et leur reste à payer.
+    const receivable = await this.dataSource.transaction(async (manager) => {
+      const factures = await manager.getRepository(Facture).find({
+        where: {
+          dossier_id: dossierId,
+          tenant_id: tenantId,
+          status: In(
+            [StatutFacture.VALIDEE, StatutFacture.PARTIELLEMENT_PAYEE].map(
+              String,
+            ) as unknown as StatutFacture[],
+          ),
+        },
+        order: { dateEcheance: 'ASC', dateFacture: 'ASC' },
+      });
+      const rows: Array<{ facture: Facture; remainingMinor: number }> = [];
+      for (const facture of factures) {
+        if (facture.nature === InvoiceNature.CREDIT_NOTE) continue;
+        const paidMinor = await this.getValidatedTotalMinor(manager, facture.id);
+        const totalMinor = await this.getEffectiveInvoiceTotalMinor(
+          manager,
+          facture,
+        ).catch(() => 0);
+        const remainingMinor = totalMinor - paidMinor;
+        if (remainingMinor > 0) rows.push({ facture, remainingMinor });
+      }
+      return rows;
+    });
+    if (!receivable.length) {
+      throw new BadRequestException(
+        'Aucune facture validée à encaisser sur ce dossier',
+      );
+    }
+
+    const plan: Array<{ facture: Facture; amountMinor: number; remainingMinor: number }> = [];
+    if (manual) {
+      for (const allocation of dto.allocations as any[]) {
+        const factureId = String(
+          allocation.facture_id ?? allocation.factureId ?? allocation.id ?? '',
+        );
+        const row = receivable.find((item) => item.facture.id === factureId);
+        if (!row) {
+          throw new BadRequestException(
+            `La facture ${factureId} n'est pas encaissable (elle doit être validée et non soldée)`,
+          );
+        }
+        const amountMinor = this.toMinorUnits(Number(allocation.montant));
+        if (!(amountMinor > 0)) {
+          throw new BadRequestException(
+            'Le montant du paiement doit être strictement positif',
+          );
+        }
+        if (amountMinor > row.remainingMinor) {
+          throw new BadRequestException(
+            `Le montant dépasse le reste à payer de la facture ${row.facture.numero}`,
+          );
+        }
+        plan.push({ ...row, amountMinor });
+      }
+    } else {
+      let leftMinor = autoTotalMinor;
+      for (const row of receivable) {
+        if (leftMinor <= 0) break;
+        const amountMinor = Math.min(row.remainingMinor, leftMinor);
+        plan.push({ ...row, amountMinor });
+        leftMinor -= amountMinor;
+      }
+    }
+
+    const reference =
+      dto.reference?.trim() || `ENC-${new Date().toISOString().slice(0, 10)}-${dossierId}`;
+    const datePaiement = dto.date_paiement ? new Date(dto.date_paiement) : new Date();
+    const allocations: Array<{
+      facture_id: string;
+      numero: string;
+      montant: number;
+      paid_after: number;
+      remaining_after: number;
+      status: StatutFacture;
+    }> = [];
+    for (const { facture, amountMinor, remainingMinor } of plan) {
+      const created = await this.createPaiement(
+        {
+          factureId: facture.id,
+          montant: this.fromMinorUnits(amountMinor),
+          modePaiement: this.paymentModeOf(dto.mode_paiement),
+          datePaiement,
+          dateValeur: datePaiement,
+          reference,
+          banque: dto.banque,
+          titulaire: dto.titulaire,
+          numeroCheque: dto.numero_cheque,
+          notes: dto.notes,
+        } as CreatePaiementDto,
+        undefined,
+        actor,
+      );
+      await this.validerPaiement(String(created.id), actor);
+      const remainingAfterMinor = remainingMinor - amountMinor;
+      const totalMinor = this.toMinorUnits(facture.montantTTC);
+      allocations.push({
+        facture_id: facture.id,
+        numero: facture.numero,
+        montant: this.fromMinorUnits(amountMinor),
+        paid_after: this.fromMinorUnits(totalMinor - remainingAfterMinor),
+        remaining_after: this.fromMinorUnits(remainingAfterMinor),
+        status:
+          remainingAfterMinor <= 0
+            ? StatutFacture.PAYEE
+            : StatutFacture.PARTIELLEMENT_PAYEE,
+      });
+    }
+    const allocatedMinor = plan.reduce((sum, row) => sum + row.amountMinor, 0);
+    return {
+      reference,
+      allocations,
+      total_allocated: this.fromMinorUnits(allocatedMinor),
+      unallocated: manual
+        ? 0
+        : this.fromMinorUnits(Math.max(0, autoTotalMinor - allocatedMinor)),
+      avoir: null,
+    };
+  }
+
+  /** Mode de paiement saisi en libellé (« virement ») ou en code. */
+  private paymentModeOf(value: unknown): ModePaiement {
+    if (value === undefined || value === null || value === '') {
+      return ModePaiement.VIREMENT;
+    }
+    const numeric = Number(value);
+    if (Number.isInteger(numeric) && ModePaiement[numeric] !== undefined) {
+      return numeric as ModePaiement;
+    }
+    const labels: Record<string, ModePaiement> = {
+      virement: ModePaiement.VIREMENT,
+      cheque: ModePaiement.CHEQUE,
+      especes: ModePaiement.ESPECES,
+      carte: ModePaiement.CARTE,
+      prelevement: ModePaiement.PRELEVEMENT,
+      mobile: ModePaiement.Mobile,
+      mobile_money: ModePaiement.Mobile,
+      autre: ModePaiement.AUTRE,
+    };
+    const key = String(value)
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase();
+    return labels[key] ?? ModePaiement.VIREMENT;
   }
 
   async updatePaiement(

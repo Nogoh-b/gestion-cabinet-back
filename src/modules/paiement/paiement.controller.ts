@@ -6,6 +6,7 @@ import {
   Get,
   HttpStatus,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -36,6 +37,7 @@ import {
   ResourceActor,
   ResourcePolicyService,
 } from 'src/core/resource-policy.service';
+import { AllocateDossierPaymentDto } from './dto/allocation-paiement.dto';
 import { CreatePaiementDto } from './dto/create-paiement.dto';
 import { PaiementResponseDto } from './dto/paiement-response.dto';
 import { PaymentTransitionDto } from './dto/payment-transition.dto';
@@ -107,6 +109,28 @@ export class PaiementController {
       'create_paiement',
     );
     return this.paiementService.createPaiement(dto, preuve, this.actor(user));
+  }
+
+  /** Encaissement groupé des factures validées d'un dossier. */
+  @Post('dossier/:dossierId/encaissements')
+  @RequirePermissions('create_paiement')
+  @ApiOperation({ summary: 'Encaisser plusieurs factures d’un dossier' })
+  async allocateDossierPayment(
+    @Param('dossierId', ParseIntPipe) dossierId: number,
+    @Body() dto: AllocateDossierPaymentDto,
+    @CurrentUser() user: any,
+  ) {
+    await this.resourcePolicy.assertDossierAccess(
+      dossierId,
+      this.actor(user),
+      'write',
+      'create_paiement',
+    );
+    return this.paiementService.allocateDossierPayment(
+      dossierId,
+      dto,
+      this.actor(user),
+    );
   }
 
   @Get()

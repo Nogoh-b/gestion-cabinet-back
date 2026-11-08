@@ -18,7 +18,7 @@ import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { CancelSalaryAdvanceDto } from './dto/cancel-salary-advance.dto';
-import { CreateSalaryAdvanceDto } from './dto/create-salary-advance.dto';
+import { CreateSalaryAdvanceDto, RequestSalaryAdvanceDto } from './dto/create-salary-advance.dto';
 import { PaySalaryAdvanceDto } from './dto/pay-salary-advance.dto';
 import { SalaryAdvanceResponseDto } from './dto/salary-advance-response.dto';
 import { UpdateSalaryAdvanceDto } from './dto/update-salary-advance.dto';
@@ -55,6 +55,22 @@ export class SalaryAdvancesController {
   ) {
     return this.response(
       await this.service.create(dto, this.actor(user)),
+    );
+  }
+
+  /** Demande d'avance d'un employé pour lui-même (écran « Mes avances »). */
+  @Post('request')
+  @RequirePermissions('request_salary_advance')
+  @ApiOperation({ summary: 'Demander une avance sur salaire pour soi-même' })
+  async request(
+    @Body() dto: RequestSalaryAdvanceDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.response(
+      await this.service.create(
+        { ...dto, employee_id: Number(user?.userId ?? user?.id) },
+        this.actor(user),
+      ),
     );
   }
 

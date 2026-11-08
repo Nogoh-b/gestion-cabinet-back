@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import {
   IsDateString,
   IsInt,
@@ -34,3 +34,8 @@ export class CreateSalaryAdvanceDto {
   @IsOptional()
   reason?: string;
 }
+
+/** Demande pour soi-même : l'employé est l'utilisateur connecté. */
+export class RequestSalaryAdvanceDto extends OmitType(CreateSalaryAdvanceDto, [
+  'employee_id',
+] as const) {}
