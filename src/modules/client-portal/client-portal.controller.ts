@@ -46,6 +46,12 @@ export class ClientPortalController {
 
   // ── Documents ──────────────────────────────────────────────────────────
 
+  @Get('dossiers/:id/audiences')
+  @ApiOperation({ summary: "Audiences d'un de mes dossiers" })
+  audiences(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {
+    return this.portal.listAudiences(user, id);
+  }
+
   @Get('dossiers/:id/documents')
   @ApiOperation({ summary: "Documents d'un de mes dossiers" })
   documents(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number) {

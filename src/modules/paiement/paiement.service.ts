@@ -517,6 +517,14 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     id: string,
     actor: PaymentActor = {},
   ): Promise<PaiementResponseDto> {
+    // Paiement déclaré (portail client) sur une facture brouillon ou envoyée :
+    // la facture est d'abord émise puis validée, comme à l'encaissement.
+    const pending = await this.repository.findOne({
+      where: { id, tenant_id: getCurrentTenantId() } as any,
+      relations: ['facture'],
+      select: { id: true, facture: { id: true } } as any,
+    });
+    if (pending?.factureId) await this.validateSentInvoice(String(pending.factureId), actor);
     const result = await this.dataSource.transaction(
       'SERIALIZABLE',
       async (manager) => {
@@ -827,9 +835,11 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     manager: EntityManager,
     id: string,
   ): Promise<Paiement> {
+    // `factureId` est un accesseur sur la relation : sans elle il vaut undefined.
     const payment = await manager.getRepository(Paiement).findOne({
       where: { id, tenant_id: getCurrentTenantId() },
-      select: ['id', 'factureId'],
+      relations: ['facture'],
+      select: { id: true, facture: { id: true } } as any,
     });
     if (!payment) throw new NotFoundException('Paiement introuvable');
     return payment;

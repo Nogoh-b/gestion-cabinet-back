@@ -33,6 +33,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { ClientMessage } from './entities/client-message.entity';
+import { Audience, AudienceStatus } from '../audiences/entities/audience.entity';
 
 /** Taille max d'un document déposé par le client (octets). */
 export const CLIENT_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
@@ -102,6 +103,14 @@ const statusIs = (value: number): any => String(value);
  * client du compte connecté (`customerId` du JWT). Aucune méthode n'accepte
  * un identifiant de client en entrée.
  */
+const AUDIENCE_STATUS_LABELS: Record<number, string> = {
+  [AudienceStatus.SCHEDULED]: 'Programmée',
+  [AudienceStatus.IN_PROGRESS]: 'En cours',
+  [AudienceStatus.HELD]: 'Tenue',
+  [AudienceStatus.POSTPONED]: 'Reportée',
+  [AudienceStatus.CANCELLED]: 'Annulée',
+};
+
 @Injectable()
 export class ClientPortalService {
   constructor(
@@ -219,6 +228,31 @@ export class ClientPortalService {
    * pièces validées du cabinet classées dans la catégorie « client » et non
    * confidentielles. Rien d'autre n'est exposé.
    */
+  /**
+   * Audiences d'un de mes dossiers (les plus récentes d'abord) : date, heure,
+   * type, juridiction, salle et état. Rien d'interne (rapport, notes).
+   */
+  async listAudiences(user: any, dossierId: number) {
+    const customerId = this.customerIdOf(user);
+    await this.ownDossier(customerId, dossierId);
+    const audiences = await this.dossierRepo.manager.getRepository(Audience).find({
+      where: { dossier_id: dossierId as any },
+      relations: ['audience_type', 'jurisdiction'],
+      order: { audience_date: 'DESC', audience_time: 'DESC' },
+      take: 100,
+    });
+    return audiences.map((audience) => ({
+      id: audience.id,
+      audience_date: audience.audience_date,
+      audience_time: audience.audience_time,
+      type: audience.audience_type?.name ?? (audience.type as unknown as string) ?? null,
+      jurisdiction: audience.jurisdiction?.name ?? null,
+      room: audience.room ?? null,
+      status: Number(audience.status),
+      status_label: AUDIENCE_STATUS_LABELS[Number(audience.status)] ?? null,
+    }));
+  }
+
   async listDocuments(user: any, dossierId: number) {
     const customerId = this.customerIdOf(user);
     await this.ownDossier(customerId, dossierId);
