@@ -82,18 +82,20 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   }
 
   /**
-   * Une facture « Envoyée » (émise) est validée — comptabilisation comprise —
-   * avant d'être encaissée, comme avant la sécurisation où l'encaissement se
-   * faisait directement sur la facture envoyée. Un brouillon reste refusé.
+   * Comme avant la sécurisation, une facture en brouillon ou envoyée peut être
+   * encaissée : elle est d'abord émise puis validée (numérotation, audit et
+   * comptabilisation compris), puis le paiement s'enregistre.
    */
   private async validateSentInvoice(factureId: string, actor: PaymentActor): Promise<void> {
     const facture = await this.factureRepository.findOne({
       where: { id: factureId, tenant_id: getCurrentTenantId() } as any,
       select: ['id', 'status', 'nature'],
     });
-    if (!facture || Number(facture.status) !== StatutFacture.ENVOYEE) return;
-    if (facture.nature === InvoiceNature.CREDIT_NOTE) return;
+    if (!facture || facture.nature === InvoiceNature.CREDIT_NOTE) return;
+    const status = Number(facture.status);
+    if (status !== StatutFacture.BROUILLON && status !== StatutFacture.ENVOYEE) return;
     const factures = this.moduleRef.get(FactureService, { strict: false });
+    if (status === StatutFacture.BROUILLON) await factures.issueInvoice(factureId, actor);
     await factures.validateInvoice(factureId, actor);
   }
 
@@ -272,9 +274,10 @@ export class PaiementService extends BaseServiceV1<Paiement> {
         where: {
           dossier_id: dossierId,
           tenant_id: tenantId,
-          // « Envoyée » comprise : validée automatiquement à l'encaissement.
+          // Brouillon et « Envoyée » compris : émis puis validés à l'encaissement.
           status: In(
             [
+              StatutFacture.BROUILLON,
               StatutFacture.ENVOYEE,
               StatutFacture.VALIDEE,
               StatutFacture.PARTIELLEMENT_PAYEE,
@@ -298,7 +301,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     });
     if (!receivable.length) {
       throw new BadRequestException(
-        'Aucune facture émise à encaisser sur ce dossier : les brouillons doivent d’abord être émis.',
+        'Aucune facture à encaisser sur ce dossier (toutes sont soldées ou annulées).',
       );
     }
 
@@ -897,9 +900,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       ].includes(facture.status)
     ) {
       throw new BadRequestException(
-        Number(facture.status) === StatutFacture.BROUILLON
-          ? 'Cette facture est encore un brouillon : émettez-la avant de l’encaisser.'
-          : 'Cette facture est annulée ou déjà soldée : elle ne peut plus recevoir de paiement.',
+        'Cette facture est annulée ou déjà soldée : elle ne peut plus recevoir de paiement.',
       );
     }
   }
