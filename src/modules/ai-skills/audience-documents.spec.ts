@@ -115,13 +115,14 @@ describe('Projet de décision d’audience', () => {
     expect((context.llm as any).draft).not.toHaveBeenCalled();
   });
 
-  it('sans transcription ni notes : demande d’enregistrer ou de saisir des notes', async () => {
+  it('sans transcription ni notes : rédige quand même la trame et le signale', async () => {
     const deps = targets({ transcript: assembled([{ status: RecordingTranscriptStatus.PENDING }]) });
     const context = ctx();
     const outcome: any = await new ProjetDecisionAudienceSkill(deps as any, dataSource()).run(context);
-    expect(outcome.type).toBe('clarify');
-    expect(outcome.markdown).toContain('ne sont pas encore transcrits');
-    expect((context.llm as any).draft).not.toHaveBeenCalled();
+    expect(outcome.type).toBe('document_draft');
+    const prompt = (context.llm as any).draft.mock.calls[0][0] as string;
+    expect(prompt).toContain('[à compléter]');
+    expect(outcome.draft.studio.checks.some((item: string) => item.startsWith('Rédigé sans transcription ni notes'))).toBe(true);
   });
 
   it('sans enregistrement mais avec des notes : rédige d’après les notes et le dit', async () => {
