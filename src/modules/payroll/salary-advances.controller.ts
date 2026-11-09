@@ -85,8 +85,12 @@ export class SalaryAdvancesController {
       searchParams as any,
       SalaryAdvanceResponseDto,
       paginationParams,
+      undefined,
+      undefined,
+      undefined,
+      true,
     );
-    return { ...result, data: this.response(result.data) };
+    return result;
   }
 
   @Get('/me')

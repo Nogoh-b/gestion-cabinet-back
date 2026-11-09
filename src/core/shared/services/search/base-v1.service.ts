@@ -141,6 +141,10 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     // Contrainte imposée (ex. portée d'un rôle), fusionnée dans chaque branche
     // du `where` : un tableau `where` est un OU pour TypeORM.
     scope?: FindOptionsWhere<T>,
+    // Strict : seuls les champs @Expose du DTO sortent, calculés en un seul
+    // passage sur les entités (accesseurs comme `employee.full_name` compris).
+    // Une seconde transformation côté contrôleur les recalculait à vide.
+    strict = false,
   ): Promise<PaginatedResult<R>> {
     console.log(
       'Relation fields:',
@@ -164,7 +168,7 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
 
     const transformer = (data: T[]) =>
       plainToInstance(dtoClass, data, {
-        excludeExtraneousValues: false,
+        excludeExtraneousValues: strict,
         enableImplicitConversion: true,
       });
 

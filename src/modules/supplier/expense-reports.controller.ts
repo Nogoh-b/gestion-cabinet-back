@@ -64,10 +64,14 @@ export class ExpenseReportsController {
       searchParams as any,
       ExpenseReportResponseDto,
       paginationParams,
+      undefined,
+      undefined,
+      undefined,
+      true,
     );
     return {
       ...result,
-      data: this.response(result.data),
+      data: result.data,
     };
   }
 

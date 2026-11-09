@@ -70,10 +70,14 @@ export class SupplierInvoicesController {
       searchParams as any,
       SupplierInvoiceResponseDto,
       paginationParams,
+      undefined,
+      undefined,
+      undefined,
+      true,
     );
     return {
       ...result,
-      data: this.response(result.data),
+      data: result.data,
     };
   }
 

@@ -96,8 +96,12 @@ export class PayslipsController {
       searchParams as any,
       PayslipListResponseDto,
       paginationParams,
+      undefined,
+      undefined,
+      undefined,
+      true,
     );
-    return { ...result, data: this.list(result.data) };
+    return result;
   }
 
   @Get('/stats')
