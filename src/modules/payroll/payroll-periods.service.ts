@@ -19,12 +19,15 @@ import {
   PayrollPeriodStatus,
 } from './entities/payroll-period.entity';
 import { Payslip, PayslipStatus } from './entities/payslip.entity';
-import type { PayrollActor } from './payslips.service';
+import { PayslipsService, type PayrollActor } from './payslips.service';
+import { ModuleRef } from '@nestjs/core';
 
 export interface ClosePeriodResult {
   period_id: number;
   status: PayrollPeriodStatus;
   payslips_count: number;
+  /** Bulletins brouillons validés par la clôture. */
+  validated?: number;
 }
 
 @Injectable()
@@ -39,6 +42,7 @@ export class PayrollPeriodsService extends BaseServiceV1<PayrollPeriod> {
     private readonly userRepo: Repository<User>,
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
+    private readonly moduleRef: ModuleRef,
   ) {
     super(repository, paginationService);
   }
@@ -146,7 +150,43 @@ export class PayrollPeriodsService extends BaseServiceV1<PayrollPeriod> {
     return this.repository.save(period);
   }
 
+  /**
+   * Clôture : valide d'abord les bulletins encore en brouillon (validation
+   * sécurisée de chaque bulletin : totaux, audit, séparation des tâches),
+   * puis passe la période en « validée » — comme avant la sécurisation, sans
+   * quoi payer (période clôturée) et clôturer (bulletins validés) se bloquaient.
+   * Un bulletin impossible à valider arrête la clôture avec la raison.
+   */
   async close(
+    id: number,
+    actor: PayrollActor,
+  ): Promise<ClosePeriodResult> {
+    const tenantId = getCurrentTenantId();
+    const drafts = await this.dataSource.getRepository(Payslip).find({
+      where: { period_id: id, tenant_id: tenantId, status: PayslipStatus.DRAFT },
+      relations: ['employee', 'employee.user'],
+      select: { id: true, employee: { id: true, user: { id: true, full_name: true } } } as any,
+    });
+    const payslips = this.moduleRef.get(PayslipsService, { strict: false });
+    const failures: string[] = [];
+    for (const draft of drafts) {
+      try {
+        await payslips.validate(draft.id, actor);
+      } catch (error) {
+        const who = (draft as any).employee?.user?.full_name || `bulletin n° ${draft.id}`;
+        failures.push(`${who} : ${(error as Error).message}`);
+      }
+    }
+    if (failures.length) {
+      throw new BadRequestException(
+        `Clôture impossible, ${failures.length} bulletin(s) n'ont pas pu être validés — ${failures.join(' ; ')}`,
+      );
+    }
+    const result = await this.closeValidated(id, actor);
+    return { ...result, validated: drafts.length };
+  }
+
+  private async closeValidated(
     id: number,
     actor: PayrollActor,
   ): Promise<ClosePeriodResult> {

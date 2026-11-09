@@ -20,8 +20,12 @@ describe('PayrollPeriodsService - clôture stricte', () => {
       entity === User ? userRepository : periodRepository,
     ),
   };
+  // Brouillons de la période relus par la clôture (validés un par un).
+  const payslipRepository = { find: jest.fn(async () => [] as any[]) };
+  const payslips = { validate: jest.fn(async () => undefined) };
   const dataSource = {
     transaction: jest.fn(async (callback: any) => callback(manager)),
+    getRepository: jest.fn(() => payslipRepository),
   };
   const audit = {
     append: jest.fn(),
@@ -56,25 +60,49 @@ describe('PayrollPeriodsService - clôture stricte', () => {
       {} as any,
       dataSource as any,
       audit as any,
+      { get: () => payslips } as any,
     );
+    payslipRepository.find.mockResolvedValue([]);
+    payslips.validate.mockResolvedValue(undefined);
   });
 
-  it('refuse de clôturer tant qu’un bulletin reste en brouillon', async () => {
+  it('valide les brouillons puis clôture la période', async () => {
+    payslipRepository.find.mockResolvedValue([{ id: 2 }]);
+    // Après validation, la période relue n'a plus de brouillon.
     const value = period(PayrollPeriodStatus.DRAFT, [
       PayslipStatus.VALIDATED,
-      PayslipStatus.DRAFT,
+      PayslipStatus.VALIDATED,
     ]);
+    jest.spyOn(service as any, 'lockPeriod').mockResolvedValue(value);
+
+    const result = await runWithTenantContext(2, () =>
+      service.close(value.id, { userId: 12 }),
+    );
+
+    expect(payslips.validate).toHaveBeenCalledWith(2, { userId: 12 });
+    expect(result.status).toBe(PayrollPeriodStatus.VALIDATED);
+    expect(result.validated).toBe(1);
+  });
+
+  it('s’arrête, avec la raison, si un brouillon ne peut pas être validé', async () => {
+    payslipRepository.find.mockResolvedValue([
+      { id: 2, employee: { user: { full_name: 'Thierry Fotso' } } },
+    ]);
+    payslips.validate.mockRejectedValue(
+      new Error('Le préparateur ne peut pas valider son propre bulletin'),
+    );
+    const value = period(PayrollPeriodStatus.DRAFT, [PayslipStatus.DRAFT]);
     jest.spyOn(service as any, 'lockPeriod').mockResolvedValue(value);
 
     await expect(
       runWithTenantContext(2, () =>
         service.close(value.id, { userId: 12 }),
       ),
-    ).rejects.toThrow('restent à valider');
+    ).rejects.toThrow(/Thierry Fotso : Le préparateur ne peut pas valider/);
     expect(periodRepository.save).not.toHaveBeenCalled();
   });
 
-  it('clôture atomiquement sans valider les bulletins à la place des acteurs', async () => {
+  it('clôture atomiquement une période déjà entièrement validée', async () => {
     const value = period(PayrollPeriodStatus.DRAFT, [
       PayslipStatus.VALIDATED,
       PayslipStatus.VALIDATED,
