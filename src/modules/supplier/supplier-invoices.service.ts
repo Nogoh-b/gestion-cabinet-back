@@ -28,6 +28,7 @@ import { SupplierEvidenceStorageService } from './supplier-evidence-storage.serv
 import { CaseBillingService } from '../case-workflow/services/case-billing.service';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { DossierAction } from '../case-workflow/entities/dossier-action.entity';
+import { assertDistinctActor } from 'src/core/security/separation-of-duties';
 
 export interface SupplierInvoiceActor {
   userId?: number | null;
@@ -256,11 +257,11 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
           'Seule une facture fournisseur reçue peut être approuvée',
         );
       }
-      if (invoice.created_by_id === actorId) {
-        throw new ForbiddenException(
-          'L’auteur de la facture ne peut pas l’approuver lui-même',
-        );
-      }
+      assertDistinctActor(
+        invoice.created_by_id,
+        actorId,
+        'L’auteur de la facture ne peut pas l’approuver lui-même',
+      );
       invoice.status = SupplierInvoiceStatus.APPROVED;
       invoice.approved_by_id = actorId;
       invoice.approved_at = new Date();

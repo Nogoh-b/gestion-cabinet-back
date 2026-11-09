@@ -11,6 +11,7 @@ import {
   Body,
   Get,
   Param,
+  Patch,
   Put,
   Delete,
   UseGuards,
@@ -155,6 +156,8 @@ export class DocumentTypeController {
   }
 
   @Put(':id')
+  // Le front modifie en PATCH (BaseService) : même traitement.
+  @Patch(':id')
   @ApiOperation({ summary: 'Mettre à jour un type de document' })
   @RequirePermissions('EDIT_DOCUMENT_TYPE')
   update(@Param('id') id: string, @Body() updateDto: UpdateDocumentTypeDto) {

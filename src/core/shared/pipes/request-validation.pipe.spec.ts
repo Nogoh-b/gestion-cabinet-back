@@ -6,6 +6,8 @@ import {
   CreateDocumentFromCotiDto,
   DocTypeNameOnline,
 } from '../../../modules/documents/document-customer/dto/create-document-from-coti.dto';
+import { ApiProperty } from '@nestjs/swagger';
+import { SearchDocumentCustomerDto } from '../../../modules/documents/document-customer/dto/document-customer-search.dto';
 import { RequestValidationPipe } from './request-validation.pipe';
 
 class SearchOnlyDto {
@@ -22,13 +24,35 @@ class EmailDto {
 describe('RequestValidationPipe', () => {
   const pipe = new RequestValidationPipe();
 
-  it('retire les champs de pagination du DTO de filtres query', async () => {
+  it('garde tous les paramètres de query (filtres non décorés compris)', async () => {
     const result = await pipe.transform(
-      { search: 'client', page: '1', limit: '5' },
+      { search: 'client', page: '1', limit: '5', dossier_id: '20' },
       { type: 'query', metatype: SearchOnlyDto, data: undefined },
     );
 
-    expect(result).toEqual({ search: 'client' });
+    expect(result).toMatchObject({ search: 'client', page: '1', limit: '5', dossier_id: '20' });
+  });
+
+  it('garde le filtre dossier des documents (déclaré par @ApiProperty seul)', async () => {
+    const result = await pipe.transform(
+      { dossier_id: '20', page: '1' },
+      { type: 'query', metatype: SearchDocumentCustomerDto, data: undefined },
+    );
+
+    expect(Number((result as any).dossier_id)).toBe(20);
+  });
+
+  it('garde dans un body les champs déclarés par @ApiProperty seul', async () => {
+    class SwaggerOnlyDto {
+      @ApiProperty() note?: string;
+      @IsOptional() @IsString() search?: string;
+    }
+    const result = await pipe.transform(
+      { note: 'à garder', search: 'x', id: 4 },
+      { type: 'body', metatype: SwaggerOnlyDto, data: undefined },
+    );
+
+    expect(result).toEqual({ note: 'à garder', search: 'x' });
   });
 
   it('retire les propriétés inconnues d’un body sans les refuser', async () => {

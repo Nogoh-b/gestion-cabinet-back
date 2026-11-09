@@ -141,7 +141,7 @@ export class FilesUtil {
     },
   ): Promise<UploadedFileInfo> {
     console.log('Upload path ', uploadDir);
-    const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+    const APP_URL = process.env.APP_URL || process.env.API_PUBLIC_URL || 'http://localhost:3000';
     const UPLOADS_URL_PREFIX = '/uploads'; // Le préfixe d'URL pour vos fichiers
 
     // Déterminer le nom du fichier : personnalisé ou généré automatiquement

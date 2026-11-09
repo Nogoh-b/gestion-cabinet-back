@@ -51,6 +51,18 @@ export function toUsd(credits: number, usdPerCredit: number): number {
 }
 
 /** NULL / -1 = illimité. */
+/**
+ * Forfait IA effectif : celui réglé pour le cabinet s'il existe (-1 =
+ * illimité), sinon celui du plan.
+ */
+export function effectiveAllowance(
+  planAllowance: number | null | undefined,
+  cabinetOverride: number | null | undefined,
+): number | null | undefined {
+  if (cabinetOverride !== null && cabinetOverride !== undefined) return Number(cabinetOverride);
+  return planAllowance;
+}
+
 export function isUnlimitedAllowance(allowance: number | null | undefined): boolean {
   return allowance === null || allowance === undefined || Number(allowance) === -1;
 }

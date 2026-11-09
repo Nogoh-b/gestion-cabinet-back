@@ -42,6 +42,8 @@ import { PaiementResponseDto } from './dto/paiement-response.dto';
 import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
 import { Paiement } from './entities/paiement.entity';
+import { ModuleRef } from '@nestjs/core';
+import { FactureService } from '../facture/facture.service';
 
 export interface PaymentActor {
   id?: number;
@@ -74,8 +76,25 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     private readonly outboxService: OutboxService,
     private readonly auditService: AuditService,
     private readonly antivirusScanner: AntivirusScannerService,
+    private readonly moduleRef: ModuleRef,
   ) {
     super(repository, paginationService);
+  }
+
+  /**
+   * Une facture « Envoyée » (émise) est validée — comptabilisation comprise —
+   * avant d'être encaissée, comme avant la sécurisation où l'encaissement se
+   * faisait directement sur la facture envoyée. Un brouillon reste refusé.
+   */
+  private async validateSentInvoice(factureId: string, actor: PaymentActor): Promise<void> {
+    const facture = await this.factureRepository.findOne({
+      where: { id: factureId, tenant_id: getCurrentTenantId() } as any,
+      select: ['id', 'status', 'nature'],
+    });
+    if (!facture || Number(facture.status) !== StatutFacture.ENVOYEE) return;
+    if (facture.nature === InvoiceNature.CREDIT_NOTE) return;
+    const factures = this.moduleRef.get(FactureService, { strict: false });
+    await factures.validateInvoice(factureId, actor);
   }
 
   protected getDefaultSearchOptions(): SearchOptions {
@@ -113,6 +132,8 @@ export class PaiementService extends BaseServiceV1<Paiement> {
           sha256: string;
         }
       | undefined;
+
+    await this.validateSentInvoice(String(createDto.factureId), actor);
 
     if (file) {
       storedProof = await this.storePrivateProof(file);
@@ -251,10 +272,13 @@ export class PaiementService extends BaseServiceV1<Paiement> {
         where: {
           dossier_id: dossierId,
           tenant_id: tenantId,
+          // « Envoyée » comprise : validée automatiquement à l'encaissement.
           status: In(
-            [StatutFacture.VALIDEE, StatutFacture.PARTIELLEMENT_PAYEE].map(
-              String,
-            ) as unknown as StatutFacture[],
+            [
+              StatutFacture.ENVOYEE,
+              StatutFacture.VALIDEE,
+              StatutFacture.PARTIELLEMENT_PAYEE,
+            ].map(String) as unknown as StatutFacture[],
           ),
         },
         order: { dateEcheance: 'ASC', dateFacture: 'ASC' },
@@ -274,7 +298,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     });
     if (!receivable.length) {
       throw new BadRequestException(
-        'Aucune facture validée à encaisser sur ce dossier',
+        'Aucune facture émise à encaisser sur ce dossier : les brouillons doivent d’abord être émis.',
       );
     }
 
@@ -873,7 +897,9 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       ].includes(facture.status)
     ) {
       throw new BadRequestException(
-        'La facture doit être validée et non annulée avant de recevoir un paiement',
+        Number(facture.status) === StatutFacture.BROUILLON
+          ? 'Cette facture est encore un brouillon : émettez-la avant de l’encaisser.'
+          : 'Cette facture est annulée ou déjà soldée : elle ne peut plus recevoir de paiement.',
       );
     }
   }

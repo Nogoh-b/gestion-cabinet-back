@@ -10,6 +10,8 @@ import { InvoiceLine, BillableItem, DossierBillingProfile, DossierBillingRule } 
 import { DossierAction, DossierActionDocumentLink } from '../case-workflow/entities/dossier-action.entity';
 import { User } from '../iam/user/entities/user.entity';
 import { runWithTenantContext } from 'src/core/tenant/tenant.context';
+import * as membership from '../dossiers/dossier-membership-scope';
+import { In } from 'typeorm';
 
 // archiver est publié en ESM : remplacé par une archive factice.
 jest.mock('archiver', () => ({ ZipArchive: jest.fn() }));
@@ -347,10 +349,18 @@ describe('offline viewer template', () => {
 
 /**
  * GET /exports/dossiers : même portée que la liste des dossiers — un avocat
- * n'exporte que les dossiers dont il est l'avocat responsable, même en
+ * n'exporte que les dossiers dont il est membre, même en
  * devinant l'identifiant d'un dossier d'un confrère.
  */
 describe('DossierExportService role scope', () => {
+  // Portée par appartenance : Me Ndi (31) n'est membre que du dossier 7.
+  beforeEach(() => {
+    jest
+      .spyOn(membership, 'dossierMembershipScope')
+      .mockImplementation(async (_db: any, user: any) =>
+        membership.canSeeAllDossiers(user) ? {} : { id: In([7]) },
+      );
+  });
   // Dossier 7 : Me Ndi (31) ; dossier 8 : un confrère (40).
   const rows = [
     { id: 7, dossier_number: 'DOS-2026-0007', lawyer_id: 31, client_id: 83 },
@@ -390,8 +400,9 @@ describe('DossierExportService role scope', () => {
     const user = { id: 31, ...lawyer };
 
     expect(await exportRoots([7, 8], user)).toEqual(['Dossier_DOS-2026-0007']);
-    expect(findOne).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 8, lawyer: { id: 31 } } }),
+    // Le dossier du confrère n'est même pas lu.
+    expect(findOne).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: 8 }) }),
     );
   });
 

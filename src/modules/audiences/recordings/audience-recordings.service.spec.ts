@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { existsSync, promises as fs } from 'fs';
 import { join } from 'path';
+import { In } from 'typeorm';
 
 import { TenantContext } from 'src/core/tenant/tenant.context';
 import { UserRole } from 'src/core/enums/user-role.enum';
@@ -13,6 +14,7 @@ import {
   resolveAudioRecordingSettings,
   sanitizeAudioRecordingPatch,
 } from 'src/modules/platform/settings/audio-recording.setting';
+import * as membership from 'src/modules/dossiers/dossier-membership-scope';
 import { AudienceRecording } from './audience-recording.entity';
 import {
   AudienceRecordingsService,
@@ -23,6 +25,12 @@ import {
 // Cabinet fictif : son dossier `uploads/audiences/<TENANT>` est supprimé après les tests.
 const TENANT = 990042;
 const tenant = new TenantContext();
+// Portée par appartenance : l'avocat 5 est membre du seul dossier 11.
+jest
+  .spyOn(membership, 'dossierMembershipScope')
+  .mockImplementation(async (_db: any, user: any) =>
+    user && !membership.canSeeAllDossiers(user) ? { id: In([11]) } : {},
+  );
 
 function recording(overrides: Partial<AudienceRecording> = {}): AudienceRecording {
   return Object.assign(new AudienceRecording(), {
@@ -127,13 +135,16 @@ describe('AudienceRecordingsService', () => {
     expect(planQuota.checkStorageLimit).not.toHaveBeenCalled();
   });
 
-  it('applique la portée de dossier d’un avocat et répond 404 hors portée', async () => {
+  it('limite un avocat aux dossiers dont il est membre et répond 404 hors portée', async () => {
     const { service, audienceRepo } = setup({ audience: null });
     await expect(
       tenant.run(TENANT, () => service.list(7, { id: 5, role: UserRole.AVOCAT })),
     ).rejects.toThrow(NotFoundException);
     const where = (audienceRepo.findOne.mock.calls[0] as any[])[0].where;
-    expect(where).toMatchObject({ id: 7, tenant_id: TENANT, dossier: { lawyer: { id: 5 } } });
+    // Dossiers dont il est membre, ou audience sans dossier.
+    expect(where[0]).toMatchObject({ id: 7, tenant_id: TENANT });
+    expect(where[0].dossier.id.value).toEqual([11]);
+    expect(where[1]).toMatchObject({ id: 7, tenant_id: TENANT });
   });
 
   it('enregistre un segment et ne transcrit pas sans auto_transcribe', async () => {

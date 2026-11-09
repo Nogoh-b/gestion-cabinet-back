@@ -59,11 +59,12 @@ function mimeToExt(mime: string): string {
 /**
  * Construit l'URL publique absolue d'un logo à partir de son chemin relatif
  * (ex: `cabinets/logo-1-1700000000.png`). Renvoie `null` si aucun fichier.
- * Base = `APP_URL` (.env), ex: `https://api-cabinet.bysoft-corp.com`.
+ * Base = `APP_URL`, sinon `API_PUBLIC_URL` (.env) : sans base, l'URL serait
+ * relative et le navigateur la chercherait sur le domaine du front (404).
  */
 export function logoFileToUrl(relPath?: string | null): string | null {
   if (!relPath) return null;
-  const base = (process.env.APP_URL ?? '').replace(/\/+$/, '');
+  const base = (process.env.APP_URL || process.env.API_PUBLIC_URL || '').replace(/\/+$/, '');
   // chemin relatif normalisé en URL (slashes)
   const clean = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
   return `${base}/${UPLOAD_FOLDER_NAME}/${clean}`;

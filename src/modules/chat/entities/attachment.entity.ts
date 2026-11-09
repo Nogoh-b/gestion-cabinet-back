@@ -144,7 +144,7 @@ export class Attachment extends BaseEntity {
 
   @Expose()
   get contentUrl(): string {
-    const base = (process.env.APP_URL ?? '').replace(/\/+$/, '');
+    const base = (process.env.APP_URL || process.env.API_PUBLIC_URL || '').replace(/\/+$/, '');
     return `${base}/chat/attachments/${this.id}/content`;
   }
 

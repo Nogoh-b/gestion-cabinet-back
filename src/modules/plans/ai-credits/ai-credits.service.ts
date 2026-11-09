@@ -19,6 +19,7 @@ import {
   CreditPosition,
   creditPosition,
   isUnlimitedAllowance,
+  effectiveAllowance,
   overflowToCharge,
   packPlanPct,
   parseCreditSettings,
@@ -123,9 +124,13 @@ export class AiCreditsService {
    */
   async position(tenantId: number, plan?: Plan | null, now = new Date()): Promise<CreditPosition> {
     const resolved = plan === undefined ? await this.planQuota.getCabinetPlan(tenantId) : plan;
-    const [used, sums] = await Promise.all([this.monthUsed(tenantId, now), this.ledgerSums(tenantId)]);
+    const [used, sums, override] = await Promise.all([
+      this.monthUsed(tenantId, now),
+      this.ledgerSums(tenantId),
+      this.cabinetOverride(tenantId),
+    ]);
     return creditPosition({
-      allowance: resolved?.ai_credits_per_month,
+      allowance: effectiveAllowance(resolved?.ai_credits_per_month, override),
       used,
       balance: sums.balance,
       granted: sums.granted,
@@ -140,8 +145,40 @@ export class AiCreditsService {
   /** Vrai si le cabinet a épuisé son forfait du mois et ses crédits achetés. */
   async isExhausted(tenantId: number, plan?: Plan | null): Promise<boolean> {
     const resolved = plan === undefined ? await this.planQuota.getCabinetPlan(tenantId) : plan;
-    if (isUnlimitedAllowance(resolved?.ai_credits_per_month)) return false;
+    const allowance = effectiveAllowance(resolved?.ai_credits_per_month, await this.cabinetOverride(tenantId));
+    if (isUnlimitedAllowance(allowance)) return false;
     return (await this.position(tenantId, resolved)).exhausted;
+  }
+
+  /** Forfait IA réglé pour le cabinet (NULL : celui du plan, -1 : illimité). */
+  async cabinetOverride(tenantId: number): Promise<number | null> {
+    const rows = await this.db.query('SELECT ai_credits_override FROM cabinets WHERE id = ? LIMIT 1', [tenantId]);
+    const value = rows?.[0]?.ai_credits_override;
+    return value === null || value === undefined ? null : Number(value);
+  }
+
+  /**
+   * Règle le forfait IA du cabinet : `plan` (celui du plan), `unlimited`, ou
+   * `credits` crédits par mois. Les crédits achetés ou offerts prennent le
+   * relais une fois le forfait épuisé.
+   */
+  async setCabinetAllowance(
+    tenantId: number,
+    input: { mode: 'plan' | 'unlimited' | 'credits'; credits?: number | null },
+  ): Promise<number | null> {
+    let value: number | null = null;
+    if (input.mode === 'unlimited') value = -1;
+    if (input.mode === 'credits') {
+      const credits = Math.round(Number(input.credits));
+      if (!Number.isFinite(credits) || credits < 0 || credits > 100_000_000) {
+        throw new BadRequestException('Indiquez un nombre de crédits mensuels positif ou nul.');
+      }
+      value = credits;
+    }
+    const cabinet = await this.db.query('SELECT id FROM cabinets WHERE id = ? LIMIT 1', [tenantId]);
+    if (!cabinet.length) throw new NotFoundException(`Cabinet #${tenantId} introuvable`);
+    await this.db.query('UPDATE cabinets SET ai_credits_override = ? WHERE id = ?', [value, tenantId]);
+    return value;
   }
 
   /** Vue chiffrée pour la plateforme (crédits, équivalent en USD). */
@@ -150,10 +187,17 @@ export class AiCreditsService {
       this.planQuota.getCabinetPlan(tenantId),
       this.loadSettings(),
     ]);
-    const position = await this.position(tenantId, plan);
+    const [position, override] = await Promise.all([
+      this.position(tenantId, plan),
+      this.cabinetOverride(tenantId),
+    ]);
     const usd = settings.usd_per_credit;
     return {
       usd_per_credit: usd,
+      // Origine du forfait : celui du plan ou celui réglé pour le cabinet.
+      allowance_mode: override === null ? 'plan' : override === -1 ? 'unlimited' : 'credits',
+      plan_name: plan?.name ?? null,
+      plan_allowance: isUnlimitedAllowance(plan?.ai_credits_per_month) ? null : Number(plan?.ai_credits_per_month),
       unlimited: position.unlimited,
       allowance: position.unlimited ? null : position.allowance,
       used: position.used,
@@ -227,12 +271,13 @@ export class AiCreditsService {
     const { start, end } = periodBounds(period);
     const settings = await this.loadSettings();
     const rows: Array<{ tenant_id: number; cost: string; allowance: number | null }> = await this.db.query(
-      `SELECT c.tenant_id, SUM(c.cost_usd) AS cost, p.ai_credits_per_month AS allowance
+      `SELECT c.tenant_id, SUM(c.cost_usd) AS cost,
+              COALESCE(cab.ai_credits_override, p.ai_credits_per_month) AS allowance
          FROM ai_request_calls c
          JOIN cabinets cab ON cab.id = c.tenant_id
          LEFT JOIN plans p ON p.id = cab.plan_id
         WHERE c.tenant_id > 0 AND c.created_at >= ? AND c.created_at < ? AND c.cost_usd IS NOT NULL
-        GROUP BY c.tenant_id, p.ai_credits_per_month`,
+        GROUP BY c.tenant_id, cab.ai_credits_override, p.ai_credits_per_month`,
       [start, end],
     );
     let settled = 0;

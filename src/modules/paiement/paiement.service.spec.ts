@@ -72,6 +72,7 @@ describe('PaiementService - cycle et concurrence', () => {
       outbox as any,
       audit as any,
       antivirus as any,
+      { get: () => ({ validateInvoice: jest.fn() }) } as any,
     );
     jest
       .spyOn(service as any, 'getEffectiveInvoiceTotalMinor')

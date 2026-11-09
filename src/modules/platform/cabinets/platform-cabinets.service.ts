@@ -310,11 +310,19 @@ export class PlatformCabinetsService {
       { planId: dto.plan_id, note: dto.note },
       platformActor(admin),
     );
+    // L'abonnement illimité ne rend pas l'IA illimitée : forfait du plan par
+    // défaut, sauf choix explicite (illimitée ou crédits par mois).
+    const aiMode = dto.ai_mode ?? 'plan';
+    const aiOverride =
+      aiMode === 'unlimited' ? -1 : aiMode === 'credits' ? Math.max(0, Math.round(Number(dto.ai_credits ?? 0))) : null;
+    await this.db.query('UPDATE cabinets SET ai_credits_override = ? WHERE id = ?', [aiOverride, cabinetId]);
+    const aiLabel =
+      aiMode === 'unlimited' ? 'IA illimitée' : aiMode === 'credits' ? `IA : ${aiOverride} crédits par mois` : 'IA : forfait du plan';
     return this.done(
       cabinetId,
       'subscription.unlimited_grant',
       before,
-      `Abonnement illimité offert${dto.note ? ` : ${dto.note}` : ''}`,
+      `Abonnement illimité offert (${aiLabel})${dto.note ? ` : ${dto.note}` : ''}`,
     );
   }
 

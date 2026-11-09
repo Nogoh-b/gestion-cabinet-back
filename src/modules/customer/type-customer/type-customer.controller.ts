@@ -5,6 +5,7 @@ import {
   Post,
   Body,
   Param,
+  Patch,
   Put,
   UseGuards,
   Query,
@@ -97,6 +98,8 @@ export class TypeCustomersController {
   }
 
   @Put(':id')
+  // Le front modifie en PATCH (BaseService) : même traitement.
+  @Patch(':id')
   @RequirePermissions('UPDATE_TYPE_CUSTOMER')
   update(
     @Param('id') id: number,

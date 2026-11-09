@@ -97,6 +97,17 @@ class GrantCreditsDto {
   note?: string;
 }
 
+class CabinetAiAllowanceDto {
+  @IsIn(['plan', 'unlimited', 'credits'])
+  mode: 'plan' | 'unlimited' | 'credits';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100_000_000)
+  credits?: number;
+}
+
 class AiPurchasesQueryDto {
   @IsOptional()
   @IsIn(['pending', 'awaiting_validation', 'paid', 'failed', 'refunded', 'cancelled'])
@@ -318,5 +329,22 @@ export class PlatformCabinetAiCreditsController {
     @CurrentPlatformAdmin() admin: PlatformPrincipal,
   ) {
     return this.credits.grant(cabinetId, body.credits, body.note, admin.id);
+  }
+
+  @Put('allowance')
+  @PlatformRoles('owner', 'finance')
+  @PlatformAudit({
+    action: 'ai.credits.allowance',
+    targetType: 'cabinet',
+    cabinetParam: 'cabinetId',
+    targetParam: 'cabinetId',
+  })
+  @ApiOperation({ summary: 'Règle le forfait IA mensuel du cabinet (plan, illimité ou nombre de crédits)' })
+  async setAllowance(
+    @Param('cabinetId', ParseIntPipe) cabinetId: number,
+    @Body() body: CabinetAiAllowanceDto,
+  ) {
+    await this.credits.setCabinetAllowance(cabinetId, body);
+    return this.credits.detail(cabinetId);
   }
 }

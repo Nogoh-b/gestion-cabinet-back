@@ -25,6 +25,7 @@ import {
 } from './entities/salary-advance.entity';
 import type { PayrollActor } from './payslips.service';
 import { HrNotificationsService } from './services/hr-notifications.service';
+import { assertDistinctActor } from 'src/core/security/separation-of-duties';
 
 @Injectable()
 export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
@@ -217,11 +218,11 @@ export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
         );
       }
       const user = await this.resolveActor(manager, actor);
-      if (advance.requested_by_id === user.id) {
-        throw new ForbiddenException(
-          'Le demandeur ne peut pas approuver sa propre avance',
-        );
-      }
+      assertDistinctActor(
+        advance.requested_by_id,
+        user.id,
+        'Le demandeur ne peut pas approuver sa propre avance',
+      );
       advance.status = SalaryAdvanceStatus.APPROVED;
       advance.approved_by_id = user.id;
       advance.approved_by = user;
@@ -270,11 +271,11 @@ export class SalaryAdvancesService extends BaseServiceV1<SalaryAdvance> {
         );
       }
       const user = await this.resolveActor(manager, actor);
-      if (advance.approved_by_id === user.id) {
-        throw new ForbiddenException(
-          'Le payeur doit être distinct de l’approbateur',
-        );
-      }
+      assertDistinctActor(
+        advance.approved_by_id,
+        user.id,
+        'Le payeur doit être distinct de l’approbateur',
+      );
       advance.status = SalaryAdvanceStatus.PAID;
       advance.payment_date = paymentDate;
       advance.payment_method = dto.paymentMethod;

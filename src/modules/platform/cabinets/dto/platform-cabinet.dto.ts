@@ -103,6 +103,17 @@ export class GrantUnlimitedDto {
   @IsInt()
   plan_id: number;
 
+  @ApiPropertyOptional({
+    description: "IA : forfait du plan (défaut), illimitée, ou nombre de crédits par mois. L'abonnement illimité ne rend pas l'IA illimitée.",
+    enum: ['plan', 'unlimited', 'credits'],
+  })
+  @IsOptional() @IsIn(['plan', 'unlimited', 'credits'])
+  ai_mode?: 'plan' | 'unlimited' | 'credits';
+
+  @ApiPropertyOptional({ description: 'Crédits IA par mois quand ai_mode = credits' })
+  @IsOptional() @IsInt() @Min(0)
+  ai_credits?: number;
+
   @ApiPropertyOptional()
   @IsOptional() @IsString() @MaxLength(500)
   note?: string;

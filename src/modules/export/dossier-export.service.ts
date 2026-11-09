@@ -17,10 +17,8 @@ import {
   UPLOAD_PATH,
 } from 'src/core/common/constants/constants';
 import { Dossier } from '../dossiers/entities/dossier.entity';
-import {
-  type DossierScopeUser,
-  dossierRoleScope,
-} from '../dossiers/dossier-role-scope';
+import { type DossierScopeUser } from '../dossiers/dossier-role-scope';
+import { dossierMembershipScope } from '../dossiers/dossier-membership-scope';
 import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
 import { Facture } from '../facture/entities/facture.entity';
 import { Paiement } from '../paiement/entities/paiement.entity';
@@ -382,9 +380,18 @@ export class DossierExportService {
     // Mêmes règles que les réponses JSON : sans droit sur les factures, ni
     // factures, ni paiements, ni totaux ; salaires et taux masqués partout.
     const rights = exportRights(user);
-    // Même portée que la liste des dossiers : un avocat n'exporte que ses
-    // dossiers ; les autres identifiants sont ignorés comme les absents.
-    const scope = dossierRoleScope(user);
+    // Même portée que la liste des dossiers : le personnel n'exporte que les
+    // dossiers dont il est membre ; les autres identifiants sont ignorés.
+    // La portée du personnel est une liste d'identifiants (`id: In([...])`) :
+    // elle filtre les identifiants demandés, sans jamais remplacer l'identifiant
+    // cherché ; le reste (portée client) s'ajoute au `where`.
+    const { id: allowedIds, ...scope } = (await dossierMembershipScope(
+      this.db,
+      user as any,
+    )) as FindOptionsWhere<Dossier> & { id?: { value?: unknown } };
+    const allowed = Array.isArray(allowedIds?.value)
+      ? new Set((allowedIds.value as unknown[]).map(Number))
+      : null;
 
     // Refus rapide, avant tout calcul, si même l'estimation ne tient pas.
     await this.quota.checkStorageLimit(tenantId, await this.estimateBytes(ids));
@@ -417,6 +424,7 @@ export class DossierExportService {
     let size = 0;
     try {
       for (const id of ids) {
+        if (allowed && !allowed.has(Number(id))) continue;
         added += (await this.addDossier(archive, id, rights, scope, ctx)) ? 1 : 0;
       }
       if (added === 0) {

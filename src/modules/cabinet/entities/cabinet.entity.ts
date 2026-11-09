@@ -142,6 +142,21 @@ export class Cabinet {
   @JoinColumn({ name: 'plan_id' })
   activePlan: Plan;
 
+  /**
+   * Forfait IA propre au cabinet, réglé par la plateforme : NULL = celui du
+   * plan, -1 = illimité, sinon crédits par mois. Un abonnement illimité
+   * n'implique pas une IA illimitée.
+   */
+  @Column({ type: 'int', nullable: true, name: 'ai_credits_override' })
+  @BusinessColumn({
+    label: 'Forfait IA du cabinet',
+    description: 'Non exposé',
+    importance: 'low',
+    group: 'technique',
+    ignored: true,
+  })
+  ai_credits_override: number | null;
+
   /** Mode de routing préféré pour ce cabinet */
   @Column({ default: 'path' })
   @BusinessColumn({

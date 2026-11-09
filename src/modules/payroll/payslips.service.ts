@@ -37,6 +37,7 @@ import {
 } from './entities/salary-advance.entity';
 import { PayrollCalculatorService } from './services/payroll-calculator.service';
 import { PayrollGenerationService } from './services/payroll-generation.service';
+import { assertDistinctActor } from 'src/core/security/separation-of-duties';
 
 export interface PayrollActor {
   userId?: number | null;
@@ -303,11 +304,11 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
       }
       this.assertPeriodDraft(payslip.period);
       const user = await this.resolveActor(manager, actor);
-      if (payslip.prepared_by_id === user.id) {
-        throw new ForbiddenException(
-          'Le préparateur ne peut pas valider son propre bulletin',
-        );
-      }
+      assertDistinctActor(
+        payslip.prepared_by_id,
+        user.id,
+        'Le préparateur ne peut pas valider son propre bulletin',
+      );
       if (payslip.lines?.length) {
         const totals = this.calculator.computeTotals(payslip.lines);
         payslip.gross_amount = this.fromMinorUnits(
@@ -372,11 +373,11 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
         );
       }
       const user = await this.resolveActor(manager, actor);
-      if (payslip.validated_by_id === user.id) {
-        throw new ForbiddenException(
-          'Le payeur doit être distinct du validateur',
-        );
-      }
+      assertDistinctActor(
+        payslip.validated_by_id,
+        user.id,
+        'Le payeur doit être distinct du validateur',
+      );
       payslip.status = PayslipStatus.PAID;
       payslip.payment_date = paymentDate;
       payslip.payment_method = dto.paymentMethod;

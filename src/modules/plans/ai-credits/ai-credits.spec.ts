@@ -8,6 +8,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { PlanQuotaService } from '../plan-quota.service';
 import {
   creditPosition,
+  effectiveAllowance,
   overflowToCharge,
   packPlanPct,
   parseCreditSettings,
@@ -205,5 +206,25 @@ describe('AiCreditsService — achats et règlement mensuel', () => {
   it('previousPeriod donne le mois écoulé', () => {
     expect(previousPeriod(new Date(2026, 10, 1))).toBe('2026-10');
     expect(previousPeriod(new Date(2026, 0, 2))).toBe('2025-12');
+  });
+});
+
+describe('forfait IA réglé pour le cabinet', () => {
+  it('prime sur celui du plan, -1 rendant l’IA illimitée', () => {
+    expect(effectiveAllowance(5000, null)).toBe(5000);
+    expect(effectiveAllowance(null, 2000)).toBe(2000);
+    expect(effectiveAllowance(5000, -1)).toBe(-1);
+    expect(effectiveAllowance(null, 0)).toBe(0);
+  });
+
+  it('un plan illimité devient limité quand le cabinet a un forfait', () => {
+    const position = creditPosition({
+      allowance: effectiveAllowance(null, 100),
+      used: 150,
+      balance: 30,
+      granted: 30,
+    });
+    expect(position.unlimited).toBe(false);
+    expect(position.exhausted).toBe(true);
   });
 });

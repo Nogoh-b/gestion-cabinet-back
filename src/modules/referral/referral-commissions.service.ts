@@ -43,6 +43,7 @@ import {
   ReferralCommission,
 } from './entities/referral-commission.entity';
 import { Referrer } from './entities/referral.entity';
+import { assertDistinctActor } from 'src/core/security/separation-of-duties';
 
 export interface ReferralCommissionActor {
   userId?: number;
@@ -265,11 +266,11 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
         );
       }
       const user = await this.resolveActor(manager, actor);
-      if (commission.calculated_by_id === user.id) {
-        throw new ForbiddenException(
-          'Le calculateur ne peut pas approuver sa propre commission',
-        );
-      }
+      assertDistinctActor(
+        commission.calculated_by_id,
+        user.id,
+        'Le calculateur ne peut pas approuver sa propre commission',
+      );
       commission.status = CommissionStatus.APPROVED;
       commission.approved_by_id = user.id;
       commission.approved_by = user;
@@ -306,11 +307,11 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
         );
       }
       const user = await this.resolveActor(manager, actor);
-      if (commission.approved_by_id === user.id) {
-        throw new ForbiddenException(
-          "Le payeur doit être distinct de l'approbateur",
-        );
-      }
+      assertDistinctActor(
+        commission.approved_by_id,
+        user.id,
+        "Le payeur doit être distinct de l'approbateur",
+      );
       commission.status = CommissionStatus.PAID;
       commission.payment_date = paymentDate;
       commission.payment_method = dto.paymentMethod;

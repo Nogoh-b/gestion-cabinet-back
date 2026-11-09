@@ -681,7 +681,7 @@ export class PlatformSampleDataService {
 
   private async createDocuments(c: Ctx, dossiers: any[]) {
     const cabinetDir = FilesUtil.sanitizeName(c.cabinet.name || 'cabinet').toLowerCase() || 'cabinet';
-    const base = (process.env.APP_URL ?? '').replace(/\/+$/, '');
+    const base = (process.env.APP_URL || process.env.API_PUBLIC_URL || '').replace(/\/+$/, '');
     const classification = await this.documentClassification(c);
     let n = 0;
     for (const [i, d] of dossiers.entries()) {

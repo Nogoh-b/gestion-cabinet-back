@@ -10,7 +10,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { promises as fs } from 'fs';
 import { isAbsolute, join, relative, resolve } from 'path';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
@@ -19,7 +19,8 @@ import {
   AudioRecordingSettings,
   readAudioRecordingSettings,
 } from 'src/modules/platform/settings/audio-recording.setting';
-import { DossierScopeUser, dossierRoleScope } from '../../dossiers/dossier-role-scope';
+import { DossierScopeUser } from '../../dossiers/dossier-role-scope';
+import { dossierMembershipScope } from '../../dossiers/dossier-membership-scope';
 import { Audience } from '../entities/audience.entity';
 import {
   AudienceRecording,
@@ -147,13 +148,14 @@ export class AudienceRecordingsService implements OnModuleInit {
     if (!Number.isInteger(audienceId) || audienceId <= 0) {
       throw new NotFoundException(`Audience ${audienceId} introuvable`);
     }
-    const scope = dossierRoleScope(user);
+    // Membres du dossier, responsable, admin (comme les autres écrans de
+    // l'audience) ; une audience sans dossier reste visible.
+    const scope = await dossierMembershipScope(this.repo.manager.connection, user as any);
+    const base = { id: audienceId, tenant_id: getCurrentTenantId() };
     const audience = await this.repo.manager.getRepository(Audience).findOne({
-      where: {
-        id: audienceId,
-        tenant_id: getCurrentTenantId(),
-        ...(Object.keys(scope).length ? { dossier: scope } : {}),
-      },
+      where: Object.keys(scope).length
+        ? [{ ...base, dossier: scope }, { ...base, dossier_id: IsNull() }]
+        : base,
     });
     if (!audience) throw new NotFoundException(`Audience ${audienceId} introuvable`);
     return audience;
