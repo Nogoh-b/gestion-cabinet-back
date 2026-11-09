@@ -15,11 +15,16 @@ const BATCH_SIZE = 25;
 const MAX_ATTEMPTS = 8;
 const STALE_LOCK_MINUTES = 10;
 
+/**
+ * Paramètres : [jeton, maintenant]. « Maintenant » vient de Node : mysql2 le
+ * convertit avec la timezone de la source de données (+01:00), comme les
+ * dates stockées ; UTC_TIMESTAMP() décalait chaque événement d'une heure.
+ */
 export function outboxClaimSql(): string {
   return `UPDATE outbox_events
              SET status = 'PROCESSING',
                  attempts = attempts + 1,
-                 locked_at = UTC_TIMESTAMP(),
+                 locked_at = @now,
                  locked_by = ?,
                  last_error = NULL
            WHERE deleted_at IS NULL
@@ -28,13 +33,13 @@ export function outboxClaimSql(): string {
                  status IN ('PENDING', 'FAILED')
                  AND (
                    next_attempt_at IS NULL
-                   OR next_attempt_at <= UTC_TIMESTAMP()
+                   OR next_attempt_at <= @now
                  )
                )
                OR (
                  status = 'PROCESSING'
                  AND locked_at < DATE_SUB(
-                   UTC_TIMESTAMP(),
+                   @now,
                    INTERVAL ${STALE_LOCK_MINUTES} MINUTE
                  )
                )
@@ -75,6 +80,7 @@ export class OutboxWorkerService {
   async claimBatch(): Promise<OutboxEvent[]> {
     return this.dataSource.transaction('READ COMMITTED', async (manager) => {
       const claimToken = randomUUID();
+      await manager.query('SET @now = ?', [new Date()]);
       await manager.query(outboxClaimSql(), [claimToken]);
 
       const events = await manager.getRepository(OutboxEvent).find({
@@ -123,7 +129,7 @@ export class OutboxWorkerService {
         .update(OutboxEvent)
         .set({
           status: OutboxEventStatus.PROCESSED,
-          processedAt: () => 'UTC_TIMESTAMP()',
+          processedAt: new Date(),
           nextAttemptAt: null,
           lockedAt: null,
           lockedBy: null,

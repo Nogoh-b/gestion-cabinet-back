@@ -81,6 +81,7 @@ import { ActionDefinition } from '../entities/action-catalog.entity';
 import { CaseWorkflowEvent } from '../entities/workflow-audit.entity';
 import { WorkflowEventService } from './workflow-event.service';
 import { calculateActionBilling } from '../case-workflow.logic';
+import { isWinningOutcome, principalAmountFromDecision } from '../result-fee-from-decision';
 
 /** Effet d'une modification du profil sur les éléments et factures existants. */
 export interface ProfileSyncSummary {
@@ -2540,6 +2541,103 @@ export class CaseBillingService {
       });
       return saved;
     });
+  }
+
+  /**
+   * Décision favorable enregistrée : l'honoraire de résultat prévu par la
+   * convention (profil du dossier) est créé automatiquement, sur la base du
+   * montant obtenu lu dans le dispositif (« en principal » de préférence).
+   * Sans montant lisible, un élément « à revoir » attend la base. Rien si la
+   * convention ne prévoit pas d'honoraire de résultat ou s'il est déjà facturé.
+   */
+  async resultFeeFromDecision(input: {
+    dossierId: number;
+    audienceId: number;
+    outcome?: string | null;
+    decisionText?: string | null;
+    decisionDate?: string | Date | null;
+    actorUserId: number;
+  }): Promise<BillableItem | null> {
+    if (!isWinningOutcome(input.outcome)) return null;
+    const tenantId = getCurrentTenantId();
+    const profile = await this.profileRepository.findOne({
+      where: { tenant_id: tenantId, dossier_id: input.dossierId },
+    });
+    if (
+      !profile?.result_fee_enabled ||
+      !(Number(profile.result_fee_rate) > 0)
+    ) {
+      return null;
+    }
+    const date = input.decisionDate ? new Date(input.decisionDate) : new Date();
+    const occurredAt = Number.isNaN(date.getTime()) ? new Date() : date;
+    const reference = `Décision du ${occurredAt.toLocaleDateString('fr-FR')}`;
+    const base = principalAmountFromDecision(input.decisionText);
+    const sourceEventKey = `DOSSIER:${input.dossierId}:RESULT_FEE`;
+    const existing = await this.itemRepository.findOne({
+      where: { tenant_id: tenantId, source_event_key: sourceEventKey },
+    });
+    if (
+      existing &&
+      ![BillableItemStatus.NEEDS_REVIEW, BillableItemStatus.TO_INVOICE].includes(
+        existing.status,
+      )
+    ) {
+      return existing; // déjà réservé ou facturé : ajustement manuel
+    }
+    if (base) {
+      return this.validateResultFee(
+        input.dossierId,
+        {
+          base_amount: base,
+          result_reference: reference,
+          occurred_at: occurredAt.toISOString().slice(0, 10),
+          note: `Calculé automatiquement depuis la décision de l'audience #${input.audienceId}`,
+        },
+        `DECISION:${input.audienceId}:${base}`,
+        input.actorUserId,
+      );
+    }
+    if (existing) return existing;
+    const dossier = await this.assertDossier(input.dossierId, tenantId);
+    const rate = Number(profile.result_fee_rate);
+    return this.itemRepository.save(
+      this.itemRepository.create({
+        tenant_id: tenantId,
+        dossier_id: input.dossierId,
+        client_id: dossier.client_id,
+        source_type: BillableSourceType.RESULT,
+        category: BillableCategory.RESULT_FEE,
+        calculation_mode: BillingCalculationMode.PERCENTAGE,
+        source_id: String(input.dossierId),
+        action_id: null,
+        billing_rule_id: null,
+        source_event_key: sourceEventKey,
+        occurred_at: occurredAt,
+        label: `Honoraire de résultat (${rate} %) — ${reference}`,
+        unit_label: null,
+        // « Renseigner le tarif » : prix unitaire = montant obtenu.
+        quantity: rate / 100,
+        unit_price: 0,
+        net_amount: 0,
+        tax_rate: Number(profile.vat_rate ?? 0),
+        tax_amount: 0,
+        gross_amount: 0,
+        currency: profile.currency,
+        status: BillableItemStatus.NEEDS_REVIEW,
+        calculation_snapshot: {
+          mode: BillingCalculationMode.PERCENTAGE,
+          rate,
+          resultReference: reference,
+          audienceId: input.audienceId,
+          actorUserId: input.actorUserId,
+        },
+        review_reason:
+          "Montant obtenu introuvable dans la décision : renseignez-le comme prix unitaire (base de l'honoraire de résultat).",
+        reserved_at: null,
+        invoice_line_id: null,
+      }),
+    );
   }
 
   async validateResultFee(

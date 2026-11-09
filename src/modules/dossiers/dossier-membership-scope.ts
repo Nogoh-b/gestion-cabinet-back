@@ -98,8 +98,8 @@ export async function isDossierMemberOrResponsible(
     .where('member.dossier_id = :dossierId', { dossierId: dossier.id })
     .andWhere('member.user_id = :userId', { userId })
     .andWhere('member.revoked_at IS NULL')
-    .andWhere('member.valid_from <= UTC_TIMESTAMP()')
-    .andWhere('(member.valid_until IS NULL OR member.valid_until > UTC_TIMESTAMP())')
+    .andWhere('member.valid_from <= :now', { now: new Date() })
+    .andWhere('(member.valid_until IS NULL OR member.valid_until > :now)', { now: new Date() })
     .getCount();
   return count > 0;
 }

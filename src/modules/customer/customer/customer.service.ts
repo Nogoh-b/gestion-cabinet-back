@@ -65,6 +65,7 @@ import {
   CommunicationStatus,
 } from './entities/customer-communication.entity';
 import { CreateCustomerCommunicationDto } from './dto/create-customer-communication.dto';
+import { appFrontendUrl } from 'src/core/ai-database/skills/skill-helpers';
 
 @Injectable()
 export class CustomersService extends BaseServiceV1<Customer> {
@@ -476,6 +477,18 @@ export class CustomersService extends BaseServiceV1<Customer> {
       delete updateData[readOnlyField];
     }
 
+    // Relations vides (0, '', null) : la relation actuelle est conservée ; sans
+    // cela l'identifiant vide partait tel quel en base (clé étrangère refusée :
+    // « Un élément lié est introuvable »).
+    for (const key of ['branch_id', 'location_city_id', 'type_customer_id']) {
+      const value = (updateData as Record<string, unknown>)[key];
+      if (value === undefined) continue;
+      if (value === null || value === '' || !(Number(value) > 0)) {
+        delete (updateData as Record<string, unknown>)[key];
+        delete (dto as Record<string, unknown>)[key];
+      }
+    }
+
     // Mettre à jour la ville de localisation si fournie
     if (dto.location_city_id) {
       updateData.location_city = await this.locationcityService.findOneSimple(
@@ -885,11 +898,23 @@ export class CustomersService extends BaseServiceV1<Customer> {
       await userRepo.save(user);
     }
 
-    // 4. Envoyer les identifiants par email
+    // 4. Envoyer les identifiants par email, avec le lien de connexion du
+    //    cabinet (/t/<code>/auth/login : le client arrive sur le bon cabinet).
+    const front = appFrontendUrl();
+    const cabinet = await this.dataSource.query(
+      'SELECT code FROM cabinets WHERE id = ? LIMIT 1',
+      [getCurrentTenantId()],
+    );
+    const code = String(cabinet?.[0]?.code ?? '').trim();
+    const loginUrl = front ? `${front}${code ? `/t/${code}` : ''}/auth/login` : '';
+    const greeting =
+      [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() ||
+      (customer as any).full_name ||
+      '';
     const emailBody = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #2563eb;">Accès à votre espace client</h2>
-        <p>Bonjour ${customer.first_name} ${customer.last_name},</p>
+        <p>Bonjour ${greeting},</p>
         <p>Voici vos identifiants de connexion à l'espace client du cabinet :</p>
         <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
           <tr>
@@ -901,7 +926,7 @@ export class CustomersService extends BaseServiceV1<Customer> {
             <td style="padding: 8px;">${rawPassword}</td>
           </tr>
         </table>
-        <p>Connectez-vous sur : <a href="${process.env.FRONTEND_URL ?? ''}/auth/login">${process.env.FRONTEND_URL ?? 'votre espace client'}</a></p>
+        ${loginUrl ? `<p>Connectez-vous sur : <a href="${loginUrl}">${loginUrl}</a></p>` : ''}
         <p style="color: #6b7280; font-size: 13px;">Pour des raisons de sécurité, nous vous recommandons de changer votre mot de passe lors de votre première connexion.</p>
         <p>Cordialement,<br>Le cabinet</p>
       </div>

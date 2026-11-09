@@ -805,7 +805,7 @@ export class AuthService {
     try {
       const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('account_opening', {
         firstName: spFirstName,
-        loginUrl: process.env.APP_FRONTEND_URL ? `${process.env.APP_FRONTEND_URL}/login` : '',
+        loginUrl: process.env.APP_FRONTEND_URL ? `${process.env.APP_FRONTEND_URL.replace(/\/+$/, '')}/auth/login` : '',
       });
       await this.mailService.sendDirect({ to: email, subject: rendered.subject, html: rendered.html });
     } catch {

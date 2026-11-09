@@ -73,10 +73,10 @@ export class ResourcePolicyService {
       .andWhere('member.dossier_id = :dossierId', { dossierId })
       .andWhere('member.user_id = :actorId', { actorId })
       .andWhere('member.revoked_at IS NULL')
-      .andWhere('member.valid_from <= UTC_TIMESTAMP()')
-      .andWhere(
-        '(member.valid_until IS NULL OR member.valid_until > UTC_TIMESTAMP())',
-      )
+      .andWhere('member.valid_from <= :now', { now: new Date() })
+      .andWhere('(member.valid_until IS NULL OR member.valid_until > :now)', {
+        now: new Date(),
+      })
       .getOne();
 
     const isAdmin =
@@ -236,9 +236,11 @@ export class ResourcePolicyService {
            AND member.tenant_id = dossier.tenant_id
            AND member.user_id = :actorId
            AND member.revoked_at IS NULL
-           AND member.valid_from <= UTC_TIMESTAMP()
-           AND (member.valid_until IS NULL OR member.valid_until > UTC_TIMESTAMP())`,
-          { actorId },
+           AND member.valid_from <= :now
+           AND (member.valid_until IS NULL OR member.valid_until > :now)`,
+          // Heure de Node : convertie comme les dates stockées (timezone de la
+          // source de données), contrairement à UTC_TIMESTAMP().
+          { actorId, now: new Date() },
         )
         .andWhere(
           resourceConfidentialityLevel > 0

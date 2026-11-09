@@ -77,6 +77,29 @@ export class CaseWorkflowSourceEventsService {
     });
   }
 
+  /** Décision favorable : honoraire de résultat de la convention. */
+  @OnEvent('case-workflow.source.decision-recorded', { async: true })
+  async onDecisionRecorded(
+    event: SourceEvent & {
+      outcome?: string | null;
+      decisionText?: string | null;
+      decisionDate?: string | null;
+      actorUserId?: number;
+    },
+  ): Promise<void> {
+    await this.handle(event, async () => {
+      if (!event.audienceId) return;
+      await this.billingService.resultFeeFromDecision({
+        dossierId: event.dossierId,
+        audienceId: event.audienceId,
+        outcome: event.outcome,
+        decisionText: event.decisionText,
+        decisionDate: event.decisionDate,
+        actorUserId: Number(event.actorUserId) || 0,
+      });
+    });
+  }
+
   @OnEvent('case-workflow.source.audience-postponed', { async: true })
   async onAudiencePostponed(event: SourceEvent): Promise<void> {
     await this.handle(event, () =>

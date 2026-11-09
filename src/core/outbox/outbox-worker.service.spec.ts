@@ -93,8 +93,12 @@ describe('OutboxWorkerService', () => {
     const events = await worker.claimBatch();
 
     expect(events).toEqual([event]);
-    expect(query).toHaveBeenCalledTimes(1);
-    const [sql, parameters] = query.mock.calls[0];
+    // « Maintenant » fourni par Node (même timezone que les dates stockées).
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[0][0]).toBe('SET @now = ?');
+    expect(query.mock.calls[0][1][0]).toBeInstanceOf(Date);
+    const [sql, parameters] = query.mock.calls[1];
+    expect(sql).not.toContain('UTC_TIMESTAMP');
     expect(sql).toBe(outboxClaimSql());
     expect(sql).toContain('UPDATE outbox_events');
     expect(sql).toContain('ORDER BY created_at ASC, id ASC');

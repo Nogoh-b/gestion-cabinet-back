@@ -2,7 +2,9 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import { DataSource, EntityManager, Repository } from 'typeorm';
@@ -29,6 +31,7 @@ export class AudienceDecisionService {
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
     private readonly outboxService: OutboxService,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   async addDecision(
@@ -52,6 +55,28 @@ export class AudienceDecisionService {
     decisionDto: DecisionAudienceDto,
     actor: ResourceActor,
   ): Promise<AddDecisionResponseDto> {
+    const response = await this.persistDecision(audienceId, decisionDto, actor);
+    // Après commit : honoraire de résultat d'une décision favorable.
+    const saved = await this.audienceRepository.findOne({ where: { id: audienceId } });
+    if (saved?.dossier_id) {
+      this.eventEmitter?.emit('case-workflow.source.decision-recorded', {
+        tenantId: getCurrentTenantId(),
+        dossierId: Number(saved.dossier_id),
+        audienceId,
+        outcome: saved.decision_outcome ?? null,
+        decisionText: saved.decision_text ?? null,
+        decisionDate: saved.decision_date ? String(saved.decision_date) : null,
+        actorUserId: Number(actor.userId ?? actor.id) || 0,
+      });
+    }
+    return response;
+  }
+
+  private async persistDecision(
+    audienceId: number,
+    decisionDto: DecisionAudienceDto,
+    actor: ResourceActor,
+  ): Promise<AddDecisionResponseDto> {
     return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
       const audience = await manager.findOne(Audience, {
         where: { id: audienceId },
@@ -63,7 +88,7 @@ export class AudienceDecisionService {
           `Audience avec ID ${audienceId} non trouvée`,
         );
       }
-      if (audience.status !== AudienceStatus.HELD) {
+      if (Number(audience.status) !== AudienceStatus.HELD) {
         throw new BadRequestException(
           `La décision ne peut être rédigée qu'après la tenue de l'audience`,
         );
