@@ -145,4 +145,27 @@ export class UserSettings extends TenantEntity {
     string,
     { in_app: boolean; email: boolean }
   > | null;
+
+  /**
+   * Visites guidées (tutoriel) déjà vues : { seen: { [tourId]: "v@date" } }.
+   * `disabled` coupe le lancement automatique ; les visites restent
+   * rejouables depuis l'Aide. NULL = tout est encore à découvrir.
+   */
+  @ApiProperty({
+    example: { seen: { welcome: '1@2026-11-13T10:00:00.000Z' }, disabled: false },
+    nullable: true,
+  })
+  @Column({ type: 'json', nullable: true, name: 'onboarding_tours' })
+  @BusinessColumn({
+    label: 'Visites guidées',
+    description: 'Non exposé',
+    importance: 'low',
+    ignored: true,
+  })
+  onboarding_tours: OnboardingToursState | null;
+}
+
+export interface OnboardingToursState {
+  seen: Record<string, string>;
+  disabled?: boolean;
 }

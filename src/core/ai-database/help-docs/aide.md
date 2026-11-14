@@ -1,7 +1,7 @@
 ---
 id: aide
 title: Centre d'aide, aide contextuelle et raccourcis
-keywords: centre d'aide, page d'aide, aide, aide contextuelle, bouton d'aide, point d'interrogation, rechercher dans l'aide, parcourir par categorie, questions frequentes, faq, guides et tutoriels, nous contacter, contacter le support, support, support par email, chat en direct, documentation, raccourci clavier, raccourcis clavier, ctrl+k, ctrl+n, ctrl+b, touche echap, fermer la modale, basculer la sidebar, recherche rapide, nouveau dossier au clavier, cette page vous a-t-elle ete utile
+keywords: visite guidee, visites guidees, tutoriel, presentation de la page, premiere visite, revoir la presentation, remettre a zero, reinitialiser les visites, bouton aide de la barre du haut, centre d'aide, page d'aide, aide, aide contextuelle, bouton d'aide, point d'interrogation, rechercher dans l'aide, parcourir par categorie, questions frequentes, faq, guides et tutoriels, nous contacter, contacter le support, support, support par email, chat en direct, documentation, raccourci clavier, raccourcis clavier, ctrl+k, ctrl+n, ctrl+b, touche echap, fermer la modale, basculer la sidebar, recherche rapide, nouveau dossier au clavier, cette page vous a-t-elle ete utile
 paths: /aide
 ---
 
@@ -20,6 +20,14 @@ Trois façons d'obtenir de l'aide : le **Centre d'aide** (page `/aide` : recherc
 ## L'aide contextuelle (bouton ?)
 - Sur chaque page métier, le bouton **? Aide** (icône `?`) ouvre un **panneau latéral** qui explique la page ouverte : à quoi elle sert, comment créer la ressource, les champs obligatoires, les astuces d'interface, la FAQ et les liens utiles.
 - Sur une liste, la section « Onglets de la fiche » est masquée pour rester concis ; sur une fiche détail, tout est affiché.
+
+## Les visites guidées
+- À la **première connexion**, une fenêtre propose une visite de la plateforme (2 min) : le menu de gauche, la barre du haut (recherche, + Nouveau, pastille des audiences imminentes, notifications, messages, compte) puis l'assistant IA. Choix : **Découvrir**, **Plus tard** (reproposée à la prochaine session) ou **Ne plus proposer**.
+- Ensuite, à la **première ouverture** de certaines pages (tableau de bord, fiche dossier, fiche audience), des bulles présentent leurs points importants (ex. sur la fiche dossier : la barre IA, la barre d'action rapide, Nouvelle action, Actions en cours). Pages présentées : tableau de bord, listes des dossiers, clients, documents, factures, audiences et diligences, agenda, ouverture de dossier, facturation, messages, fiches dossier, audience, client, document et facture ; les autres listes et fiches ont une présentation commune, vue une seule fois. **Passer** ou ✕ arrête la présentation, qui ne revient plus.
+- Bouton **?** de la barre du haut : **Visite de cette page** (la rejoue tout de suite), **Visite guidée de la plateforme**, **Centre d'aide**, **Revoir toutes les présentations** (remet les compteurs à zéro : chaque page se présente de nouveau à la prochaine visite).
+- Le panneau **? Aide** d'une page propose aussi **Lancer la visite de cette page**, et le **Centre d'aide** a une carte « Visites guidées » (visite de la plateforme, remise à zéro).
+- **Menu du compte > Préférences > Visites guidées** : interrupteur « Présenter chaque page à sa première ouverture », état de chaque visite (vue le…), **Lancer** / **Revoir**, et **Remettre tous les compteurs à zéro**.
+- Les visites vues sont mémorisées sur votre compte (pas sur le navigateur) : elles ne se rejouent pas sur un autre poste.
 
 ## Les raccourcis clavier
 | Touches | Action |

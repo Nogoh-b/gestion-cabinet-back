@@ -2,8 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
-import { UserSettings } from '../entities/user-settings.entity';
-import { UserSettingsDto } from '../dto/user-settings.dto';
+import {
+  OnboardingToursState,
+  UserSettings,
+} from '../entities/user-settings.entity';
+import {
+  OnboardingToursPatch,
+  UserSettingsDto,
+} from '../dto/user-settings.dto';
 import {
   APPEARANCE_FALLBACK,
   isFontSize,
@@ -25,6 +31,30 @@ const DEFAULT_USER_SETTINGS: Partial<UserSettings> = {
   user_avatar: null,
   user_phone: '',
 };
+
+/**
+ * Fusion clé par clé : deux onglets qui marquent chacun une visite comme vue
+ * ne s'écrasent pas. `reset` vide tout avant d'appliquer le reste du patch.
+ */
+function mergeOnboardingTours(
+  current: OnboardingToursState | null,
+  patch: OnboardingToursPatch,
+): OnboardingToursState {
+  const seen: Record<string, string> = patch.reset
+    ? {}
+    : { ...(current?.seen ?? {}) };
+  for (const [id, value] of Object.entries(patch.seen ?? {})) {
+    if (typeof value === 'string' && value) seen[id] = value.slice(0, 64);
+    else delete seen[id];
+  }
+  return {
+    seen,
+    disabled:
+      typeof patch.disabled === 'boolean'
+        ? patch.disabled
+        : Boolean(current?.disabled),
+  };
+}
 
 @Injectable()
 export class UserSettingsService {
@@ -60,16 +90,23 @@ export class UserSettingsService {
     let settings = await this.userSettingsRepository.findOne({
       where: { user_id: userId },
     });
+    const { onboarding_tours: toursPatch, ...fields } = dto;
 
     if (!settings) {
       settings = this.userSettingsRepository.create({
         user_id: userId,
         ...DEFAULT_USER_SETTINGS,
         ...(await this.cabinetAppearanceDefaults(tenantId)),
-        ...dto,
+        ...fields,
       });
     } else {
-      Object.assign(settings, dto);
+      Object.assign(settings, fields);
+    }
+    if (toursPatch) {
+      settings.onboarding_tours = mergeOnboardingTours(
+        settings.onboarding_tours,
+        toursPatch,
+      );
     }
 
     return this.userSettingsRepository.save(settings);

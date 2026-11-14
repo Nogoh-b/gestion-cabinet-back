@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsIn,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
@@ -101,4 +102,21 @@ export class UserSettingsDto {
   @IsOptional()
   @IsString()
   user_phone?: string;
+
+  /**
+   * Patch des visites guidées, fusionné clé par clé côté serveur :
+   * `seen[id] = null` oublie une visite, `reset: true` les oublie toutes.
+   */
+  @ApiPropertyOptional({
+    example: { seen: { 'page:dossier': '1@2026-11-13T10:00:00.000Z' } },
+  })
+  @IsOptional()
+  @IsObject()
+  onboarding_tours?: OnboardingToursPatch;
+}
+
+export interface OnboardingToursPatch {
+  seen?: Record<string, string | null>;
+  disabled?: boolean;
+  reset?: boolean;
 }
