@@ -17,6 +17,8 @@ import { Facture } from '../facture/entities/facture.entity';
 import { User } from '../iam/user/entities/user.entity';
 import { OnboardingChecklistService } from './services/onboarding-checklist.service';
 import { OnboardingChecklistController } from './controllers/onboarding-checklist.controller';
+import { OnboardingTeamService } from './services/onboarding-team.service';
+import { OnboardingTeamController } from './controllers/onboarding-team.controller';
 
 @Module({
   imports: [
@@ -27,8 +29,8 @@ import { OnboardingChecklistController } from './controllers/onboarding-checklis
     TypeOrmModule.forFeature([Customer, Dossier, Audience, DocumentCustomer, Facture, AiRequestLog, User]),
     EmailsModule,
   ],
-  controllers: [AppSettingsController, UserSettingsController, OnboardingChecklistController],
-  providers: [AppSettingsService, UserSettingsService, OnboardingChecklistService],
+  controllers: [AppSettingsController, UserSettingsController, OnboardingChecklistController, OnboardingTeamController],
+  providers: [AppSettingsService, UserSettingsService, OnboardingChecklistService, OnboardingTeamService],
   exports: [AppSettingsService, UserSettingsService, TypeOrmModule],
 })
 export class SettingsModule {}
