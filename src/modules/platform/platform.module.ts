@@ -51,6 +51,8 @@ import {
 import { PlatformAiController } from './ai/platform-ai.controller';
 import { PlatformOnboardingController } from './onboarding/platform-onboarding.controller';
 import { PlatformOnboardingService } from './onboarding/platform-onboarding.service';
+import { PlatformGuideController } from './guide/platform-guide.controller';
+import { PlatformGuideService } from './guide/platform-guide.service';
 import { PlatformSampleDataService } from './sample-data/platform-sample-data.service';
 import { PlatformCabinetDataController } from './sample-data/platform-cabinet-data.controller';
 import { DossierDeletionService } from '../dossiers/deletion/dossier-deletion.service';
@@ -97,6 +99,7 @@ import { PlatformAssistantService } from './assistant/platform-assistant.service
     TenantImpersonationController,
     PlatformAiController,
     PlatformOnboardingController,
+    PlatformGuideController,
     PlatformAiCreditsController,
     PlatformCabinetAiCreditsController,
     PlatformCabinetDataController,
@@ -119,6 +122,7 @@ import { PlatformAssistantService } from './assistant/platform-assistant.service
     PlatformAiService,
     PlatformAiUsageService,
     PlatformOnboardingService,
+    PlatformGuideService,
     PlatformReferenceAiService,
     PlatformSampleDataService,
     PlatformAssistantService,

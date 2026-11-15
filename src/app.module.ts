@@ -51,6 +51,7 @@ import { PayrollModule } from './modules/payroll/payroll.module';
 import { SupplierModule } from './modules/supplier/supplier.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { PlansModule } from './modules/plans/plans.module';
+import { GuideModule } from './modules/guide/guide.module';
 import { PdfTemplatesModule } from './modules/pdf-templates/pdf-templates.module';
 import { MailTemplateModule } from './modules/mail-template/mail-template.module';
 import { TemplateBlocksModule } from './modules/template-blocks/template-blocks.module';
@@ -220,6 +221,7 @@ dotenv.config();
     SupplierModule,
     SettingsModule,
     PlansModule,
+    GuideModule,
     SubscriptionsModule,
     PdfTemplatesModule,
     MailTemplateModule,
