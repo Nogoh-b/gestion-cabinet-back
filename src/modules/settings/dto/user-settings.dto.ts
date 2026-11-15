@@ -119,4 +119,6 @@ export interface OnboardingToursPatch {
   seen?: Record<string, string | null>;
   disabled?: boolean;
   reset?: boolean;
+  /** Métier choisi à l'accueil ; null l'efface. */
+  profile?: string | null;
 }

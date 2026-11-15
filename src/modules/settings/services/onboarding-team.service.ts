@@ -14,6 +14,8 @@ export interface OnboardingMemberDto {
   welcome_seen: boolean;
   /** Présentations automatiques désactivées par le membre. */
   disabled: boolean;
+  /** Métier choisi à l'accueil. */
+  profile: string | null;
   /** Visites vues (identifiants). */
   seen_tours: string[];
   completed: number;
@@ -86,6 +88,7 @@ export class OnboardingTeamService {
         email: row.email ?? null,
         welcome_seen: Boolean(seen.welcome),
         disabled: Boolean(state?.disabled),
+        profile: typeof state?.profile === 'string' ? state.profile : null,
         seen_tours: Object.keys(seen).filter((id) => !NON_TOUR_KEYS.has(id)),
         completed: Number(stats?.completed ?? 0),
         abandoned: Number(stats?.abandoned ?? 0),
@@ -105,7 +108,8 @@ export class OnboardingTeamService {
     const result = await this.db.query(
       `UPDATE user_settings s
          JOIN \`user\` u ON u.id = s.user_id
-          SET s.onboarding_tours = JSON_OBJECT('seen', JSON_OBJECT(), 'disabled', false),
+          SET s.onboarding_tours = JSON_OBJECT('seen', JSON_OBJECT(), 'disabled', false,
+                'profile', JSON_EXTRACT(s.onboarding_tours, '$.profile')),
               s.updated_at = s.updated_at
         WHERE u.tenant_id = ? AND u.deleted_at IS NULL AND u.customer_id IS NULL${scope}`,
       [tenantId, ...(ids ?? [])],

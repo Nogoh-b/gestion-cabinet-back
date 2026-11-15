@@ -121,4 +121,28 @@ describe('UserSettingsService', () => {
     expect(cabinetRepository.findOne).not.toHaveBeenCalled();
     expect(repository.create).not.toHaveBeenCalled();
   });
+
+  describe('visites guidées', () => {
+    function withTours(state: unknown) {
+      const { service, repository } = makeService(null);
+      (repository.findOne as jest.Mock<any>).mockImplementation(async () => ({ user_id: 42, onboarding_tours: state }));
+      return service;
+    }
+
+    it('enregistre le métier choisi et refuse un métier inconnu', async () => {
+      const saved = await withTours({ seen: { welcome: '1@x' } }).update(42, { onboarding_tours: { profile: 'comptable' } } as any);
+      expect(saved.onboarding_tours).toEqual({ seen: { welcome: '1@x' }, disabled: false, profile: 'comptable' });
+
+      const refused = await withTours({ seen: {}, profile: 'avocat' }).update(42, { onboarding_tours: { profile: 'pirate' } } as any);
+      expect(refused.onboarding_tours?.profile).toBe('avocat');
+    });
+
+    it("garde le métier après une remise à zéro, null l'efface", async () => {
+      const reset = await withTours({ seen: { welcome: '1@x' }, profile: 'admin' }).update(42, { onboarding_tours: { seen: {}, reset: true } } as any);
+      expect(reset.onboarding_tours).toEqual({ seen: {}, disabled: false, profile: 'admin' });
+
+      const cleared = await withTours({ seen: {}, profile: 'admin' }).update(42, { onboarding_tours: { profile: null } } as any);
+      expect(cleared.onboarding_tours?.profile).toBeUndefined();
+    });
+  });
 });

@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import {
+  ONBOARDING_PROFILES,
+  OnboardingProfile,
   OnboardingToursState,
   UserSettings,
 } from '../entities/user-settings.entity';
@@ -47,12 +49,17 @@ function mergeOnboardingTours(
     if (typeof value === 'string' && value) seen[id] = value.slice(0, 64);
     else delete seen[id];
   }
+  // Le métier survit à une remise à zéro : l'accueil le propose de nouveau.
+  let profile = current?.profile;
+  if (patch.profile === null) profile = undefined;
+  else if (ONBOARDING_PROFILES.includes(patch.profile as OnboardingProfile)) profile = patch.profile as OnboardingProfile;
   return {
     seen,
     disabled:
       typeof patch.disabled === 'boolean'
         ? patch.disabled
         : Boolean(current?.disabled),
+    ...(profile && { profile }),
   };
 }
 

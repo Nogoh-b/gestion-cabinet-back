@@ -168,4 +168,9 @@ export class UserSettings extends TenantEntity {
 export interface OnboardingToursState {
   seen: Record<string, string>;
   disabled?: boolean;
+  /** Métier choisi à l'accueil : oriente la visite et les Premiers pas. */
+  profile?: OnboardingProfile;
 }
+
+export const ONBOARDING_PROFILES = ['avocat', 'secretariat', 'comptable', 'admin'] as const;
+export type OnboardingProfile = (typeof ONBOARDING_PROFILES)[number];
