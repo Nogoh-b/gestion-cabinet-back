@@ -144,5 +144,22 @@ describe('UserSettingsService', () => {
       const cleared = await withTours({ seen: {}, profile: 'admin' }).update(42, { onboarding_tours: { profile: null } } as any);
       expect(cleared.onboarding_tours?.profile).toBeUndefined();
     });
+
+    it('mémorise les étapes sautées, les nettoie et les retire une fois rattrapées', async () => {
+      const saved = await withTours({ seen: {} }).update(42, {
+        onboarding_tours: { skipped: { topbar: { v: 1, s: [3, 1, 1, -2, 'x', 7.5] }, bad: { v: 'x', s: [1] } } },
+      } as any);
+      expect(saved.onboarding_tours?.skipped).toEqual({ topbar: { v: 1, s: [1, 3] } });
+
+      const caught = await withTours({ seen: {}, skipped: { topbar: { v: 1, s: [1] }, sidebar: { v: 1, s: [9] } } }).update(42, {
+        onboarding_tours: { skipped: { topbar: null } },
+      } as any);
+      expect(caught.onboarding_tours?.skipped).toEqual({ sidebar: { v: 1, s: [9] } });
+
+      const reset = await withTours({ seen: {}, skipped: { sidebar: { v: 1, s: [9] } } }).update(42, {
+        onboarding_tours: { seen: {}, reset: true },
+      } as any);
+      expect(reset.onboarding_tours?.skipped).toBeUndefined();
+    });
   });
 });

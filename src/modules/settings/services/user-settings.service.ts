@@ -5,6 +5,7 @@ import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import {
   ONBOARDING_PROFILES,
   OnboardingProfile,
+  OnboardingSkippedSteps,
   OnboardingToursState,
   UserSettings,
 } from '../entities/user-settings.entity';
@@ -53,6 +54,14 @@ function mergeOnboardingTours(
   let profile = current?.profile;
   if (patch.profile === null) profile = undefined;
   else if (ONBOARDING_PROFILES.includes(patch.profile as OnboardingProfile)) profile = patch.profile as OnboardingProfile;
+  const skipped: Record<string, OnboardingSkippedSteps> = patch.reset
+    ? {}
+    : { ...(current?.skipped ?? {}) };
+  for (const [id, value] of Object.entries(patch.skipped ?? {})) {
+    const steps = cleanSkippedSteps(value);
+    if (steps && id.length <= 64) skipped[id] = steps;
+    else delete skipped[id];
+  }
   return {
     seen,
     disabled:
@@ -60,7 +69,19 @@ function mergeOnboardingTours(
         ? patch.disabled
         : Boolean(current?.disabled),
     ...(profile && { profile }),
+    // Plafond : quelques dizaines de visites suffisent largement.
+    ...(Object.keys(skipped).length && {
+      skipped: Object.fromEntries(Object.entries(skipped).slice(0, 100)),
+    }),
   };
+}
+
+/** Étapes sautées valides (version et indices entiers), sinon null : rien à rattraper. */
+function cleanSkippedSteps(value: unknown): OnboardingSkippedSteps | null {
+  const raw = value as { v?: unknown; s?: unknown } | null;
+  if (!raw || !Number.isInteger(raw.v) || !Array.isArray(raw.s)) return null;
+  const steps = [...new Set(raw.s.filter((i): i is number => Number.isInteger(i) && i >= 0 && i < 100))].slice(0, 50);
+  return steps.length ? { v: Number(raw.v), s: steps.sort((a, b) => a - b) } : null;
 }
 
 @Injectable()

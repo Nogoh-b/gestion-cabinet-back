@@ -170,6 +170,18 @@ export interface OnboardingToursState {
   disabled?: boolean;
   /** Métier choisi à l'accueil : oriente la visite et les Premiers pas. */
   profile?: OnboardingProfile;
+  /**
+   * Étapes sautées faute d'élément affiché (droit, module, bloc vide), par
+   * visite et pour sa version : présentées dès que l'élément apparaît.
+   */
+  skipped?: Record<string, OnboardingSkippedSteps>;
+}
+
+export interface OnboardingSkippedSteps {
+  /** Version de la visite : une visite modifiée ne rattrape pas d'anciennes étapes. */
+  v: number;
+  /** Indices des étapes (0 = première). */
+  s: number[];
 }
 
 export const ONBOARDING_PROFILES = ['avocat', 'secretariat', 'comptable', 'admin'] as const;

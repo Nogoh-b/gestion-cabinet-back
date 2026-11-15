@@ -121,4 +121,6 @@ export interface OnboardingToursPatch {
   reset?: boolean;
   /** Métier choisi à l'accueil ; null l'efface. */
   profile?: string | null;
+  /** Étapes sautées, visite par visite ; null retire la visite. */
+  skipped?: Record<string, { v: number; s: number[] } | null>;
 }
