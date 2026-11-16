@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsObject,
   IsOptional,
@@ -50,6 +51,24 @@ class GuidePublishDto extends GuideItemsDto {
   replay_tours?: string[];
 }
 
+class GuideImportItemDto extends GuideRefDto {
+  @IsObject()
+  data: Record<string, any>;
+}
+
+class GuideImportDto {
+  @IsArray()
+  @ArrayMaxSize(2000)
+  @ValidateNested({ each: true })
+  @Type(() => GuideImportItemDto)
+  items: GuideImportItemDto[];
+
+  /** Publier tout de suite au lieu de créer des brouillons. */
+  @IsOptional()
+  @IsBoolean()
+  publish?: boolean;
+}
+
 /**
  * Éditeur « Prise en main » : visites, bulles, astuces, fiches d'aide et
  * nouveautés appliquées à tous les cabinets.
@@ -86,6 +105,14 @@ export class PlatformGuideController {
   @ApiOperation({ summary: 'Publie des brouillons pour tous les cabinets' })
   publish(@Body() body: GuidePublishDto, @CurrentPlatformAdmin() admin: PlatformPrincipal) {
     return this.guide.publish(body.items, body.replay_tours ?? [], admin.id);
+  }
+
+  @Post('import')
+  @PlatformRoles('owner', 'support')
+  @PlatformAudit({ action: 'guide.import', targetType: 'guide_override' })
+  @ApiOperation({ summary: 'Reprend un export d’un autre serveur (en brouillon ou publié)' })
+  importItems(@Body() body: GuideImportDto, @CurrentPlatformAdmin() admin: PlatformPrincipal) {
+    return this.guide.importItems(body.items, body.publish === true, admin.id);
   }
 
   @Post('discard')

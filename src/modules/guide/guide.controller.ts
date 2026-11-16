@@ -26,7 +26,8 @@ export class GuideController {
     res.setHeader('ETag', etag);
     res.setHeader('Cache-Control', 'private, no-cache');
     if (req.headers['if-none-match'] === etag) {
-      res.status(304).end();
+      // Nest envoie lui-même la réponse (passthrough) : sans corps, Express sert un 304 vide.
+      res.status(304);
       return undefined;
     }
     return payload;

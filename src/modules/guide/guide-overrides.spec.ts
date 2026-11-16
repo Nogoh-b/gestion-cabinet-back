@@ -1,4 +1,4 @@
-import { filterForViewer, isEmptyGuideData, matchesAudience, sanitizeGuideData, GuideViewer } from './guide-overrides';
+import { filterForViewer, importedGuideData, isEmptyGuideData, matchesAudience, sanitizeGuideData, GuideViewer } from './guide-overrides';
 
 const viewer = (patch: Partial<GuideViewer> = {}): GuideViewer => ({
   permissions: ['view_dossiers'],
@@ -78,5 +78,13 @@ describe('sanitizeGuideData / isEmptyGuideData', () => {
     expect(isEmptyGuideData({})).toBe(true);
     expect(isEmptyGuideData({ title: null })).toBe(true);
     expect(isEmptyGuideData({ hidden: false })).toBe(false);
+  });
+});
+
+describe('importedGuideData', () => {
+  it('garde le compteur de relance du serveur de destination', () => {
+    expect(importedGuideData('tour', { order: ['a'], replayVersion: 7 }, { replayVersion: 2 })).toEqual({ order: ['a'], replayVersion: 2 });
+    expect(importedGuideData('tour', { replayVersion: 7 }, null)).toEqual({});
+    expect(importedGuideData('tip', { title: 'x', replayVersion: 7 }, null)).toEqual({ title: 'x', replayVersion: 7 });
   });
 });

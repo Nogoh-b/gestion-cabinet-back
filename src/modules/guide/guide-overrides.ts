@@ -141,3 +141,20 @@ export async function bumpGuideVersion(db: DataSource | EntityManager, adminId: 
   );
   return version;
 }
+
+/**
+ * Contenu importé depuis un autre serveur. Le compteur de relance d'une
+ * visite reste celui du serveur de destination : le reprendre ferait revoir
+ * la visite à ses utilisateurs sans raison.
+ */
+export function importedGuideData(
+  kind: GuideKind,
+  incoming: unknown,
+  existing: Record<string, any> | null | undefined,
+): Record<string, any> {
+  const data = sanitizeGuideData(incoming);
+  if (kind !== 'tour') return data;
+  delete data.replayVersion;
+  if (existing?.replayVersion) data.replayVersion = existing.replayVersion;
+  return data;
+}

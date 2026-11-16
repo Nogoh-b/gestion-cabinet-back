@@ -9,6 +9,7 @@ import {
   GUIDE_TARGET_PATTERN,
   GuideKind,
   bumpGuideVersion,
+  importedGuideData,
   isEmptyGuideData,
   parseJson,
   readGuideVersion,
@@ -129,6 +130,51 @@ export class PlatformGuideService {
 
       const version = await bumpGuideVersion(em, adminId);
       return { version, published: refs.length, replayed: replayTours };
+    });
+  }
+
+  /**
+   * Reprend les contenus exportés d'un autre serveur. Par défaut ils arrivent
+   * en brouillon, à relire puis publier ; `publishNow` les publie d'un coup.
+   * Les cibles absentes du fichier ne sont pas touchées.
+   */
+  async importItems(items: (GuideRef & { data: unknown })[], publishNow: boolean, adminId: number) {
+    items.forEach(assertRef);
+    if (!items.length) throw new BadRequestException('Le fichier ne contient aucun contenu.');
+
+    return this.db.transaction(async (em) => {
+      let created = 0;
+      let updated = 0;
+      let unchanged = 0;
+      for (const item of items) {
+        const row = await this.lockRow(em, item);
+        const current = parseJson(row?.data);
+        const data = importedGuideData(item.kind, item.data, current);
+        if (isEmptyGuideData(data)) continue;
+        const value = JSON.stringify(data);
+        if (current && JSON.stringify(current) === value && row?.draft === null) {
+          unchanged += 1;
+          continue;
+        }
+        if (row) updated += 1;
+        else created += 1;
+        if (publishNow) {
+          await em.query(
+            `INSERT INTO guide_overrides (kind, target, data, published_at, updated_by_admin_id)
+             VALUES (?, ?, ?, NOW(), ?)
+             ON DUPLICATE KEY UPDATE data = ?, draft = NULL, published_at = NOW(), updated_by_admin_id = ?`,
+            [item.kind, item.target, value, adminId, value, adminId],
+          );
+        } else {
+          await em.query(
+            `INSERT INTO guide_overrides (kind, target, draft, updated_by_admin_id) VALUES (?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE draft = ?, updated_by_admin_id = ?`,
+            [item.kind, item.target, value, adminId, value, adminId],
+          );
+        }
+      }
+      const version = publishNow && created + updated ? await bumpGuideVersion(em, adminId) : undefined;
+      return { created, updated, unchanged, published: publishNow, version };
     });
   }
 
