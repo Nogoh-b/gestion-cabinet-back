@@ -144,6 +144,36 @@ describe('Décompte de créance', () => {
     expect(outcome.followUps[0]).toMatchObject({ skill: 'injonction_payer', params: { decompte: { principal: 2500000, rate: 5 } } });
   });
 
+  it('calcule un décompte multi-factures avec imputation globale des acomptes (art. 1254/1256 C. civ.)', async () => {
+    const skill = new DecompteCreanceSkill(targetsMock() as any, {} as any);
+    const context = ctx({
+      question:
+        "Pour le dossier #DOS-2026-0001, décompte la créance de Bois du Littoral contre Kribi Logistique SA :\nFacture F-2026-118 du 11/06/2026 : 3 200 000 FCFA\nFacture F-2026-131 du 11/07/2026 : 2 900 000 FCFA\nFacture F-2026-147 du 10/08/2026 : 2 300 000 FCFA\nAcompte reçu le 09/09/2026 : 1 000 000 FCFA\nTaux d'intérêt légal OHADA : 6 %.",
+    });
+    (context.llm.complete as jest.Mock).mockResolvedValue(
+      JSON.stringify({
+        principal: null,
+        taux: 6,
+        date_depart: '',
+        date_arret: '2026-10-20',
+        base: 365,
+        frais: [],
+        acomptes: [{ date: '2026-09-09', montant: 1000000 }],
+        factures: [
+          { libelle: 'Facture F-2026-118', montant: 3200000, date_depart: '2026-06-11' },
+          { libelle: 'Facture F-2026-131', montant: 2900000, date_depart: '2026-07-11' },
+          { libelle: 'Facture F-2026-147', montant: 2300000, date_depart: '2026-08-10' },
+        ],
+      }),
+    );
+    const outcome: any = await skill.run(context);
+    expect(outcome.type).toBe('document_draft');
+    expect(outcome.markdown).toContain('Facture F-2026-118');
+    expect(outcome.markdown).toContain('Facture F-2026-131');
+    expect(outcome.markdown).toContain('Facture F-2026-147');
+    expect(outcome.markdown).toContain('Sur intérêts');
+  });
+
   it('demande le principal et la date de départ quand ils manquent', async () => {
     const skill = new DecompteCreanceSkill(targetsMock() as any, {} as any);
     const context = ctx({ question: 'décompte' });

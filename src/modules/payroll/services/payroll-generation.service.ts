@@ -372,18 +372,123 @@ export class PayrollGenerationService {
     }
 
     if (created.length > 0) {
-      const finalLines = await this.lineRepo.find({
-        where: { payslip_id: payslip.id },
-      });
-      const totals = this.calculator.computeTotals(finalLines);
-      payslip.gross_amount = totals.gross_amount;
-      payslip.net_amount = totals.net_amount;
-      await this.payslipRepo.save(payslip);
+      await this.recomputeFullPayslip(payslip.id);
     }
     return created;
   }
 
-  private findApplicableContributions(
+  /**
+   * Recalcule complètement un bulletin en brouillon :
+   *   1. Nettoie les retenues de cotisations automatiques et de récupération d'avance.
+   *   2. Calcule le brut et la base imposable sur l'ensemble des lignes de gains actuelles.
+   *   3. Réapplique le barème de cotisations actif sur cette assiette actualisée.
+   *   4. Recalcule l'avance sur salaire récupérable (selon le net disponible restant).
+   *   5. Met à jour gross_amount, net_amount, charges patronales et le snapshot de barème.
+   */
+  async recomputeFullPayslip(payslipId: number): Promise<Payslip> {
+    const tenantId = getCurrentTenantId();
+    const payslip = await this.payslipRepo.findOne({
+      where: { id: payslipId, tenant_id: tenantId },
+      relations: ['period', 'lines'],
+    });
+    if (!payslip) throw new NotFoundException('Fiche de paie non trouvée');
+    if (payslip.status !== PayslipStatus.DRAFT) {
+      throw new BadRequestException(
+        'Seul un bulletin brouillon peut être recalculé.',
+      );
+    }
+    if (payslip.period?.status !== 'draft') {
+      throw new BadRequestException(
+        'Une période clôturée ou payée est strictement verrouillée.',
+      );
+    }
+
+    const lines = await this.lineRepo.find({
+      where: { payslip_id: payslipId },
+    });
+
+    // Supprime les anciennes lignes générées automatiquement (cotisations et récupération d'avance)
+    const autoLines = lines.filter(
+      (l) =>
+        l.line_type === PayslipLineType.ADVANCE_RECOVERY ||
+        (l.line_type === PayslipLineType.DEDUCTION &&
+          (l.notes?.startsWith('Cotisation ') ||
+            l.notes?.startsWith('Cotisation:'))),
+    );
+    if (autoLines.length > 0) {
+      await this.lineRepo.remove(autoLines);
+    }
+
+    // Récupère les lignes restantes (gains et éventuelles déductions manuelles spécifiques)
+    const manualLines = await this.lineRepo.find({
+      where: { payslip_id: payslipId },
+    });
+    const baseTotals = this.calculator.computeTotals(manualLines);
+
+    // Charge le barème de cotisations applicable
+    const contribs = await this.findApplicableContributions(
+      payslip.period?.end_date ?? new Date(),
+    );
+
+    let totalEmployer = 0;
+    if (baseTotals.gross_amount > 0) {
+      const contrib = this.calculator.computeContributions(
+        baseTotals,
+        contribs,
+      );
+      totalEmployer = contrib.totalEmployer;
+
+      for (const d of contrib.employeeDeductions) {
+        await this.lineRepo.save(
+          this.lineRepo.create({
+            payslip_id: payslipId,
+            line_type: PayslipLineType.DEDUCTION,
+            label: d.label,
+            amount: d.amount,
+            is_taxable: false,
+            notes: `Cotisation ${d.code}`,
+            tenant_id: tenantId,
+          }),
+        );
+      }
+
+      // Récupération automatique des avances sur salaire en cours du collaborateur
+      await this.applyAdvanceRecovery(payslipId);
+    }
+
+    // Recalcul final des totaux
+    const finalLines = await this.lineRepo.find({
+      where: { payslip_id: payslipId },
+    });
+    const finalTotals = this.calculator.computeTotals(finalLines);
+
+    await this.payslipRepo.update(payslipId, {
+      gross_amount: finalTotals.gross_amount,
+      net_amount: finalTotals.net_amount,
+      total_employer_charges: totalEmployer,
+      contribution_snapshot: contribs.map((item) => ({
+        id: item.id,
+        code: item.code,
+        version: item.version,
+        label: item.label,
+        rate: Number(item.rate),
+        base_type: item.base_type,
+        payer: item.payer,
+        ceiling: item.ceiling == null ? null : Number(item.ceiling),
+        account_number: item.account_number,
+        valid_from: item.valid_from,
+        valid_until: item.valid_until,
+      })) as any,
+    });
+
+    const updated = await this.payslipRepo.findOne({
+      where: { id: payslipId, tenant_id: tenantId },
+      relations: ['lines', 'employee', 'period'],
+    });
+    return updated!;
+  }
+
+  public findApplicableContributions(
     effectiveAt: Date,
   ): Promise<PayrollContribution[]> {
     return this.contributionRepo

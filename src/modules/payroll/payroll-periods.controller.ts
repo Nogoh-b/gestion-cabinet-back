@@ -17,6 +17,7 @@ import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { CreatePayrollPeriodDto } from './dto/create-payroll-period.dto';
+import { PayPayrollPeriodDto } from './dto/pay-payroll-period.dto';
 import { PayrollPeriodSearchDto } from './dto/payroll-period-search.dto';
 import { UpdatePayrollPeriodDto } from './dto/update-payroll-period.dto';
 import { PayrollPeriod } from './entities/payroll-period.entity';
@@ -106,6 +107,20 @@ export class PayrollPeriodsController {
   })
   close(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.close(id, this.actor(user));
+  }
+
+  @Post(':id/pay')
+  @RequirePermissions('pay_payslip')
+  @ApiOperation({
+    summary:
+      'Payer tous les bulletins validés de la période et marquer la période payée',
+  })
+  pay(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: PayPayrollPeriodDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.service.pay(id, dto, this.actor(user));
   }
 
   @Post(':id/mark-paid')

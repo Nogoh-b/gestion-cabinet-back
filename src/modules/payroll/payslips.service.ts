@@ -280,6 +280,9 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
   }
 
   async recomputeTotals(id: number): Promise<Payslip> {
+    if (this.generationService?.recomputeFullPayslip) {
+      return this.generationService.recomputeFullPayslip(id);
+    }
     const payslip = await this.findOne(id);
     this.assertMutable(payslip);
     this.assertPeriodDraft(payslip.period);
@@ -292,6 +295,10 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
       this.toMinorUnits(totals.net_amount),
     );
     return this.repository.save(payslip);
+  }
+
+  async recompute(id: number): Promise<Payslip> {
+    return this.recomputeTotals(id);
   }
 
   async validate(id: number, actor: PayrollActor): Promise<Payslip> {

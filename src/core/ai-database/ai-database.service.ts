@@ -6002,7 +6002,7 @@ ${blocks.join('\n\n')}
         return;
       }
       if (intentMode === 'auto' && this.skills && !dto.textGenerationOnly) {
-        const pending = await this.pendingSkillFor(dto, requestContext.referenced, historyOverride);
+        const pending = await this.pendingSkillFor(dto, requestContext.referenced, historyOverride, user);
         if (pending) {
           await this.handleSkillStream(
             { ...dto, skill: pending.code } as AskQuestionDto,
@@ -8025,6 +8025,7 @@ RÉPONSE :`;
     dto: AskQuestionDto,
     referenced: ReferencedEntityContext[],
     history: VisibleHistoryMessage[],
+    user?: AiUserContext | string,
   ): Promise<{ code: string; question: string } | null> {
     if (!dto.conversationId || !this.skills || !referenced.length) return null;
     const metadata = await this.conversationManager
@@ -8034,6 +8035,9 @@ RÉPONSE :`;
     if (!pending?.code || !this.skills.has(pending.code)) return null;
     const age = Date.now() - Date.parse(pending.at ?? '');
     if (!Number.isFinite(age) || age > 10 * 60 * 1000) return null;
+    // Une nouvelle demande qui désigne clairement une autre compétence remplace la compétence en attente.
+    const requested = detectSkillRequest(dto.question, await this.skills.catalog(user).catch(() => []));
+    if (requested.decisive && requested.code && requested.code !== pending.code) return null;
     const targets = this.skills.targets(pending.code) as any[];
     // Références déjà présentes dans la demande précédente (page ouverte) : pas une précision.
     const previousUser = [...history].reverse().find((message) => message.role === 'user');

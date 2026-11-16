@@ -9,7 +9,7 @@ import type { WritePlan } from 'src/core/ai-database/dto/analysis-response.dto';
 import { Permission } from 'src/core/enums/permission.enum';
 import { DossierBillingProfile } from '../case-workflow/entities/billing.entity';
 import { Paiement } from '../paiement/entities/paiement.entity';
-import { computeClaim, fcfa, parseAmount } from './claim-calculator';
+import { computeClaim, computeMultiClaim, fcfa, parseAmount } from './claim-calculator';
 import {
   computeDeadline,
   daysLeft,
@@ -216,6 +216,7 @@ interface ClaimDraft {
   date_depart?: string;
   date_arret?: string;
   base?: unknown;
+  factures?: Array<{ numero?: string; montant?: unknown; date_depart?: string }>;
   frais?: Array<{ libelle?: string; montant?: unknown }>;
   acomptes?: Array<{ date?: string; montant?: unknown }>;
 }
@@ -232,7 +233,14 @@ export class DecompteCreanceSkill implements AiSkillHandler {
     placeholder: 'Ex. 2 500 000 FCFA dus depuis le 15/03/2026, taux 5 %, acompte de 500 000 le 10/06',
     examples: ['Décompte de la @facture au 31/10/2026, taux légal 4,5 %'],
     keywords: ['décompte', 'créance', 'intérêts', 'calcul', 'dette', 'recouvrement', 'moratoires'],
-    autoTriggers: ['decompte', 'interets moratoires', 'interets de retard', 'calcul des interets'],
+    autoTriggers: [
+      'decompte',
+      'interets moratoires',
+      'interets de retard',
+      'calcul des interets',
+      '/(?:decompte[rz]?|calcule[rz]?|liquide[rz]?|arrete[rz]?|etablis(?:sez)?)\\b.*\\bcreances?\\b/',
+      '/\\b(?:decompte|calcul|liquidation)\\s+(?:de\\s+|des\\s+|la\\s+)?creances?\\b/',
+    ],
   };
 
   constructor(
@@ -279,23 +287,39 @@ ${defaults ? `Données du logiciel (à utiliser si la demande ne dit pas autre c
 Date du jour : ${isoDate(new Date())}
 ${requestBlock(ctx)}
 
-Réponds UNIQUEMENT en JSON :
-{"principal": nombre, "taux": nombre (taux annuel en %, 0 si non indiqué), "date_depart": "AAAA-MM-JJ (début des intérêts)", "date_arret": "AAAA-MM-JJ (aujourd'hui si non précisé)", "base": 365, "frais": [{"libelle": "", "montant": nombre}], "acomptes": [{"date": "AAAA-MM-JJ", "montant": nombre}]}`, 1200);
+Si la demande énumère plusieurs factures ou échéances (ex. « Facture F-118 du 11/06/2026 : 3 200 000 FCFA ; Facture F-131 du 11/07/2026 : 2 900 000 FCFA »), renseigne-les toutes dans "factures" avec leur numéro/libellé, montant et date_depart. Sinon laisse "factures" vide et renseigne "principal" et "date_depart".
 
-    const principal = parseAmount(draft.principal);
-    const from = parseIsoDate(draft.date_depart);
+Réponds UNIQUEMENT en JSON :
+{"principal": nombre, "taux": nombre (taux annuel en %, 0 si non indiqué), "date_depart": "AAAA-MM-JJ (début des intérêts)", "date_arret": "AAAA-MM-JJ (aujourd'hui si non précisé)", "base": 365, "factures": [{"numero": "", "montant": nombre, "date_depart": "AAAA-MM-JJ"}], "frais": [{"libelle": "", "montant": nombre}], "acomptes": [{"date": "AAAA-MM-JJ", "montant": nombre}]}`, 1400);
+
     const to = parseIsoDate(draft.date_arret) ?? new Date();
-    if (!(principal > 0) || !from) {
-      return { type: 'clarify', markdown: '❓ Indiquez le montant principal et la date à partir de laquelle courent les intérêts (ex. « 2 500 000 FCFA dus depuis le 15/03/2026, taux 5 % »).' };
-    }
     const rate = Math.max(0, parseAmount(draft.taux) || 0);
+    const basis: 365 | 360 = Number(draft.base) === 360 ? 360 : 365;
     const fees = (draft.frais ?? [])
       .map((fee) => ({ label: str(fee.libelle, 120) || 'Frais', amount: parseAmount(fee.montant) }))
       .filter((fee) => fee.amount > 0);
     const payments = (draft.acomptes ?? [])
       .map((payment) => ({ date: parseIsoDate(payment.date), amount: parseAmount(payment.montant) }))
       .filter((payment): payment is { date: Date; amount: number } => !!payment.date && payment.amount > 0);
-    const result = computeClaim({ principal, rate, from, to, basis: Number(draft.base) === 360 ? 360 : 365, fees, payments });
+    const statedItems = (draft.factures ?? [])
+      .map((item, idx) => ({
+        label: str(item.numero ?? (item as any).libelle, 120) || `Facture ${idx + 1}`,
+        principal: parseAmount(item.montant),
+        from: parseIsoDate(item.date_depart),
+      }))
+      .filter((item): item is { label: string; principal: number; from: Date } => item.principal > 0 && !!item.from);
+
+    if (statedItems.length > 1) {
+      return this.statedInvoicesClaim(statedItems, { rate, to, basis, fees, payments }, info, sender, target);
+    }
+
+    const principal = parseAmount(draft.principal) || statedItems[0]?.principal || 0;
+    const from = parseIsoDate(draft.date_depart) ?? statedItems[0]?.from ?? null;
+    if (!factureNumber && statedItems[0]?.label) factureNumber = statedItems[0].label;
+    if (!(principal > 0) || !from) {
+      return { type: 'clarify', markdown: '❓ Indiquez le montant principal et la date à partir de laquelle courent les intérêts (ex. « 2 500 000 FCFA dus depuis le 15/03/2026, taux 5 % »).' };
+    }
+    const result = computeClaim({ principal, rate, from, to, basis, fees, payments });
 
     const summary: Array<[string, string]> = [
       ['Principal', fcfa(principal)],
@@ -418,6 +442,88 @@ Réponds UNIQUEMENT en JSON :
         label: 'Rédiger la requête en injonction de payer',
         skill: 'injonction_payer',
         question: `Rédige la requête en injonction de payer pour ${fcfa(total)} (décompte arrêté au ${frDate(to)}).`,
+        params: { decompte, ...(target && { target }) },
+      }],
+    };
+  }
+
+  /** Décompte de plusieurs factures ou échéances dictées dans la demande, avec imputation globale des acomptes. */
+  private statedInvoicesClaim(
+    items: Array<{ label: string; principal: number; from: Date }>,
+    options: {
+      rate: number;
+      to: Date;
+      basis: 365 | 360;
+      fees: Array<{ label: string; amount: number }>;
+      payments: Array<{ date: Date; amount: number }>;
+    },
+    info: TargetInfo | null,
+    sender: Awaited<ReturnType<SkillTargetsService['sender']>>,
+    target: ReturnType<typeof resolveSkillTarget>,
+  ): AiSkillOutcome {
+    const { rate, to, basis, fees, payments } = options;
+    const multi = computeMultiClaim({ items, rate, to, basis, fees, payments });
+    const headers = ['Facture', 'Principal', 'Intérêts depuis', 'Intérêts', 'Acomptes', 'Dû'];
+    const lines = multi.rows.map((row) => [
+      row.label,
+      fcfa(row.principal),
+      row.from > to ? `${frDate(row.from)} (non échue)` : frDate(row.from),
+      rate ? fcfa(row.interestTotal) : '—',
+      row.paymentsApplied ? `− ${fcfa(row.paymentsApplied)}` : '—',
+      fcfa(row.due),
+    ]);
+    const footer = [
+      ...fees.map((fee) => [fee.label, '', '', '', '', fcfa(fee.amount)]),
+      ['**Total dû**', `**${fcfa(multi.principalTotal)}**`, '', rate ? `**${fcfa(multi.interestTotal)}**` : '—', multi.paymentsTotal ? `**− ${fcfa(multi.paymentsTotal)}**` : '—', `**${fcfa(multi.total)}**`],
+    ];
+    const basisNote = rate
+      ? `Intérêts simples au taux annuel de ${rate.toLocaleString('fr-FR')} %, base ${basis} jours, chaque facture à compter de sa date ; les acomptes s'imputent d'abord sur les intérêts échus, puis sur le capital le plus ancien.`
+      : 'Sans taux indiqué, aucun intérêt n’est calculé : précisez le taux légal ou conventionnel applicable.';
+    const markdown = [
+      `**Décompte de créance${info ? ` — ${info.label}` : ''}** (arrêté au ${frDate(to)}, ${multi.rows.length} factures)`,
+      '',
+      markdownTable(headers, [...lines, ...footer]),
+      '',
+      multi.imputations.length
+        ? markdownTable(
+            ['Date', 'Acompte', 'Sur intérêts', 'Sur capital'],
+            multi.imputations.map((i) => [frDate(i.date), fcfa(i.amount), fcfa(i.onInterest), fcfa(i.onCapital)]),
+          )
+        : '',
+      basisNote,
+    ].filter((line) => line !== '').join('\n');
+    const plain = (value: string) => value.replace(/\*\*/g, '');
+    const bodyHtml = [
+      htmlTable(headers, [...lines, ...footer].map((line) => line.map(plain)), ['left', 'right', 'left', 'right', 'right', 'right']),
+      multi.imputations.length
+        ? htmlHeading('Imputation des acomptes') +
+          htmlTable(
+            ['Date', 'Montant', 'Sur intérêts', 'Sur capital'],
+            multi.imputations.map((i) => [frDate(i.date), fcfa(i.amount), fcfa(i.onInterest), fcfa(i.onCapital)]),
+            ['left', 'right', 'right', 'right'],
+          )
+        : '',
+      htmlText(basisNote),
+    ].join('');
+
+    const decompte = {
+      principal: multi.principalTotal,
+      rate,
+      to: isoDate(to),
+      interets: multi.interestTotal,
+      frais: multi.feesTotal,
+      acomptes: multi.paymentsTotal,
+      total: multi.total,
+      factures: multi.rows.map((row) => ({ numero: row.label, principal: row.principal, depuis: isoDate(row.from), du: row.due })),
+    };
+    return {
+      type: 'document_draft',
+      markdown: `${markdown}\n\nLe décompte est prêt dans la carte ci-dessous : modifiez-le si besoin, puis téléchargez-le en Word ou en PDF.`,
+      draft: inlineDraft({ layout: 'skill_note', name: 'Décompte de créance', title: 'Décompte de créance', info, sender, raw: { bodyContent: bodyHtml } }),
+      followUps: [{
+        label: 'Rédiger la requête en injonction de payer',
+        skill: 'injonction_payer',
+        question: `Rédige la requête en injonction de payer pour ${fcfa(multi.total)} (décompte arrêté au ${frDate(to)}).`,
         params: { decompte, ...(target && { target }) },
       }],
     };

@@ -67,6 +67,10 @@ describe('compétences reconnues en mode auto', () => {
     ['analyse ce jugement et sors les délais', 'lecture_jugement'],
     ['calcule le délai d’appel à partir du 12/10/2026', 'delais_procedure'],
     ['peux-tu calculer les intérêts moratoires sur 2 500 000 FCFA', 'decompte_creance'],
+    [
+      "Pour le dossier #DOS-2026-0001 — boby cline c/ Soc  , décompte la créance de Bois du Littoral contre Kribi Logistique SA :\nFacture F-2026-118 du 11/06/2026 : 3 200 000 FCFA\nFacture F-2026-131 du 11/07/2026 : 2 900 000 FCFA\nFacture F-2026-147 du 10/08/2026 : 2 300 000 FCFA\nAcompte reçu le 09/09/2026 : 1 000 000 FCFA\nTaux d'intérêt légal OHADA : 6 %.",
+      'decompte_creance',
+    ],
     ['rédige la requête en injonction de payer', 'injonction_payer'],
     ['prépare la convention d’honoraires du dossier', 'convention_honoraires'],
     ['anonymise ce document', 'anonymiser'],

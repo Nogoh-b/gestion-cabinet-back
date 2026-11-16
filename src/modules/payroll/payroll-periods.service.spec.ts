@@ -152,4 +152,38 @@ describe('PayrollPeriodsService - clôture stricte', () => {
       expect.objectContaining({ action: 'payroll_period.paid' }),
     );
   });
+
+  it('paie en lot tous les bulletins validés puis marque la période payée', async () => {
+    const value = period(PayrollPeriodStatus.VALIDATED, [
+      PayslipStatus.VALIDATED,
+      PayslipStatus.VALIDATED,
+    ]);
+    jest.spyOn(service as any, 'findOne').mockResolvedValue(value);
+    jest.spyOn(service as any, 'lockPeriod').mockResolvedValue(
+      period(PayrollPeriodStatus.VALIDATED, [
+        PayslipStatus.PAID,
+        PayslipStatus.PAID,
+      ]),
+    );
+    payslipRepository.find.mockResolvedValue([
+      { id: 1, employee: { user: { full_name: 'Employé 1' } } },
+      { id: 2, employee: { user: { full_name: 'Employé 2' } } },
+    ]);
+    (payslips as any).pay = jest.fn().mockResolvedValue(undefined);
+
+    const result = await runWithTenantContext(2, () =>
+      service.pay(
+        value.id,
+        {
+          paymentMethod: 'bank_transfer' as any,
+          paymentReference: 'VIR-GROUP-01',
+        },
+        { userId: 12 },
+      ),
+    );
+
+    expect((payslips as any).pay).toHaveBeenCalledTimes(2);
+    expect(result.status).toBe(PayrollPeriodStatus.PAID);
+    expect(result.paid_count).toBe(2);
+  });
 });

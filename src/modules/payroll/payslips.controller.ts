@@ -190,6 +190,15 @@ export class PayslipsController {
     );
   }
 
+  @Post(':id/recompute')
+  @RequirePermissions('edit_payslip')
+  @ApiOperation({
+    summary: 'Recalculer complètement les cotisations et totaux du bulletin',
+  })
+  async recompute(@Param('id', ParseIntPipe) id: number) {
+    return this.detail(await this.service.recompute(id));
+  }
+
   @Post(':id/commissions')
   @RequirePermissions('edit_payslip')
   @ApiOperation({ summary: 'Générer les commissions internes' })

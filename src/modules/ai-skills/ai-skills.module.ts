@@ -45,7 +45,9 @@ import {
   EnvoyerEmailAiAction,
   MessageCollaborateurAiAction,
   MessagePortailAiAction,
+  ProgrammerAudienceAiAction,
   ReporterAudienceAiAction,
+  EnregistrerPaiementAiAction,
 } from './skill-actions';
 import { SkillTargetsService } from './skill-targets.service';
 import { ConfigurerFacturationAiAction, ConfigurerFacturationSkill, DevisHonorairesSkill } from './billing.skills';
@@ -71,7 +73,8 @@ import {
   VersionBilingueSkill,
 } from './legal-tools.skills';
 
-const ACTIONS = [EnvoyerEmailAiAction, MessagePortailAiAction, MessageCollaborateurAiAction, ReporterAudienceAiAction, ConfigurerFacturationAiAction, OuvrirDossierAiAction];
+import { PaiementModule } from '../paiement/paiement.module';
+const ACTIONS = [EnvoyerEmailAiAction, MessagePortailAiAction, MessageCollaborateurAiAction, ProgrammerAudienceAiAction, ReporterAudienceAiAction, EnregistrerPaiementAiAction, ConfigurerFacturationAiAction, OuvrirDossierAiAction];
 
 /** Ordre du menu « # » dans chaque famille. */
 const SKILLS = [
@@ -137,6 +140,7 @@ const SKILLS = [
     TemplateBlocksModule,
     ReportsModule,
     DossiersModule,
+    PaiementModule,
     ReferralModule,
     // Facturation des dossiers (profil, éléments facturables) : même service que l'onglet Facturation.
     forwardRef(() => CaseWorkflowModule),

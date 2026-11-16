@@ -12,6 +12,8 @@ import type { AiSkillTargetType } from 'src/core/ai-database/skills/ai-skill.typ
 import { Permission } from 'src/core/enums/permission.enum';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { AudiencesService } from '../audiences/audiences.service';
+import { PaiementService } from '../paiement/paiement.service';
+import { ModePaiement } from '../paiement/dto/create-paiement.dto';
 import { ChatService } from '../chat/services/chat/chat.service';
 import { ClientPortalService } from '../client-portal/client-portal.service';
 import { MailTemplateService } from '../mail-template/mail-template.service';
@@ -348,6 +350,190 @@ export class ReporterAudienceAiAction implements AiActionHandler {
           ...(params.room && { room: String(params.room) }),
         } as any, actor);
         return `Audience reportée au ${date.toLocaleDateString('fr-FR')} (nouvelle audience #${replacement.id}).`;
+      },
+    };
+  }
+}
+
+const PAYMENT_MODES: Array<{ value: number; label: string; cues: RegExp }> = [
+  { value: ModePaiement.VIREMENT, label: 'Virement bancaire', cues: /virement|vir\b/i },
+  { value: ModePaiement.CHEQUE, label: 'Chèque', cues: /ch[eè]que/i },
+  { value: ModePaiement.ESPECES, label: 'Espèces', cues: /esp[eè]ces?|cash|liquide/i },
+  { value: ModePaiement.CARTE, label: 'Carte bancaire', cues: /carte|cb\b/i },
+  { value: ModePaiement.PRELEVEMENT, label: 'Prélèvement', cues: /pr[eé]l[eè]vement/i },
+  { value: ModePaiement.Mobile, label: 'Mobile Money', cues: /mobile|momo|orange\s*money|\bom\b|mtn/i },
+  { value: ModePaiement.AUTRE, label: 'Autre', cues: /autre/i },
+];
+
+export function parsePaymentMode(value: unknown): ModePaiement {
+  if (typeof value === 'number' && value >= 0 && value <= 6) return value as ModePaiement;
+  const text = String(value ?? '').trim();
+  if (/^[0-6]$/.test(text)) return Number(text) as ModePaiement;
+  return PAYMENT_MODES.find((item) => item.cues.test(text))?.value ?? ModePaiement.VIREMENT;
+}
+
+/** « Programme l'audience du dossier DOS-… le 12 novembre à 9 h » : même création que l'écran Audiences. */
+@Injectable()
+export class ProgrammerAudienceAiAction implements AiActionHandler {
+  readonly definition: AiActionDefinition = {
+    name: 'programmer_audience',
+    entity: 'dossiers',
+    skillOnly: true,
+    label: "Programmation d'une audience",
+    description: "Crée une audience sur un dossier (date, heure, salle, magistrat, motif si < 48 h).",
+    permission: Permission.CREATE_AUDIENCE,
+    params: [
+      { name: 'audience_date', label: 'Date et heure', required: true, kind: 'datetime' },
+      { name: 'room', label: 'Salle' },
+      { name: 'judge_name', label: 'Magistrat / Juge' },
+      { name: 'notes', label: 'Notes', kind: 'longtext' },
+      { name: 'late_scheduling_reason', label: 'Motif (si audience à moins de 48 h)' },
+    ],
+  };
+
+  constructor(
+    private readonly targets: SkillTargetsService,
+    private readonly audiences: AudiencesService,
+  ) {}
+
+  private parse(params: Record<string, any>): { date: Date; day: string; time: string } {
+    const text = String(params.audience_date ?? '').trim();
+    const date = new Date(text.includes('T') ? text : text.replace(' ', 'T'));
+    if (!text || Number.isNaN(date.getTime())) throw new BadRequestException(`Date d'audience illisible : « ${text} ».`);
+    const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const time = /\d{2}:\d{2}/.exec(text.slice(10))?.[0] || '09:00';
+    return { date, day, time };
+  }
+
+  async preview(targetId: string | number, params: Record<string, any>): Promise<string> {
+    const info = await this.targets.load({ type: 'dossier', table: 'dossiers', id: Number(targetId), label: '' });
+    const { date, time } = this.parse(params);
+    return [
+      info.label,
+      `${date.toLocaleDateString('fr-FR')} à ${time}`,
+      params.room ? `Salle ${params.room}` : '',
+    ].filter(Boolean).join(' · ');
+  }
+
+  async prepare(targetId: string | number, params: Record<string, any>, userId?: string): Promise<PreparedAiAction> {
+    const info = await this.targets.load({ type: 'dossier', table: 'dossiers', id: Number(targetId), label: '' });
+    const { date, day, time } = this.parse(params);
+    const requestUser = getCurrentRequestUser();
+    const actorId = Number(userId ?? requestUser?.userId);
+    const actor = {
+      id: actorId,
+      userId: actorId,
+      tenantId: getCurrentTenantId(),
+      role: requestUser?.role,
+      permissions: requestUser?.permissions ?? [],
+    };
+    return {
+      data: info.resource,
+      plannedMessage: `Audience à programmer le ${date.toLocaleDateString('fr-FR')} à ${time} pour ${info.label}.`,
+      run: async () => {
+        const created = await this.audiences.create({
+          dossier_id: Number(info.id),
+          audience_date: day,
+          audience_time: time,
+          ...(params.room && { room: String(params.room).trim() }),
+          ...(params.judge_name && { judge_name: String(params.judge_name).trim() }),
+          ...(params.notes && { notes: String(params.notes).trim() }),
+          ...(params.late_scheduling_reason && { late_scheduling_reason: String(params.late_scheduling_reason).trim() }),
+        } as any, actor);
+        return `Audience programmée le ${date.toLocaleDateString('fr-FR')} à ${time} pour ${info.label}${created?.id ? ` (#${created.id})` : ''}.`;
+      },
+    };
+  }
+}
+
+/** « 500 000 FCFA reçus par virement sur la facture FAC-… » : même encaissement que la fiche facture. */
+@Injectable()
+export class EnregistrerPaiementAiAction implements AiActionHandler {
+  readonly definition: AiActionDefinition = {
+    name: 'enregistrer_paiement',
+    entity: 'factures',
+    skillOnly: false,
+    label: "Enregistrement d'un paiement",
+    description: "Enregistre un paiement reçu sur une facture (montant, mode de paiement, date, référence).",
+    permission: Permission.CREATE_PAIEMENT,
+    params: [
+      { name: 'montant', label: 'Montant reçu', required: true },
+      { name: 'modePaiement', label: 'Mode de paiement', kind: 'enum' },
+      { name: 'datePaiement', label: 'Date du paiement', kind: 'datetime' },
+      { name: 'reference', label: 'Référence' },
+      { name: 'banque', label: 'Banque' },
+      { name: 'numeroCheque', label: 'N° de chèque' },
+      { name: 'notes', label: 'Notes', kind: 'longtext' },
+    ],
+    examples: ['Enregistre un paiement de 500 000 FCFA par virement sur la facture FAC-2026-001'],
+  };
+
+  constructor(
+    private readonly targets: SkillTargetsService,
+    private readonly paiements: PaiementService,
+  ) {}
+
+  async paramOptions() {
+    return {
+      modePaiement: PAYMENT_MODES.map((item) => ({ value: item.value, label: item.label })),
+    };
+  }
+
+  private parseAmount(raw: unknown): number {
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
+    const cleaned = String(raw ?? '').replace(/[^\d.,-]/g, '').replace(/\s+/g, '').replace(',', '.');
+    const amount = Number(cleaned);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException(`Montant du paiement invalide : « ${raw ?? ''} ».`);
+    }
+    return amount;
+  }
+
+  private parseDate(raw: unknown): Date {
+    const text = String(raw ?? '').trim();
+    if (!text) return new Date();
+    const date = new Date(text.includes('T') ? text : text.replace(' ', 'T'));
+    if (Number.isNaN(date.getTime())) throw new BadRequestException(`Date de paiement illisible : « ${text} ».`);
+    return date;
+  }
+
+  async preview(targetId: string | number, params: Record<string, any>): Promise<string> {
+    const info = await this.targets.load({ type: 'facture', table: 'factures', id: Number(targetId), label: '' });
+    const amount = this.parseAmount(params.montant);
+    const mode = parsePaymentMode(params.modePaiement);
+    const modeLabel = PAYMENT_MODES.find((item) => item.value === mode)?.label ?? 'Virement bancaire';
+    const date = this.parseDate(params.datePaiement);
+    return `${info.label} · ${Math.round(amount).toLocaleString('fr-FR')} FCFA · ${modeLabel} · ${date.toLocaleDateString('fr-FR')}`;
+  }
+
+  async prepare(targetId: string | number, params: Record<string, any>, userId?: string): Promise<PreparedAiAction> {
+    const info = await this.targets.load({ type: 'facture', table: 'factures', id: Number(targetId), label: '' });
+    const montant = this.parseAmount(params.montant);
+    const modePaiement = parsePaymentMode(params.modePaiement);
+    const modeLabel = PAYMENT_MODES.find((item) => item.value === modePaiement)?.label ?? 'Virement bancaire';
+    const datePaiement = this.parseDate(params.datePaiement);
+    const requestUser = getCurrentRequestUser();
+    const actorId = Number(userId ?? requestUser?.userId);
+    return {
+      data: info.resource,
+      plannedMessage: `Paiement de ${Math.round(montant).toLocaleString('fr-FR')} FCFA (${modeLabel}) à enregistrer sur ${info.label}.`,
+      run: async () => {
+        await this.paiements.createPaiement(
+          {
+            factureId: String(info.id),
+            montant,
+            modePaiement,
+            datePaiement,
+            dateValeur: datePaiement,
+            ...(params.reference && { reference: String(params.reference).trim() }),
+            ...(params.banque && { banque: String(params.banque).trim() }),
+            ...(params.numeroCheque && { numeroCheque: String(params.numeroCheque).trim() }),
+            ...(params.notes && { notes: String(params.notes).trim() }),
+          } as any,
+          undefined,
+          { id: actorId, userId: actorId },
+        );
+        return `Paiement de ${Math.round(montant).toLocaleString('fr-FR')} FCFA enregistré sur ${info.label}.`;
       },
     };
   }

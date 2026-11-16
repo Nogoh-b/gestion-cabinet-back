@@ -13,6 +13,7 @@ import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
 import { Branch } from '../agencies/branch/entities/branch.entity';
 import { User } from '../iam/user/entities/user.entity';
 import { CreatePayrollPeriodDto } from './dto/create-payroll-period.dto';
+import { PayPayrollPeriodDto } from './dto/pay-payroll-period.dto';
 import { UpdatePayrollPeriodDto } from './dto/update-payroll-period.dto';
 import {
   PayrollPeriod,
@@ -233,6 +234,78 @@ export class PayrollPeriodsService extends BaseServiceV1<PayrollPeriod> {
         payslips_count: payslips.length,
       };
     });
+  }
+
+  /**
+   * Payer la période en lot :
+   *   1. Vérifie que la période est validée (clôturée).
+   *   2. Paie tous les bulletins encore au statut VALIDATED avec les modalités spécifiées.
+   *   3. Marque automatiquement la période comme PAID.
+   */
+  async pay(
+    id: number,
+    dto: PayPayrollPeriodDto,
+    actor: PayrollActor,
+  ): Promise<ClosePeriodResult & { paid_count: number }> {
+    const tenantId = getCurrentTenantId();
+    const period = await this.findOne(id);
+    if (period.status !== PayrollPeriodStatus.VALIDATED) {
+      throw new BadRequestException(
+        'Seule une période clôturée (validée) peut être payée.',
+      );
+    }
+
+    const validatedPayslips = await this.dataSource
+      .getRepository(Payslip)
+      .find({
+        where: {
+          period_id: id,
+          tenant_id: tenantId,
+          status: PayslipStatus.VALIDATED,
+        },
+        relations: ['employee', 'employee.user'],
+      });
+
+    const payslipsService = this.moduleRef.get(PayslipsService, {
+      strict: false,
+    });
+    const failures: string[] = [];
+    let paidCount = 0;
+
+    for (const payslip of validatedPayslips) {
+      try {
+        await payslipsService.pay(
+          payslip.id,
+          {
+            paymentMethod: dto.paymentMethod,
+            paymentReference:
+              dto.paymentReference?.trim() ||
+              `Paiement groupé ${period.label}`,
+            paymentDate: dto.paymentDate,
+          },
+          actor,
+        );
+        paidCount++;
+      } catch (error) {
+        const who =
+          (payslip as any).employee?.user?.full_name ||
+          (payslip as any).employee?.full_name ||
+          `bulletin n° ${payslip.id}`;
+        failures.push(`${who} : ${(error as Error).message}`);
+      }
+    }
+
+    if (failures.length > 0) {
+      throw new BadRequestException(
+        `Paiement partiel : ${failures.length} bulletin(s) n'ont pas pu être payés — ${failures.join(' ; ')}`,
+      );
+    }
+
+    const result = await this.markPaid(id, actor);
+    return {
+      ...result,
+      paid_count: paidCount,
+    };
   }
 
   async markPaid(

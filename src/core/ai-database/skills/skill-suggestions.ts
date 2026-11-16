@@ -28,7 +28,7 @@ const ACTION_VERBS = new Set([
   'prepare', 'preparer', 'prepares', 'preparez', 'redige', 'rediger', 'rediges', 'redigez',
   'ecris', 'ecrire', 'ecrivez', 'envoie', 'envoyer', 'envoies', 'envoyez', 'fais', 'faire',
   'faites', 'genere', 'generer', 'generez', 'calcule', 'calculer', 'calculez', 'etablis',
-  'etablir', 'dresse', 'dresser', 'produis', 'produire', 'traduis', 'traduire', 'traduisez',
+  'etablir', 'dresse', 'dresser', 'produis', 'produire', 'traduis', 'traduire', 'traduisez', 'decompte', 'decompter', 'decomptes', 'decomptez', 'liquide', 'liquider',
   'anonymise', 'anonymiser', 'pseudonymise', 'pseudonymiser', 'occulte', 'occulter', 'lis',
   'lire', 'lisez', 'relis', 'relire', 'analyse', 'analyser', 'analysez', 'evalue', 'evaluer',
   'estime', 'estimer', 'compare', 'comparer', 'controle', 'controler', 'verifie', 'verifier',
