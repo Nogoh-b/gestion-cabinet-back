@@ -100,6 +100,13 @@ export class PayrollPeriodsController {
     );
   }
 
+  @Post(':id/recompute')
+  @RequirePermissions('edit_payslip')
+  @ApiOperation({ summary: 'Recalculer tous les bulletins brouillons de la période' })
+  recompute(@Param('id', ParseIntPipe) id: number) {
+    return this.generation.recomputePeriod(id);
+  }
+
   @Post(':id/close')
   @RequirePermissions('close_payroll_period')
   @ApiOperation({

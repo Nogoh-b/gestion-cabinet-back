@@ -167,6 +167,28 @@ export class PayrollGenerationService {
     return result;
   }
 
+  /** Recalcule tous les bulletins brouillons d'une période brouillon (barème, avances, totaux). */
+  async recomputePeriod(
+    periodId: number,
+  ): Promise<{ period_id: number; recomputed: number }> {
+    const tenantId = getCurrentTenantId();
+    const period = await this.periodRepo.findOne({
+      where: { id: periodId, tenant_id: tenantId },
+    });
+    if (!period) throw new NotFoundException('Période de paie non trouvée');
+    if (period.status !== 'draft') {
+      throw new BadRequestException(
+        'Seule une période en brouillon peut être recalculée.',
+      );
+    }
+    const drafts = await this.payslipRepo.find({
+      where: { period_id: periodId, tenant_id: tenantId, status: PayslipStatus.DRAFT },
+      select: { id: true },
+    });
+    for (const draft of drafts) await this.recomputeFullPayslip(draft.id);
+    return { period_id: periodId, recomputed: drafts.length };
+  }
+
   /**
    * Génère, pour un bulletin existant, la ligne « salaire de base » puis applique
    * le barème de cotisations actif (retenues salariales). Recalcule ensuite le
