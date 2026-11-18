@@ -46,6 +46,14 @@ const permissions = (missing: string[] = []) => ({
 }) as any;
 
 describe('activité du dossier pour les compétences', () => {
+  // Échéances fixes (05/11/2026…) : la date du jour est figée pour que
+  // « en cours » ne devienne pas « échéance dépassée » avec le temps.
+  beforeAll(() => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'setInterval', 'queueMicrotask'] });
+    jest.setSystemTime(new Date(2026, 9, 20, 12));
+  });
+  afterAll(() => jest.useRealTimers());
+
   it('chronologie des actions menées, du plus ancien au plus récent, sans le confidentiel', async () => {
     const service = new SkillTargetsService(dataSource(), permissions());
     const lines = await service.activity(90, { id: 12 });

@@ -1,4 +1,5 @@
 /// <reference types="jest" />
+import { runWithTenantContext } from '../../core/tenant/tenant.context';
 import { BadRequestException } from '@nestjs/common';
 
 import type { AiSkillContext } from 'src/core/ai-database/skills/ai-skill.types';
@@ -350,7 +351,8 @@ describe('Envoi des e-mails', () => {
     };
     const sendMail = jest.fn(async () => undefined);
     const smtp = { getTenantTransport: jest.fn(async () => ({ transport: { sendMail }, from: 'cabinet@x.cm' })) };
-    const tenant = { run: jest.fn((_id: number, fn: () => any) => fn()), runWithoutTenant: jest.fn((fn: () => any) => fn()) };
+    // Contexte cabinet réel : l'envoi lit le cabinet courant pour choisir son SMTP.
+    const tenant = { run: jest.fn((id: number, fn: () => any) => runWithTenantContext(id, fn)), runWithoutTenant: jest.fn((fn: () => any) => fn()) };
     const service: any = new MailService(repo as any, {} as any, {} as any, smtp as any, tenant as any);
     service.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     return { service, sendMail, tenant, repo };
@@ -358,7 +360,7 @@ describe('Envoi des e-mails', () => {
 
   it('décode les pièces jointes en base64 (composer, GED)', async () => {
     const { service, sendMail } = mailService();
-    await service.sendDirect({ to: 'a@x.cm', subject: 'Test', html: '<p>x</p>', attachments: [{ filename: 'a.pdf', content: Buffer.from('PDF!').toString('base64'), contentType: 'application/pdf' }] });
+    await runWithTenantContext(25, () => service.sendDirect({ to: 'a@x.cm', subject: 'Test', html: '<p>x</p>', attachments: [{ filename: 'a.pdf', content: Buffer.from('PDF!').toString('base64'), contentType: 'application/pdf' }] }));
     const attachment = (sendMail.mock.calls[0] as any)[0].attachments[0];
     expect(Buffer.isBuffer(attachment.content)).toBe(true);
     expect(attachment.content.toString()).toBe('PDF!');

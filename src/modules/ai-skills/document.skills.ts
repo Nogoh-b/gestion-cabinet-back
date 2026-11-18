@@ -13,7 +13,7 @@ import { normalizeActionName } from 'src/core/ai-database/write/ai-action.regist
 import { htmlToText, resolveSkillTarget, todayFr } from 'src/core/ai-database/skills/skill-helpers';
 import { isRichHtml } from 'src/core/shared/html/sanitize-rich-html';
 import { documentHtml, htmlToMarkup, parseSectionedAnswer } from './document-markup';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
 import { PdfTemplate } from '../pdf-templates/entities/pdf-template.entity';
 import { PdfTemplatesService } from '../pdf-templates/pdf-templates.service';
 import { draftJson, DRAFTING_RULES, legalBlockFor, pastedText, requestBlock, senderLine, str } from './skill-drafting';
@@ -30,7 +30,8 @@ export const TEMPLATE_ENTITY: Partial<Record<AiSkillTargetType, string>> = {
 
 /** Le modèle du cabinet l'emporte sur le modèle de la plateforme de même code. */
 export function preferOwn(templates: PdfTemplate[]): PdfTemplate[] {
-  const tenantId = getCurrentTenantId();
+  // Hors contexte cabinet (tâche planifiée, test) : aucune préférence, pas d'erreur.
+  const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
   const byCode = new Map<string, PdfTemplate>();
   for (const template of templates) {
     const current = byCode.get(template.code);

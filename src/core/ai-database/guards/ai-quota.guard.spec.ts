@@ -65,11 +65,15 @@ describe('AiQuotaGuard', () => {
     expect(req.aiRequestLogId).toBe(99);
   });
 
-  it('forfait illimité (NULL ou -1) : aucune limite, aucun calcul', async () => {
+  it('forfait illimité (NULL ou -1) : aucune limite, aucun calcul de consommation', async () => {
     for (const credits of [null, -1]) {
       const { guard, ctx, logRepo, db } = setup({ name: 'Pro', ai_enabled: 1, ai_credits_per_month: credits }, 9_999_999);
       await expect(guard.canActivate(ctx)).resolves.toBe(true);
-      expect(db.query).not.toHaveBeenCalled();
+      // Seul le forfait propre au cabinet est relu (il peut limiter un plan
+      // illimité) ; la consommation n'est jamais calculée.
+      expect(db.query.mock.calls.map(([sql]: [string]) => sql)).toEqual([
+        'SELECT ai_credits_override FROM cabinets WHERE id = ? LIMIT 1',
+      ]);
       expect(logRepo.save).toHaveBeenCalledTimes(1);
     }
   });

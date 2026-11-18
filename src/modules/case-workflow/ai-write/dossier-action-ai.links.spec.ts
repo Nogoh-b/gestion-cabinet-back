@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { runWithTenantContext } from 'src/core/tenant/tenant.context';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { ActionLinkRole, DossierActionStatus } from '../case-workflow.enums';
@@ -84,6 +85,10 @@ function createHandler(db = createDb()) {
   return { handler: handler as any, actionService, db };
 }
 
+/** Le handler écrit dans un cabinet : chaque test s'exécute dans le cabinet des données (1). */
+const itInCabinet = (name: string, fn: () => Promise<unknown>) =>
+  it(name, () => runWithTenantContext(1, fn) as Promise<void>);
+
 const createdDto = (service: { create: jest.Mock }) => service.create.mock.calls[0][1] as any;
 
 describe('DossierActionAiWriteHandler — liens des ressources', () => {
@@ -92,7 +97,7 @@ describe('DossierActionAiWriteHandler — liens des ressources', () => {
     ctx = createHandler();
   });
 
-  it('chaîne une action sur la précédente créée dans le même plan', async () => {
+  itInCabinet('chaîne une action sur la précédente créée dans le même plan', async () => {
     await ctx.handler.doInsert(
       {
         dossier_id: DOSSIER,
@@ -109,7 +114,7 @@ describe('DossierActionAiWriteHandler — liens des ressources', () => {
     ]);
   });
 
-  it('ne chaîne pas une action déclarée indépendante ([])', async () => {
+  itInCabinet('ne chaîne pas une action déclarée indépendante ([])', async () => {
     await ctx.handler.doInsert(
       {
         dossier_id: DOSSIER,
@@ -125,7 +130,7 @@ describe('DossierActionAiWriteHandler — liens des ressources', () => {
     expect(createdDto(ctx.actionService).previous_actions).toBeUndefined();
   });
 
-  it('relie l’audience créée dans le plan quand la définition en exige une', async () => {
+  itInCabinet('relie l’audience créée dans le plan quand la définition en exige une', async () => {
     await ctx.handler.doInsert(
       {
         dossier_id: DOSSIER,
@@ -142,7 +147,7 @@ describe('DossierActionAiWriteHandler — liens des ressources', () => {
     ]);
   });
 
-  it('sinon relie la prochaine audience du dossier plutôt qu’une audience passée', async () => {
+  itInCabinet('sinon relie la prochaine audience du dossier plutôt qu’une audience passée', async () => {
     const result = await ctx.handler.doInsert(
       { dossier_id: DOSSIER, definition_id: AUDIENCE_DEF, [PLAN_CREATED]: [] },
       '5',
@@ -154,7 +159,7 @@ describe('DossierActionAiWriteHandler — liens des ressources', () => {
     expect(result.message).toContain('liée à : 1 audience');
   });
 
-  it('résout les liens demandés par nom ou titre, et note ceux introuvables sans échouer', async () => {
+  itInCabinet('résout les liens demandés par nom ou titre, et note ceux introuvables sans échouer', async () => {
     const result = await ctx.handler.doInsert(
       {
         dossier_id: DOSSIER,
@@ -175,7 +180,7 @@ describe('DossierActionAiWriteHandler — liens des ressources', () => {
     expect(result.message).toContain('« Inconnu.pdf » introuvable dans ce dossier');
   });
 
-  it('à la clôture, complète l’audience exigée par la définition', async () => {
+  itInCabinet('à la clôture, complète l’audience exigée par la définition', async () => {
     ctx.db.tables.get(DossierAction)!.push({
       id: 'act-aud', tenant_id: 1, dossier_id: DOSSIER, definition_id: AUDIENCE_DEF,
       title: 'Plaider', status: DossierActionStatus.IN_PROGRESS, lock_version: 4,
@@ -189,7 +194,7 @@ describe('DossierActionAiWriteHandler — liens des ressources', () => {
     expect(dto.audiences).toEqual([{ id: 4, role: ActionLinkRole.INPUT }]);
   });
 
-  it('en mise à jour, ajoute les liens demandés à ceux déjà enregistrés', async () => {
+  itInCabinet('en mise à jour, ajoute les liens demandés à ceux déjà enregistrés', async () => {
     ctx.db.tables.get(DossierAction)!.push({
       id: 'act-x', tenant_id: 1, dossier_id: DOSSIER, definition_id: FREE_DEF,
       title: 'Préparer', status: DossierActionStatus.TODO, lock_version: 1,

@@ -23,6 +23,12 @@ function createService(tables = visibleTables) {
   service.relationshipsCache = new Map();
   service.logger = { log: jest.fn(), debug: jest.fn(), warn: jest.fn() };
   service.markMetric = jest.fn();
+  // Aucune table refusée : le test porte sur la détection, pas sur les droits.
+  service.aiPermissionService = {
+    isTableAllowed: () => true,
+    filterAllowedTables: (list: string[]) => list,
+  };
+  service.writeHandlerRegistry = { getAllHandlers: () => [] };
   return service;
 }
 
