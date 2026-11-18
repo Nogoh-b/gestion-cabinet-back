@@ -80,3 +80,6 @@ storage/
 
 # PM2 - config locale au serveur, ne pas versionner
 /ecosystem.config.js
+
+# Rapports du banc d'évaluation IA (npm run eval:ai)
+/eval-results/
