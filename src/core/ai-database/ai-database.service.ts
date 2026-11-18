@@ -131,7 +131,19 @@ import { applyDossierNumberChoice } from '../../modules/dossiers/dossier-number-
 import { BaseWriteHandler } from './write/base-write-handler';
 import { outerJoinRetry } from './outer-join-fallback';
 import { extractPdfText } from './pdf-text';
-import { injectTenantFilter } from './tenant-injection';
+import {
+  aiSqlMaxExecutionMs,
+  applyStatementTimeout,
+  isStatementTimeoutError,
+  sqlEngineFromVersion,
+  type SqlEngine,
+} from './sql-time-limit';
+import {
+  ForeignSchemaError,
+  injectTenantFilter,
+  normalizeQualifiedTables,
+  stripSqlComments,
+} from './tenant-injection';
 import { buildAiScopedTables } from './ai-scoped-tables';
 import {
   NumericEnumColumns,
@@ -515,6 +527,39 @@ const KEYWORD_STOPWORDS = new Set([
 function squashRepeatedLetters(word: string): string {
   return word.replace(/(.)\1+/g, '$1');
 }
+
+
+/**
+ * Requête de lecture restée invalide après les corrections : marqueur
+ * distinct de `SELECT NULL AS message WHERE 1=0` (« rien à chercher »), pour
+ * ne jamais présenter un échec comme une absence de données.
+ */
+export const FAILED_READ_SQL = 'SELECT NULL AS echec_requete WHERE 1=0';
+export function isFailedReadQuery(sql: string | null | undefined): boolean {
+  return /^\s*select\s+null\s+as\s+echec_requete\s+where\s+1\s*=\s*0\b/i.test(sql ?? '');
+}
+const FAILED_READ_NOTICE =
+  "Je n'ai pas réussi à consulter vos données pour cette question : la recherche a échoué, ce qui ne veut pas dire qu'il n'y a rien.";
+const FAILED_READ_REASON =
+  "La consultation des donnees a echoue (requete invalide apres corrections). Ce n'est PAS une absence de donnees : ne dis jamais qu'aucun element n'existe ; propose de reformuler ou de preciser.";
+
+/** Titres des sous-questions qui n'ont pas pu être consultées. */
+function notConsultedTitles(
+  subQuestions: Array<{ title: string }>,
+  results: ReadonlyArray<unknown>,
+): string[] {
+  return subQuestions.filter((_, index) => !results[index]).map((sub) => sub.title);
+}
+
+/** Mention ajoutée à la réponse quand une partie de la demande n'a pas pu être consultée. */
+function notConsultedNote(titles: string[]): string {
+  if (!titles.length) return '';
+  return `\n\n> ⚠️ Je n'ai pas pu consulter : ${titles.join(', ')}. La recherche a échoué pour ${titles.length > 1 ? 'ces points' : 'ce point'} ; ce n'est pas une absence de données.`;
+}
+
+/** Requête IA interrompue par la durée maximale (AI_SQL_MAX_EXECUTION_MS). */
+export const AI_SQL_TIMEOUT_MESSAGE =
+  'La recherche dans les données a pris trop de temps et a été interrompue.';
 
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
@@ -1064,12 +1109,12 @@ export class AiDatabaseService implements OnModuleInit {
     ${schema}
 
     RÈGLES ABSOLUES :
-    1. IGNORE toujours les colonnes "deleted_at", "deleted_by", "deleted_date"
+    1. IGNORE toujours les colonnes "deleted_at", "deleted_by", "deleted_date" (les éléments supprimés sont exclus automatiquement)
     2. Ajoute systématiquement LIMIT ${this.MAX_RESULTS}
     3. Utilise des alias courts
     4. Ne génère JAMAIS de DELETE, UPDATE, INSERT
     5. TOUTES les valeurs doivent être en dur (pas de placeholders :id, ?, etc.)
-    6. ENUM à codes numériques (enum('0','1',…)) : compare avec la valeur quotée (d.status = '8', CASE d.status WHEN '0' THEN …), jamais un entier nu
+    6. ENUM à codes numériques (enum('0','1',…)) : compare avec la valeur quotée (f.status = '5', CASE f.status WHEN '0' THEN …), jamais un entier nu
 
     🎯 FORMAT DE RÉPONSE OBLIGATOIRE :
     Tu DOIS répondre UNIQUEMENT avec un bloc de code SQL comme ceci :
@@ -1455,7 +1500,7 @@ export class AiDatabaseService implements OnModuleInit {
 Le SCHEMA UTILE de la base est fourni a la fin de ce message.
 
 REGLES ABSOLUES :
-1. Ignore toujours les colonnes deleted_at, deleted_by, deleted_date
+1. Ignore toujours les colonnes deleted_at, deleted_by, deleted_date (les éléments supprimés sont exclus automatiquement)
 2. Ajoute systematiquement LIMIT ${this.MAX_RESULTS}
 3. Utilise des alias courts
 4. Ne genere JAMAIS de DELETE, UPDATE, INSERT, DROP, ALTER, CREATE, TRUNCATE
@@ -1514,7 +1559,7 @@ ${rules}`;
       .replace(/\s+/g, ' ')
       .toLowerCase();
 
-    return /^select\s+null\s+as\s+message\s+where\s+1\s*=\s*0(?:\s+limit\s+\d+)?$/.test(
+    return /^select\s+null\s+as\s+(?:message|echec_requete)\s+where\s+1\s*=\s*0(?:\s+limit\s+\d+)?$/.test(
       cleaned,
     );
   }
@@ -3053,7 +3098,9 @@ Contraintes obligatoires :
 
       if (this.isSyntheticEmptyQuery(validatedQuery)) {
         // Pas de requête possible sur une question de droit : réponse de connaissance.
-        const knowledge = await this.answerFromKnowledge(dto.question);
+        const queryFailed = isFailedReadQuery(validatedQuery);
+        // Échec technique : « aucune donnée du cabinet ne correspond » serait faux.
+        const knowledge = queryFailed ? null : await this.answerFromKnowledge(dto.question);
         if (knowledge) {
           await this.conversationManager.addAssistantMessage(
             conversationId,
@@ -3097,9 +3144,9 @@ Contraintes obligatoires :
             historyOverride,
             referenced: requestContext.referenced,
           },
-          "La question n'a pas permis de construire une requete SQL fiable.",
+          queryFailed ? FAILED_READ_REASON : "La question n'a pas permis de construire une requete SQL fiable.",
         );
-        const analysis = `${clarificationContext.question}\n\nChoisissez une option pour orienter la recherche.`;
+        const analysis = `${queryFailed ? `${FAILED_READ_NOTICE}\n\n` : ''}${clarificationContext.question}\n\nChoisissez une option pour orienter la recherche.`;
         await this.conversationManager.addAssistantMessage(
           conversationId,
           analysis,
@@ -6830,10 +6877,11 @@ ${blocks.join('\n\n')}
       );
       if (this.isSyntheticEmptyQuery(validatedQuery)) {
         // Pas de requête possible sur une question de droit : réponse de connaissance.
-        const knowledge = await this.answerFromKnowledgeStream(
-          dto.question,
-          sendEvent,
-        );
+        const queryFailed = isFailedReadQuery(validatedQuery);
+        // Échec technique : « aucune donnée du cabinet ne correspond » serait faux.
+        const knowledge = queryFailed
+          ? null
+          : await this.answerFromKnowledgeStream(dto.question, sendEvent);
         if (knowledge) {
           await this.conversationManager.addAssistantMessage(
             conversationId,
@@ -6872,9 +6920,9 @@ ${blocks.join('\n\n')}
             historyOverride,
             referenced: requestContext.referenced,
           },
-          "La question n'a pas permis de construire une requete SQL fiable.",
+          queryFailed ? FAILED_READ_REASON : "La question n'a pas permis de construire une requete SQL fiable.",
         );
-        const analysis = `${clarificationContext.question}\n\nChoisissez une option pour orienter la recherche.`;
+        const analysis = `${queryFailed ? `${FAILED_READ_NOTICE}\n\n` : ''}${clarificationContext.question}\n\nChoisissez une option pour orienter la recherche.`;
         await this.conversationManager.addAssistantMessage(
           conversationId,
           analysis,
@@ -7102,14 +7150,33 @@ ${blocks.join('\n\n')}
     for (const part of subResults) {
       if (part) parts.push(part);
     }
+    // Sous-questions qui n'ont pas pu être consultées (requête impossible ou
+    // invalide) : elles sont signalées, jamais présentées comme « vides ».
+    const notConsulted = notConsultedTitles(subQuestions, subResults);
+
+    if (!parts.length) {
+      const msg = FAILED_READ_NOTICE;
+      await this.conversationManager.addAssistantMessage(conversationId, msg, undefined);
+      sendEvent('token', { text: msg });
+      sendEvent('result', {
+        success: true,
+        question: dto.question,
+        analysis: msg,
+        results: [],
+        rowCount: 0,
+        conversationId,
+        executionTimeMs: Date.now() - startTime,
+        ...(fileInfo && { fileInfo }),
+      });
+      return;
+    }
 
     // Aucune sous-requête exploitable, ou toutes vides → réponse « rien
     // trouvé » courte avec pistes, plutôt qu'une analyse rédigée sur du vide.
     if (parts.every((part) => part.rowCount === 0)) {
-      const knowledge = await this.answerFromKnowledgeStream(
-        dto.question,
-        sendEvent,
-      );
+      const knowledge = notConsulted.length
+        ? null
+        : await this.answerFromKnowledgeStream(dto.question, sendEvent);
       if (knowledge) {
         await this.conversationManager.addAssistantMessage(
           conversationId,
@@ -7128,10 +7195,12 @@ ${blocks.join('\n\n')}
         });
         return;
       }
-      const { message: msg, suggestions } = await this.buildNoResultsAnswer(
+      const noResults = await this.buildNoResultsAnswer(
         dto.question,
         relevantTables,
       );
+      const suggestions = noResults.suggestions;
+      const msg = noResults.message + notConsultedNote(notConsulted);
       await this.conversationManager.addAssistantMessage(
         conversationId,
         msg,
@@ -7160,12 +7229,17 @@ ${blocks.join('\n\n')}
       resultSets: parts,
     });
     await emit('status', { step: 'answer', message: '📊 Analyse combinée des résultats...' });
-    const analysis = await this.generateCombinedAnalysisStream(
+    let analysis = await this.generateCombinedAnalysisStream(
       dto.question,
       parts,
       relevantTables,
       sendEvent,
     );
+    const streamNote = notConsultedNote(notConsulted);
+    if (streamNote) {
+      sendEvent('token', { text: streamNote });
+      analysis += streamNote;
+    }
 
     const combinedSql = parts
       .map((p) => `-- ${p.title}\n${p.sqlQuery}`)
@@ -7233,17 +7307,16 @@ ${blocks.join('\n\n')}
       if (part) parts.push(part);
     }
     if (parts.length === 0) return null;
+    const notConsulted = notConsultedTitles(subQuestions, subResults);
 
     await this.conversationManager.addUserMessage(
       conversationId,
       dto.question,
       referenced,
     );
-    const analysis = await this.generateCombinedAnalysis(
-      dto.question,
-      parts,
-      relevantTables,
-    );
+    const analysis =
+      (await this.generateCombinedAnalysis(dto.question, parts, relevantTables)) +
+      notConsultedNote(notConsulted);
     const combinedSql = parts
       .map((p) => `-- ${p.title}\n${p.sqlQuery}`)
       .join('\n\n');
@@ -10387,7 +10460,7 @@ ${facts.slice(0, 9000)}`
 
   🎯 **RÈGLES CRITIQUES :**
 
-  1. **IGNORE TOTALEMENT** les colonnes "deleted_at", "deleted_by", "deleted_date"
+  1. **IGNORE TOTALEMENT** les colonnes "deleted_at", "deleted_by", "deleted_date" (les éléments supprimés sont exclus automatiquement)
   2. **NE JAMAIS filtrer** sur ces colonnes dans WHERE
   3. **N'UTILISE JAMAIS** les paramètres nommés comme :dossier_id, :param, etc.
   4. Utilise des alias courts (d = dossiers, c = customers)
@@ -10396,7 +10469,7 @@ ${facts.slice(0, 9000)}`
   7. Pour le timestamp actuel, utilise **NOW()**
   8. Pour comparer une partie d'une date, utilise **DATE()** (ex: WHERE DATE(d.created_at) = CURDATE())
   9. **TOUTES les valeurs doivent être en dur** (pas de placeholders)
-  10. Les colonnes ENUM à codes numériques (ex : enum('0','1',…)) se comparent avec la valeur QUOTÉE : d.status = '8', IN ('8','9'), CASE d.status WHEN '0' THEN … (un entier nu compare l'index de l'ENUM)
+  10. Les colonnes ENUM à codes numériques (ex : enum('0','1',…)) se comparent avec la valeur QUOTÉE : f.status = '5', IN ('3','6'), CASE f.status WHEN '0' THEN … (un entier nu compare l'index de l'ENUM)
 
   ❌ **STRICTEMENT INTERDIT :**
   - DELETE, UPDATE, INSERT, DROP, ALTER, CREATE, TRUNCATE
@@ -10409,7 +10482,7 @@ ${facts.slice(0, 9000)}`
   \`\`\`sql
   SELECT d.id, d.dossier_number, d.title
   FROM dossiers d
-  WHERE d.dossier_number = 'ABC123' AND d.status = 'active'
+  WHERE d.dossier_number = 'ABC123' AND d.status = 'ACTIVE'
   LIMIT 10;
   \`\`\`
 
@@ -10503,7 +10576,8 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
       );
       // Le SELECT doit rester en tête (un commentaire en préfixe casserait le
       // contrôle startsWith('select') en aval et déclencherait un faux re-routage WRITE).
-      return `SELECT NULL AS message WHERE 1=0`;
+      // Marqueur distinct de « rien à chercher » : l'échec est dit tel quel.
+      return FAILED_READ_SQL;
     }
 
     return currentQuery;
@@ -10539,6 +10613,24 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
       }
     }
     this._tenantTablesCache = tables;
+    return tables;
+  }
+
+  /**
+   * Tables à suppression logique (colonne deleted_at) : leurs lignes
+   * supprimées sont exclues de toutes les lectures de l'assistant.
+   */
+  private _softDeleteTablesCache: Set<string> | null = null;
+  private getSoftDeleteTables(): Set<string> {
+    if (this._softDeleteTablesCache) return this._softDeleteTablesCache;
+    const tables = new Set<string>();
+    for (const meta of this.dataSource?.entityMetadatas ?? []) {
+      const softDelete = meta.columns.some((c) => c.databaseName === 'deleted_at');
+      if (softDelete && meta.tableName && meta.tableType !== 'view') {
+        tables.add(meta.tableName.toLowerCase());
+      }
+    }
+    this._softDeleteTablesCache = tables;
     return tables;
   }
 
@@ -10627,6 +10719,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
       tenantId: tenantId ?? 0,
       tenantTables: this.getTenantTables(),
       sharedTables: this.getSharedTenantTables(),
+      softDeleteTables: this.getSoftDeleteTables(),
       scopedTables: buildAiScopedTables({
         tenantId,
         userId: metrics?.userProfile?.userId ?? metrics?.scopeUserId ?? null,
@@ -10818,7 +10911,13 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
   }
 
   private prepareReadQuery(sqlQuery: string): string {
-    let preparedQuery = sqlQuery.trim();
+    // Commentaires retirés et base qualifiée normalisée AVANT tout contrôle :
+    // le filtre cabinet et la liste des tables lues reposent sur les noms
+    // simples qui suivent FROM / JOIN.
+    let preparedQuery = normalizeQualifiedTables(
+      stripSqlComments(sqlQuery).trim(),
+      this.currentDatabaseName(),
+    );
 
     preparedQuery = this.replaceSpecialValues(preparedQuery);
     // Un total sans ligne liée (facture sans paiement) vaut 0, pas NULL : sinon
@@ -10845,10 +10944,74 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
    * et la re-router vers la voie WRITE plutôt que de la bloquer.
    */
   private isSelectQuery(sqlQuery: string): boolean {
-    return this.prepareReadQuery(sqlQuery)
+    return stripSqlComments(sqlQuery)
       .trim()
       .toLowerCase()
       .startsWith('select');
+  }
+
+  private sqlEngine?: Promise<SqlEngine>;
+  private aiReadSource?: Promise<DataSource | null>;
+
+  /**
+   * Connexion des lectures IA : compte en lecture seule quand AI_DB_USER est
+   * renseigné (voir scripts/create-ai-readonly-user.sql), sinon la connexion
+   * principale. Un échec d'ouverture est journalisé et retenté à l'appel
+   * suivant ; l'assistant continue sur la connexion principale.
+   */
+  private async readConnection(): Promise<DataSource> {
+    const username = process.env.AI_DB_USER;
+    if (!username) return this.dataSource;
+    this.aiReadSource ??= (async () => {
+      const source = new DataSource({
+        ...(this.dataSource.options as any),
+        name: 'ai-readonly',
+        username,
+        password: process.env.AI_DB_PASSWORD ?? '',
+        entities: [],
+        migrations: [],
+        subscribers: [],
+        synchronize: false,
+        migrationsRun: false,
+        dropSchema: false,
+        poolSize: 5,
+      });
+      try {
+        await source.initialize();
+        this.logger.log('Lectures IA : connexion en lecture seule ouverte');
+        return source;
+      } catch (error) {
+        this.logger.error(
+          `Lectures IA : connexion lecture seule (${username}) impossible, repli sur la connexion principale — ${(error as Error).message}`,
+        );
+        this.aiReadSource = undefined;
+        return null;
+      }
+    })();
+    return (await this.aiReadSource) ?? this.dataSource;
+  }
+
+  /** Moteur SQL détecté une fois (MariaDB ou MySQL), pour la limite de durée. */
+  private detectSqlEngine(source: DataSource): Promise<SqlEngine> {
+    this.sqlEngine ??= Promise.resolve()
+      .then(() => source.query('SELECT VERSION() AS version'))
+      .then((rows: Array<{ version?: unknown }>) => sqlEngineFromVersion(rows?.[0]?.version))
+      .catch(() => 'unknown' as const);
+    return this.sqlEngine;
+  }
+
+  /** Exécute une lecture IA préparée, avec la durée maximale autorisée. */
+  private async runAiRead(sql: string): Promise<any[]> {
+    const source = await this.readConnection();
+    const maxMs = aiSqlMaxExecutionMs();
+    const engine = maxMs > 0 ? await this.detectSqlEngine(source) : 'unknown';
+    return source.query(applyStatementTimeout(sql, engine, maxMs));
+  }
+
+  /** Base de l'application : seule base que l'assistant peut lire. */
+  private currentDatabaseName(): string | null {
+    const database = (this.dataSource?.options as { database?: unknown } | undefined)?.database;
+    return typeof database === 'string' && database ? database : process.env.DB_NAME || null;
   }
 
   /**
@@ -10950,7 +11113,17 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     sqlQuery = withRecordRefs(sqlQuery, (table) => this.hasIdPrimaryKey(table));
 
     // execQuery est la requête nettoyée + enrichie qui sera réellement exécutée
-    const execQuery = this.ensureResultLimit(this.prepareReadQuery(sqlQuery));
+    let execQuery: string;
+    try {
+      execQuery = this.ensureResultLimit(this.prepareReadQuery(sqlQuery));
+    } catch (error) {
+      if (error instanceof ForeignSchemaError) {
+        throw new ForbiddenException(
+          "L'assistant ne lit que les données de l'application.",
+        );
+      }
+      throw error;
+    }
 
     // normalizedQuery (lowercase) sert uniquement à la validation de sécurité
     const normalizedQuery = execQuery.toLowerCase();
@@ -10978,7 +11151,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
 
     try {
       // Exécuter execQuery (nettoyée + tenant injecté), pas sqlQuery (l'original brut)
-      let results = await this.dataSource.query(execQuery);
+      let results = await this.runAiRead(execQuery);
       // Enregistrement précis introuvable : une jointure interne vers une
       // table annexe sans correspondance a pu supprimer la ligne → une
       // relance en LEFT JOIN (tenant réinjecté avec la tolérance IS NULL).
@@ -10986,7 +11159,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
       if (widened) {
         const retryQuery = this.ensureResultLimit(this.prepareReadQuery(widened));
         try {
-          const retried = await this.dataSource.query(retryQuery);
+          const retried = await this.runAiRead(retryQuery);
           if (retried.length) {
             this.logger.log(`🔁 Résultat vide relancé en LEFT JOIN : ${retried.length} ligne(s)`);
             results = retried;
@@ -11008,6 +11181,12 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
         rowCount: limitedResults.length,
       };
     } catch (error) {
+      if (isStatementTimeoutError(error)) {
+        this.logger.warn(
+          `Requete de lecture IA interrompue : duree maximale (${aiSqlMaxExecutionMs()} ms) depassee`,
+        );
+        throw new Error(AI_SQL_TIMEOUT_MESSAGE);
+      }
       this.logger.error(
         'Echec d execution de la requete de lecture IA',
       );
@@ -11053,15 +11232,19 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
       }
 
       const preparedQuery = this.prepareReadQuery(sqlQuery);
-      await this.dataSource.query(`EXPLAIN ${preparedQuery}`);
+      await (await this.readConnection()).query(`EXPLAIN ${preparedQuery}`);
       return { valid: true };
     } catch (error) {
-      this.logger.warn(
-        'Validation de la requete de lecture IA invalide',
-      );
+      // Le vrai message de la base (« Unknown column 'f.statut' in 'field
+      // list' ») va au correcteur : sans lui, le modèle corrige à l'aveugle.
+      // Il n'est jamais montré à l'utilisateur.
+      const detail = String((error as { sqlMessage?: string })?.sqlMessage ?? (error as Error)?.message ?? '')
+        .replace(/\s+/g, ' ')
+        .slice(0, 300);
+      this.logger.warn(`Validation de la requete de lecture IA invalide : ${detail}`);
       return {
         valid: false,
-        error: 'Requete de lecture invalide',
+        error: detail ? `Requete de lecture invalide : ${detail}` : 'Requete de lecture invalide',
       };
     }
   }

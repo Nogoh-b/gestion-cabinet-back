@@ -24,13 +24,13 @@ describe('AiDatabaseService tenant SQL hardening', () => {
     service._sharedTenantTablesCache = null;
   });
 
-  it('filtre aussi le tenant historique numero 1', () => {
+  it("laisse la vue globale au cabinet 1 (administration globale)", () => {
     const sql = service.injectTenantConditions(
       'SELECT d.id FROM dossiers d',
       1,
     );
 
-    expect(sql).toContain('d.tenant_id = 1');
+    expect(sql).not.toContain('tenant_id');
   });
 
   it('isole une condition OR existante dans des parentheses', () => {

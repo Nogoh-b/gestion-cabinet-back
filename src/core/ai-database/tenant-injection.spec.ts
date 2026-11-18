@@ -178,3 +178,113 @@ describe('injectTenantConditions — tables sans tenant_id et personnelles', () 
     expect(sql).toContain('n.tenant_id = 25 AND n.`user_id` = 0');
   });
 });
+
+describe('contournements du filtre cabinet', () => {
+  const { injectTenantFilter, normalizeQualifiedTables, stripSqlComments, ForeignSchemaError } =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('./tenant-injection');
+  const options = { tenantId: 7, tenantTables: new Set(['factures', 'dossiers']) };
+
+  it('retire la base de l’application devant une table, qui redevient filtrée', () => {
+    const sql = normalizeQualifiedTables('SELECT f.numero FROM kabysoft.factures f LIMIT 50', 'kabysoft');
+    expect(sql).toBe('SELECT f.numero FROM factures f LIMIT 50');
+    expect(injectTenantFilter(sql, options)).toContain('f.tenant_id = 7');
+  });
+
+  it('normalise aussi les listes FROM, les jointures et les backticks', () => {
+    const sql = normalizeQualifiedTables(
+      'SELECT 1 FROM `kabysoft`.`dossiers` d, kabysoft.factures f JOIN Kabysoft . factures g ON g.id = f.id',
+      'kabysoft',
+    );
+    expect(sql).toBe('SELECT 1 FROM `dossiers` d, factures f JOIN factures g ON g.id = f.id');
+  });
+
+  it.each([
+    'SELECT * FROM information_schema.tables',
+    'SELECT * FROM factures f JOIN mysql.user u ON 1 = 1',
+    'SELECT (SELECT COUNT(*) FROM autre_base.factures) AS n FROM dossiers d',
+    'SELECT * FROM dossiers d, autre_base.factures f',
+  ])('refuse une autre base : %s', (sql) => {
+    expect(() => normalizeQualifiedTables(sql, 'kabysoft')).toThrow(ForeignSchemaError);
+  });
+
+  it('ne confond pas alias.colonne ni une chaîne avec une base', () => {
+    const sql = "SELECT f.numero FROM factures f WHERE f.libelle = 'from mysql.user' LIMIT 5";
+    expect(normalizeQualifiedTables(sql, 'kabysoft')).toBe(sql);
+  });
+
+  it('le filtre reconnaît une table qualifiée même sans normalisation', () => {
+    expect(injectTenantFilter('SELECT f.numero FROM kabysoft.factures f LIMIT 50', options))
+      .toContain('f.tenant_id = 7');
+    expect(injectTenantFilter('SELECT 1 FROM dossiers d JOIN kabysoft.factures f ON f.dossier_id = d.id', options))
+      .toContain('f.tenant_id = 7');
+  });
+
+  it('retire les commentaires, y compris exécutables, hors des chaînes', () => {
+    expect(stripSqlComments('SELECT f.numero FROM/**/factures f')).toBe('SELECT f.numero FROM factures f');
+    expect(stripSqlComments('SELECT 1 /*!50000 , (SELECT 1 FROM mysql.user) */ FROM factures f'))
+      .toBe('SELECT 1   FROM factures f');
+    expect(stripSqlComments("SELECT '--pas un commentaire /* */' AS t -- fin\nFROM factures f # autre"))
+      .toBe("SELECT '--pas un commentaire /* */' AS t  \nFROM factures f  ");
+    expect(stripSqlComments('SELECT 5--1 AS n')).toBe('SELECT 5--1 AS n');
+    expect(injectTenantFilter(stripSqlComments('SELECT f.numero FROM/**/factures f'), options))
+      .toContain('f.tenant_id = 7');
+  });
+});
+
+describe('éléments supprimés (deleted_at)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { injectTenantFilter } = require('./tenant-injection');
+  const options = {
+    tenantId: 7,
+    tenantTables: new Set(['factures', 'dossiers', 'paiements']),
+    softDeleteTables: new Set(['factures', 'dossiers', 'paiements']),
+  };
+
+  it('exclut les lignes supprimées de la table principale et des jointures internes', () => {
+    const sql = injectTenantFilter(
+      "SELECT f.numero FROM factures f JOIN dossiers d ON d.id = f.dossier_id WHERE f.status <> '5' LIMIT 50",
+      options,
+    );
+    expect(sql).toContain('f.deleted_at IS NULL');
+    expect(sql).toContain('d.deleted_at IS NULL');
+    expect(sql).toContain('f.tenant_id = 7');
+  });
+
+  it('met la condition dans le ON d’une jointure externe (la ligne principale reste)', () => {
+    const sql = injectTenantFilter(
+      'SELECT d.dossier_number, COUNT(f.id) AS n FROM dossiers d LEFT JOIN factures f ON f.dossier_id = d.id GROUP BY d.dossier_number LIMIT 50',
+      options,
+    );
+    expect(sql).toContain('LEFT JOIN factures f ON (f.dossier_id = d.id) AND f.deleted_at IS NULL WHERE');
+    expect(sql).toContain('GROUP BY d.dossier_number');
+    expect(sql).toMatch(/WHERE [^]*d\.deleted_at IS NULL/);
+    expect(sql).not.toMatch(/WHERE [^]*f\.deleted_at IS NULL/);
+  });
+
+  it('couvre les sous-requêtes corrélées (sommes de paiements)', () => {
+    const sql = injectTenantFilter(
+      "SELECT f.numero, (SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id AND p.status = '1') AS paye FROM factures f LIMIT 50",
+      options,
+    );
+    expect(sql).toContain('p.deleted_at IS NULL');
+    expect(sql).toContain('f.deleted_at IS NULL');
+  });
+
+  it("s'applique aussi au cabinet 1, sans filtre cabinet", () => {
+    const sql = injectTenantFilter('SELECT d.id FROM dossiers d LIMIT 5', { ...options, tenantId: 1 });
+    expect(sql).toContain('d.deleted_at IS NULL');
+    expect(sql).not.toContain('tenant_id');
+  });
+
+  it('ne double pas une condition déjà écrite et garde la casse des alias', () => {
+    const sql = injectTenantFilter('SELECT F.numero FROM factures F WHERE F.deleted_at IS NULL LIMIT 5', options);
+    expect(sql.match(/deleted_at IS NULL/g)).toHaveLength(1);
+    expect(sql).toContain('F.tenant_id = 7');
+  });
+
+  it('jointure externe sans alias', () => {
+    const sql = injectTenantFilter('SELECT d.id FROM dossiers d LEFT JOIN factures ON factures.dossier_id = d.id LIMIT 5', options);
+    expect(sql).toContain('LEFT JOIN factures ON (factures.dossier_id = d.id) AND factures.deleted_at IS NULL WHERE');
+  });
+});

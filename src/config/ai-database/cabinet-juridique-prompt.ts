@@ -33,19 +33,19 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 - Pour une periode sur l'encaisse, filtrer p.date_paiement. Pour une periode sur le CA facture, filtrer f.date_facture.
 
 ### Factures impayees, reste a payer, retard
-- "impayee", "non payee", "non reglee", "non soldee", "partiellement payee", "reste a payer", "restant du", "creance", "encours" : une facture est due tant que son RESTE A PAYER est > 0. Le calculer avec les montants, jamais avec le seul statut (status '4' IMPAYEE est rarement pose) :
+- "impayee", "non payee", "non reglee", "non soldee", "partiellement payee", "reste a payer", "restant du", "creance", "encours" : une facture est due tant que son RESTE A PAYER est > 0. Le calculer avec les montants, jamais avec le seul statut (aucun statut « impayee » n'existe ; codes : 0=Brouillon, 1=Envoyee, 2=Partiellement payee, 3=Payee, 5=Annulee, 6=Validee) :
   reste a payer = f.montant_ttc - COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id AND p.status = '1'), 0).
 - "partiellement payee" = deja paye > 0 et reste a payer > 0. "impayee" sans autre precision couvre aussi les partiellement payees.
 - Exclure seulement les factures annulees (f.status <> '5'). Garder les brouillons (status '0') en affichant leur statut : l'utilisateur les distingue.
 - Toujours afficher : numero, date_facture, date_echeance, montant_ttc, montant paye, reste a payer, statut lisible, jours de retard = GREATEST(DATEDIFF(CURDATE(), f.date_echeance), 0).
 - Le retard est une COLONNE. Ne filtrer f.date_echeance < CURDATE() que si la question restreint aux factures "en retard", "echues", "depassees" ou "de plus de N jours".
-- Statut lisible : CASE f.status WHEN '0' THEN 'Brouillon' WHEN '1' THEN 'Envoyee' WHEN '2' THEN 'Partiellement payee' WHEN '3' THEN 'Payee' WHEN '4' THEN 'Impayee' WHEN '5' THEN 'Annulee' END.
+- Statut lisible : CASE f.status WHEN '0' THEN 'Brouillon' WHEN '1' THEN 'Envoyee' WHEN '2' THEN 'Partiellement payee' WHEN '3' THEN 'Payee' WHEN '5' THEN 'Annulee' WHEN '6' THEN 'Validee' END.
 - Exemple (factures non soldees d'un dossier, avec le retard) :
   SELECT f.numero, f.date_facture, f.date_echeance, f.montant_ttc,
          COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id AND p.status = '1'), 0) AS montant_paye,
          f.montant_ttc - COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id AND p.status = '1'), 0) AS reste_a_payer,
          GREATEST(DATEDIFF(CURDATE(), f.date_echeance), 0) AS jours_retard,
-         CASE f.status WHEN '0' THEN 'Brouillon' WHEN '1' THEN 'Envoyee' WHEN '2' THEN 'Partiellement payee' WHEN '3' THEN 'Payee' WHEN '4' THEN 'Impayee' WHEN '5' THEN 'Annulee' END AS statut,
+         CASE f.status WHEN '0' THEN 'Brouillon' WHEN '1' THEN 'Envoyee' WHEN '2' THEN 'Partiellement payee' WHEN '3' THEN 'Payee' WHEN '5' THEN 'Annulee' WHEN '6' THEN 'Validee' END AS statut,
          f.id AS ref__factures
   FROM factures f JOIN dossiers d ON d.id = f.dossier_id
   WHERE d.dossier_number = 'DOS-2026-0038' AND f.status <> '5'
@@ -55,7 +55,7 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 ### Liste ou total des factures (d'un dossier, d'un client)
 - "liste les factures", "factures du dossier", "combien a-t-on facture" : garder TOUTES les factures (annulees comprises, pour les signaler), avec numero, date_facture, date_echeance, montant_ttc, montant paye (paiements p.status = '1'), reste a payer et le statut lisible (CASE ci-dessus) AS statut.
 - Dans la reponse : une facture annulee (status '5') est citee avec la mention « annulee » et sort de TOUS les totaux ; les brouillons (status '0') comptent dans le total facture mais sont signales (« dont X en brouillon ») ; l'encaisse = somme des paiements valides (acomptes compris), jamais le TTC des seules factures payees.
-- Avoir (f.type = '4') : montant TTC negatif, vient en deduction du total.
+- Avoir (f.type = '4', ou f.nature = 'CREDIT_NOTE') : montant TTC negatif, vient en deduction du total.
 
 ### Chiffre d'affaires par client
 - Si l'utilisateur demande le chiffre d'affaires d'un client, joindre customer c ON f.client_id = c.id et filtrer le client par ses champs reels.
@@ -92,7 +92,9 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 ### Point / synthese / etat d'un dossier
 - Pour "fais le point", "synthese", "resume", "etat" ou "bilan" d'un dossier (ou d'une reference dossier de la page), ne te limite jamais a la table dossiers : la facturation fait partie du point.
 - Retourne UNE requete qui couvre : identite (dossier_number, client, juridiction, avocat referent, dates), statut lisible, facturation, activite (actions par statut, prochaine audience).
-- Statut : dossiers.status est un code numerique, 0=Ouvert, 1=Analyse preliminaire, 2=Amiable, 3=Contentieux, 4=Jugement, 5=Appel, 6=Cassation, 7=Execution, 8=Cloture, 9=Archive, 10=Abandonne. Affiche toujours le libelle (CASE sur d.status), jamais le code seul ni "libelle non disponible".
+- Statut administratif : dossiers.status vaut 'DRAFT' (Brouillon), 'ACTIVE' (En cours), 'CLOSED' (Cloture) ou 'ARCHIVED' (Archive). Affiche toujours le libelle : CASE d.status WHEN 'DRAFT' THEN 'Brouillon' WHEN 'ACTIVE' THEN 'En cours' WHEN 'CLOSED' THEN 'Cloture' WHEN 'ARCHIVED' THEN 'Archive' END. Ce n'est PAS l'etape de procedure : n'invente jamais de statut « Contentieux », « Appel », « Jugement »... a partir de ce champ.
+- Phase : dossiers.lifecycle_phase vaut 'OPENING' (Ouverture), 'TREATMENT' (Traitement) ou 'CLOSED' (Cloture). Issue : dossiers.outcome vaut 'won' (gagne), 'lost' (perdu), 'settled' (transige), 'abandoned' (abandonne) ou 'unknown' (inconnue).
+- Avancement de la procedure : il se lit dans les actions du dossier (dossier_actions : title, status TODO/IN_PROGRESS/ON_HOLD/COMPLETED/CANCELLED, due_at = echeance) et dans les audiences, pas dans dossiers.status.
 - Facturation : joindre en LEFT JOIN dossier_billing_profiles (mode, fixed_fee, hourly_rate, opening_fee, default_vacation_rate, percentage_rate, vat_rate, currency, is_confirmed) et agreger billable_items du dossier par statut avec des sous-requetes correlees (COUNT, SUM(net_amount), SUM(gross_amount)) plutot que des JOIN qui multiplient les lignes.
 - Sans profil ni element facturable retournes par cette requete, dis qu'aucune configuration de facturation n'a ete trouvee ; ne la declare jamais absente si la requete ne l'a pas consultee.
 
