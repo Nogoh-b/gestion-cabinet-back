@@ -115,9 +115,13 @@ try {
         join(migrationsDirectory, file),
         'utf8',
       );
-      const explicitName = source.match(
-        /\bname\s*=\s*['"]([^'"]+)['"]/,
-      )?.[1];
+      // Le SQL d'une migration peut contenir `name = '…'` (ex. WHERE name =
+      // 'Ouverture') : seul le nom qui se termine par l'horodatage est retenu.
+      const explicitName = [
+        ...source.matchAll(/\bname\s*=\s*['"]([^'"]+)['"]/g),
+      ]
+        .map((found) => found[1])
+        .find((candidate) => candidate.endsWith(match[1]));
       const className = source.match(
         /\bexport\s+class\s+([A-Za-z_$][\w$]*)/,
       )?.[1];
