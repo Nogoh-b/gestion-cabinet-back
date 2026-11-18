@@ -65,6 +65,16 @@ retirable depuis Paramètres › Rôles). `AI_ENABLED=false` coupe l'IA sur le
 serveur. Les endpoints techniques (`/execute`, `/schema*`, `/metrics`,
 `/visible-tables`) sont réservés au super administrateur.
 
+`AI_AGENT_MODE=on` confie les questions de lecture à un agent à outils
+métier (`src/core/ai-database/agent/`) : le modèle choisit des outils testés
+(factures, chiffres de facturation, synthèse d'un dossier, audiences, actions,
+recherche…), lit leurs résultats puis rédige la réponse à partir de ces seuls
+résultats. La logique du cabinet (reste à payer, factures annulées, lignes
+supprimées, cabinet courant) y est codée une fois en SQL paramétré. Sans
+outil adapté, l'agent garde le circuit SQL habituel en dernier recours.
+`off` (défaut) conserve le circuit actuel. Mesurer avant d'activer :
+`npm run eval:ai` (voir `docs/ai-eval.md`).
+
 Les requêtes SQL de l'assistant sont limitées par `AI_SQL_MAX_EXECUTION_MS`
 (15 000 ms par défaut). Pour qu'elles passent par un compte MySQL en lecture
 seule, renseigner `AI_DB_USER` et `AI_DB_PASSWORD` (voir

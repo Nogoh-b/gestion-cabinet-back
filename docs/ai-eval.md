@@ -86,6 +86,19 @@ Options utiles : `--only id1,id2`, `--category facturation,dossiers`,
 - **Comparer à conditions égales** : même base, même cabinet, même jour
   (les questions « cette année » ou « en retard » dépendent de la date).
 
+## Comparer le circuit SQL et l'agent
+
+L'agent à outils s'active par `AI_AGENT_MODE=on` (redémarrage du backend).
+Pour décider de l'activer, mesurez les deux sur la même base :
+
+```bash
+# backend avec AI_AGENT_MODE=off
+npm run eval:ai -- --label sql
+# backend avec AI_AGENT_MODE=on
+npm run eval:ai -- --label agent
+npm run eval:ai -- --compare eval-results/sql.json eval-results/agent.json
+```
+
 ## Ajouter une question
 
 Ajoutez une entrée à `EVAL_QUESTIONS`. Exemple :

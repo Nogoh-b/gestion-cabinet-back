@@ -131,6 +131,9 @@ import { applyDossierNumberChoice } from '../../modules/dossiers/dossier-number-
 import { BaseWriteHandler } from './write/base-write-handler';
 import { outerJoinRetry } from './outer-join-fallback';
 import { extractPdfText } from './pdf-text';
+import { runAgent, buildAgentAnswerRules, renderStepResults, type AgentMessage, type AgentStep } from './agent/agent-loop';
+import type { AgentQuery } from './agent/agent-queries';
+import { referenceJsonModeUnsupported } from '../../modules/platform/reference-data/reference-ai-reply';
 import {
   aiSqlMaxExecutionMs,
   applyStatementTimeout,
@@ -542,6 +545,24 @@ const FAILED_READ_NOTICE =
   "Je n'ai pas réussi à consulter vos données pour cette question : la recherche a échoué, ce qui ne veut pas dire qu'il n'y a rien.";
 const FAILED_READ_REASON =
   "La consultation des donnees a echoue (requete invalide apres corrections). Ce n'est PAS une absence de donnees : ne dis jamais qu'aucun element n'existe ; propose de reformuler ou de preciser.";
+
+/**
+ * Lignes lisibles par le modèle : une date du pilote (minuit heure locale)
+ * devient « AAAA-MM-JJ », jamais un instant UTC décalé d'un jour.
+ */
+function plainRows(rows: any[]): Array<Record<string, unknown>> {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (rows ?? []).map((row) =>
+    Object.fromEntries(
+      Object.entries(row ?? {}).map(([key, value]) => {
+        if (!(value instanceof Date)) return [key, value];
+        const day = `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+        const time = value.getHours() || value.getMinutes() ? ` ${pad(value.getHours())}:${pad(value.getMinutes())}` : '';
+        return [key, `${day}${time}`];
+      }),
+    ),
+  );
+}
 
 /** Titres des sous-questions qui n'ont pas pu être consultées. */
 function notConsultedTitles(
@@ -6456,6 +6477,8 @@ ${blocks.join('\n\n')}
           intentMode === 'auto' &&
           !forceWriteDespiteReadMode &&
           !writeWithDocument &&
+          // L'agent choisit ses outils : pas de SQL à anticiper.
+          !this.agentEnabled() &&
           this.intentDetectionService.classifyLocal(intentText) === null &&
           // Question sans lien avec le cabinet : pas de SQL à anticiper.
           !(sourceSignals && isUnlikelyDatabaseQuestion(sourceSignals))
@@ -6830,6 +6853,25 @@ ${blocks.join('\n\n')}
         relevantTables,
       );
 
+      // ── Agent à outils métier (AI_AGENT_MODE=on) ────────────────────────────
+      if (this.agentEnabled()) {
+        const handled = await this.answerWithAgentStream({
+          dto,
+          user,
+          conversationId,
+          enrichedQuestion,
+          history: historyForIntent,
+          referenced: requestContext.referenced,
+          schema,
+          relevantTables,
+          fileInfo,
+          startTime,
+          sendEvent,
+          emit,
+        });
+        if (handled) return;
+      }
+
       // ── Question multi-ressources → décomposition en sous-requêtes ──────────
       const subQuestions = this.decomposeReadQuestion(
         dto.question,
@@ -7112,6 +7154,166 @@ ${blocks.join('\n\n')}
       void sqlDraft?.then((draft) => draft?.abort());
       void multiDraft?.then((draft) => draft?.abort());
     }
+  }
+
+  /**
+   * Lecture par l'agent à outils (voir agent/agent-loop.ts) : le modèle
+   * choisit des outils métier testés, en lit les résultats, puis la réponse
+   * est rédigée en streaming à partir de ces seuls résultats. Renvoie false
+   * quand le modèle n'a appelé aucun outil : le circuit SQL habituel reprend.
+   */
+  private async answerWithAgentStream(input: {
+    dto: AskQuestionDto;
+    user: AiUserContext | string;
+    conversationId: string;
+    enrichedQuestion: string;
+    history?: string;
+    referenced: ReferencedEntityContext[];
+    schema: string;
+    relevantTables: string[];
+    fileInfo: any;
+    startTime: number;
+    sendEvent: (event: string, data: any) => void;
+    emit: (event: string, data: any) => unknown;
+  }): Promise<boolean> {
+    const { dto, user, conversationId, sendEvent } = input;
+    const aiUser = user as AiUserContext;
+    const tenantId = hasActiveTenant() ? getCurrentTenantId() : 0;
+    const includeConfidential = !(
+      await this.aiPermissionService.missingPermissions(aiUser, ['view_dossier_confidential'])
+    ).length;
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Douala' });
+
+    const outcome = await runAgent(
+      {
+        question: dto.question,
+        context: input.enrichedQuestion !== dto.question ? input.enrichedQuestion : undefined,
+        history: input.history,
+        today,
+      },
+      {
+        // Étapes du chat : « Consultation des données » (détail : les outils),
+        // puis « Rédaction de la réponse ».
+        status: (message) => {
+          const answering = message.startsWith('✍️');
+          const detail = message.replace(/^\S+\s+/, '').replace(/…$/, '').replace(/ · \S+\s+/g, ' · ');
+          void input.emit('status', { step: answering ? 'answer' : 'fetch', message, ...(!answering && { detail }) });
+        },
+        decide: (messages) => this.invokeAgentModel(messages),
+        answer: ({ question, steps, history }) => this.streamAgentAnswer(question, steps, history, sendEvent),
+        tools: {
+          tenantId,
+          includeConfidential,
+          runQuery: async (query: AgentQuery) => {
+            await this.aiPermissionService.assertCanReadTables(aiUser, query.tables);
+            const rows = await this.runAiRead(query.sql, query.params);
+            return plainRows(await this.aiPermissionService.redactRows(aiUser, query.sql, rows));
+          },
+          freeQuery: async (question: string) => {
+            const part = await this.runSubQuestion(
+              { question, title: question },
+              input.schema,
+              input.relevantTables,
+              user,
+            );
+            return part
+              ? { lignes: plainRows(part.data) }
+              : { lignes: [], note: "la requête n'a pas pu être construite ou exécutée : donnée non consultée" };
+          },
+          help: async (question: string) =>
+            renderHelpDocsFallback(matchHelpDocs(question, { limit: 2 }).map((match) => match.doc)).slice(0, 6000),
+          legal: async (question: string) => (await this.legalKnowledgeContext(question)).slice(0, 6000),
+        },
+      },
+    );
+    if (outcome.fallback) {
+      this.logger.warn('[AGENT] aucun outil appelé → circuit SQL habituel');
+      return false;
+    }
+    this.logger.log(
+      `[AGENT] ${outcome.rounds} tour(s), outils : ${outcome.steps.map((step) => step.name).join(', ')}`,
+    );
+
+    const rowsOf = (step: AgentStep) => (Array.isArray((step.result as any)?.lignes) ? ((step.result as any).lignes as any[]) : []);
+    const results = outcome.steps.flatMap(rowsOf).slice(0, 50);
+    await this.conversationManager.addUserMessage(conversationId, dto.question, input.referenced);
+    await this.conversationManager.addAssistantMessage(conversationId, outcome.answer, undefined, {
+      sqlQuery: outcome.steps.map((step) => `-- outil ${step.name} ${JSON.stringify(step.args)}`).join('\n'),
+      results,
+      rowCount: results.length,
+      ...(input.fileInfo && { fileInfo: input.fileInfo }),
+    });
+    sendEvent('result', {
+      success: true,
+      question: dto.question,
+      analysis: outcome.answer,
+      results,
+      rowCount: results.length,
+      conversationId,
+      executionTimeMs: Date.now() - input.startTime,
+      ...(input.fileInfo && { fileInfo: input.fileInfo }),
+    });
+    return true;
+  }
+
+  /** Décision de l'agent : réponse JSON (mode JSON du fournisseur quand il existe). */
+  private async invokeAgentModel(messages: AgentMessage[]): Promise<unknown> {
+    const maxTokens = 1500;
+    const { model, descriptor } = this.aiModelRouter.getModelWithDescriptor(
+      'quality',
+      maxTokens,
+      this.reasoningOverrideFor('quality'),
+      this.currentModelMode(),
+    );
+    this.recordLlmCall('quality', messages, descriptor);
+    this.logLlmCall('invoke', descriptor, maxTokens);
+    let response: any;
+    try {
+      response = await model.invoke(messages as any, { response_format: { type: 'json_object' } } as any);
+    } catch (error) {
+      if (!referenceJsonModeUnsupported(error)) throw error;
+      response = await model.invoke(messages as any);
+    }
+    const text = this.extractLlmText(response);
+    this.recordOutput(text);
+    return text;
+  }
+
+  /** Réponse finale de l'agent, en streaming, à partir des résultats des outils. */
+  private async streamAgentAnswer(
+    question: string,
+    steps: AgentStep[],
+    history: string,
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<string> {
+    const system = this.withProfileText(
+      withCurrentDate(
+        `${this.projectConfig?.analysisSystemPrompt ?? 'Tu es un assistant métier de cabinet juridique.'}\n\n${buildAgentAnswerRules()}\n${ANSWER_FORMAT_RULES}`,
+      ),
+    );
+    const prompt = [
+      { role: 'system', content: system },
+      {
+        role: 'user',
+        content: `${history ? `ÉCHANGES PRÉCÉDENTS :\n${history}\n\n` : ''}QUESTION : ${question}\n\nRÉSULTATS DES OUTILS :\n${renderStepResults(steps)}`,
+      },
+    ];
+    let text = '';
+    try {
+      const stream = await this.streamModel('streaming', prompt, this.MAX_TOKENS, this.analysisReasoning());
+      for await (const chunk of stream) {
+        const piece = this.extractChunkText(chunk);
+        if (!piece) continue;
+        text += piece;
+        this.recordOutput(piece, true);
+        sendEvent('token', { text: piece });
+      }
+    } catch (error) {
+      this.logger.warn(`[AGENT] streaming échoué → appel simple : ${(error as Error).message}`);
+      text = this.extractLlmText(await this.invokeModel('streaming', prompt, this.MAX_TOKENS, this.analysisReasoning()));
+      sendEvent('token', { text });
+    }
+    return text;
   }
 
   /**
@@ -11018,11 +11220,16 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
   }
 
   /** Exécute une lecture IA préparée, avec la durée maximale autorisée. */
-  private async runAiRead(sql: string): Promise<any[]> {
+  private async runAiRead(sql: string, params?: unknown[]): Promise<any[]> {
     const source = await this.readConnection();
     const maxMs = aiSqlMaxExecutionMs();
     const engine = maxMs > 0 ? await this.detectSqlEngine(source) : 'unknown';
-    return source.query(applyStatementTimeout(sql, engine, maxMs));
+    return source.query(applyStatementTimeout(sql, engine, maxMs), params);
+  }
+
+  /** Agent à outils pour les lectures (AI_AGENT_MODE=on) ; circuit SQL unique sinon. */
+  private agentEnabled(): boolean {
+    return process.env.AI_AGENT_MODE === 'on';
   }
 
   /** Base de l'application : seule base que l'assistant peut lire. */
