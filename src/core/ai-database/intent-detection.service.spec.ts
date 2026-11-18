@@ -13,6 +13,14 @@ describe('IntentDetectionService local classifier', () => {
     ).toBe('HELP');
   });
 
+  it('« qu’est-ce qui » porte sur les données du cabinet, pas sur une définition', () => {
+    // Mesuré par le banc : « Qu'est-ce qui est prêt à être facturé ? » partait
+    // en conversation générale (« je n'ai pas accès aux données »).
+    expect(service.classifyLocal("Qu'est-ce qui est prêt à être facturé ?")).not.toBe('CHAT');
+    expect(service.classifyLocal("Qu'est-ce qui reste à payer ?")).not.toBe('CHAT');
+    expect(service.classifyLocal("Qu'est-ce que la prescription en droit civil ?")).toBe('CHAT');
+  });
+
   it('detects help for client procedure questions', () => {
     expect(service.classifyLocal('comment creer un client ?')).toBe('HELP');
   });

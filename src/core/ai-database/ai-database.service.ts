@@ -3175,6 +3175,12 @@ Contraintes obligatoires :
         };
       }
 
+      // Le correcteur a pu réintroduire une jointure protégée (ex. `user`) :
+      // elle est retirée plutôt que de refuser toute la demande.
+      validatedQuery = await this.aiPermissionService.pruneUnreadableJoins(
+        user as AiUserContext,
+        validatedQuery,
+      );
       await this.aiPermissionService.assertCanReadSql(
         user as AiUserContext,
         validatedQuery,
@@ -6951,6 +6957,12 @@ ${blocks.join('\n\n')}
         });
         return;
       }
+      // Le correcteur a pu réintroduire une jointure protégée (ex. `user`) :
+      // elle est retirée plutôt que de refuser toute la demande.
+      validatedQuery = await this.aiPermissionService.pruneUnreadableJoins(
+        user as AiUserContext,
+        validatedQuery,
+      );
       await this.aiPermissionService.assertCanReadSql(
         user as AiUserContext,
         validatedQuery,
@@ -8774,7 +8786,7 @@ RÉPONSE (en langage naturel):`;
         user as AiUserContext,
         sql,
       );
-      const validated = await this.validateAndFixQuery(
+      let validated = await this.validateAndFixQuery(
         sql,
         relevantTables,
         schema,
@@ -8789,6 +8801,10 @@ RÉPONSE (en langage naturel):`;
         );
         return null;
       }
+      validated = await this.aiPermissionService.pruneUnreadableJoins(
+        user as AiUserContext,
+        validated,
+      );
       await this.aiPermissionService.assertCanReadSql(
         user as AiUserContext,
         validated,
@@ -8859,7 +8875,7 @@ RÉPONSE (en langage naturel):`;
       if (!retry) return null;
       retry = this.replaceSpecialValues(retry);
       retry = await this.aiPermissionService.pruneUnreadableJoins(user as AiUserContext, retry);
-      const validated = await this.validateAndFixQuery(retry, tables, schema, question);
+      let validated = await this.validateAndFixQuery(retry, tables, schema, question);
       if (
         this.isSyntheticEmptyQuery(validated) ||
         !this.isSelectQuery(validated) ||
@@ -8869,6 +8885,7 @@ RÉPONSE (en langage naturel):`;
         this.logger.warn(`🔁 Relance inclusive écartée (identique, vide ou hors des enregistrements cités)`);
         return null;
       }
+      validated = await this.aiPermissionService.pruneUnreadableJoins(user as AiUserContext, validated);
       await this.aiPermissionService.assertCanReadSql(user as AiUserContext, validated);
       const result = await this.executeSafeQuery(validated);
       this.logger.log(`🔁 Relance inclusive : ${result.rowCount} ligne(s)`);
@@ -10114,18 +10131,18 @@ ${facts.slice(0, 9000)}`
       schema += `${line}\n`;
     }
 
-    // ⚠️ HINT spécial pour la table employee : les noms sont dans user
+    // ⚠️ HINT spécial pour la table employee : les noms sont dans user, table
+    // protégée (refusée par AiDatabasePermissionService) : ne jamais la joindre.
     if (table === 'employee') {
       schema +=
-        '⚠️ employee n\'a PAS de colonnes last_name/first_name : elles sont dans "user" (employee.id = user.id). ' +
-        "Pour le nom d'un collaborateur, fais LEFT JOIN user u ON u.id = employee.id et sélectionne " +
-        "CONCAT(u.first_name, ' ', u.last_name). N'utilise JAMAIS employee.last_name ni employee.first_name.\n";
+        '⚠️ employee n\'a PAS de colonnes last_name/first_name et la table "user" (où sont les noms) est protégée : ' +
+        "ne la joins JAMAIS. Désigne un collaborateur par employee.employee_number et employee.position.\n";
     }
 
     if (table === 'dossier_actions') {
       schema +=
         "⚠️ N'affiche jamais id, definition_id, responsible_user_id ni un UUID : désigne l'action par title ou definition_label. " +
-        "Responsable : LEFT JOIN user u ON u.id = dossier_actions.responsible_user_id, puis CONCAT(u.first_name, ' ', u.last_name) AS responsable. " +
+        "Le nom du responsable n'est pas accessible (table user protégée : ne la joins jamais). " +
         "Une action COMPLETED n'est pas automatiquement facturable : BILLABLE, HOURLY et VACATION sont des traitements facturables; INCLUDED_IN_PACKAGE est inclus au forfait. " +
         "Pour une action prête à mettre sur facture, joins billable_items sur source_type = 'ACTION' AND source_id = dossier_actions.id et exige billable_items.status = 'TO_INVOICE'. " +
         "Pour son montant, sélectionne les montants, la quantité, le prix unitaire et la devise de billable_items. Consulte aussi dossier_billing_profiles via dossier_id et les règles tarifaires avant de déclarer un tarif absent.\n";

@@ -909,7 +909,8 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       // Demandes d'explication hors-métier
       /\b(explique|expliquer|raconte|raconter|decris|decrire|resume|resumer|traduis|traduire|convertis|convertir)\b.*\b(mot|phrase|texte|concept|notion|theorie|principe|loi\s+de|theorem|equation|reaction)\b/,
       // Questions "qui est / qui a / qui était"
-      /\bqui\s+(est|etait|a\s+(invente|decouvert|cree|ecrit|fonde|gagne|remporte))\b/,
+      // (« qu'est-ce qui est prêt à facturer ? » n'est pas « qui est X ? »)
+      /(?<!est[- ]ce\s)\bqui\s+(est|etait|a\s+(invente|decouvert|cree|ecrit|fonde|gagne|remporte))\b/,
       // Questions de conversation courante
       /\b(quel\s+(?:est\s+le\s+sens|temps\s+fait|jour\s+(?:sommes|est|on\s+est)|age|heure))\b/,
       // Culture générale directe
@@ -957,7 +958,7 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
 
   /** Marqueurs d'une question de connaissance juridique (texte normalisé). */
   private readonly LEGAL_KNOWLEDGE =
-    /\b(?:procedures?\s+(?:pour|a\s+suivre|de\s+|d')|delais?\s+(?:d'|de\s+|pour\s+)|prescription|article\s+\d+|code\s+(?:civil|penal|du\s+travail|de\s+procedure|de\s+commerce|cima|general\s+des\s+impots)|acte\s+uniforme|ohada|jurisprudence|doctrine|loi\s+(?:n|no|du|sur|relative)\b|que\s+dit\s+la\s+loi|en\s+droit\b|droit\s+(?:camerounais|francais|ohada|civil|penal|commercial|du\s+travail|administratif|foncier|de\s+la\s+famille|des\s+affaires)|qu'est[- ]ce\s+qu|c'est\s+quoi|definition|difference\s+entre|comment\s+se\s+deroule|etapes?\s+d'une?\b|conditions?\s+(?:d'|de\s+|pour\s+)|voies?\s+de\s+recours|recours\s+possibles?|est[- ]il\s+possible\s+de|a-t-on\s+le\s+droit|peut[- ]on\b|competence\s+(?:du|d'un|des)\s+(?:tribunal|juge|juridiction))/;
+    /\b(?:procedures?\s+(?:pour|a\s+suivre|de\s+|d')|delais?\s+(?:d'|de\s+|pour\s+)|prescription|article\s+\d+|code\s+(?:civil|penal|du\s+travail|de\s+procedure|de\s+commerce|cima|general\s+des\s+impots)|acte\s+uniforme|ohada|jurisprudence|doctrine|loi\s+(?:n|no|du|sur|relative)\b|que\s+dit\s+la\s+loi|en\s+droit\b|droit\s+(?:camerounais|francais|ohada|civil|penal|commercial|du\s+travail|administratif|foncier|de\s+la\s+famille|des\s+affaires)|qu'est[- ]ce\s+qu(?:e\b|')|c'est\s+quoi|definition|difference\s+entre|comment\s+se\s+deroule|etapes?\s+d'une?\b|conditions?\s+(?:d'|de\s+|pour\s+)|voies?\s+de\s+recours|recours\s+possibles?|est[- ]il\s+possible\s+de|a-t-on\s+le\s+droit|peut[- ]on\b|competence\s+(?:du|d'un|des)\s+(?:tribunal|juge|juridiction))/;
 
   /**
    * Ancrage dans les données du cabinet : possessifs, démonstratifs, numéro

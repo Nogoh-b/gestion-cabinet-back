@@ -91,7 +91,7 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 
 ### Point / synthese / etat d'un dossier
 - Pour "fais le point", "synthese", "resume", "etat" ou "bilan" d'un dossier (ou d'une reference dossier de la page), ne te limite jamais a la table dossiers : la facturation fait partie du point.
-- Retourne UNE requete qui couvre : identite (dossier_number, client, juridiction, avocat referent, dates), statut lisible, facturation, activite (actions par statut, prochaine audience).
+- Retourne UNE requete qui couvre : identite (dossier_number, client, juridiction, dates), statut lisible, facturation, activite (actions par statut, prochaine audience).
 - Statut administratif : dossiers.status vaut 'DRAFT' (Brouillon), 'ACTIVE' (En cours), 'CLOSED' (Cloture) ou 'ARCHIVED' (Archive). Affiche toujours le libelle : CASE d.status WHEN 'DRAFT' THEN 'Brouillon' WHEN 'ACTIVE' THEN 'En cours' WHEN 'CLOSED' THEN 'Cloture' WHEN 'ARCHIVED' THEN 'Archive' END. Ce n'est PAS l'etape de procedure : n'invente jamais de statut « Contentieux », « Appel », « Jugement »... a partir de ce champ.
 - Phase : dossiers.lifecycle_phase vaut 'OPENING' (Ouverture), 'TREATMENT' (Traitement) ou 'CLOSED' (Cloture). Issue : dossiers.outcome vaut 'won' (gagne), 'lost' (perdu), 'settled' (transige), 'abandoned' (abandonne) ou 'unknown' (inconnue).
 - Avancement de la procedure : il se lit dans les actions du dossier (dossier_actions : title, status TODO/IN_PROGRESS/ON_HOLD/COMPLETED/CANCELLED, due_at = echeance) et dans les audiences, pas dans dossiers.status.
@@ -102,7 +102,7 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 - Les colonnes techniques id, uuid, tenant_id et celles terminant par _id servent uniquement aux jointures et aux filtres. Ne les sélectionne jamais comme informations à afficher (seule exception : la clé primaire sous l'alias ref__<table>, retirée avant affichage).
 - Retourne des numéros métier, noms, libellés et titres : dossier_number, numero, reference, title, label, first_name et last_name.
 - Pour une action de dossier, utilise dossier_actions.title ou dossier_actions.definition_label. N'affiche jamais definition_id ni l'UUID de l'action.
-- Pour afficher le responsable d'une action, fais un LEFT JOIN avec user u ON u.id = dossier_actions.responsible_user_id et sélectionne CONCAT(u.first_name, ' ', u.last_name) AS responsable. Ne sélectionne jamais responsible_user_id seul.
+- La table user est protégée et inaccessible : ne la joins JAMAIS (la requête entière serait refusée). Le nom d'un collaborateur (responsable d'une action, avocat du dossier) n'est donc pas disponible : ne sélectionne ni responsible_user_id ni lawyer_id, et dis simplement que le responsable n'est pas affiché.
 `;
 
 export const CABINET_JURIDIQUE_READ_CLARIFICATION_PRESETS = [
@@ -576,15 +576,11 @@ jamais un INSERT sur dossiers, dossier_billing_profiles ou dossier_referral. Fac
 paramètres de cette action : ne prévois pas d'opération séparée pour eux. Client inconnu : INSERT customer avec tempId
 avant l'action et "entityId": "{{tempId.id}}". Pour la facturation d'un dossier existant, utilise l'action "configurer_facturation".
 
-### 11. 👤 Règle CRITIQUE pour les NOMS des COLLABORATEURS (employee vs user)
-La table "employee" NE contient PAS les colonnes "last_name" ni "first_name".
-Ces colonnes se trouvent UNIQUEMENT dans la table "user", liée à "employee" via une clé primaire partagée (employee.id = user.id).
-Quand tu génères une requête SQL qui doit récupérer le nom ou le prénom d'un collaborateur, tu DOIS :
-- Faire un LEFT JOIN de "employee" vers "user" sur user.id = employee.id
-- Utiliser "user.last_name" et "user.first_name" au lieu de "employee.last_name" ou "employee.first_name"
-- Exemple correct : SELECT u.last_name, u.first_name FROM employee e LEFT JOIN user u ON u.id = e.id
-- Ne JAMAIS écrire : e.last_name, e.first_name, employee.last_name, employee.first_name
-⚠️ Pour le nom complet, utilise CONCAT(u.first_name, ' ', u.last_name).
+### 11. 👤 Règle CRITIQUE pour les COLLABORATEURS (employee / user)
+Les noms et prénoms des collaborateurs sont dans la table "user", PROTÉGÉE et inaccessible à l'assistant :
+ne fais JAMAIS de JOIN vers "user" (la requête entière serait refusée).
+La table "employee" ne contient pas de nom : identifie un collaborateur par employee.employee_number (matricule)
+et employee.position (fonction). Ne jamais écrire e.last_name, e.first_name, u.last_name ni u.first_name.
 
 ### 9. 📄 Règle pour les DOCUMENTS
 Les documents (pièces jointes, fichiers) NE PEUVENT PAS être créés via ce système.

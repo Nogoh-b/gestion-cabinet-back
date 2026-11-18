@@ -42,14 +42,28 @@ describe('Jointures vers une table non lisible retirées avant contrôle', () =>
     ).resolves.toBeUndefined();
   });
 
-  it('garde la requête telle quelle pour un utilisateur qui lit les utilisateurs', async () => {
+  it('retire aussi la jointure pour qui lit les utilisateurs : user est protégée pour tous', async () => {
+    // « user » (mots de passe, jetons) est refusée à l'assistant quel que soit
+    // le rôle : garder la jointure faisait refuser toute la demande.
     const service = createPermissionService([
       ...lawyerWithoutUsers,
       'view_users',
     ]);
-    expect(
-      await service.pruneUnreadableJoins({ userId: 31 }, overdueActionsSql),
-    ).toBe(overdueActionsSql);
+    const user = { userId: 31 };
+    const pruned = await service.pruneUnreadableJoins(user, overdueActionsSql);
+    expect(pruned).not.toMatch(/\buser\b|responsable/);
+    await expect(service.assertCanReadSql(user, pruned)).resolves.toBeUndefined();
+  });
+
+  it('point sur un dossier : la jointure protégée ajoutée par le correcteur est retirée', async () => {
+    const service = createPermissionService(['view_dossiers', 'view_dossier_actions', 'view_clients']);
+    const user = { userId: 31 };
+    const sql = `SELECT d.dossier_number, c.full_name AS client, CONCAT(u.first_name, ' ', u.last_name) AS avocat
+FROM dossiers d LEFT JOIN customer c ON c.id = d.client_id LEFT JOIN user u ON u.id = d.lawyer_id
+WHERE d.dossier_number = 'DOS-7-0001' LIMIT 50`;
+    const pruned = await service.pruneUnreadableJoins(user, sql);
+    expect(pruned).toContain('c.full_name AS client');
+    expect(pruned).not.toMatch(/\buser\b/);
   });
 
   it('garde le refus quand le nom du responsable sert à filtrer', async () => {

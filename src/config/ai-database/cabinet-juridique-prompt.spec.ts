@@ -80,6 +80,12 @@ describe('prompt métier du cabinet ↔ enums du code', () => {
     expect(decisions.filter((d) => !values(ActionBillingDecision).has(d))).toEqual([]);
   });
 
+  it('ne demande jamais de joindre la table protégée user', () => {
+    // user est refusée à l'assistant (AI_DENIED_TABLES) : une règle qui la
+    // joint fait refuser toute la requête (« point sur un dossier », actions).
+    expect(PROMPT).not.toMatch(/JOIN\s+`?user`?\b/i);
+  });
+
   it('le paiement valide cité est bien VALIDE', () => {
     expect(new Set(comparedValues('p.status'))).toEqual(new Set([String(StatutPaiement.VALIDE)]));
   });

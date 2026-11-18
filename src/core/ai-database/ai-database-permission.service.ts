@@ -672,16 +672,19 @@ export class AiDatabasePermissionService {
       user,
       tables.map((table) => ({ table, operation: 'READ' as const })),
     );
-    if (!missing.length) return sqlQuery;
+    // Tables protégées (user, permission…) : jamais lisibles, quel que soit
+    // le rôle ; une jointure d'enrichissement vers elles est retirée aussi.
+    const protectedTables = tables.filter((table) => AI_DENIED_TABLES.has(table));
+    if (!missing.length && !protectedTables.length) return sqlQuery;
 
-    const denied = Array.from(new Set(missing.map((item) => item.table)));
+    const denied = Array.from(new Set([...missing.map((item) => item.table), ...protectedTables]));
     const pruned = pruneDeniedJoins(sqlQuery, denied);
     if (!pruned) return sqlQuery;
     if (this.extractTablesFromSql(pruned).some((table) => denied.includes(table))) {
       return sqlQuery;
     }
     this.logger.log(
-      `Acces IA: jointure retiree faute de droit de lecture (user=${this.getUserDebugId(user)} | ${denied.join(', ')})`,
+      `Acces IA: jointure retiree (droit de lecture absent ou table protegee) (user=${this.getUserDebugId(user)} | ${denied.join(', ')})`,
     );
     return pruned;
   }
