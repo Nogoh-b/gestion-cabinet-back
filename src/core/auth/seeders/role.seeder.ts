@@ -25,6 +25,8 @@ export const ROLES_CONFIG: {
     description: 'Accès complet à toutes les fonctionnalités du cabinet',
     isSystemRole: true,
     permissions: [
+      // Assistant IA
+      'use_ai_assistant',
       // Dossiers
       'view_dossiers',
       'create_dossier',
@@ -207,6 +209,8 @@ export const ROLES_CONFIG: {
     description: 'Gestion complète des dossiers et audiences',
     isSystemRole: true,
     permissions: [
+      // Assistant IA
+      'use_ai_assistant',
       // Dossiers
       'view_dossiers',
       'create_dossier',
@@ -309,6 +313,8 @@ export const ROLES_CONFIG: {
     description: 'Traitement des dossiers sous la responsabilite des avocats',
     isSystemRole: true,
     permissions: [
+      // Assistant IA
+      'use_ai_assistant',
       'view_dossiers',
       'edit_dossier',
       'view_dossier_actions',
@@ -359,6 +365,8 @@ export const ROLES_CONFIG: {
     description: 'Facturation, paiements et comptabilite du cabinet',
     isSystemRole: true,
     permissions: [
+      // Assistant IA
+      'use_ai_assistant',
       'view_dossiers',
       'view_dossier_actions',
       'view_billable_items',
@@ -405,6 +413,8 @@ export const ROLES_CONFIG: {
     description: 'Gestion administrative et agenda',
     isSystemRole: true,
     permissions: [
+      // Assistant IA
+      'use_ai_assistant',
       // Dossiers
       'view_dossiers',
       'create_dossier',
@@ -522,6 +532,8 @@ export const ROLES_CONFIG: {
     description: 'Accès aux documents juridiques et significations',
     isSystemRole: true,
     permissions: [
+      // Assistant IA
+      'use_ai_assistant',
       // Dossiers
       'view_dossiers',
       'view_dossier_actions',
@@ -569,6 +581,8 @@ export const ROLES_CONFIG: {
     description: 'Accès en lecture et contribution limitée',
     isSystemRole: true,
     permissions: [
+      // Assistant IA
+      'use_ai_assistant',
       // Dossiers (lecture)
       'view_dossiers',
       'view_dossier_actions',
@@ -606,6 +620,8 @@ export const ROLES_CONFIG: {
     description: 'Appui logistique et administratif, sans accès financier',
     isSystemRole: true,
     permissions: [
+      // Assistant IA
+      'use_ai_assistant',
       // Dossiers (lecture seule)
       'view_dossiers',
       'view_dossier_actions',
@@ -644,6 +660,8 @@ export const ROLES_CONFIG: {
       'Consultation de ses propres apports et commissions uniquement',
     isSystemRole: true,
     permissions: [
+      // Assistant IA
+      'use_ai_assistant',
       'view_dashboard',
       'view_messages',
       'send_message',

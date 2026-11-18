@@ -36,6 +36,7 @@ import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AiQuotaGuard } from './guards/ai-quota.guard';
+import { AiFeatureGuard, AiTechnicalGuard } from './guards/ai-feature.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
 import { FileFieldsInterceptor, FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
@@ -65,7 +66,7 @@ const questionFiles = (uploaded: QuestionFiles) =>
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, AiFeatureGuard)
 @ApiBearerAuth()
 export class AiDatabaseController {
   private readonly logger = new Logger(AiDatabaseController.name);
@@ -351,6 +352,7 @@ export class AiDatabaseController {
   }
 
   @Post('execute')
+  @UseGuards(AiTechnicalGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Exécute une requête SQL (SELECT uniquement)' })
   async executeCustomQuery(@Body('sql') sqlQuery: string, @CurrentUser() user) {
@@ -358,6 +360,7 @@ export class AiDatabaseController {
   }
 
   @Get('metrics')
+  @UseGuards(AiTechnicalGuard)
   @ApiOperation({ summary: 'Récupère les métriques de la base' })
   async getMetrics() {
     return this.aiDbService.getDatabaseMetrics();
@@ -374,6 +377,7 @@ export class AiDatabaseController {
   }
 
   @Get('schema-json')
+  @UseGuards(AiTechnicalGuard)
   @ApiOperation({
     summary:
       'Récupère le schéma complet de la base de données avec métadonnées métier',
@@ -385,6 +389,7 @@ export class AiDatabaseController {
     return this.aiDbService.getFullDatabaseSchema();
   }
   @Get('schema')
+  @UseGuards(AiTechnicalGuard)
   @ApiOperation({
     summary:
       'Récupère le schéma complet de la base de données avec métadonnées métier',
@@ -568,6 +573,7 @@ export class AiDatabaseController {
   }
 
   @Get('prompt-schema')
+  @UseGuards(AiTechnicalGuard)
   @ApiOperation({
     summary: "Récupère le schéma envoyé à l'IA pour une question donnée",
     description: "Visualise exactement ce que l'IA reçoit comme contexte",
@@ -581,6 +587,7 @@ export class AiDatabaseController {
   }
 
   @Get('visible-tables')
+  @UseGuards(AiTechnicalGuard)
   @ApiOperation({ summary: 'Liste les tables visibles (avec métadonnées)' })
   async getVisibleTables() {
     const tables = this.aiDbService.getAiVisibleTables();

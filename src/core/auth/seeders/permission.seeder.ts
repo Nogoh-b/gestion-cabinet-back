@@ -543,7 +543,7 @@ export const PERMISSION_DEFINITIONS: {
   { code: 'approve_procedure_requirement', description: 'Approuver une exigence procédurale sur une instance autorisée' },
   { code: 'send_notification', description: 'Envoyer une notification à des membres du cabinet' },
   { code: 'broadcast_notification', description: 'Diffuser une notification à tout le cabinet' },
-  { code: 'use_ai_assistant', description: 'Utiliser l’assistant IA en lecture seule' },
+  { code: 'use_ai_assistant', description: 'Utiliser l’assistant IA du cabinet' },
   { code: 'view_own_payslip', description: 'Voir uniquement ses propres bulletins payés' },
   { code: 'validate_payslip', description: 'Valider et figer un bulletin de paie' },
   { code: 'pay_payslip', description: 'Enregistrer le paiement d’un bulletin de paie' },

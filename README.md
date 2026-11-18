@@ -58,9 +58,18 @@ La migration `1785169034000-EncryptCabinetSmtpConfig` chiffre les anciennes
 configurations SMTP en AES-256-GCM puis efface leur valeur claire. Elle échoue
 si une configuration claire existe sans `SETTINGS_ENCRYPTION_KEY`.
 
-L'assistant IA exige `AI_ENABLED=true`, un administrateur et la permission
-`use_ai_assistant`. Le frontend exige en plus
-`NEXT_PUBLIC_AI_ENABLED=true`.
+L'assistant IA exige le module « ai » dans le forfait du cabinet et, pour
+l'utilisateur, le rôle administrateur du cabinet ou la permission
+`use_ai_assistant` (accordée par défaut à tous les rôles sauf `client`,
+retirable depuis Paramètres › Rôles). `AI_ENABLED=false` coupe l'IA sur le
+serveur. Les endpoints techniques (`/execute`, `/schema*`, `/metrics`,
+`/visible-tables`) sont réservés au super administrateur.
+
+Les requêtes SQL de l'assistant sont limitées par `AI_SQL_MAX_EXECUTION_MS`
+(15 000 ms par défaut). Pour qu'elles passent par un compte MySQL en lecture
+seule, renseigner `AI_DB_USER` et `AI_DB_PASSWORD` (voir
+`scripts/create-ai-readonly-user.sql`) ; sans ces variables, la connexion
+principale est utilisée.
 
 Les utilisateurs de démonstration ne sont créés que si
 `ALLOW_DEMO_USER_SEED=true`, uniquement hors production, avec des mots de passe
