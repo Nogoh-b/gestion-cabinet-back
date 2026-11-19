@@ -22,6 +22,18 @@ const REMAINING = `(f.montant_ttc - ${PAID})`;
 const LIVE_INVOICE = `f.tenant_id = :tenant AND f.deleted_at IS NULL AND f.status <> '5'`;
 /** Nom affiché d'un client `c`. */
 const CLIENT_NAME = `COALESCE(NULLIF(TRIM(c.company_name), ''), c.full_name)`;
+/** Numéros d'un autre cabinet (factures, dossiers, codes clients) absents de celui-ci : interdits dans une réponse. */
+const OTHER_CABINET_VALUES = `SELECT value FROM (
+    SELECT f.numero AS value FROM factures f WHERE f.tenant_id <> :tenant
+      AND f.numero NOT IN (SELECT numero FROM factures WHERE tenant_id = :tenant)
+    UNION SELECT d.dossier_number FROM dossiers d WHERE d.tenant_id <> :tenant
+      AND d.dossier_number NOT IN (SELECT dossier_number FROM dossiers WHERE tenant_id = :tenant)
+    UNION SELECT c.customer_code FROM customer c WHERE c.tenant_id <> :tenant
+      AND c.customer_code NOT IN (SELECT customer_code FROM customer WHERE tenant_id = :tenant)
+  ) v LIMIT 300`;
+/** Une compétence qui réclame une @mention alors que le numéro est dans la question. */
+const ASKS_FOR_MENTION = "mentionnez (un|le) dossier avec|ouvrez sa fiche";
+
 /** Dossier visible tiré au sort : non supprimé, non confidentiel. */
 const PICKABLE_DOSSIER = `d.tenant_id = :tenant AND d.deleted_at IS NULL AND d.confidentiality_level = 0`;
 
@@ -342,7 +354,8 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
         AND EXISTS (SELECT 1 FROM factures f WHERE f.dossier_id = d.id AND f.deleted_at IS NULL AND f.status <> '5' AND ${REMAINING} > 0)
       ORDER BY d.id LIMIT 1`,
     ask: 'Rédige une mise en demeure au client du dossier {dossier_number} pour ses factures impayées.',
-    expect: { skill: ['mise_en_demeure', 'courrier', 'rediger_document'] },
+    forbidValues: OTHER_CABINET_VALUES,
+    expect: { skill: ['mise_en_demeure', 'courrier', 'rediger_document'], forbid: [ASKS_FOR_MENTION] },
   },
   {
     id: 'competence-decompte-creance',
@@ -352,7 +365,8 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
         AND EXISTS (SELECT 1 FROM factures f WHERE f.dossier_id = d.id AND f.deleted_at IS NULL AND f.status <> '5')
       ORDER BY d.id LIMIT 1`,
     ask: 'Calcule le décompte de la créance du dossier {dossier_number}.',
-    expect: { skill: ['decompte_creance'] },
+    forbidValues: OTHER_CABINET_VALUES,
+    expect: { skill: ['decompte_creance'], forbid: [ASKS_FOR_MENTION] },
   },
   {
     id: 'competence-chronologie',
@@ -360,7 +374,8 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
     goal: 'Chronologie d’un dossier',
     pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} ORDER BY d.id LIMIT 1`,
     ask: 'Établis la chronologie du dossier {dossier_number}.',
-    expect: { skill: ['chronologie'] },
+    forbidValues: OTHER_CABINET_VALUES,
+    expect: { skill: ['chronologie'], forbid: [ASKS_FOR_MENTION] },
   },
   {
     id: 'competence-delai-appel',
@@ -368,6 +383,7 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
     goal: 'Calcul d’un délai de procédure sur un dossier',
     pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} ORDER BY d.id LIMIT 1`,
     ask: "Calcule le délai d'appel pour le dossier {dossier_number}.",
+    forbidValues: OTHER_CABINET_VALUES,
     expect: { skill: ['delais_procedure'] },
   },
   {
@@ -380,7 +396,8 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
     ask: "Prépare l'état des impayés de {client}.",
     reference: `SELECT f.numero FROM factures f JOIN customer c ON c.id = f.client_id
       WHERE ${LIVE_INVOICE} AND ${CLIENT_NAME} = {client} AND ${REMAINING} > 0 ORDER BY f.date_echeance LIMIT 10`,
-    expect: { skill: ['etat_impayes'], mentions: [{ column: 'numero' }] },
+    forbidValues: OTHER_CABINET_VALUES,
+    expect: { skill: ['etat_impayes'], mentions: [{ column: 'numero' }], forbid: [ASKS_FOR_MENTION] },
   },
 
   // ── Références : @mention, fiche ouverte, « ce client », « dessus » ─────────
@@ -401,7 +418,8 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
     category: 'references',
     goal: '« Cette facture » = la fiche facture ouverte',
     pick: `SELECT f.id, f.numero FROM factures f WHERE ${LIVE_INVOICE} AND ${REMAINING} > 0 ORDER BY f.date_facture LIMIT 1`,
-    references: `SELECT 'facture' AS type, {numero} AS label, {id} AS id, 'page' AS source`,
+    // Comme le front pour une fiche ouverte : libellé « Factures #<id> », sans le numéro.
+    references: `SELECT 'facture' AS type, CONCAT('Factures #', {id}) AS label, {id} AS id, 'page' AS source`,
     ask: 'Combien reste-t-il à payer sur cette facture ?',
     reference: `SELECT ${REMAINING} AS reste FROM factures f WHERE f.tenant_id = :tenant AND f.numero = {numero}`,
     expect: { mentions: [{ column: 'reste', kind: 'amount' }] },
@@ -497,6 +515,7 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
       UNION ALL
       (SELECT f.numero FROM factures f WHERE ${LIVE_INVOICE} AND f.date_echeance < CURDATE() AND ${REMAINING} > 0
         ORDER BY f.date_echeance LIMIT 5)`,
+    forbidValues: OTHER_CABINET_VALUES,
     expect: { mentions: [{ column: 'element', max: 15 }] },
   },
 ];

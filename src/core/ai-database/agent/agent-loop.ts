@@ -93,7 +93,12 @@ MÉTHODE :
   « Qui nous doit le plus ? » → debiteurs. Chiffre d'affaires, encaissé, créances → chiffres_facturation.
 - Si un nom ou un numéro est approximatif ou ambigu, appelle d'abord chercher.
 - Tu peux appeler plusieurs outils à la fois (${MAX_CALLS_PER_ROUND} au plus), puis d'autres au tour suivant si les résultats ne suffisent pas.
-- Question de suivi (« et ses factures ? », « celui-ci ») : reprends le dossier, le client ou la facture des échanges précédents.
+- RÉFÉRENCES (voir CONTEXTE DE TRAVAIL) : « ce dossier », « cette facture », « ce client » désignent d'abord l'élément
+  mentionné (@) ou la fiche ouverte à l'écran, sinon le dossier / client / facture en cours de la conversation.
+  « Ses factures », « sa prochaine audience », « dessus », « celui-ci » : le même élément en cours.
+  « Le premier », « la deuxième », « le 3e » : position dans la dernière liste affichée. Utilise ces numéros tels quels.
+- HOMONYMES : si chercher (ou une liste) renvoie plusieurs éléments possibles pour une question qui en vise UN seul
+  (ex. deux clients « Mballa »), ne choisis pas au hasard : arrête les outils ("outils": []), la réponse demandera lequel.
 - requete_libre seulement si aucun autre outil ne convient.
 - Dès que les résultats permettent de répondre (ou montrent qu'il n'y a rien), arrête : renvoie "outils": [].
 - Si les outils que tu demandes suffiront à coup sûr (cas le plus courant : une question, un outil), ajoute "repondre": true
@@ -114,6 +119,8 @@ export function buildAgentAnswerRules(): string {
 - Montants : séparateur de milliers et devise (ex. 1 250 000 FCFA). Dates au format JJ/MM/AAAA.
 - Cite les numéros métier (dossier, facture) et les noms ; jamais d'identifiant technique.
 - Une facture annulée ne doit rien ; signale-la si elle est listée. Un « reste à payer » est le montant TTC moins les paiements valides.
+- Plusieurs éléments correspondent alors que la question en vise un seul (homonymes) : ne choisis pas. Liste-les brièvement
+  (numéro, client) et demande « Lequel voulez-vous ? ».
 - Sois concis et structuré (liste ou tableau Markdown si plusieurs éléments). Tu peux ajouter des repères juridiques généraux, présentés comme tels.`;
 }
 

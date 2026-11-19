@@ -346,6 +346,52 @@ export function searchQueries(tenantId: number, text: string, includeConfidentia
   };
 }
 
+/**
+ * @mention ou fiche ouverte (identifiant technique) → numéro métier et
+ * compléments, pour que l'agent puisse appeler ses outils.
+ */
+export function referenceByIdQuery(
+  tenantId: number,
+  type: 'dossier' | 'client' | 'facture' | 'audience',
+  id: number | string,
+  includeConfidential: boolean,
+): AgentQuery {
+  const confidential = includeConfidential ? '' : 'AND d.confidentiality_level = 0';
+  switch (type) {
+    case 'dossier':
+      return {
+        sql: `SELECT d.dossier_number AS reference, ${CLIENT_NAME} AS client, LEFT(d.object, 120) AS objet
+          FROM dossiers d LEFT JOIN customer c ON c.id = d.client_id
+          WHERE d.tenant_id = ? AND d.deleted_at IS NULL ${confidential} AND d.id = ? LIMIT 1`,
+        params: [tenantId, id],
+        tables: ['dossiers', 'customer'],
+      };
+    case 'facture':
+      return {
+        sql: `SELECT f.numero AS reference, d.dossier_number AS dossier, ${CLIENT_NAME} AS client
+          FROM factures f LEFT JOIN dossiers d ON d.id = f.dossier_id LEFT JOIN customer c ON c.id = f.client_id
+          WHERE f.tenant_id = ? AND f.deleted_at IS NULL AND f.id = ? LIMIT 1`,
+        params: [tenantId, id],
+        tables: ['factures', 'dossiers', 'customer'],
+      };
+    case 'client':
+      return {
+        sql: `SELECT ${CLIENT_NAME} AS reference, c.customer_code AS code FROM customer c
+          WHERE c.tenant_id = ? AND c.deleted_at IS NULL AND c.id = ? LIMIT 1`,
+        params: [tenantId, id],
+        tables: ['customer'],
+      };
+    default:
+      return {
+        sql: `SELECT CONCAT('du ', a.audience_date) AS reference, d.dossier_number AS dossier, ${CLIENT_NAME} AS client
+          FROM audiences a JOIN dossiers d ON d.id = a.dossier_id LEFT JOIN customer c ON c.id = d.client_id
+          WHERE a.tenant_id = ? AND a.deleted_at IS NULL ${confidential} AND a.id = ? LIMIT 1`,
+        params: [tenantId, id],
+        tables: ['audiences', 'dossiers', 'customer'],
+      };
+  }
+}
+
 /** Résolution d'une référence (numéro ou nom) en identifiant, pour une fiche. */
 export function resolveReferenceQuery(
   tenantId: number,

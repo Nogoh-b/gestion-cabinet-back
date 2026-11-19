@@ -110,7 +110,7 @@ import {
   renderUserProfileBlock,
 } from './user-profile';
 import type { AiSkillContext, AiSkillOutcome } from './skills/ai-skill.types';
-import { canonicalTargetType, findTarget, recordCitedEarlier, type SkillTarget, wantsWholeCabinet } from './skills/skill-helpers';
+import { canonicalTargetType, findTarget, findTargets, recordCitedEarlier, type SkillTarget, wantsWholeCabinet } from './skills/skill-helpers';
 import { GenericWriteService } from './generic-write.service';
 import { IntentDetectionService } from './intent-detection.service';
 import {
@@ -132,7 +132,8 @@ import { BaseWriteHandler } from './write/base-write-handler';
 import { outerJoinRetry } from './outer-join-fallback';
 import { extractPdfText } from './pdf-text';
 import { runAgent, buildAgentAnswerRules, renderStepResults, type AgentMessage, type AgentStep } from './agent/agent-loop';
-import type { AgentQuery } from './agent/agent-queries';
+import { referenceByIdQuery, type AgentQuery } from './agent/agent-queries';
+import { readMemory, renderWorkingContext, updateMemory, type ResolvedReference } from './agent/agent-memory';
 import { referenceJsonModeUnsupported } from '../../modules/platform/reference-data/reference-ai-reply';
 import {
   aiSqlMaxExecutionMs,
@@ -7184,10 +7185,24 @@ ${blocks.join('\n\n')}
     ).length;
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Douala' });
 
+    // Mémoire de travail : @mentions et fiche ouverte traduites en numéros
+    // métier, sujet en cours et dernière liste du tour précédent.
+    const references = await this.resolveAgentReferences(aiUser, input.referenced, tenantId, includeConfidential);
+    const previousMemory = dto.conversationId
+      ? readMemory((await this.conversationManager.getLastAssistantMetadata(conversationId))?.agentMemory)
+      : undefined;
+    const workingContext = renderWorkingContext(references, previousMemory);
+    // Le bloc « ENTITÉS RÉFÉRENCÉES (id=…) » donne des identifiants techniques
+    // que les outils n'acceptent pas : remplacé par le contexte de travail.
+    const extraContext = input.enrichedQuestion
+      .replace(/\n\n--- ENTITÉS RÉFÉRENCÉES PAR L'UTILISATEUR \(via @\) ---\n[\s\S]*?\n---/, '')
+      .slice(dto.question.length)
+      .trim();
+
     const outcome = await runAgent(
       {
         question: dto.question,
-        context: input.enrichedQuestion !== dto.question ? input.enrichedQuestion : undefined,
+        context: [workingContext, extraContext].filter(Boolean).join('\n\n') || undefined,
         history: input.history,
         today,
       },
@@ -7234,6 +7249,7 @@ ${blocks.join('\n\n')}
       `[AGENT] ${outcome.rounds} tour(s), outils : ${outcome.steps.map((step) => step.name).join(', ')}`,
     );
 
+    const agentMemory = updateMemory(previousMemory, references, outcome.steps);
     const rowsOf = (step: AgentStep) => (Array.isArray((step.result as any)?.lignes) ? ((step.result as any).lignes as any[]) : []);
     const results = outcome.steps.flatMap(rowsOf).slice(0, 50);
     await this.conversationManager.addUserMessage(conversationId, dto.question, input.referenced);
@@ -7241,6 +7257,7 @@ ${blocks.join('\n\n')}
       sqlQuery: outcome.steps.map((step) => `-- outil ${step.name} ${JSON.stringify(step.args)}`).join('\n'),
       results,
       rowCount: results.length,
+      agentMemory,
       ...(input.fileInfo && { fileInfo: input.fileInfo }),
     });
     sendEvent('result', {
@@ -7254,6 +7271,43 @@ ${blocks.join('\n\n')}
       ...(input.fileInfo && { fileInfo: input.fileInfo }),
     });
     return true;
+  }
+
+  /** @mentions et fiche ouverte → numéro métier lisible par les outils de l'agent. */
+  private async resolveAgentReferences(
+    user: AiUserContext,
+    referenced: ReferencedEntityContext[],
+    tenantId: number,
+    includeConfidential: boolean,
+  ): Promise<ResolvedReference[]> {
+    const targets = findTargets(referenced, ['dossier', 'client', 'facture', 'audience']).slice(0, 5);
+    const resolved = await Promise.all(
+      targets.map(async (target): Promise<ResolvedReference | null> => {
+        try {
+          const type = target.type as ResolvedReference['type'];
+          const query = referenceByIdQuery(tenantId, type, target.id, includeConfidential);
+          await this.aiPermissionService.assertCanReadTables(user, query.tables);
+          const [row] = await this.runAiRead(query.sql, query.params);
+          if (!row?.reference) return null;
+          const origin = referenced.find((ref) => String(ref.data?.id ?? ref.id) === String(target.id));
+          const client = row.client ? String(row.client) : undefined;
+          const dossier = row.dossier ? String(row.dossier) : undefined;
+          return {
+            type,
+            source: origin?.source === 'page' ? 'page' : 'mention',
+            reference: String(row.reference),
+            ...(client && { client }),
+            ...(dossier && { dossier }),
+            details: [dossier && `dossier ${dossier}`, client && `client ${client}`, row.code && `code ${row.code}`]
+              .filter(Boolean)
+              .join(', ') || undefined,
+          };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    return resolved.filter((ref): ref is ResolvedReference => !!ref);
   }
 
   /** Décision de l'agent : réponse JSON (mode JSON du fournisseur quand il existe). */
@@ -7861,7 +7915,14 @@ RÉPONSE :`;
     const question = previousQuestion && previousQuestion !== dto.question.trim()
       ? `${previousQuestion}\nPrécision apportée : ${dto.question}`
       : dto.question;
-    const references = this.skillReferences(code, requestContext.referenced, history, question);
+    let references = this.skillReferences(code, requestContext.referenced, history, question);
+    // Cible écrite dans la question (« la chronologie du dossier DOS-7-0001 ») :
+    // la compétence ne réclame plus une mention @ que le texte donne déjà.
+    const targetTypes = (this.skills?.targets(code) ?? []) as AiSkillTargetType[];
+    if (targetTypes.length && !findTarget(references, targetTypes)) {
+      const fromText = await this.referencesFromQuestion(user as AiUserContext, question, targetTypes);
+      if (fromText.length) references = [...fromText, ...references];
+    }
 
     let conversationId = dto.conversationId;
     if (!conversationId) {
@@ -8300,6 +8361,56 @@ RÉPONSE :`;
       .map((ref) => ({ type: String(ref.entity ?? ref.type ?? ''), id: ref.id, label: ref.label ?? `#${ref.id}` }))
       .filter((ref) => canonicalTargetType(ref.type));
     return [...fromHistory, ...referenced];
+  }
+
+  /**
+   * Fiches désignées dans le texte : numéros de dossier ou de facture
+   * (« DOS-7-0001 », « FAC-2026-0012 »), sinon un client nommé en toutes
+   * lettres (un seul). Cabinet courant, lignes supprimées et dossiers
+   * confidentiels exclus selon les droits ; aucune fiche si l'utilisateur ne
+   * peut pas lire la table.
+   */
+  private async referencesFromQuestion(
+    user: AiUserContext,
+    question: string,
+    types: AiSkillTargetType[],
+  ): Promise<ReferencedEntityContext[]> {
+    if (!hasActiveTenant() || !question) return [];
+    const tenantId = getCurrentTenantId();
+    const refs: ReferencedEntityContext[] = [];
+    const readable = async (tables: string[]) =>
+      this.aiPermissionService.assertCanReadTables(user, tables).then(() => true, () => false);
+    const codes = [...new Set(question.match(/\b[A-Za-z]{2,6}[-/]?\d{1,4}[-/]\d{1,6}\b/g) ?? [])].slice(0, 3);
+    if (codes.length && types.includes('dossier') && (await readable(['dossiers']))) {
+      const confidential = (await this.aiPermissionService.missingPermissions(user, ['view_dossier_confidential'])).length
+        ? 'AND confidentiality_level = 0'
+        : '';
+      const rows = await this.runAiRead(
+        `SELECT id, dossier_number AS label FROM dossiers WHERE tenant_id = ? AND deleted_at IS NULL ${confidential} AND dossier_number IN (?) LIMIT 3`,
+        [tenantId, codes],
+      ).catch(() => []);
+      refs.push(...rows.map((row: any) => ({ type: 'dossier', id: row.id, label: String(row.label), source: 'mention' as const })));
+    }
+    if (codes.length && types.includes('facture') && (await readable(['factures']))) {
+      const rows = await this.runAiRead(
+        `SELECT id, numero AS label FROM factures WHERE tenant_id = ? AND deleted_at IS NULL AND numero IN (?) LIMIT 3`,
+        [tenantId, codes],
+      ).catch(() => []);
+      refs.push(...rows.map((row: any) => ({ type: 'facture', id: row.id, label: String(row.label), source: 'mention' as const })));
+    }
+    if (!refs.length && types.includes('client') && (await readable(['customer']))) {
+      const rows = await this.runAiRead(
+        `SELECT c.id, COALESCE(NULLIF(TRIM(c.company_name), ''), c.full_name) AS label FROM customer c
+          WHERE c.tenant_id = ? AND c.deleted_at IS NULL
+            AND ((CHAR_LENGTH(c.full_name) >= 4 AND ? LIKE CONCAT('%', c.full_name, '%'))
+              OR (CHAR_LENGTH(c.company_name) >= 4 AND ? LIKE CONCAT('%', c.company_name, '%')))
+          LIMIT 2`,
+        [tenantId, question, question],
+      ).catch(() => []);
+      // Un seul client reconnu : deux homonymes ne désignent personne.
+      if (rows.length === 1) refs.push({ type: 'client', id: rows[0].id, label: String(rows[0].label), source: 'mention' });
+    }
+    return refs;
   }
 
   /**
