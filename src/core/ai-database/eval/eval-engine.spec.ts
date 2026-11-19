@@ -85,7 +85,7 @@ describe('banc IA — reconnaissance des valeurs', () => {
 
 describe('banc IA — notation', () => {
   const turn = (answer: string, extra: Partial<TurnResult> = {}): TurnResult => ({
-    question: 'q', events: [], answer, totalMs: 1000, confirmation: false, intent: 'READ', skills: [], clarification: false, ...extra,
+    question: 'q', events: [], answer, totalMs: 1000, confirmation: false, intent: 'READ', skills: [], clarification: false, actions: [], ...extra,
   });
   const question = (expect: EvalQuestion['expect'], extra: Partial<EvalQuestion> = {}): EvalQuestion => ({
     id: 'q', category: 'facturation', goal: 'test', ask: 'q', reference: 'SELECT 1', expect, ...extra,
@@ -120,6 +120,20 @@ describe('banc IA — notation', () => {
     expect(summarizeChecks(scoreTurn({ question: ambiguous, turn: turn('Plusieurs clients Mballa : lequel voulez-vous ?') })).ok).toBe(true);
     expect(summarizeChecks(scoreTurn({ question: ambiguous, turn: turn('…', { clarification: true }) })).ok).toBe(true);
     expect(summarizeChecks(scoreTurn({ question: ambiguous, turn: turn('Le dossier DOS-1 est en cours.') })).ok).toBe(false);
+  });
+
+  it('lit les actions recommandées et vérifie qu’elles visent une fiche trouvée', () => {
+    const events = new SseParser().push(
+      'event: result\ndata: {"analysis":"ok"}\n\nevent: actions\ndata: {"actions":[{"label":"Relancer Société Éléphant SARL","prompt":"Prépare une relance","kind":"skill"}]}\n\n',
+      1,
+    );
+    const summary = summarizeTurn('q', events, 5);
+    expect(summary.actions).toEqual([{ label: 'Relancer Société Éléphant SARL', prompt: 'Prépare une relance', kind: 'skill' }]);
+    const q = question({ actionsMention: 'client' });
+    const ok = scoreTurn({ question: q, turn: turn('ok', { actions: summary.actions }), referenceRows: [{ client: 'Société Éléphant SARL' }] });
+    expect(ok.find((c) => c.name === 'actions recommandées')?.ok).toBe(true);
+    const ko = scoreTurn({ question: q, turn: turn('ok'), referenceRows: [{ client: 'Société Éléphant SARL' }] });
+    expect(ko.find((c) => c.name === 'actions recommandées')?.ok).toBe(false);
   });
 
   it('vérifie la confirmation d’une écriture', () => {

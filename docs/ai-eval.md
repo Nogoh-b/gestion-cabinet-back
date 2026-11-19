@@ -69,6 +69,12 @@ Les rapports sont écrits dans `eval-results/` (non versionné) : un `.json`
 complet et un `.md` lisible (synthèse, catégories, détail de chaque échec avec
 la réponse de l'assistant).
 
+Catégories propres à l'orchestration : `competences`, `references`,
+`ambiguite`, `enchainement` (deux demandes, ou une lecture puis une action sur
+la fiche lue), `briefing` (point du jour) et `proactivite` : les actions
+recommandées sous la réponse doivent viser les fiches trouvées
+(`expect.actionsMention`).
+
 Options utiles : `--only id1,id2`, `--category facturation,dossiers`,
 `--repeat 3` (stabilité et latences), `--timeout 240`, `--keep-conversations`.
 

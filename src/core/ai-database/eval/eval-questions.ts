@@ -569,6 +569,94 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
     forbidValues: OTHER_CABINET_VALUES,
     expect: { mentions: [{ column: 'element', max: 15 }] },
   },
+  {
+    id: 'briefing-point-du-jour',
+    category: 'briefing',
+    goal: 'Point du jour : urgences concrètes, puis actions proposées sur ces fiches',
+    ask: 'Fais-moi mon point du jour : que dois-je traiter en priorité ?',
+    reference: `(SELECT d.dossier_number AS element FROM audiences a JOIN dossiers d ON d.id = a.dossier_id
+        WHERE a.tenant_id = :tenant AND a.deleted_at IS NULL AND d.deleted_at IS NULL AND d.confidentiality_level = 0
+          AND a.audience_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 7 DAY AND a.status IN ('0', '4')
+        ORDER BY a.audience_date LIMIT 5)
+      UNION ALL
+      (SELECT a.title FROM dossier_actions a JOIN dossiers d ON d.id = a.dossier_id
+        WHERE a.tenant_id = :tenant AND a.deleted_at IS NULL AND d.deleted_at IS NULL AND d.confidentiality_level = 0
+          AND a.status IN ('TODO', 'IN_PROGRESS', 'ON_HOLD') AND a.due_at < NOW() ORDER BY a.due_at LIMIT 5)
+      UNION ALL
+      (SELECT f.numero FROM factures f WHERE ${LIVE_INVOICE} AND f.date_echeance < CURDATE() AND ${REMAINING} > 0
+        ORDER BY f.date_echeance LIMIT 5)`,
+    forbidValues: OTHER_CABINET_VALUES,
+    expect: { mentions: [{ column: 'element', max: 15 }] },
+  },
+
+  // ── Proactivité : les actions proposées visent ce que la réponse a trouvé ──
+  {
+    id: 'actions-apres-debiteur',
+    category: 'proactivite',
+    goal: '« Qui nous doit le plus ? » : une action proposée vise ce client (relance, mise en demeure…)',
+    ask: 'Qui nous doit le plus ?',
+    reference: `SELECT ${CLIENT_NAME} AS client, SUM(t.reste) AS du FROM (
+        SELECT f.client_id, ${REMAINING} AS reste FROM factures f WHERE ${LIVE_INVOICE}
+      ) t JOIN customer c ON c.id = t.client_id WHERE t.reste > 0
+      GROUP BY c.id ORDER BY du DESC LIMIT 1`,
+    expect: { mentions: [{ column: 'client' }], actionsMention: 'client' },
+  },
+  {
+    id: 'actions-apres-point-dossier',
+    category: 'proactivite',
+    goal: 'Point sur un dossier : les actions proposées visent ce dossier',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} AND d.client_id IS NOT NULL ORDER BY d.id LIMIT 1`,
+    ask: 'Fais le point sur le dossier {dossier_number}.',
+    reference: `SELECT {dossier_number} AS dossier`,
+    expect: { mentions: [{ column: 'dossier' }], actionsMention: 'dossier' },
+  },
+
+  // ── Enchaînements lecture → action : la lecture est montrée, l'action vise la fiche lue ─
+  {
+    id: 'enchainement-point-whatsapp',
+    category: 'enchainement',
+    goal: 'Point sur un dossier puis WhatsApp au client : les deux, sur ce dossier',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} AND d.client_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM factures f WHERE f.dossier_id = d.id AND ${LIVE_INVOICE} AND ${REMAINING} > 0)
+      ORDER BY d.id LIMIT 1`,
+    ask: 'Fais le point sur le dossier {dossier_number}, puis prépare un WhatsApp au client pour lui résumer la situation.',
+    reference: `SELECT f.numero FROM factures f JOIN dossiers d ON d.id = f.dossier_id
+      WHERE ${LIVE_INVOICE} AND d.dossier_number = {dossier_number} AND ${REMAINING} > 0 ORDER BY f.id LIMIT 3`,
+    expect: { skill: ['whatsapp'], mentions: [{ column: 'numero' }], forbid: [ASKS_FOR_MENTION] },
+  },
+  {
+    id: 'enchainement-debiteur-mise-en-demeure',
+    category: 'enchainement',
+    goal: 'La cible de la compétence vient de la lecture : le plus gros débiteur',
+    ask: 'Qui nous doit le plus ? Prépare-lui une mise en demeure.',
+    reference: `SELECT ${CLIENT_NAME} AS client, SUM(t.reste) AS du FROM (
+        SELECT f.client_id, ${REMAINING} AS reste FROM factures f WHERE ${LIVE_INVOICE}
+      ) t JOIN customer c ON c.id = t.client_id WHERE t.reste > 0
+      GROUP BY c.id ORDER BY du DESC LIMIT 1`,
+    // La mise en demeure est une rédaction de document (ancienne compétence fusionnée).
+    expect: {
+      skill: ['mise_en_demeure', 'courrier', 'rediger_document'],
+      mentions: [{ column: 'client' }, { column: 'du', kind: 'amount' }],
+      forbid: [ASKS_FOR_MENTION],
+    },
+  },
+  {
+    id: 'enchainement-facture-relance',
+    category: 'enchainement',
+    goal: '« Prépare une relance pour celle-ci » : la facture trouvée juste avant',
+    pick: `SELECT ${CLIENT_NAME} AS client FROM customer c WHERE c.tenant_id = :tenant AND c.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM factures f WHERE f.client_id = c.id AND ${LIVE_INVOICE} AND ${REMAINING} > 0)
+      ORDER BY c.id LIMIT 1`,
+    ask: 'Quelle est la facture impayée la plus ancienne de {client} ? Prépare une relance pour celle-ci.',
+    reference: `SELECT f.numero FROM factures f JOIN customer c ON c.id = f.client_id
+      WHERE ${LIVE_INVOICE} AND ${CLIENT_NAME} = {client} AND ${REMAINING} > 0
+      ORDER BY f.date_echeance, f.date_facture LIMIT 1`,
+    expect: {
+      skill: ['relancer_impayes', 'envoyer_email', 'whatsapp', 'courrier', 'mise_en_demeure', 'message_portail'],
+      mentions: [{ column: 'numero' }],
+      forbid: [ASKS_FOR_MENTION],
+    },
+  },
   // ── Écritures : la bonne opération, sur la bonne fiche, toujours à confirmer ─
   {
     id: 'ecriture-paiement-facture',
@@ -612,6 +700,17 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
       GROUP BY c.last_name HAVING COUNT(DISTINCT c.id) >= 2 ORDER BY c.last_name LIMIT 1`,
     ask: 'Crée une tâche « Appeler le client » sur le dossier de {last_name}.',
     expect: { clarification: true, confirmation: false },
+    mutates: true,
+  },
+  {
+    id: 'ecriture-apres-point',
+    category: 'ecritures',
+    goal: 'Point sur un dossier puis tâche : la synthèse est montrée au-dessus de la carte à confirmer',
+    pick: `SELECT d.dossier_number, ${CLIENT_NAME} AS client FROM dossiers d JOIN customer c ON c.id = d.client_id
+      WHERE ${PICKABLE_DOSSIER} ORDER BY d.id DESC LIMIT 1`,
+    ask: 'Fais le point sur le dossier {dossier_number} et crée une tâche « Préparer les conclusions » à faire avant le 10/12/2026.',
+    reference: `SELECT {dossier_number} AS dossier, {client} AS client`,
+    expect: { confirmation: true, mentions: [{ column: 'dossier' }, { column: 'client' }], require: ['conclusions'] },
     mutates: true,
   },
 ];

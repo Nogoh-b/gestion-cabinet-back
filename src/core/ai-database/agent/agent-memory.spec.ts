@@ -1,4 +1,4 @@
-import { readMemory, renderWorkingContext, updateMemory, type ResolvedReference } from './agent-memory';
+import { readMemory, renderWorkingContext, turnSubjects, updateMemory, type ResolvedReference } from './agent-memory';
 import type { AgentStep } from './agent-loop';
 
 const step = (name: string, args: Record<string, any>, result: Record<string, any>): AgentStep => ({ name, args, result });
@@ -75,5 +75,41 @@ describe('mémoire de travail de l’agent', () => {
     expect(readMemory(null)).toBeUndefined();
     expect(readMemory({ dossier: {} })).toBeUndefined();
     expect(renderWorkingContext([], undefined)).toBe('');
+  });
+});
+
+describe('fiches citées par un tour de l’agent', () => {
+  it('le sujet d’abord (dossier, client), puis les premiers éléments des listes', () => {
+    const subjects = turnSubjects([], [
+      step('synthese_dossier', { dossier: 'DOS-7-0001' }, {
+        identite: { dossier_number: 'DOS-7-0001', client: 'Société Éléphant SARL', code_client: 'CLI-7-002' },
+      }),
+      step('factures', { filtre: 'en_retard' }, { lignes: [{ numero: 'FAC-1' }, { numero: 'FAC-2' }, { numero: 'FAC-3' }, { numero: 'FAC-4' }] }),
+    ]);
+    expect(subjects).toEqual([
+      { type: 'dossier', reference: 'DOS-7-0001' },
+      { type: 'client', reference: 'CLI-7-002' },
+      { type: 'facture', reference: 'FAC-1' },
+      { type: 'facture', reference: 'FAC-2' },
+      { type: 'facture', reference: 'FAC-3' },
+    ]);
+  });
+
+  it('« qui nous doit le plus » : le client débiteur ; le point du jour : ses fiches urgentes', () => {
+    expect(turnSubjects([], [step('debiteurs', {}, { lignes: [{ client: 'Société Éléphant SARL', code_client: 'CLI-7-002' }] })]))
+      .toEqual([{ type: 'client', reference: 'CLI-7-002' }, { type: 'client', reference: 'Société Éléphant SARL' }]);
+    expect(turnSubjects([], [step('point_du_jour', {}, {
+      audiences_a_venir: { lignes: [{ dossier: 'DOS-7-0002' }] },
+      actions_en_retard: { lignes: [{ dossier: 'DOS-7-0001' }, { dossier: 'DOS-7-0002' }] },
+      factures_a_relancer: { lignes: [{ numero: 'FAC-7-0001' }] },
+    })])).toEqual([
+      { type: 'dossier', reference: 'DOS-7-0002' },
+      { type: 'dossier', reference: 'DOS-7-0001' },
+      { type: 'facture', reference: 'FAC-7-0001' },
+    ]);
+  });
+
+  it('ne reprend pas les sujets des tours précédents ; une erreur ne cite rien', () => {
+    expect(turnSubjects([], [step('factures', { dossier: 'DOS-9' }, { erreur: 'consultation impossible' })])).toEqual([]);
   });
 });

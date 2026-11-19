@@ -77,6 +77,12 @@ une précision quand la cible est ambiguë (homonymes) et prépare les écriture
 (« enregistre un paiement sur la plus ancienne facture impayée de X ») : il
 retrouve d'abord les fiches visées, puis le plan est **toujours** présenté sur
 une carte de confirmation ; rien n'est écrit avant le clic de l'utilisateur.
+Il enchaîne lecture et action (« qui nous doit le plus ? prépare-lui une mise en
+demeure ») : la réponse est affichée, puis la compétence ou la carte porte sur
+la fiche trouvée, avec ses chiffres. « Que dois-je faire aujourd'hui ? » donne un
+point du jour (audiences proches, retards, factures à relancer, éléments à
+facturer) terminé par les prochaines étapes. Les fiches lues sont citées par la
+réponse : les actions recommandées et la demande suivante les visent.
 `off` (défaut) conserve le circuit actuel. Mesurer avant d'activer :
 `npm run eval:ai` (voir `docs/ai-eval.md`).
 

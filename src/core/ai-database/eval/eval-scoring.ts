@@ -202,6 +202,20 @@ export function scoreTurn({ question, turn, referenceRows, forbiddenValues = [] 
     checks.push(mentionCheck(answer, rows, expect.mentions));
   }
 
+  if (expect.actionsMention) {
+    // Proactivité : une action proposée vise une fiche trouvée par la réponse.
+    const values = rows.slice(0, 5).map((row) => row[expect.actionsMention!]).filter((v) => v !== null && v !== undefined && v !== '');
+    const texts = (turn.actions ?? []).map((action) => `${action.label}\n${action.prompt}`);
+    const hit = values.some((value) => texts.some((text) => textMentioned(text, value)));
+    checks.push(
+      pass(
+        'actions recommandées',
+        !values.length || hit,
+        `${texts.length} action(s)${texts.length ? ` : ${(turn.actions ?? []).map((a) => a.label).join(' | ').slice(0, 300)}` : ''} — attendu une de : ${values.slice(0, 5).join(', ')}`,
+      ),
+    );
+  }
+
   if (expect.require?.length) {
     const found = expect.require.some((pattern) => new RegExp(pattern, 'i').test(normalized));
     checks.push(pass('contenu attendu', found, `une de : ${expect.require.join(' | ')}`));

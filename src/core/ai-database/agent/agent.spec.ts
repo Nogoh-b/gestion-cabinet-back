@@ -1,4 +1,4 @@
-import { AGENT_MAX_ROUNDS, parseAgentReply, renderStepResults, runAgent, type AgentDeps } from './agent-loop';
+import { AGENT_MAX_ROUNDS, asksForAction, asksInformationToo, parseAgentReply, renderStepResults, runAgent, type AgentDeps } from './agent-loop';
 import { AGENT_TOOLS, runAgentTool, type AgentToolContext } from './agent-tools';
 import { invoicesQuery, likePattern, readPeriod } from './agent-queries';
 
@@ -178,6 +178,81 @@ describe('agent IA — compétences et demandes de précision', () => {
     expect((decide.mock.calls[0] as any)[0][0].content).toContain('preparer_operation');
   });
 
+  it('enchaînement : lit, puis passe la main en demandant d’afficher la réponse d’abord', async () => {
+    const { d, answer } = deps([
+      '{"outils":[{"nom":"debiteurs","arguments":{"limite":1}}]}',
+      '{"outils":[{"nom":"competence","arguments":{"code":"whatsapp","cible":{"type":"client","reference":"Société Éléphant SARL"},"repondre_d_abord":true}}]}',
+    ]);
+    const outcome = await runAgent({ question: 'Qui nous doit le plus ? Écris-lui un WhatsApp.', today: '2026-11-19', skills }, d);
+    expect(outcome.handoff).toEqual({ code: 'whatsapp', cible: { type: 'client', reference: 'Société Éléphant SARL' }, answerFirst: true });
+    expect(outcome.steps.map((step) => step.name)).toEqual(['debiteurs']);
+    // La réponse est rédigée par l'appelant, avant la compétence.
+    expect(answer).not.toHaveBeenCalled();
+  });
+
+  it('enchaînement vers une écriture : le drapeau est gardé sur l’opération', async () => {
+    const { d } = deps([
+      '{"outils":[{"nom":"synthese_dossier","arguments":{"dossier":"DOS-7-0006"}}]}',
+      '{"outils":[{"nom":"preparer_operation","arguments":{"demande":"Créer la tâche « Préparer les conclusions » sur DOS-7-0006, échéance 2026-12-10","repondre_d_abord":true}}]}',
+    ]);
+    const outcome = await runAgent({ question: 'Fais le point sur DOS-7-0006 et crée une tâche', today: '2026-11-19', allowWrite: true }, d);
+    expect(outcome.write).toEqual({ demande: 'Créer la tâche « Préparer les conclusions » sur DOS-7-0006, échéance 2026-12-10', answerFirst: true });
+  });
+
+  it('action demandée avec la lecture : les résultats sont suivis d’un rappel unique de l’action', async () => {
+    const { d, decide } = deps([
+      '{"outils":[{"nom":"debiteurs","arguments":{"limite":1}}]}',
+      '{"outils":[{"nom":"competence","arguments":{"code":"whatsapp","cible":{"type":"client","reference":"Société Éléphant SARL"},"repondre_d_abord":true}}]}',
+    ]);
+    const outcome = await runAgent({ question: 'Qui nous doit le plus ? Prépare-lui un WhatsApp.', today: '2026-11-19', skills }, d);
+    expect(outcome.handoff?.code).toBe('whatsapp');
+    expect(decide).toHaveBeenCalledTimes(2);
+    expect((decide.mock.calls[1] as any)[0].at(-1).content).toContain('ACTION');
+  });
+
+  it('lecture demandée avec « repondre » : le rappel de l’action passe avant la réponse', async () => {
+    const { d, decide, answer } = deps([
+      '{"outils":[{"nom":"factures","arguments":{"client":"Éléphant","filtre":"non_soldees"}}],"repondre":true}',
+      '{"outils":[{"nom":"competence","arguments":{"code":"whatsapp","cible":{"type":"client","reference":"Société Éléphant SARL"}}}]}',
+    ]);
+    const outcome = await runAgent({ question: 'Quelle facture est la plus ancienne ? Prépare une relance par WhatsApp.', today: '2026-11-19', skills }, d);
+    expect(outcome.handoff?.code).toBe('whatsapp');
+    expect(answer).not.toHaveBeenCalled();
+    expect((decide.mock.calls[1] as any)[0].at(-1).content).toMatch(/RÉSULTATS[\s\S]*ACTION/);
+  });
+
+  it('pas de rappel pour une simple lecture, ni sans compétence ou écriture possible', async () => {
+    const read = deps(['{"outils":[{"nom":"debiteurs","arguments":{}}]}', '{"outils":[]}']);
+    await runAgent({ question: 'Qui nous doit le plus ?', today: '2026-11-19', skills }, read.d);
+    expect(read.decide).toHaveBeenCalledTimes(2);
+    expect((read.decide.mock.calls[1] as any)[0].at(-1).content).not.toContain('ACTION');
+    const noSkill = deps(['{"outils":[{"nom":"debiteurs","arguments":{}}]}', '{"outils":[]}']);
+    await runAgent({ question: 'Qui nous doit le plus ? Prépare-lui un WhatsApp.', today: '2026-11-19' }, noSkill.d);
+    expect(noSkill.decide).toHaveBeenCalledTimes(2);
+    expect((noSkill.decide.mock.calls[1] as any)[0].at(-1).content).not.toContain('ACTION');
+  });
+
+  it('distingue une action d’une lecture', () => {
+    expect(asksForAction('Qui nous doit le plus ? Prépare-lui une mise en demeure.')).toBe(true);
+    expect(asksForAction('Quelle est la facture la plus ancienne de X ? Prépare une relance pour celle-ci.')).toBe(true);
+    expect(asksForAction('Crée une tâche « Préparer les conclusions »')).toBe(true);
+    expect(asksForAction('Fais le point sur le dossier DOS-7-0001.')).toBe(false);
+    expect(asksForAction('Quelles factures ont été envoyées ce mois-ci ?')).toBe(false);
+    expect(asksForAction('Qui a créé le dossier DOS-7-0001 ?')).toBe(false);
+    expect(asksForAction('Liste les relances envoyées')).toBe(false);
+    // « Calcule le chiffre d'affaires » est une lecture (les calculs de délai passent par leur compétence).
+    expect(asksForAction("Calcule le chiffre d'affaires de cette année")).toBe(false);
+  });
+
+  it('reconnaît une question posée avec l’action (« qui… ? prépare-lui… », « fais le point… et… »)', () => {
+    expect(asksInformationToo('Qui nous doit le plus ? Prépare-lui une mise en demeure.')).toBe(true);
+    expect(asksInformationToo('Fais le point sur le dossier DOS-7-0006 et crée une tâche « Préparer les conclusions ».')).toBe(true);
+    expect(asksInformationToo('Quelle est la facture la plus ancienne de X, puis prépare une relance')).toBe(true);
+    expect(asksInformationToo('Enregistre un paiement de 25 000 FCFA sur la plus ancienne facture impayée de X.')).toBe(false);
+    expect(asksInformationToo('Peux-tu préparer une relance pour la facture FAC-7-0001 ?')).toBe(false);
+    expect(asksInformationToo('Crée une tâche « Relancer le greffe » pour ce dossier, à faire avant le 15/12/2026.')).toBe(false);
+  });
+
   it('mode lecture : l’outil d’écriture n’est ni proposé ni accepté', async () => {
     const { d, decide } = deps(['{"outils":[{"nom":"preparer_operation","arguments":{"demande":"Supprimer le client X"}}]}']);
     const outcome = await runAgent({ question: 'Supprime le client X', today: '2026-11-19', allowWrite: false }, d);
@@ -224,6 +299,24 @@ describe('agent IA — outils', () => {
     const ctx = toolContext({ 'FROM dossiers d': [{ dossier_number: 'DOS-7-0006', total_correspondant: 4 }] });
     const result = await runAgentTool('dossiers', { statut: 'ACTIVE', limite: 1 }, ctx);
     expect(result).toEqual({ total: 4, lignes_affichees: 1, lignes: [{ dossier_number: 'DOS-7-0006' }], liste_partielle: true });
+  });
+
+  it('point du jour : audiences, retards, échéances, factures à relancer et à facturer en un appel', async () => {
+    const ctx = toolContext({
+      'FROM audiences a': [{ dossier: 'DOS-7-0001', date: '2026-11-21' }],
+      'FROM factures f': [{ numero: 'FAC-7-0001', reste_a_payer: 592500 }],
+    });
+    const result = await runAgentTool('point_du_jour', { jours: 99 }, ctx);
+    expect(result).toMatchObject({
+      horizon_jours: 31,
+      audiences_a_venir: { total: 1, lignes: [{ dossier: 'DOS-7-0001' }] },
+      factures_a_relancer: { total: 1 },
+      actions_en_retard: { total: 0 },
+      actions_a_echeance: { total: 0 },
+      elements_a_facturer: { total: 0 },
+    });
+    expect(ctx.queries).toHaveLength(5);
+    expect(ctx.queries.some((sql) => sql.includes('a.due_at >= NOW() AND a.due_at < NOW() + INTERVAL ? DAY'))).toBe(true);
   });
 
   it('requête libre, aide et base juridique passent par le contexte', async () => {

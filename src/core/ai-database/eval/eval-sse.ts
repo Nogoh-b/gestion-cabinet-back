@@ -75,6 +75,12 @@ export function summarizeTurn(question: string, events: SseEvent[], totalMs: num
     .filter(Boolean)
     .join('\n\n');
 
+  // Actions recommandées : dernier événement `actions` (envoyé après la réponse).
+  const actionsEvent = [...events].reverse().find((e) => e.event === 'actions');
+  const actions = (Array.isArray(actionsEvent?.data?.actions) ? actionsEvent!.data.actions : [])
+    .filter((action: any) => action && typeof action === 'object')
+    .map((action: any) => ({ label: String(action.label ?? ''), prompt: String(action.prompt ?? ''), ...(action.kind && { kind: String(action.kind) }) }));
+
   const conversationId =
     lastResult.conversationId ??
     confirmationEvent?.data?.conversationId ??
@@ -92,6 +98,7 @@ export function summarizeTurn(question: string, events: SseEvent[], totalMs: num
     error: errorEvent ? String(errorEvent.data?.message ?? 'erreur') : undefined,
     confirmation: !!confirmationEvent,
     conversationId: conversationId ? String(conversationId) : undefined,
+    actions,
   };
 }
 

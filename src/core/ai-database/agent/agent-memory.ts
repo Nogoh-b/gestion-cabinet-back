@@ -136,6 +136,59 @@ export function updateMemory(
   return memory;
 }
 
+/** Fiche sur laquelle porte une réponse de l'agent. */
+export interface TurnSubject {
+  type: 'dossier' | 'client' | 'facture';
+  /** Numéro métier, code client ou nom. */
+  reference: string;
+}
+
+const MAX_SUBJECTS = 6;
+const LIST_SUBJECTS: Partial<Record<ListType, TurnSubject['type']>> = {
+  factures: 'facture',
+  dossiers: 'dossier',
+  clients: 'client',
+  audiences: 'dossier',
+  paiements: 'facture',
+};
+
+/**
+ * Fiches sur lesquelles porte la réponse de CE tour (pas les tours
+ * précédents) : le sujet (dossier, client, facture) d'abord, puis les
+ * premiers éléments des listes lues. Elles deviennent les enregistrements
+ * cités par la réponse : actions recommandées, compétence suivante d'un
+ * enchaînement (« prépare-lui… »), demandes de suivi.
+ */
+export function turnSubjects(references: ResolvedReference[], steps: AgentStep[]): TurnSubject[] {
+  const subjects: TurnSubject[] = [];
+  const add = (type: TurnSubject['type'], reference: string) => {
+    const value = text(reference);
+    if (!value || subjects.some((s) => s.type === type && s.reference.toLowerCase() === value.toLowerCase())) return;
+    subjects.push({ type, reference: value });
+  };
+  const memory = updateMemory(undefined, references, steps);
+  if (memory.dossier?.numero) add('dossier', memory.dossier.numero);
+  if (memory.facture?.numero) add('facture', memory.facture.numero);
+  if (memory.client) add('client', memory.client.code || memory.client.nom);
+
+  for (const step of steps) {
+    const result = (step.result ?? {}) as Record<string, any>;
+    if (result.erreur || result.introuvable) continue;
+    // Point du jour : audiences, retards et factures à relancer, dans cet ordre.
+    if (step.name === 'point_du_jour') {
+      const part = (key: string) => (Array.isArray(result[key]?.lignes) ? (result[key].lignes as Array<Record<string, unknown>>) : []);
+      part('audiences_a_venir').slice(0, 2).forEach((row) => add('dossier', text(row.dossier)));
+      part('actions_en_retard').slice(0, 2).forEach((row) => add('dossier', text(row.dossier)));
+      part('factures_a_relancer').slice(0, 2).forEach((row) => add('facture', text(row.numero)));
+      continue;
+    }
+    const list = listOf(step);
+    const type = list && LIST_SUBJECTS[list.type];
+    if (list && type) list.elements.slice(0, 3).forEach((element) => add(type, element));
+  }
+  return subjects.slice(0, MAX_SUBJECTS);
+}
+
 /** Contexte de travail présenté au modèle, avant la question. */
 export function renderWorkingContext(references: ResolvedReference[], memory: WorkingMemory | undefined): string {
   const lines: string[] = [];

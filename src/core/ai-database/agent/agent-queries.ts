@@ -246,16 +246,21 @@ export function audiencesQuery(
 
 export function actionsQuery(
   tenantId: number,
-  args: { etat?: string; dossier?: string; limite?: number },
+  args: { etat?: string; dossier?: string; limite?: number; jours?: number },
   includeConfidential: boolean,
 ): AgentQuery {
   const where = ['a.tenant_id = ?', 'a.deleted_at IS NULL', 'd.deleted_at IS NULL'];
   const params: unknown[] = [tenantId];
   if (!includeConfidential) where.push('d.confidentiality_level = 0');
   scopeFilters({ dossier: args.dossier }, where, params);
-  const state = ['ouvertes', 'en_retard', 'terminees', 'toutes'].includes(String(args.etat)) ? args.etat : 'ouvertes';
-  if (state === 'ouvertes' || state === 'en_retard') where.push(`a.status IN ('TODO', 'IN_PROGRESS', 'ON_HOLD')`);
+  const state = ['ouvertes', 'en_retard', 'a_echeance', 'terminees', 'toutes'].includes(String(args.etat)) ? args.etat : 'ouvertes';
+  if (state === 'ouvertes' || state === 'en_retard' || state === 'a_echeance') where.push(`a.status IN ('TODO', 'IN_PROGRESS', 'ON_HOLD')`);
   if (state === 'en_retard') where.push('a.due_at < NOW()');
+  if (state === 'a_echeance') {
+    // Échéance dans les prochains jours (pas encore dépassée).
+    where.push('a.due_at >= NOW() AND a.due_at < NOW() + INTERVAL ? DAY');
+    params.push(Math.min(Math.max(Math.trunc(Number(args.jours) || 7), 1), 31));
+  }
   if (state === 'terminees') where.push(`a.status = 'COMPLETED'`);
   return {
     sql: `SELECT a.title AS action, CASE a.status WHEN 'TODO' THEN 'À faire' WHEN 'IN_PROGRESS' THEN 'En cours'

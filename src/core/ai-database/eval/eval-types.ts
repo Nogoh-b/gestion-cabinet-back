@@ -43,6 +43,7 @@ export type EvalCategory =
   | 'ambiguite'
   | 'enchainement'
   | 'briefing'
+  | 'proactivite'
   | 'ecritures';
 
 export interface EvalQuestion {
@@ -98,6 +99,11 @@ export interface EvalQuestion {
      * (ou absente), la réponse doit le dire au lieu d'inventer.
      */
     absenceWhenEmpty?: boolean;
+    /**
+     * Actions recommandées sous la réponse : au moins une doit viser une des
+     * fiches de cette colonne de la référence (les 5 premières lignes).
+     */
+    actionsMention?: string;
   };
   /** La question peut écrire en base : ignorée sauf `--with-writes`. */
   mutates?: boolean;
@@ -128,6 +134,8 @@ export interface TurnResult {
   error?: string;
   confirmation: boolean;
   conversationId?: string;
+  /** Actions recommandées sous la réponse (libellé et consigne). */
+  actions?: Array<{ label: string; prompt: string; kind?: string }>;
 }
 
 export interface CheckResult {

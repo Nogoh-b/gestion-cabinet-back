@@ -131,10 +131,10 @@ import { applyDossierNumberChoice } from '../../modules/dossiers/dossier-number-
 import { BaseWriteHandler } from './write/base-write-handler';
 import { outerJoinRetry } from './outer-join-fallback';
 import { extractPdfText } from './pdf-text';
-import { runAgent, buildAgentAnswerRules, renderStepResults, type AgentMessage, type AgentStep } from './agent/agent-loop';
+import { asksInformationToo, runAgent, buildAgentAnswerRules, renderStepResults, type AgentMessage, type AgentStep } from './agent/agent-loop';
 import { referenceByIdQuery, resolveReferenceQuery, type AgentQuery } from './agent/agent-queries';
 import { isAiLifecycleTable } from '../../config/ai-database/ai-lifecycle-tables.config';
-import { readMemory, renderWorkingContext, updateMemory, type ResolvedReference } from './agent/agent-memory';
+import { readMemory, renderWorkingContext, turnSubjects, updateMemory, type ResolvedReference, type TurnSubject } from './agent/agent-memory';
 import { referenceJsonModeUnsupported } from '../../modules/platform/reference-data/reference-ai-reply';
 import {
   aiSqlMaxExecutionMs,
@@ -176,6 +176,7 @@ import { PrepareFormDto } from './dto/prepare-form.dto';
 import { buildFormPrompt, normalizeFormDraft, parseFormFields } from './form-preparation';
 import { formatPageContext } from './page-context';
 import { buildCurrentDateLine, withCurrentDate } from './current-date';
+import type { CitedReference } from './cited-records';
 import {
   DisplayedRecord,
   extractDisplayedRecords,
@@ -7328,20 +7329,44 @@ ${blocks.join('\n\n')}
         },
       },
     );
+    // Fiches lues pendant ce tour : citées par la réponse (actions
+    // recommandées, compétence suivante d'un enchaînement, demandes de suivi).
+    const cited = outcome.clarification || outcome.fallback
+      ? []
+      : await this.citeAgentRecords(aiUser, turnSubjects(references, outcome.steps), tenantId, includeConfidential);
+    // Enchaînement « question + action » : la réponse aux lectures est
+    // affichée d'abord, puis la compétence ou la carte à confirmer.
+    const answerFirst = (flag?: boolean) => outcome.steps.length > 0 && (!!flag || asksInformationToo(dto.question));
+    const writePreface = async (): Promise<string> => {
+      void input.emit('status', { step: 'answer', message: '✍️ Rédaction de la réponse…' });
+      const text = await this.streamAgentAnswer(
+        `${dto.question}\n(Réponds seulement à la partie « information » de la demande. L'action demandée est préparée juste après sur la fiche trouvée : ne la rédige pas.)`,
+        outcome.steps,
+        input.history ?? '',
+        sendEvent,
+      );
+      sendEvent('token', { text: ANSWER_PART_SEPARATOR });
+      return text.trim();
+    };
+
     if (outcome.handoff && input.skillHandoff && this.skills?.has(outcome.handoff.code)) {
       const { code, cible } = outcome.handoff;
       const target = cible ? await this.resolveAgentTarget(aiUser, cible, tenantId, includeConfidential) : null;
       this.logger.log(`[AGENT] compétence ${code}${cible ? ` sur ${cible.type} ${cible.reference}${target ? '' : ' (non résolue)'}` : ''}`);
       const { requestContext, historyOverride, userId } = input.skillHandoff;
+      const preface = answerFirst(outcome.handoff.answerFirst) ? await writePreface() : '';
       await this.handleSkillStream(
         { ...dto, conversationId, skill: code } as AskQuestionDto,
         user,
         userId,
         { ...requestContext, referenced: target ? [target, ...requestContext.referenced] : requestContext.referenced },
-        historyOverride,
+        // La compétence relit la réponse qui précède (faits, montants, numéros) et ses fiches.
+        preface
+          ? [...historyOverride, { role: 'assistant', content: preface, ...(cited.length && { refs: cited.map(({ entity, type, id, label }) => ({ entity, type, id, label })) }) }]
+          : historyOverride,
         sendEvent,
         input.startTime,
-        { origin: 'auto', reason: `choisie par l'assistant${cible ? ` pour ${cible.type} ${cible.reference}` : ''}` },
+        { origin: 'auto', reason: `choisie par l'assistant${cible ? ` pour ${cible.type} ${cible.reference}` : ''}`, ...(preface && { preface }) },
       );
       return true;
     }
@@ -7349,6 +7374,7 @@ ${blocks.join('\n\n')}
       // Plan sur la demande précisée par l'agent (numéros exacts) : jamais
       // exécuté ici, toujours présenté à confirmer.
       this.logger.log(`[AGENT] écriture à préparer : ${outcome.write.demande.slice(0, 160)}`);
+      const preface = answerFirst(outcome.write.answerFirst) ? await writePreface() : '';
       void input.emit('status', { step: 'plan', message: "📝 Préparation de l'opération…" });
       const planned = await this.intentDetectionService.detectIntent(
         outcome.write.demande,
@@ -7368,8 +7394,9 @@ ${blocks.join('\n\n')}
       if (!plan) {
         const text = `Je n'ai pas pu préparer cette opération (${planned.writePlanError ?? 'plan incomplet'}). Précisez-la (fiche visée, montant, date) et je la prépare.`;
         sendEvent('token', { text });
-        await this.conversationManager.addAssistantMessage(conversationId, text, undefined, { agentMemory: updateMemory(previousMemory, references, outcome.steps) });
-        sendEvent('result', { success: true, question: dto.question, analysis: text, results: [], rowCount: 0, conversationId, executionTimeMs: Date.now() - input.startTime });
+        const analysis = preface ? `${preface}${ANSWER_PART_SEPARATOR}${text}` : text;
+        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, { agentMemory: updateMemory(previousMemory, references, outcome.steps) });
+        sendEvent('result', { success: true, question: dto.question, analysis, results: [], rowCount: 0, conversationId, executionTimeMs: Date.now() - input.startTime });
         return true;
       }
       await this.aiPermissionService.assertCanWritePlan(aiUser, plan);
@@ -7379,6 +7406,7 @@ ${blocks.join('\n\n')}
         startTime: input.startTime,
         sendEvent,
         metadata: { agentMemory: updateMemory(previousMemory, references, outcome.steps) },
+        ...(preface && { intro: preface }),
       });
       return true;
     }
@@ -7449,12 +7477,14 @@ ${blocks.join('\n\n')}
       startTime: number;
       sendEvent: (event: string, data: any) => void;
       metadata?: Record<string, unknown>;
+      /** Réponse affichée au-dessus de la carte (enchaînement « point puis tâche »). */
+      intro?: string;
     },
   ): Promise<void> {
-    const { dto, conversationId, sendEvent } = input;
+    const { dto, conversationId, sendEvent, intro } = input;
     sendEvent('intent', { type: 'WRITE', plan, origin: 'agent' });
-    sendEvent('confirmation', { plan, conversationId });
-    const display = `⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`;
+    sendEvent('confirmation', { plan, conversationId, ...(intro && { intro }) });
+    const display = `${intro ? `${intro}${ANSWER_PART_SEPARATOR}` : ''}⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`;
     await this.conversationManager.addAssistantMessage(conversationId, display, undefined, {
       pendingWritePlan: plan,
       requiresConfirmation: true,
@@ -7469,6 +7499,34 @@ ${blocks.join('\n\n')}
       conversationId,
       executionTimeMs: Date.now() - input.startTime,
     });
+  }
+
+  /**
+   * Fiches d'un tour de l'agent (numéros, noms) → enregistrements cités avec
+   * leur identifiant, comme une lecture SQL : la réponse les renvoie au chat
+   * (liens, actions recommandées, demande suivante). Une fiche ambiguë
+   * (homonymes) ou illisible n'est pas citée.
+   */
+  private async citeAgentRecords(
+    user: AiUserContext,
+    subjects: TurnSubject[],
+    tenantId: number,
+    includeConfidential: boolean,
+  ): Promise<CitedReference[]> {
+    if (!subjects.length) return [];
+    const found = await Promise.all(
+      subjects.map((subject) => this.resolveAgentTarget(user, subject, tenantId, includeConfidential)),
+    );
+    const tables: Record<string, string> = { dossier: 'dossiers', client: 'customer', facture: 'factures', audience: 'audiences' };
+    const cited: CitedReference[] = [];
+    for (const record of found) {
+      const id = record?.id;
+      if (!record || id === undefined || id === null) continue;
+      if (cited.some((item) => item.type === record.type && String(item.id) === String(id))) continue;
+      cited.push(toCitedReference({ entity: tables[record.type], id, label: record.label, summary: record.label ?? '' }));
+    }
+    this.conversationManager.citeRecords(cited);
+    return cited;
   }
 
   /** Cible d'une compétence nommée par l'agent (numéro ou nom) → fiche, si une seule correspond. */
@@ -8114,8 +8172,14 @@ RÉPONSE :`;
       reason?: string;
       /** Demande initiale, quand celle-ci n'est qu'une précision (cible @…). */
       previousQuestion?: string;
+      /**
+       * Réponse déjà affichée avant la compétence (enchaînement « question +
+       * action ») : elle reste en tête de la réponse enregistrée.
+       */
+      preface?: string;
     } = {},
   ): Promise<void> {
+    const withPreface = (text: string) => (options.preface ? `${options.preface}${ANSWER_PART_SEPARATOR}${text}` : text);
     let code = String(dto.skill).trim().toLowerCase();
     this.markMetric({ intent: `SKILL:${code}`.slice(0, 32) });
     let label = this.skills!.label(code);
@@ -8299,8 +8363,9 @@ RÉPONSE :`;
     if (outcome.type === 'plan') {
       const plan = outcome.plan;
       await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, plan);
-      // Analyse de la compétence (jugement lu, délais calculés…) au-dessus de la carte.
-      const intro = outcome.markdown?.trim();
+      // Analyse de la compétence (jugement lu, délais calculés…) au-dessus de la carte,
+      // précédée de la réponse d'un enchaînement.
+      const intro = [options.preface, outcome.markdown?.trim()].filter(Boolean).join(ANSWER_PART_SEPARATOR) || undefined;
       sendEvent('confirmation', { plan, conversationId, ...(intro && { intro }) });
       const display = `${intro ? `${intro}\n\n` : ''}⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`;
       // Carte e-mail : références de la fiche à insérer dans le message.
@@ -8358,12 +8423,12 @@ RÉPONSE :`;
       const draftReferences = await this.skillDraftReferences(references, params, user);
       if (draftReferences.length) extras.draftReferences = draftReferences;
     }
-    await this.conversationManager.addAssistantMessage(conversationId, markdown, undefined, {
+    await this.conversationManager.addAssistantMessage(conversationId, withPreface(markdown), undefined, {
       skill: base.skill,
       ...extras,
     });
     await this.keepGeneratedDocument(conversationId, outcome, label, references);
-    sendEvent('result', { ...base, analysis: markdown, ...extras });
+    sendEvent('result', { ...base, analysis: withPreface(markdown), ...extras });
   }
 
   /**

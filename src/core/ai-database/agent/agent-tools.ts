@@ -58,6 +58,15 @@ async function rows(ctx: AgentToolContext, query: AgentQuery): Promise<AgentTool
   };
 }
 
+/** Partie d'un résultat composé : une requête en échec n'empêche pas les autres. */
+const settle = (ctx: AgentToolContext, query: AgentQuery) =>
+  rows(ctx, query).catch((error: Error) => ({ erreur: error.message }) as AgentToolResult);
+
+/** AAAA-MM-JJ à Douala, décalé de `days` jours. */
+function isoDay(days = 0, now = new Date()): string {
+  return new Date(now.getTime() + days * 86_400_000).toLocaleDateString('sv-SE', { timeZone: 'Africa/Douala' });
+}
+
 const scope = (args: Record<string, any>) => ({
   dossier: readText(args.dossier, 60),
   client: readText(args.client, 120),
@@ -130,14 +139,37 @@ export const AGENT_TOOLS: Record<string, AgentTool> = {
       const [identite] = await ctx.runQuery(dossierIdentityQuery(ctx.tenantId, number, ctx.includeConfidential));
       if (!identite) return { introuvable: `aucun dossier ${number} dans ce cabinet` };
       const dossier = String(identite.dossier_number);
-      const settle = async (query: AgentQuery) => rows(ctx, query).catch((error: Error) => ({ erreur: error.message }));
       const [factures, audiences, actions, aFacturer] = await Promise.all([
-        settle(invoicesQuery(ctx.tenantId, { dossier, filtre: 'toutes', limite: 20 })),
-        settle(audiencesQuery(ctx.tenantId, { dossier, quand: 'toutes', limite: 10 })),
-        settle(actionsQuery(ctx.tenantId, { dossier, etat: 'ouvertes', limite: 15 }, ctx.includeConfidential)),
-        settle(billableItemsQuery(ctx.tenantId, { dossier, etat: 'tous', limite: 15 })),
+        settle(ctx, invoicesQuery(ctx.tenantId, { dossier, filtre: 'toutes', limite: 20 })),
+        settle(ctx, audiencesQuery(ctx.tenantId, { dossier, quand: 'toutes', limite: 10 })),
+        settle(ctx, actionsQuery(ctx.tenantId, { dossier, etat: 'ouvertes', limite: 15 }, ctx.includeConfidential)),
+        settle(ctx, billableItemsQuery(ctx.tenantId, { dossier, etat: 'tous', limite: 15 })),
       ]);
       return { identite, factures, audiences, actions_ouvertes: actions, elements_facturables: aFacturer };
+    },
+  },
+  point_du_jour: {
+    description:
+      "Point du jour / urgences / priorités (« que dois-je faire aujourd'hui ? », « qu'est-ce qui est urgent cette semaine ? ») en UN appel : audiences des prochains jours, actions en retard et à échéance proche, factures échues à relancer, éléments prêts à facturer.",
+    args: '{ jours?: horizon en jours (7 par défaut, 31 au plus) }',
+    run: async (args, ctx) => {
+      const jours = Math.min(Math.max(Math.trunc(Number(args.jours) || 7), 1), 31);
+      const [audiences, enRetard, aEcheance, factures, aFacturer] = await Promise.all([
+        settle(ctx, audiencesQuery(ctx.tenantId, { quand: 'a_venir', periode: { du: isoDay(0), au: isoDay(jours) }, limite: 10 })),
+        settle(ctx, actionsQuery(ctx.tenantId, { etat: 'en_retard', limite: 10 }, ctx.includeConfidential)),
+        settle(ctx, actionsQuery(ctx.tenantId, { etat: 'a_echeance', jours, limite: 10 }, ctx.includeConfidential)),
+        settle(ctx, invoicesQuery(ctx.tenantId, { filtre: 'en_retard', limite: 10 })),
+        settle(ctx, billableItemsQuery(ctx.tenantId, { etat: 'a_facturer', limite: 10 })),
+      ]);
+      return {
+        date_du_jour: isoDay(0),
+        horizon_jours: jours,
+        audiences_a_venir: audiences,
+        actions_en_retard: enRetard,
+        actions_a_echeance: aEcheance,
+        factures_a_relancer: factures,
+        elements_a_facturer: aFacturer,
+      };
     },
   },
   audiences: {
