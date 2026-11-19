@@ -127,6 +127,27 @@ describe('IntentDetectionService local classifier', () => {
       expect(llm.invoke).toHaveBeenCalled();
     });
 
+    it('planWrites=false : l’écriture est reconnue sans appeler le planificateur', async () => {
+      const planner = classifierSays('{"type":"WRITE","operations":[]}');
+      const result = await service.detectIntent('Crée un client nommé Paul Test', classifierSays('READ'), '', {
+        planWrites: false, plannerLlm: planner,
+      });
+      expect(result).toMatchObject({ type: 'WRITE', requiresConfirmation: true });
+      expect(result.writePlan).toBeUndefined();
+      expect(planner.invoke).not.toHaveBeenCalled();
+    });
+
+    it('compétence désignée par mot-clé : le classifieur tranche, pas la règle locale de connaissance', async () => {
+      const question = "Calcule le délai d'appel pour le dossier DOS-7-0001.";
+      const candidates = [{ code: 'delais_procedure', label: 'Délais de procédure', description: 'Calcule un délai' }];
+      const llm = classifierSays('SKILL:delais_procedure');
+      const result = await service.detectIntent(question, llm, '', {
+        skillCandidates: candidates, preferSkills: true, keywordSkill: 'delais_procedure',
+      });
+      expect(result).toMatchObject({ type: 'SKILL', skill: 'delais_procedure' });
+      expect(llm.invoke).toHaveBeenCalled();
+    });
+
     it('« crée un client… » reste une écriture décidée localement', async () => {
       const llm = classifierSays('SKILL:whatsapp');
       const planner = classifierSays('{"type":"WRITE","operations":[]}');

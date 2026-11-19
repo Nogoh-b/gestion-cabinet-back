@@ -51,7 +51,7 @@ describe('agent IA — boucle', () => {
     const outcome = await runAgent({ question: 'Qui nous doit le plus ?', today: '2026-11-18' }, d);
 
     expect(outcome.steps).toHaveLength(1);
-    expect(outcome.steps[0].result).toMatchObject({ nombre: 1, lignes: [{ client: 'Société Éléphant SARL' }] });
+    expect(outcome.steps[0].result).toMatchObject({ total: 1, lignes: [{ client: 'Société Éléphant SARL' }] });
     expect(decide).toHaveBeenCalledTimes(2);
     // Le 2e appel voit les résultats du 1er.
     const secondCall = (decide.mock.calls[1] as any)[0];
@@ -166,6 +166,26 @@ describe('agent IA — compétences et demandes de précision', () => {
     expect(answer).not.toHaveBeenCalled();
   });
 
+  it('écriture : résout la référence puis transmet une demande précise, sans rien écrire', async () => {
+    const { d, decide, answer } = deps([
+      '{"outils":[{"nom":"factures","arguments":{"client":"Jean Mballa","filtre":"non_soldees"}}]}',
+      '{"outils":[{"nom":"preparer_operation","arguments":{"demande":"Enregistrer un paiement de 25000 FCFA le 2026-11-19 sur la facture FAC-7-0005"}}]}',
+    ]);
+    const outcome = await runAgent({ question: 'Enregistre 25 000 sur la dernière facture de Jean Mballa', today: '2026-11-19', allowWrite: true }, d);
+    expect(outcome.write).toEqual({ demande: 'Enregistrer un paiement de 25000 FCFA le 2026-11-19 sur la facture FAC-7-0005' });
+    expect(outcome.steps.map((step) => step.name)).toEqual(['factures']);
+    expect(answer).not.toHaveBeenCalled();
+    expect((decide.mock.calls[0] as any)[0][0].content).toContain('preparer_operation');
+  });
+
+  it('mode lecture : l’outil d’écriture n’est ni proposé ni accepté', async () => {
+    const { d, decide } = deps(['{"outils":[{"nom":"preparer_operation","arguments":{"demande":"Supprimer le client X"}}]}']);
+    const outcome = await runAgent({ question: 'Supprime le client X', today: '2026-11-19', allowWrite: false }, d);
+    expect(outcome.write).toBeUndefined();
+    expect(outcome.fallback).toBe(true);
+    expect((decide.mock.calls[0] as any)[0][0].content).not.toContain('preparer_operation');
+  });
+
   it('sans catalogue, l’agent ne propose aucune compétence', async () => {
     const { d, decide } = deps(['{"outils":[]}']);
     await runAgent({ question: 'q', today: '2026-11-19' }, d);
@@ -200,9 +220,15 @@ describe('agent IA — outils', () => {
     expect(ctx.queries).toHaveLength(5);
   });
 
+  it('« combien » : le total réel des dossiers, pas le nombre de lignes affichées', async () => {
+    const ctx = toolContext({ 'FROM dossiers d': [{ dossier_number: 'DOS-7-0006', total_correspondant: 4 }] });
+    const result = await runAgentTool('dossiers', { statut: 'ACTIVE', limite: 1 }, ctx);
+    expect(result).toEqual({ total: 4, lignes_affichees: 1, lignes: [{ dossier_number: 'DOS-7-0006' }], liste_partielle: true });
+  });
+
   it('requête libre, aide et base juridique passent par le contexte', async () => {
     const ctx = toolContext();
-    expect(await runAgentTool('requete_libre', { question: 'nombre de bulletins de paie' }, ctx)).toMatchObject({ nombre: 1 });
+    expect(await runAgentTool('requete_libre', { question: 'nombre de bulletins de paie' }, ctx)).toMatchObject({ total: 1 });
     expect(await runAgentTool('aide_application', { question: 'créer une facture' }, ctx)).toEqual({ extraits: 'Guide : Facturation › Nouvelle facture' });
     expect(await runAgentTool('base_juridique', { question: 'délai d’appel' }, ctx)).toEqual({ extraits: 'Code de procédure civile, art. 192' });
   });

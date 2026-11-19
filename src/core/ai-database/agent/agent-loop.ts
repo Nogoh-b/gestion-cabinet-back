@@ -49,6 +49,17 @@ export interface AgentInput {
    * catalogue, l'agent ne fait que lire.
    */
   skills?: AgentSkill[];
+  /**
+   * L'agent peut préparer une écriture (outil `preparer_operation`). Rien
+   * n'est écrit : le plan est toujours présenté à confirmer. Faux quand
+   * l'utilisateur a choisi le mode lecture.
+   */
+  allowWrite?: boolean;
+}
+
+/** Écriture à préparer : la demande précisée (numéros exacts, montants, dates). */
+export interface AgentWrite {
+  demande: string;
 }
 
 export interface AgentSkill {
@@ -86,10 +97,12 @@ export interface AgentOutcome {
   handoff?: AgentHandoff;
   /** Question posée à l'utilisateur au lieu d'une réponse. */
   clarification?: AgentClarification;
+  /** Écriture à faire planifier puis confirmer par l'utilisateur. */
+  write?: AgentWrite;
 }
 
 /** Outils qui terminent le tour : passage de main ou question à l'utilisateur. */
-export const TERMINAL_TOOLS = ['competence', 'demander_precision'] as const;
+export const TERMINAL_TOOLS = ['competence', 'demander_precision', 'preparer_operation'] as const;
 
 const TARGET_TYPES = ['dossier', 'client', 'facture', 'audience'] as const;
 
@@ -149,7 +162,7 @@ const TOOL_LABELS: Record<string, string> = {
   base_juridique: '📚 Base juridique',
 };
 
-export function buildAgentSystemPrompt(today: string, skills: AgentSkill[] = []): string {
+export function buildAgentSystemPrompt(today: string, skills: AgentSkill[] = [], allowWrite = false): string {
   const year = today.slice(0, 4);
   const skillSection = skills.length
     ? `
@@ -165,6 +178,14 @@ ${describeSkills(skills)}
   « rappeler son audience au client par un message » = un message (whatsapp, message_portail ou envoyer_email), pas un rapport.
   Cible : celle que nomme la demande, sinon celle du CONTEXTE DE TRAVAIL. Si elle est introuvable ou ambiguë, cherche-la (chercher) ou demande.`
     : '';
+  const writeSection = allowWrite
+    ? `
+- preparer_operation { demande: la modification à préparer, COMPLÈTE et PRÉCISE : numéros exacts (dossier, facture), noms, montants, dates AAAA-MM-JJ }
+  Pour créer, modifier ou supprimer une fiche, enregistrer un paiement, programmer une audience, créer une tâche…
+  RIEN n'est écrit : un plan est présenté à l'utilisateur, qui le confirme ou l'annule. Appelle-le seul, en dernier.
+  Résous d'abord les références avec les outils de lecture : « la dernière facture de Mballa » → factures → « FAC-7-0005 ».
+  Plusieurs fiches possibles (homonymes) : demander_precision, jamais au hasard.`
+    : '';
   const clarifySection = `
 - demander_precision { question: une seule question courte, choix: 2 à 5 réponses possibles, concrètes (ex. numéros de dossier avec le client) }
   Quand la demande est ambiguë (homonymes, cible manquante, but incertain) et que le contexte ne permet pas de trancher.`;
@@ -175,7 +196,7 @@ Date du jour : ${today}. « Cette année » = du ${year}-01-01 au ${year}-12-31 
 « ce trimestre » : calcule les dates exactes. Sans période demandée, n'en mets pas.
 
 OUTILS DISPONIBLES :
-${describeTools()}${clarifySection}${skillSection}
+${describeTools()}${clarifySection}${writeSection}${skillSection}
 
 MÉTHODE :
 - Choisis l'outil le plus précis. « Fais le point / synthèse / état d'un dossier » → synthese_dossier.
@@ -203,7 +224,8 @@ RÉPONDS UNIQUEMENT avec un objet JSON, sans texte autour :
 export function buildAgentAnswerRules(): string {
   return `RÈGLES DE RÉPONSE :
 - Réponds à la question en t'appuyant UNIQUEMENT sur les résultats des outils ci-dessous. Aucun chiffre, numéro, nom ou date qui n'y figure pas.
-- Résultat vide (nombre 0, lignes vides, « introuvable ») : dis clairement qu'il n'y a rien ou que l'élément n'existe pas dans le cabinet.
+- Résultat vide (total 0, lignes vides, « introuvable ») : dis clairement qu'il n'y a rien ou que l'élément n'existe pas dans le cabinet.
+- « Combien » : cite le champ « total » (nombre réel), jamais le nombre de lignes affichées d'une liste partielle.
 - Résultat « erreur » : dis que cette partie n'a pas pu être consultée (ce n'est PAS une absence de données).
 - Montants : séparateur de milliers et devise (ex. 1 250 000 FCFA). Dates au format JJ/MM/AAAA.
 - Cite les numéros métier (dossier, facture) et les noms ; jamais d'identifiant technique.
@@ -255,7 +277,7 @@ const callKey = (call: AgentCall) => `${call.name}:${JSON.stringify(call.args)}`
 
 export async function runAgent(input: AgentInput, deps: AgentDeps): Promise<AgentOutcome> {
   const messages: AgentMessage[] = [
-    { role: 'system', content: buildAgentSystemPrompt(input.today, input.skills ?? []) },
+    { role: 'system', content: buildAgentSystemPrompt(input.today, input.skills ?? [], !!input.allowWrite) },
     {
       role: 'user',
       content: [
@@ -290,6 +312,10 @@ export async function runAgent(input: AgentInput, deps: AgentDeps): Promise<Agen
     if (terminal?.name === 'competence') {
       const handoff = readHandoff(terminal.args, input.skills ?? []);
       if (handoff) return { answer: '', steps, rounds: rounds + 1, handoff };
+    }
+    if (terminal?.name === 'preparer_operation' && input.allowWrite) {
+      const demande = typeof terminal.args?.demande === 'string' ? terminal.args.demande.trim().slice(0, 2000) : '';
+      if (demande) return { answer: '', steps, rounds: rounds + 1, write: { demande } };
     }
     if (terminal?.name === 'demander_precision') {
       const clarification = readClarification(terminal.args);

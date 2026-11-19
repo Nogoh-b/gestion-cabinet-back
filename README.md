@@ -72,6 +72,11 @@ recherche…), lit leurs résultats puis rédige la réponse à partir de ces se
 résultats. La logique du cabinet (reste à payer, factures annulées, lignes
 supprimées, cabinet courant) y est codée une fois en SQL paramétré. Sans
 outil adapté, l'agent garde le circuit SQL habituel en dernier recours.
+L'agent choisit aussi une compétence (relance, délai de procédure…), demande
+une précision quand la cible est ambiguë (homonymes) et prépare les écritures
+(« enregistre un paiement sur la plus ancienne facture impayée de X ») : il
+retrouve d'abord les fiches visées, puis le plan est **toujours** présenté sur
+une carte de confirmation ; rien n'est écrit avant le clic de l'utilisateur.
 `off` (défaut) conserve le circuit actuel. Mesurer avant d'activer :
 `npm run eval:ai` (voir `docs/ai-eval.md`).
 

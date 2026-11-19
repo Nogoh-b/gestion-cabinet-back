@@ -41,13 +41,20 @@ interface AgentTool {
 
 const MAX_ROWS = 40;
 
-/** Lignes d'une requête, bornées, avec leur nombre. */
+/**
+ * Lignes d'une requête, bornées. `total` est le nombre réel d'éléments
+ * correspondants quand la requête le calcule (une liste limitée à 5 lignes
+ * peut en compter 40) : c'est lui qu'il faut citer pour « combien ».
+ */
 async function rows(ctx: AgentToolContext, query: AgentQuery): Promise<AgentToolResult> {
   const lignes = await ctx.runQuery(query);
+  const counted = Number(lignes[0]?.total_correspondant);
+  const total = Number.isFinite(counted) && lignes.length ? counted : lignes.length;
   return {
-    nombre: lignes.length,
-    lignes: lignes.slice(0, MAX_ROWS),
-    ...(lignes.length > MAX_ROWS && { tronque: true }),
+    total,
+    lignes_affichees: Math.min(lignes.length, MAX_ROWS),
+    lignes: lignes.slice(0, MAX_ROWS).map(({ total_correspondant: _total, ...row }) => row),
+    ...((lignes.length > MAX_ROWS || total > lignes.length) && { liste_partielle: true }),
   };
 }
 
@@ -101,7 +108,7 @@ export const AGENT_TOOLS: Record<string, AgentTool> = {
   },
   dossiers: {
     description:
-      'Liste ou comptage de dossiers. statut : DRAFT (brouillon), ACTIVE (en cours / actif), CLOSED (clôturé), ARCHIVED (archivé). total_correspondant = nombre total de dossiers correspondants.',
+      'Liste ou comptage de dossiers. statut : DRAFT (brouillon), ACTIVE (en cours / actif), CLOSED (clôturé), ARCHIVED (archivé). « total » = nombre réel de dossiers correspondants (même si peu de lignes sont affichées).',
     args: '{ statut?: "DRAFT" | "ACTIVE" | "CLOSED" | "ARCHIVED", client?: nom ou code, texte?: mot de l’objet, numéro RG ou partie adverse, limite?: nombre }',
     run: (args, ctx) =>
       rows(
@@ -173,7 +180,12 @@ export const AGENT_TOOLS: Record<string, AgentTool> = {
       const question = readText(args.question, 400);
       if (!question) return { erreur: 'question manquante' };
       const { lignes, note } = await ctx.freeQuery(question);
-      return { nombre: lignes.length, lignes: lignes.slice(0, MAX_ROWS), ...(note && { note }) };
+      return {
+        total: lignes.length,
+        lignes: lignes.slice(0, MAX_ROWS),
+        ...(lignes.length > MAX_ROWS && { liste_partielle: true }),
+        ...(note && { note }),
+      };
     },
   },
   aide_application: {

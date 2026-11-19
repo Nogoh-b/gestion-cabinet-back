@@ -97,5 +97,9 @@ export function summarizeTurn(question: string, events: SseEvent[], totalMs: num
 
 function describeConfirmation(data: any): string {
   const plan = data?.plan ?? data?.writePlan ?? data;
-  return String(plan?.humanReadable ?? data?.message ?? '');
+  // Valeurs du plan (montant, numéro, date…) : vérifiables par le banc.
+  const operations = (Array.isArray(plan?.operations) ? plan.operations : [])
+    .map((op: any) => `${op?.operation ?? ''} ${op?.entity ?? op?.action ?? ''} ${JSON.stringify(op?.fields ?? {})}`)
+    .join('\n');
+  return [String(plan?.humanReadable ?? data?.message ?? ''), operations].filter(Boolean).join('\n');
 }

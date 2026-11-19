@@ -6552,6 +6552,15 @@ ${blocks.join('\n\n')}
             skillCandidates: skillCandidates.map(({ code, label, description }): SkillCandidate => ({ code, label, description })),
             maxSkillCandidates: this.agentEnabled() ? 60 : 3,
             preferSkills: this.agentEnabled(),
+            // Mode agent : une compétence nettement désignée (« calcule le délai
+            // d'appel… ») n'est plus lancée d'office ; le classifieur la confirme
+            // au lieu des règles locales de conversation ou de connaissance.
+            ...(this.agentEnabled() &&
+              intentMode === 'auto' &&
+              skillDetection?.decisive &&
+              skillDetection.code && { keywordSkill: skillDetection.code }),
+            // Mode agent : l'agent précise la demande d'écriture avant de la faire planifier.
+            ...(this.agentEnabled() && intentMode === 'auto' && !files.length && { planWrites: false }),
             allowComposite: composable && !forceWrite,
           },
         );
@@ -6568,7 +6577,12 @@ ${blocks.join('\n\n')}
       // Mode agent : un conseil ou une demande incertaine passe d'abord par
       // l'agent, qui peut lire les données, lancer une compétence ou demander
       // une précision. Sans outil appelé, le circuit habituel reprend.
-      if (this.agentEnabled() && intentMode === 'auto' && (intentResult.type === 'ADVICE' || intentResult.type === 'UNCERTAIN')) {
+      const agentWrite = intentResult.type === 'WRITE' && !intentResult.writePlan && !files.length;
+      if (
+        this.agentEnabled() &&
+        intentMode === 'auto' &&
+        (intentResult.type === 'ADVICE' || intentResult.type === 'UNCERTAIN' || agentWrite)
+      ) {
         if (!dto.conversationId) {
           dto.conversationId = (
             await this.conversationManager.createConversation(userId, this.generateConversationTitle(dto.question))
@@ -6588,8 +6602,20 @@ ${blocks.join('\n\n')}
           sendEvent,
           emit,
           skillHandoff: { userId, requestContext, historyOverride, catalog: skillCatalog },
+          allowWrite: true,
         });
         if (handled) return;
+        if (agentWrite) {
+          // L'agent n'a appelé aucun outil : plan d'écriture habituel, sur la demande telle quelle.
+          intentResult = await this.intentDetectionService.detectIntent(enrichedQuestion, this.getRequestModel('fast', this.CLASSIFIER_MAX_TOKENS), schema, {
+            forceWrite: true,
+            history: historyForIntent,
+            plannerLlm: this.getRequestModel('quality', this.WRITE_PLAN_MAX_TOKENS),
+            onLlmCall: this.trackExternalLlmCall,
+            classifierModelName: this.getRequestModelName('fast'),
+            plannerModelName: this.getRequestModelName('quality'),
+          });
+        }
       }
       // Le classifieur hésite : le chat propose les modes et attend le choix.
       // Rien n'est enregistré : la question repart avec le mode choisi.
@@ -6831,6 +6857,8 @@ ${blocks.join('\n\n')}
           plan.humanReadable = `${plan.humanReadable}\n\n${notice}`;
           intentResult.requiresConfirmation = true;
         }
+        // Mode agent : aucune écriture sans la carte de confirmation.
+        if (this.agentEnabled()) intentResult.requiresConfirmation = true;
 
         if (intentResult.requiresConfirmation) {
           sendEvent('confirmation', {
@@ -6911,6 +6939,8 @@ ${blocks.join('\n\n')}
           sendEvent,
           emit,
           skillHandoff: { userId, requestContext, historyOverride, catalog: skillCatalog },
+          // Mode « lecture » choisi par l'utilisateur : l'agent ne prépare aucune écriture.
+          allowWrite: intentMode !== 'read',
         });
         if (handled) return;
       }
@@ -7098,6 +7128,10 @@ ${blocks.join('\n\n')}
             dto.question,
             requestContext.referenced,
           );
+          if (this.agentEnabled()) {
+            await this.presentWriteConfirmation(reroutedPlan, { dto, conversationId, startTime, sendEvent });
+            return;
+          }
           await emit('status', {
             step: 'execute',
             message: `⚙️ Exécution de ${reroutedPlan.operations.length} opération(s)...`,
@@ -7225,6 +7259,8 @@ ${blocks.join('\n\n')}
       historyOverride: VisibleHistoryMessage[];
       catalog: AiSkillCatalogItem[];
     };
+    /** L'agent peut préparer une écriture (toujours présentée à confirmer). */
+    allowWrite?: boolean;
   }): Promise<boolean> {
     const { dto, user, conversationId, sendEvent } = input;
     const aiUser = user as AiUserContext;
@@ -7255,6 +7291,7 @@ ${blocks.join('\n\n')}
         history: input.history,
         today,
         skills: (input.skillHandoff?.catalog ?? []).map(({ code, label, description, targets }) => ({ code, label, description, targets })),
+        allowWrite: !!input.allowWrite,
       },
       {
         // Étapes du chat : « Consultation des données » (détail : les outils),
@@ -7306,6 +7343,43 @@ ${blocks.join('\n\n')}
         input.startTime,
         { origin: 'auto', reason: `choisie par l'assistant${cible ? ` pour ${cible.type} ${cible.reference}` : ''}` },
       );
+      return true;
+    }
+    if (outcome.write && input.allowWrite) {
+      // Plan sur la demande précisée par l'agent (numéros exacts) : jamais
+      // exécuté ici, toujours présenté à confirmer.
+      this.logger.log(`[AGENT] écriture à préparer : ${outcome.write.demande.slice(0, 160)}`);
+      void input.emit('status', { step: 'plan', message: "📝 Préparation de l'opération…" });
+      const planned = await this.intentDetectionService.detectIntent(
+        outcome.write.demande,
+        this.getRequestModel('fast', this.CLASSIFIER_MAX_TOKENS),
+        input.schema,
+        {
+          forceWrite: true,
+          history: input.history,
+          plannerLlm: this.getRequestModel('quality', this.WRITE_PLAN_MAX_TOKENS),
+          onLlmCall: this.trackExternalLlmCall,
+          classifierModelName: this.getRequestModelName('fast'),
+          plannerModelName: this.getRequestModelName('quality'),
+        },
+      );
+      await this.conversationManager.addUserMessage(conversationId, dto.question, input.referenced);
+      const plan = planned.type === 'WRITE' && planned.writePlan?.operations?.length ? planned.writePlan : null;
+      if (!plan) {
+        const text = `Je n'ai pas pu préparer cette opération (${planned.writePlanError ?? 'plan incomplet'}). Précisez-la (fiche visée, montant, date) et je la prépare.`;
+        sendEvent('token', { text });
+        await this.conversationManager.addAssistantMessage(conversationId, text, undefined, { agentMemory: updateMemory(previousMemory, references, outcome.steps) });
+        sendEvent('result', { success: true, question: dto.question, analysis: text, results: [], rowCount: 0, conversationId, executionTimeMs: Date.now() - input.startTime });
+        return true;
+      }
+      await this.aiPermissionService.assertCanWritePlan(aiUser, plan);
+      await this.presentWriteConfirmation(plan, {
+        dto,
+        conversationId,
+        startTime: input.startTime,
+        sendEvent,
+        metadata: { agentMemory: updateMemory(previousMemory, references, outcome.steps) },
+      });
       return true;
     }
     if (outcome.clarification) {
@@ -7364,6 +7438,37 @@ ${blocks.join('\n\n')}
       ...(input.fileInfo && { fileInfo: input.fileInfo }),
     });
     return true;
+  }
+
+  /** Carte de confirmation d'un plan d'écriture (rien n'est exécuté avant le clic de l'utilisateur). */
+  private async presentWriteConfirmation(
+    plan: WritePlan,
+    input: {
+      dto: AskQuestionDto;
+      conversationId: string;
+      startTime: number;
+      sendEvent: (event: string, data: any) => void;
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<void> {
+    const { dto, conversationId, sendEvent } = input;
+    sendEvent('intent', { type: 'WRITE', plan, origin: 'agent' });
+    sendEvent('confirmation', { plan, conversationId });
+    const display = `⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`;
+    await this.conversationManager.addAssistantMessage(conversationId, display, undefined, {
+      pendingWritePlan: plan,
+      requiresConfirmation: true,
+      ...(input.metadata ?? {}),
+    });
+    sendEvent('result', {
+      success: true,
+      question: dto.question,
+      analysis: display,
+      pendingWritePlan: plan,
+      requiresConfirmation: true,
+      conversationId,
+      executionTimeMs: Date.now() - input.startTime,
+    });
   }
 
   /** Cible d'une compétence nommée par l'agent (numéro ou nom) → fiche, si une seule correspond. */

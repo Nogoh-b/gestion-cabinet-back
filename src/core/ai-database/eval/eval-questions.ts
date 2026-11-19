@@ -569,4 +569,49 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
     forbidValues: OTHER_CABINET_VALUES,
     expect: { mentions: [{ column: 'element', max: 15 }] },
   },
+  // ── Écritures : la bonne opération, sur la bonne fiche, toujours à confirmer ─
+  {
+    id: 'ecriture-paiement-facture',
+    category: 'ecritures',
+    goal: 'Paiement sur une facture nommée : plan à confirmer, jamais exécuté directement',
+    pick: `SELECT f.numero FROM factures f WHERE ${LIVE_INVOICE} AND ${REMAINING} > 0 ORDER BY f.date_facture DESC LIMIT 1`,
+    ask: 'Enregistre un paiement de 10 000 FCFA sur la facture {numero}.',
+    expect: { confirmation: true, require: ['10 ?000'] },
+    mutates: true,
+  },
+  {
+    id: 'ecriture-paiement-reference',
+    category: 'ecritures',
+    goal: '« La plus ancienne facture impayée de X » : résolue avant de préparer le paiement',
+    pick: `SELECT ${CLIENT_NAME} AS client FROM customer c WHERE c.tenant_id = :tenant AND c.deleted_at IS NULL
+        AND (SELECT COUNT(*) FROM factures f WHERE f.client_id = c.id AND ${LIVE_INVOICE} AND ${REMAINING} > 0) >= 2
+      ORDER BY c.id LIMIT 1`,
+    ask: 'Enregistre un paiement de 25 000 FCFA sur la plus ancienne facture impayée de {client}.',
+    reference: `SELECT f.numero FROM factures f JOIN customer c ON c.id = f.client_id
+      WHERE ${LIVE_INVOICE} AND ${CLIENT_NAME} = {client} AND ${REMAINING} > 0
+      ORDER BY f.date_echeance, f.date_facture LIMIT 1`,
+    expect: { confirmation: true, mentions: [{ column: 'numero' }], require: ['25 ?000'] },
+    mutates: true,
+  },
+  {
+    id: 'ecriture-ce-dossier',
+    category: 'ecritures',
+    goal: '« Pour ce dossier » : la tâche est préparée sur le dossier de la conversation',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} AND d.client_id IS NOT NULL ORDER BY d.id LIMIT 1`,
+    ask: ['Fais le point sur le dossier {dossier_number}.', 'Crée une tâche « Relancer le greffe » pour ce dossier, à faire avant le 15/12/2026.'],
+    reference: `SELECT {dossier_number} AS dossier`,
+    expect: { confirmation: true, mentions: [{ column: 'dossier' }] },
+    mutates: true,
+  },
+  {
+    id: 'ecriture-homonymes',
+    category: 'ecritures',
+    goal: 'Écriture sur un homonyme : demander lequel, ne rien préparer au hasard',
+    pick: `SELECT c.last_name FROM customer c WHERE c.tenant_id = :tenant AND c.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM dossiers d WHERE d.client_id = c.id AND ${PICKABLE_DOSSIER})
+      GROUP BY c.last_name HAVING COUNT(DISTINCT c.id) >= 2 ORDER BY c.last_name LIMIT 1`,
+    ask: 'Crée une tâche « Appeler le client » sur le dossier de {last_name}.',
+    expect: { clarification: true, confirmation: false },
+    mutates: true,
+  },
 ];

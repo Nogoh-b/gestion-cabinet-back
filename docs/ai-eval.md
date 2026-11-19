@@ -76,9 +76,13 @@ Options utiles : `--only id1,id2`, `--category facturation,dossiers`,
 
 - **Compte du banc** : un administrateur du cabinet, pour que la référence
   (qui voit tout le cabinet) et l'assistant voient les mêmes données.
-- **Base** : de préférence une copie de la production. La question
-  `ecriture-avec-confirmation` n'est posée qu'avec `--with-writes` : à ne
-  jamais utiliser sur la production.
+- **Base** : de préférence une copie de la production. Les questions qui
+  peuvent écrire (`ecriture-avec-confirmation` et la catégorie `ecritures` :
+  paiement sur une facture nommée ou « la plus ancienne impayée », tâche
+  « pour ce dossier », dossier homonyme) ne sont posées qu'avec
+  `--with-writes` : à ne jamais utiliser sur la production. Elles vérifient
+  qu'une carte de confirmation est présentée avec les bonnes valeurs (ou
+  qu'une précision est demandée), jamais une écriture directe.
 - **Crédits IA** : un passage complet fait environ 25 questions, soit
   quelques dizaines d'appels au modèle.
 - **Un seul utilisateur à la fois** sur le cabinet évalué : le nombre d'appels

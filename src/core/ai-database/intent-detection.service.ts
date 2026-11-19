@@ -236,6 +236,10 @@ export class IntentDetectionService {
       maxSkillCandidates?: number;
       /** Mode agent : une demande de message ou de rédaction n'est pas une écriture locale. */
       preferSkills?: boolean;
+      /** false : une demande d'écriture est seulement reconnue, sans plan (l'agent le demandera). */
+      planWrites?: boolean;
+      /** Mode agent : compétence désignée par un mot-clé, à faire confirmer par le classifieur. */
+      keywordSkill?: string;
       /** Le chat sait traiter plusieurs demandes enchaînées dans une réponse. */
       allowComposite?: boolean;
     } = {},
@@ -247,6 +251,12 @@ export class IntentDetectionService {
     // Mode agent : « envoie un message », « prépare une relance » ne sont pas
     // des écritures de fiche ; le classifieur, qui voit les compétences,
     // tranche. Les vrais verbes d'écriture (crée, modifie, supprime…) restent locaux.
+    // Mode agent : un mot-clé désigne une compétence (« délai d'appel ») ; les
+    // règles locales de conversation, de conseil ou de lecture ne tranchent
+    // plus seules, le classifieur (qui voit cette compétence en tête) décide.
+    if (options.keywordSkill && (localClass === 'CHAT' || localClass === 'ADVICE' || localClass === 'READ')) {
+      localClass = null;
+    }
     if (
       localClass === 'WRITE' &&
       !options.forceWrite &&
@@ -289,6 +299,7 @@ export class IntentDetectionService {
 
     if (
       !isObviousWrite &&
+      !options.keywordSkill &&
       options.signals &&
       isDecisiveKnowledgeRoute(options.signals)
     ) {
@@ -372,6 +383,12 @@ export class IntentDetectionService {
         return { type: 'READ', requiresConfirmation: false, ...(reason && { reason }) };
       }
       // lightClass === 'WRITE' → on laisse tomber dans la branche WRITE ci-dessous
+    }
+
+    // Mode agent : l'agent résout d'abord les références, puis demande lui-même
+    // un plan précis ; planifier ici ferait payer le planificateur deux fois.
+    if (options.planWrites === false && !options.forceWrite) {
+      return { type: 'WRITE', requiresConfirmation: true, ...(writeReason && { reason: writeReason }) };
     }
 
     // 2️⃣ Générer le schéma d'écriture

@@ -42,7 +42,8 @@ export type EvalCategory =
   | 'references'
   | 'ambiguite'
   | 'enchainement'
-  | 'briefing';
+  | 'briefing'
+  | 'ecritures';
 
 export interface EvalQuestion {
   id: string;
