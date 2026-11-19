@@ -400,6 +400,57 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
     expect: { skill: ['etat_impayes'], mentions: [{ column: 'numero' }], forbid: [ASKS_FOR_MENTION] },
   },
 
+  // ── Compétences demandées sans leurs mots-clés (formulation naturelle) ──────
+  {
+    id: 'competence-naturelle-chances',
+    category: 'competences',
+    goal: 'Évaluer les chances, sans dire « chances de succès »',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} AND d.status = 'ACTIVE' ORDER BY d.id LIMIT 1`,
+    ask: "Penses-tu qu'on peut gagner le dossier {dossier_number} ?",
+    forbidValues: OTHER_CABINET_VALUES,
+    expect: { skill: ['evaluer_chances'], forbid: [ASKS_FOR_MENTION] },
+  },
+  {
+    id: 'competence-naturelle-relance',
+    category: 'competences',
+    goal: 'Relancer un client qui ne paie pas, sans le mot « relance d’impayés »',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER}
+        AND EXISTS (SELECT 1 FROM factures f WHERE f.dossier_id = d.id AND ${LIVE_INVOICE} AND ${REMAINING} > 0)
+      ORDER BY d.id LIMIT 1`,
+    ask: 'Le client du dossier {dossier_number} ne paie pas ses factures : prépare-lui une relance.',
+    forbidValues: OTHER_CABINET_VALUES,
+    expect: { skill: ['relancer_impayes', 'mise_en_demeure', 'courrier', 'envoyer_email', 'rediger_document'], forbid: [ASKS_FOR_MENTION] },
+  },
+  {
+    id: 'competence-naturelle-similaires',
+    category: 'competences',
+    goal: 'Dossiers comparables, sans dire « dossiers similaires »',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} ORDER BY d.id LIMIT 1`,
+    ask: 'Quels anciens dossiers du cabinet ressemblent au dossier {dossier_number} ?',
+    forbidValues: OTHER_CABINET_VALUES,
+    expect: { skill: ['dossiers_comparables'], forbid: [ASKS_FOR_MENTION] },
+  },
+  {
+    id: 'competence-naturelle-honoraires',
+    category: 'competences',
+    goal: 'Convention d’honoraires, sans le mot « convention »',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} AND d.client_id IS NOT NULL ORDER BY d.id LIMIT 1`,
+    ask: 'Prépare le document qui fixe nos honoraires avec le client du dossier {dossier_number}.',
+    forbidValues: OTHER_CABINET_VALUES,
+    expect: { skill: ['convention_honoraires', 'devis_honoraires'], forbid: [ASKS_FOR_MENTION] },
+  },
+  {
+    id: 'competence-naturelle-rappel',
+    category: 'competences',
+    goal: 'Message au client pour une audience, sans dire « WhatsApp » ni « e-mail »',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER}
+        AND EXISTS (SELECT 1 FROM audiences a WHERE a.dossier_id = d.id AND a.deleted_at IS NULL AND a.audience_date >= CURDATE() AND a.status IN ('0', '4'))
+      ORDER BY d.id LIMIT 1`,
+    ask: 'Envoie un petit message au client du dossier {dossier_number} pour lui rappeler sa prochaine audience.',
+    forbidValues: OTHER_CABINET_VALUES,
+    expect: { skill: ['whatsapp', 'message_portail', 'envoyer_email'], forbid: [ASKS_FOR_MENTION] },
+  },
+
   // ── Références : @mention, fiche ouverte, « ce client », « dessus » ─────────
   {
     id: 'reference-mention-dossier',

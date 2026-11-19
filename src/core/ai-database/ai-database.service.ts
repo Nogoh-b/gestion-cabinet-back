@@ -132,7 +132,8 @@ import { BaseWriteHandler } from './write/base-write-handler';
 import { outerJoinRetry } from './outer-join-fallback';
 import { extractPdfText } from './pdf-text';
 import { runAgent, buildAgentAnswerRules, renderStepResults, type AgentMessage, type AgentStep } from './agent/agent-loop';
-import { referenceByIdQuery, type AgentQuery } from './agent/agent-queries';
+import { referenceByIdQuery, resolveReferenceQuery, type AgentQuery } from './agent/agent-queries';
+import { isAiLifecycleTable } from '../../config/ai-database/ai-lifecycle-tables.config';
 import { readMemory, renderWorkingContext, updateMemory, type ResolvedReference } from './agent/agent-memory';
 import { referenceJsonModeUnsupported } from '../../modules/platform/reference-data/reference-ai-reply';
 import {
@@ -563,6 +564,11 @@ function plainRows(rows: any[]): Array<Record<string, unknown>> {
       }),
     ),
   );
+}
+
+/** Le plan modifie directement une table à cycle de vie (hors action métier). */
+function planTouchesLifecycleTables(plan: WritePlan): boolean {
+  return (plan?.operations ?? []).some((operation) => operation.operation !== 'ACTION' && isAiLifecycleTable(operation.entity));
 }
 
 /** Titres des sous-questions qui n'ont pas pu être consultées. */
@@ -6162,7 +6168,9 @@ ${blocks.join('\n\n')}
       if (skillCatalog.length) {
         const detection = detectSkillRequest(dto.question, skillCatalog);
         skillDetection = detection;
-        if (detection.decisive && detection.code) {
+        // Mode agent : les mots-clés sont des indices, le classifieur et l'agent
+        // choisissent la compétence d'après le but de la demande.
+        if (detection.decisive && detection.code && !this.agentEnabled()) {
           await this.handleSkillStream(
             { ...dto, skill: detection.code } as AskQuestionDto,
             user,
@@ -6178,6 +6186,11 @@ ${blocks.join('\n\n')}
         // Demande sur un modèle sans forme nette : les compétences de modèle sont
         // proposées au classifieur (jamais une lecture brute des tables).
         skillCandidates = withTemplateSkills(dto.question, detection.candidates, skillCatalog);
+        if (this.agentEnabled()) {
+          skillCandidates = [...skillCandidates, ...skillCatalog].filter(
+            (item, index, all) => all.findIndex((other) => other.code === item.code) === index,
+          );
+        }
       }
       if (
         intentMode === 'auto' &&
@@ -6537,6 +6550,8 @@ ${blocks.join('\n\n')}
             signals: sourceSignals,
             allowModeChoice: intentMode === 'auto' && !forceWrite,
             skillCandidates: skillCandidates.map(({ code, label, description }): SkillCandidate => ({ code, label, description })),
+            maxSkillCandidates: this.agentEnabled() ? 60 : 3,
+            preferSkills: this.agentEnabled(),
             allowComposite: composable && !forceWrite,
           },
         );
@@ -6549,6 +6564,32 @@ ${blocks.join('\n\n')}
         void multiDraft?.then((draft) => draft?.abort());
         sqlDraft = null;
         multiDraft = null;
+      }
+      // Mode agent : un conseil ou une demande incertaine passe d'abord par
+      // l'agent, qui peut lire les données, lancer une compétence ou demander
+      // une précision. Sans outil appelé, le circuit habituel reprend.
+      if (this.agentEnabled() && intentMode === 'auto' && (intentResult.type === 'ADVICE' || intentResult.type === 'UNCERTAIN')) {
+        if (!dto.conversationId) {
+          dto.conversationId = (
+            await this.conversationManager.createConversation(userId, this.generateConversationTitle(dto.question))
+          ).id;
+        }
+        const handled = await this.answerWithAgentStream({
+          dto,
+          user,
+          conversationId: dto.conversationId,
+          enrichedQuestion,
+          history: historyForIntent,
+          referenced: requestContext.referenced,
+          schema,
+          relevantTables,
+          fileInfo,
+          startTime,
+          sendEvent,
+          emit,
+          skillHandoff: { userId, requestContext, historyOverride, catalog: skillCatalog },
+        });
+        if (handled) return;
       }
       // Le classifieur hésite : le chat propose les modes et attend le choix.
       // Rien n'est enregistré : la question repart avec le mode choisi.
@@ -6869,6 +6910,7 @@ ${blocks.join('\n\n')}
           startTime,
           sendEvent,
           emit,
+          skillHandoff: { userId, requestContext, historyOverride, catalog: skillCatalog },
         });
         if (handled) return;
       }
@@ -7176,6 +7218,13 @@ ${blocks.join('\n\n')}
     startTime: number;
     sendEvent: (event: string, data: any) => void;
     emit: (event: string, data: any) => unknown;
+    /** Compétences que l'agent peut lancer, et de quoi leur passer la main. */
+    skillHandoff?: {
+      userId: string;
+      requestContext: RequestContext;
+      historyOverride: VisibleHistoryMessage[];
+      catalog: AiSkillCatalogItem[];
+    };
   }): Promise<boolean> {
     const { dto, user, conversationId, sendEvent } = input;
     const aiUser = user as AiUserContext;
@@ -7205,6 +7254,7 @@ ${blocks.join('\n\n')}
         context: [workingContext, extraContext].filter(Boolean).join('\n\n') || undefined,
         history: input.history,
         today,
+        skills: (input.skillHandoff?.catalog ?? []).map(({ code, label, description, targets }) => ({ code, label, description, targets })),
       },
       {
         // Étapes du chat : « Consultation des données » (détail : les outils),
@@ -7241,8 +7291,51 @@ ${blocks.join('\n\n')}
         },
       },
     );
+    if (outcome.handoff && input.skillHandoff && this.skills?.has(outcome.handoff.code)) {
+      const { code, cible } = outcome.handoff;
+      const target = cible ? await this.resolveAgentTarget(aiUser, cible, tenantId, includeConfidential) : null;
+      this.logger.log(`[AGENT] compétence ${code}${cible ? ` sur ${cible.type} ${cible.reference}${target ? '' : ' (non résolue)'}` : ''}`);
+      const { requestContext, historyOverride, userId } = input.skillHandoff;
+      await this.handleSkillStream(
+        { ...dto, conversationId, skill: code } as AskQuestionDto,
+        user,
+        userId,
+        { ...requestContext, referenced: target ? [target, ...requestContext.referenced] : requestContext.referenced },
+        historyOverride,
+        sendEvent,
+        input.startTime,
+        { origin: 'auto', reason: `choisie par l'assistant${cible ? ` pour ${cible.type} ${cible.reference}` : ''}` },
+      );
+      return true;
+    }
+    if (outcome.clarification) {
+      const { question, choix } = outcome.clarification;
+      const text = choix.length ? `${question}\n\n${choix.map((choice) => `- ${choice}`).join('\n')}` : question;
+      // Chaque choix relance la demande d'origine, précisée.
+      const base = dto.question.trim().replace(/[\s?.!]+$/, '');
+      const suggestions = choix.map((choice) => ({ label: choice, prompt: `${base} : ${choice}` }));
+      sendEvent('token', { text });
+      if (suggestions.length) sendEvent('suggestions', { suggestions });
+      await this.conversationManager.addUserMessage(conversationId, dto.question, input.referenced);
+      await this.conversationManager.addAssistantMessage(conversationId, text, undefined, {
+        requiresClarification: true,
+        ...(suggestions.length && { suggestions }),
+        agentMemory: updateMemory(previousMemory, references, outcome.steps),
+      });
+      sendEvent('result', {
+        success: true,
+        question: dto.question,
+        analysis: text,
+        results: [],
+        rowCount: 0,
+        requiresClarification: true,
+        conversationId,
+        executionTimeMs: Date.now() - input.startTime,
+      });
+      return true;
+    }
     if (outcome.fallback) {
-      this.logger.warn('[AGENT] aucun outil appelé → circuit SQL habituel');
+      this.logger.warn('[AGENT] aucun outil appelé → circuit habituel');
       return false;
     }
     this.logger.log(
@@ -7271,6 +7364,26 @@ ${blocks.join('\n\n')}
       ...(input.fileInfo && { fileInfo: input.fileInfo }),
     });
     return true;
+  }
+
+  /** Cible d'une compétence nommée par l'agent (numéro ou nom) → fiche, si une seule correspond. */
+  private async resolveAgentTarget(
+    user: AiUserContext,
+    cible: { type: 'dossier' | 'client' | 'facture' | 'audience'; reference: string },
+    tenantId: number,
+    includeConfidential: boolean,
+  ): Promise<ReferencedEntityContext | null> {
+    try {
+      const query = resolveReferenceQuery(tenantId, cible.type, cible.reference, includeConfidential);
+      await this.aiPermissionService.assertCanReadTables(user, query.tables);
+      const rows = await this.runAiRead(query.sql, query.params);
+      // Un nom partagé par deux clients ne désigne personne : la compétence demandera.
+      const exact = rows.filter((row: any) => String(row.label).toLowerCase() === cible.reference.toLowerCase());
+      const row = exact.length === 1 ? exact[0] : rows.length === 1 ? rows[0] : null;
+      return row ? { type: cible.type, id: row.id, label: String(row.label), source: 'mention' } : null;
+    } catch {
+      return null;
+    }
   }
 
   /** @mentions et fiche ouverte → numéro métier lisible par les outils de l'agent. */
@@ -8068,6 +8181,16 @@ RÉPONSE :`;
     // pour corriger, et les actions recommandées en partent.
     const skillRun = { code, label, question: previousQuestion || dto.question, params: compactSkillParams(params) };
 
+    // Plan sur une table à cycle de vie (ex. reporter une évaluation sur
+    // `dossiers`) : toujours refusé à l'écriture directe. L'analyse de la
+    // compétence est donnée quand même, au lieu d'une erreur qui la perdait.
+    if (outcome.type === 'plan' && outcome.markdown?.trim() && planTouchesLifecycleTables(outcome.plan)) {
+      this.logger.warn(`[SKILL] ${code} : plan sur table à cycle de vie, analyse rendue sans enregistrement`);
+      outcome = {
+        type: 'answer',
+        markdown: `${outcome.markdown.trim()}\n\n_ℹ️ Cette analyse n'est pas enregistrée automatiquement sur la fiche : reportez-la depuis la fiche si besoin._`,
+      };
+    }
     if (outcome.type === 'plan') {
       const plan = outcome.plan;
       await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, plan);

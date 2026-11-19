@@ -110,6 +110,35 @@ describe('IntentDetectionService local classifier', () => {
     });
   });
 
+  describe('mode agent : messages et rédactions confiés au classifieur', () => {
+    const skillCandidates = [
+      { code: 'whatsapp', label: 'Message WhatsApp', description: 'Prépare un message au client' },
+      { code: 'relancer_impayes', label: 'Relance des impayés', description: 'Prépare la relance des factures impayées' },
+    ];
+    const classifierSays = (answer: string) => ({ invoke: jest.fn(async () => ({ content: answer })) }) as any;
+
+    it('« envoie un petit message… » : la compétence choisie par le classifieur, pas une écriture locale', async () => {
+      const llm = classifierSays('SKILL:whatsapp');
+      const result = await service.detectIntent(
+        'Envoie un petit message au client du dossier DOS-7-0001 pour lui rappeler sa prochaine audience.',
+        llm, '', { skillCandidates, maxSkillCandidates: 60, preferSkills: true },
+      );
+      expect(result).toMatchObject({ type: 'SKILL', skill: 'whatsapp' });
+      expect(llm.invoke).toHaveBeenCalled();
+    });
+
+    it('« crée un client… » reste une écriture décidée localement', async () => {
+      const llm = classifierSays('SKILL:whatsapp');
+      const planner = classifierSays('{"type":"WRITE","operations":[]}');
+      await service.detectIntent('Crée un client nommé Paul Test', llm, '', {
+        skillCandidates, preferSkills: true, plannerLlm: planner,
+      });
+      // Décidé localement : le classifieur n'est pas consulté, le planificateur d'écriture l'est.
+      expect(llm.invoke).not.toHaveBeenCalled();
+      expect(planner.invoke).toHaveBeenCalled();
+    });
+  });
+
   it('detects obvious read without LLM', () => {
     expect(service.classifyLocal('Liste les dossiers ouverts')).toBe('READ');
   });

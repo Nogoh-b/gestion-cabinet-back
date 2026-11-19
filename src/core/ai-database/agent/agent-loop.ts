@@ -44,6 +44,33 @@ export interface AgentInput {
   history?: string;
   /** Date du jour AAAA-MM-JJ. */
   today: string;
+  /**
+   * Compétences que l'utilisateur peut lancer (outil `competence`). Sans
+   * catalogue, l'agent ne fait que lire.
+   */
+  skills?: AgentSkill[];
+}
+
+export interface AgentSkill {
+  code: string;
+  label: string;
+  description: string;
+  targets?: string[];
+}
+
+/** L'agent passe la main à une compétence (document, message, calcul…). */
+export interface AgentHandoff {
+  code: string;
+  /** Consigne reformulée pour la compétence (sinon la question). */
+  consigne?: string;
+  /** Fiche visée, en numéro métier ou nom. */
+  cible?: { type: 'dossier' | 'client' | 'facture' | 'audience'; reference: string };
+}
+
+/** L'agent demande une précision, avec des choix cliquables. */
+export interface AgentClarification {
+  question: string;
+  choix: string[];
 }
 
 export interface AgentOutcome {
@@ -55,6 +82,51 @@ export interface AgentOutcome {
    * circuit habituel (l'agent ne répond jamais sans données).
    */
   fallback?: boolean;
+  /** Une compétence prend le relais (rien n'a été rédigé par l'agent). */
+  handoff?: AgentHandoff;
+  /** Question posée à l'utilisateur au lieu d'une réponse. */
+  clarification?: AgentClarification;
+}
+
+/** Outils qui terminent le tour : passage de main ou question à l'utilisateur. */
+export const TERMINAL_TOOLS = ['competence', 'demander_precision'] as const;
+
+const TARGET_TYPES = ['dossier', 'client', 'facture', 'audience'] as const;
+
+function readHandoff(args: Record<string, any>, skills: AgentSkill[]): AgentHandoff | null {
+  const code = typeof args.code === 'string' ? args.code.trim() : '';
+  if (!skills.some((skill) => skill.code === code)) return null;
+  const consigne = typeof args.consigne === 'string' && args.consigne.trim() ? args.consigne.trim().slice(0, 1500) : undefined;
+  const raw = args.cible && typeof args.cible === 'object' ? args.cible : {};
+  const type = TARGET_TYPES.find((t) => t === raw.type);
+  const reference = typeof raw.reference === 'string' || typeof raw.reference === 'number' ? String(raw.reference).trim() : '';
+  return { code, ...(consigne && { consigne }), ...(type && reference && { cible: { type, reference: reference.slice(0, 120) } }) };
+}
+
+function readClarification(args: Record<string, any>): AgentClarification | null {
+  const question = typeof args.question === 'string' ? args.question.trim().slice(0, 500) : '';
+  const choix = (Array.isArray(args.choix) ? args.choix : [])
+    .filter((c: unknown): c is string => typeof c === 'string' && !!c.trim())
+    .map((c: string) => c.trim().slice(0, 160))
+    .slice(0, 6);
+  return question ? { question, choix } : null;
+}
+
+/** `{ nom: "evaluer_chances", arguments: { dossier: "DOS-1" } }` → `competence`. */
+export function asSkillCall(call: AgentCall, skills: AgentSkill[]): AgentCall {
+  if (!skills.some((skill) => skill.code === call.name)) return call;
+  const args = call.args ?? {};
+  const explicit = args.cible && typeof args.cible === 'object' ? args.cible : null;
+  const type = TARGET_TYPES.find((t) => typeof args[t] === 'string' || typeof args[t] === 'number');
+  const cible = explicit ?? (type ? { type, reference: String(args[type]) } : undefined);
+  return { name: 'competence', args: { code: call.name, ...(cible && { cible }) } };
+}
+
+/** Catalogue des compétences pour le prompt (descriptions abrégées). */
+export function describeSkills(skills: AgentSkill[]): string {
+  return skills
+    .map((skill) => `- ${skill.code} — ${skill.label} : ${skill.description.slice(0, 140)}${skill.targets?.length ? ` [cible : ${skill.targets.join(' | ')}]` : ''}`)
+    .join('\n');
 }
 
 export const AGENT_MAX_ROUNDS = 4;
@@ -77,8 +149,25 @@ const TOOL_LABELS: Record<string, string> = {
   base_juridique: '📚 Base juridique',
 };
 
-export function buildAgentSystemPrompt(today: string): string {
+export function buildAgentSystemPrompt(today: string, skills: AgentSkill[] = []): string {
   const year = today.slice(0, 4);
+  const skillSection = skills.length
+    ? `
+
+COMPÉTENCES (outil « competence ») — pour PRODUIRE ou FAIRE quelque chose : rédiger un document, un courrier, un message
+(e-mail, WhatsApp, espace client), calculer (décompte, délai), analyser (chances, chronologie, dossiers comparables),
+préparer un rapport ou une convention. Lire ou compter des données n'est PAS une compétence : utilise les outils de lecture.
+${describeSkills(skills)}
+
+- competence { code: un code ci-dessus, cible?: { type: "dossier" | "client" | "facture" | "audience", reference: numéro ou nom } }
+  La compétence prend le relais et produit le résultat : appelle-la SEULE, quand tu sais laquelle et sur quelle fiche.
+  Choisis-la d'après le BUT de la demande, pas d'après un mot : « le document qui fixe nos honoraires » = convention_honoraires,
+  « rappeler son audience au client par un message » = un message (whatsapp, message_portail ou envoyer_email), pas un rapport.
+  Cible : celle que nomme la demande, sinon celle du CONTEXTE DE TRAVAIL. Si elle est introuvable ou ambiguë, cherche-la (chercher) ou demande.`
+    : '';
+  const clarifySection = `
+- demander_precision { question: une seule question courte, choix: 2 à 5 réponses possibles, concrètes (ex. numéros de dossier avec le client) }
+  Quand la demande est ambiguë (homonymes, cible manquante, but incertain) et que le contexte ne permet pas de trancher.`;
   return `Tu es l'assistant d'un cabinet d'avocats (Cameroun, OHADA). Tu réponds aux questions sur les données du cabinet
 en appelant des OUTILS. Tu ne connais aucune donnée du cabinet sans outil : n'invente jamais un chiffre, un numéro, un nom ou une date.
 
@@ -86,7 +175,7 @@ Date du jour : ${today}. « Cette année » = du ${year}-01-01 au ${year}-12-31 
 « ce trimestre » : calcule les dates exactes. Sans période demandée, n'en mets pas.
 
 OUTILS DISPONIBLES :
-${describeTools()}
+${describeTools()}${clarifySection}${skillSection}
 
 MÉTHODE :
 - Choisis l'outil le plus précis. « Fais le point / synthèse / état d'un dossier » → synthese_dossier.
@@ -166,7 +255,7 @@ const callKey = (call: AgentCall) => `${call.name}:${JSON.stringify(call.args)}`
 
 export async function runAgent(input: AgentInput, deps: AgentDeps): Promise<AgentOutcome> {
   const messages: AgentMessage[] = [
-    { role: 'system', content: buildAgentSystemPrompt(input.today) },
+    { role: 'system', content: buildAgentSystemPrompt(input.today, input.skills ?? []) },
     {
       role: 'user',
       content: [
@@ -193,7 +282,22 @@ export async function runAgent(input: AgentInput, deps: AgentDeps): Promise<Agen
         ]),
       );
     }
-    const calls = (reply?.calls ?? []).filter((call) => !done.has(callKey(call))).slice(0, MAX_CALLS_PER_ROUND);
+    // Un code de compétence appelé comme un outil (« evaluer_chances ») est
+    // un passage de main : sa cible est déduite de ses arguments.
+    const asked = (reply?.calls ?? []).map((call) => asSkillCall(call, input.skills ?? []));
+    // Outil terminal (passage de main, question) : le tour s'arrête là.
+    const terminal = asked.find((call) => (TERMINAL_TOOLS as readonly string[]).includes(call.name));
+    if (terminal?.name === 'competence') {
+      const handoff = readHandoff(terminal.args, input.skills ?? []);
+      if (handoff) return { answer: '', steps, rounds: rounds + 1, handoff };
+    }
+    if (terminal?.name === 'demander_precision') {
+      const clarification = readClarification(terminal.args);
+      if (clarification) return { answer: '', steps, rounds: rounds + 1, clarification };
+    }
+    const calls = asked
+      .filter((call) => !(TERMINAL_TOOLS as readonly string[]).includes(call.name) && !done.has(callKey(call)))
+      .slice(0, MAX_CALLS_PER_ROUND);
     if (!calls.length) break;
     calls.forEach((call) => done.add(callKey(call)));
     deps.status([...new Set(calls.map((call) => TOOL_LABELS[call.name] ?? '🔎 Consultation'))].join(' · ') + '…');

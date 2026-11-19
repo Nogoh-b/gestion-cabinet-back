@@ -113,6 +113,68 @@ describe('agent IA — boucle', () => {
   });
 });
 
+describe('agent IA — compétences et demandes de précision', () => {
+  const skills = [
+    { code: 'convention_honoraires', label: 'Convention d’honoraires', description: 'Rédige la convention d’honoraires du dossier', targets: ['dossier'] },
+    { code: 'whatsapp', label: 'Message WhatsApp', description: 'Prépare un message WhatsApp au client', targets: ['client', 'dossier'] },
+  ];
+
+  it('passe la main à la compétence choisie, avec sa cible, sans rédiger', async () => {
+    const { d, answer, decide } = deps([
+      '{"outils":[{"nom":"competence","arguments":{"code":"convention_honoraires","cible":{"type":"dossier","reference":"DOS-7-0001"}}}]}',
+    ]);
+    const outcome = await runAgent({ question: 'Prépare le document qui fixe nos honoraires pour DOS-7-0001', today: '2026-11-19', skills }, d);
+    expect(outcome.handoff).toEqual({ code: 'convention_honoraires', cible: { type: 'dossier', reference: 'DOS-7-0001' } });
+    expect(answer).not.toHaveBeenCalled();
+    const system = (decide.mock.calls[0] as any)[0][0].content;
+    expect(system).toContain('convention_honoraires — Convention d’honoraires');
+    expect(system).toContain('[cible : dossier]');
+  });
+
+  it('peut lire avant de passer la main (chercher la cible, puis la compétence)', async () => {
+    const { d } = deps([
+      '{"outils":[{"nom":"chercher","arguments":{"texte":"Éléphant"}}]}',
+      '{"outils":[{"nom":"competence","arguments":{"code":"whatsapp","cible":{"type":"client","reference":"Société Éléphant SARL"}}}]}',
+    ]);
+    const outcome = await runAgent({ question: 'Écris un petit mot à Éléphant', today: '2026-11-19', skills }, d);
+    expect(outcome.steps.map((step) => step.name)).toEqual(['chercher']);
+    expect(outcome.handoff?.code).toBe('whatsapp');
+  });
+
+  it('un code de compétence appelé comme un outil est un passage de main', async () => {
+    const { d } = deps(['{"outils":[{"nom":"convention_honoraires","arguments":{"dossier":"DOS-7-0001"}}]}']);
+    const outcome = await runAgent({ question: 'q', today: '2026-11-19', skills }, d);
+    expect(outcome.handoff).toEqual({ code: 'convention_honoraires', cible: { type: 'dossier', reference: 'DOS-7-0001' } });
+  });
+
+  it('ignore une compétence hors catalogue (non autorisée ou inventée)', async () => {
+    const { d } = deps([
+      '{"outils":[{"nom":"competence","arguments":{"code":"supprimer_dossier"}}]}',
+    ]);
+    const outcome = await runAgent({ question: 'q', today: '2026-11-19', skills }, d);
+    expect(outcome.handoff).toBeUndefined();
+    expect(outcome.fallback).toBe(true);
+  });
+
+  it('pose une question avec des choix quand la demande est ambiguë', async () => {
+    const { d, answer } = deps([
+      '{"outils":[{"nom":"chercher","arguments":{"texte":"Mballa"}}]}',
+      '{"outils":[{"nom":"demander_precision","arguments":{"question":"Quel dossier Mballa ?","choix":["DOS-7-0003 (Jean Mballa)","DOS-7-0006 (Paul Mballa)",""]}}]}',
+    ]);
+    const outcome = await runAgent({ question: 'Fais le point sur le dossier de Mballa', today: '2026-11-19' }, d);
+    expect(outcome.clarification).toEqual({ question: 'Quel dossier Mballa ?', choix: ['DOS-7-0003 (Jean Mballa)', 'DOS-7-0006 (Paul Mballa)'] });
+    expect(answer).not.toHaveBeenCalled();
+  });
+
+  it('sans catalogue, l’agent ne propose aucune compétence', async () => {
+    const { d, decide } = deps(['{"outils":[]}']);
+    await runAgent({ question: 'q', today: '2026-11-19' }, d);
+    const system = (decide.mock.calls[0] as any)[0][0].content;
+    expect(system).not.toContain('COMPÉTENCES');
+    expect(system).toContain('demander_precision');
+  });
+});
+
 describe('agent IA — outils', () => {
   it('outil inconnu ou en erreur : résultat lisible, jamais d’exception', async () => {
     const ctx = toolContext();

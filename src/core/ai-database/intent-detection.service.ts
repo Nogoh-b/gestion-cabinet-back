@@ -232,14 +232,30 @@ export class IntentDetectionService {
        * répondre SKILL:<code> quand l'une d'elles y répond clairement.
        */
       skillCandidates?: SkillCandidate[];
+      /** Nombre de compétences présentées au classifieur (3 par défaut). */
+      maxSkillCandidates?: number;
+      /** Mode agent : une demande de message ou de rédaction n'est pas une écriture locale. */
+      preferSkills?: boolean;
       /** Le chat sait traiter plusieurs demandes enchaînées dans une réponse. */
       allowComposite?: boolean;
     } = {},
   ): Promise<IntentDetectionResult> {
     // 1️⃣ Pré-filtre rapide : éviter un appel LLM pour les WRITE évidents
-    const localClass = options.forceWrite
+    let localClass = options.forceWrite
       ? 'WRITE'
       : this.classifyLocal(question);
+    // Mode agent : « envoie un message », « prépare une relance » ne sont pas
+    // des écritures de fiche ; le classifieur, qui voit les compétences,
+    // tranche. Les vrais verbes d'écriture (crée, modifie, supprime…) restent locaux.
+    if (
+      localClass === 'WRITE' &&
+      !options.forceWrite &&
+      options.preferSkills &&
+      (options.skillCandidates?.length ?? 0) > 0 &&
+      !this.WRITE_VERB.test(this.normalizeText(question))
+    ) {
+      localClass = null;
+    }
     const isObviousWrite = options.forceWrite || localClass === 'WRITE';
     // Demande d'agir sans équivoque (mode écriture choisi, ou verbe correctif) :
     // le planner ne peut répondre ni READ ni ADVICE, sinon « corrige les points
@@ -1169,11 +1185,17 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       history?: string;
       signals?: SourceSignals;
       skillCandidates?: SkillCandidate[];
+      /** Nombre de compétences présentées au classifieur (3 par défaut). */
+      maxSkillCandidates?: number;
+      /** Mode agent : une demande de message ou de rédaction n'est pas une écriture locale. */
+      preferSkills?: boolean;
       allowComposite?: boolean;
     } = {},
   ): Promise<LightClassification> {
     const signalsBlock = options.signals ? describeSignals(options.signals) : '';
-    const candidates = (options.skillCandidates ?? []).slice(0, 3);
+    // Mode agent : tout le catalogue (descriptions abrégées) ; sinon les 3
+    // compétences évoquées par les mots-clés.
+    const candidates = (options.skillCandidates ?? []).slice(0, options.maxSkillCandidates ?? 3);
     // La même phrase n'a pas le même sens dans une autre conversation
     // (« et celle-ci ? ») : l'historique et les indices font partie de la clé.
     const cacheKey = [
@@ -1218,8 +1240,8 @@ ${signalsBlock}
     }
 ${candidates.length ? `
 Compétences du chat qui pourraient répondre (actions spécialisées qui préparent un brouillon ou un calcul, toujours validé par l'utilisateur) :
-${candidates.map((candidate) => `- ${candidate.code} : ${candidate.label} — ${candidate.description}`).join('\n')}
-Si la demande demande de RÉALISER l'une de ces actions (préparer, rédiger, envoyer, calculer, analyser… pour un client, un dossier ou un document du cabinet), réponds SKILL:<code> (ex. SKILL:${candidates[0].code}). Une simple question de connaissance (« quel est le délai d'appel ? ») reste CHAT ; une consultation des données reste READ.
+${candidates.map((candidate) => `- ${candidate.code} : ${candidate.label} — ${candidates.length > 3 ? candidate.description.slice(0, 110) : candidate.description}`).join('\n')}
+Si la demande demande de RÉALISER l'une de ces actions (préparer, rédiger, envoyer, calculer, analyser… pour un client, un dossier ou un document du cabinet), réponds SKILL:<code> (ex. SKILL:${candidates[0].code}).${candidates.length > 3 ? ` Choisis la compétence d'après le BUT de la demande, pas d'après un mot. Envoyer, rédiger ou préparer un message, un courrier, une relance ou un document = SKILL (la compétence prépare un brouillon à valider) ; WRITE = créer, modifier ou supprimer une fiche (client, dossier, facture, audience, paiement, tâche).` : ''} Une simple question de connaissance (« quel est le délai d'appel ? ») reste CHAT ; une consultation des données reste READ.
 ${candidates.some((candidate) => candidate.code === TEMPLATE_SKILLS.produce || candidate.code === TEMPLATE_SKILLS.manage) ? `⚠️ Une demande qui porte sur un MODÈLE du cabinet (modèle de document, de facture, de mail, gabarit, template, « ce modèle » cité plus tôt dans l'historique) n'est jamais READ : les modèles ne sont pas des données à lister en SQL. Pour produire un document à partir d'un modèle (« rédige un document sur la base de ce modèle facture client »), réponds SKILL:${TEMPLATE_SKILLS.produce} ; pour chercher, lister, lire ou modifier le modèle lui-même, réponds SKILL:${TEMPLATE_SKILLS.manage}.
 ` : ''}` : ''}${options.allowComposite ? `
 Si la demande enchaîne EXPLICITEMENT deux demandes de natures différentes (reliées par « et », « puis », « ensuite »), réponds leurs types dans l'ordre, reliés par « + » (ex. HELP+READ${candidates.length ? `, READ+SKILL:${candidates[0].code}` : ''}). Une seule demande, même longue : un seul type.
