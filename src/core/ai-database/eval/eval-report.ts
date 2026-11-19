@@ -90,7 +90,7 @@ export function renderMarkdown(run: EvalRun): string {
     ...run.questions.map((q) =>
       q.skipped
         ? `| ⏭️ | ${cell(q.id)} | ${q.category} | — | — | — | — | ${cell(q.skipped)} |`
-        : `| ${q.ok ? '✅' : '❌'} | ${cell(q.id)} | ${q.category} | ${pct(q.score)} | ${cell(q.intent ?? '—')} | ${seconds(q.firstTokenMs)} | ${seconds(q.totalMs)} | ${q.llmCalls ?? '—'} |`,
+        : `| ${q.ok ? '✅' : '❌'} | ${cell(q.id)} | ${q.category} | ${pct(q.score)} | ${cell(`${q.intent ?? '—'}${q.skills?.length ? ` · ${q.skills.join(', ')}` : ''}`)} | ${seconds(q.firstTokenMs)} | ${seconds(q.totalMs)} | ${q.llmCalls ?? '—'} |`,
     ),
   ];
 

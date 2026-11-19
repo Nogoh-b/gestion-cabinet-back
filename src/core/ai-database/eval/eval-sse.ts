@@ -53,6 +53,18 @@ export function summarizeTurn(question: string, events: SseEvent[], totalMs: num
   const intentEvent = events.find((e) => e.event === 'intent');
   const confirmationEvent = events.find((e) => e.event === 'confirmation');
   const errorEvent = events.find((e) => e.event === 'error');
+  const skills = [
+    ...new Set(
+      events
+        .filter((e) => e.event === 'intent' && typeof e.data?.skill === 'string')
+        .map((e) => String(e.data.skill)),
+    ),
+  ];
+  const clarification =
+    events.some((e) => e.event === 'ambiguity' || e.event === 'mode_choice' || e.event === 'clarification') ||
+    !!lastResult.requiresClarification ||
+    !!lastResult.requiresAmbiguityResolution ||
+    !!lastResult.clarificationContext;
 
   const streamed = tokens.map((e) => String(e.data?.text ?? '')).join('');
   const answer = [
@@ -73,6 +85,8 @@ export function summarizeTurn(question: string, events: SseEvent[], totalMs: num
     events,
     answer,
     intent: intentEvent?.data?.type,
+    skills,
+    clarification,
     firstTokenMs: tokens[0]?.at ?? (results[0] ? results[0].at : undefined),
     totalMs,
     error: errorEvent ? String(errorEvent.data?.message ?? 'erreur') : undefined,

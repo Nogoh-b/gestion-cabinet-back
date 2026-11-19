@@ -25,6 +25,8 @@ describe('banc IA — lecture du flux SSE', () => {
 
     const turn = summarizeTurn('q', events, 1200);
     expect(turn.answer).toBe('Bonjour');
+    expect(turn.skills).toEqual([]);
+    expect(turn.clarification).toBe(false);
     expect(turn.intent).toBe('READ');
     expect(turn.conversationId).toBe('c-1');
     expect(turn.firstTokenMs).toBeDefined();
@@ -40,6 +42,8 @@ describe('banc IA — lecture du flux SSE', () => {
     );
     const turn = summarizeTurn('q', events, 50);
     expect(turn.confirmation).toBe(true);
+    const skill = summarizeTurn('q', new SseParser().push('event: intent\ndata: {"type":"SKILL","skill":"chronologie"}\n\nevent: ambiguity\ndata: {}\n\n', 1), 5);
+    expect(skill).toMatchObject({ skills: ['chronologie'], clarification: true });
     expect(turn.answer).toContain('Créer le client Paul');
     expect(turn.error).toBe('boom');
     expect(turn.conversationId).toBe('c-2');
@@ -81,7 +85,7 @@ describe('banc IA — reconnaissance des valeurs', () => {
 
 describe('banc IA — notation', () => {
   const turn = (answer: string, extra: Partial<TurnResult> = {}): TurnResult => ({
-    question: 'q', events: [], answer, totalMs: 1000, confirmation: false, intent: 'READ', ...extra,
+    question: 'q', events: [], answer, totalMs: 1000, confirmation: false, intent: 'READ', skills: [], clarification: false, ...extra,
   });
   const question = (expect: EvalQuestion['expect'], extra: Partial<EvalQuestion> = {}): EvalQuestion => ({
     id: 'q', category: 'facturation', goal: 'test', ask: 'q', reference: 'SELECT 1', expect, ...extra,
@@ -105,6 +109,17 @@ describe('banc IA — notation', () => {
 
     const leak = scoreTurn({ question: q, turn: turn('F-1 et F-AUTRE'), referenceRows: [{ numero: 'F-1' }], forbiddenValues: ['F-AUTRE'] });
     expect(leak.find((c) => c.name === 'rien d’interdit')).toMatchObject({ ok: false, detail: 'valeur F-AUTRE' });
+  });
+
+  it('vérifie la compétence lancée et la demande de précision', () => {
+    const q = question({ skill: ['mise_en_demeure', 'courrier'] }, { reference: undefined });
+    expect(summarizeChecks(scoreTurn({ question: q, turn: turn('Brouillon prêt.', { skills: ['courrier'] }) })).ok).toBe(true);
+    expect(summarizeChecks(scoreTurn({ question: q, turn: turn('Voici un texte.') })).ok).toBe(false);
+
+    const ambiguous = question({ clarification: true }, { reference: undefined });
+    expect(summarizeChecks(scoreTurn({ question: ambiguous, turn: turn('Plusieurs clients Mballa : lequel voulez-vous ?') })).ok).toBe(true);
+    expect(summarizeChecks(scoreTurn({ question: ambiguous, turn: turn('…', { clarification: true }) })).ok).toBe(true);
+    expect(summarizeChecks(scoreTurn({ question: ambiguous, turn: turn('Le dossier DOS-1 est en cours.') })).ok).toBe(false);
   });
 
   it('vérifie la confirmation d’une écriture', () => {

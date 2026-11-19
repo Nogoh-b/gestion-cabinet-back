@@ -143,11 +143,14 @@ async function askStream(
   question: string,
   conversationId: string | undefined,
   timeoutMs: number,
+  extras: { mode?: string; references?: Array<Record<string, unknown>> } = {},
 ): Promise<TurnResult> {
   const form = new FormData();
   form.append('question', question);
-  form.append('intentMode', process.env.EVAL_INTENT_MODE ?? 'auto');
+  form.append('intentMode', extras.mode ?? process.env.EVAL_INTENT_MODE ?? 'auto');
   if (conversationId) form.append('conversationId', conversationId);
+  // Enregistrements joints comme le front (@mention ou fiche ouverte).
+  if (extras.references?.length) form.append('context', JSON.stringify(extras.references));
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -298,6 +301,7 @@ async function run(options: Options): Promise<void> {
         const params: Record<string, unknown> = { tenant: tenantId };
         let referenceRows: Array<Record<string, unknown>> | undefined;
         let forbidden: string[] = [];
+        let attached: Array<Record<string, unknown>> = [];
         try {
           if (question.pick) {
             const picked = await query(db, question.pick, params);
@@ -309,6 +313,15 @@ async function run(options: Options): Promise<void> {
             Object.assign(params, picked[0]);
           }
           if (question.reference) referenceRows = await query(db, question.reference, params);
+          if (question.references) {
+            attached = (await query(db, question.references, params)).map((row) => ({
+              type: row.type,
+              label: String(row.label ?? ''),
+              id: row.id,
+              data: { id: row.id },
+              source: row.source ?? 'mention',
+            }));
+          }
           if (question.forbidValues) {
             forbidden = (await query(db, question.forbidValues, params)).map((row) => String(row.value ?? '')).filter(Boolean);
           }
@@ -328,8 +341,11 @@ async function run(options: Options): Promise<void> {
         const logStart = await lastLogId(db, tenantId);
         const turns: TurnResult[] = [];
         let conversationId: string | undefined;
-        for (const text of asked) {
-          const turn = await askStream(apiUrl, token, tenantCode, text, conversationId, options.timeoutMs);
+        for (const [index, text] of asked.entries()) {
+          const turn = await askStream(apiUrl, token, tenantCode, text, conversationId, options.timeoutMs, {
+            mode: question.mode,
+            references: index === 0 ? attached : [],
+          });
           turns.push(turn);
           conversationId = turn.conversationId ?? conversationId;
           if (turn.error) break;
@@ -358,6 +374,7 @@ async function run(options: Options): Promise<void> {
           score,
           checks,
           intent: last.intent,
+          skills: [...new Set(turns.flatMap((turn) => turn.skills))],
           answer: last.answer,
           firstTokenMs: last.firstTokenMs,
           totalMs: turns.reduce((sum, turn) => sum + turn.totalMs, 0),

@@ -37,7 +37,12 @@ export type EvalCategory =
   | 'suivi'
   | 'honnetete'
   | 'isolation'
-  | 'routage';
+  | 'routage'
+  | 'competences'
+  | 'references'
+  | 'ambiguite'
+  | 'enchainement'
+  | 'briefing';
 
 export interface EvalQuestion {
   id: string;
@@ -62,9 +67,24 @@ export interface EvalQuestion {
    * supprimées, données d'un autre cabinet…
    */
   forbidValues?: string;
+  /**
+   * Enregistrements joints au PREMIER message, comme le front : @mention
+   * (`source: 'mention'`) ou fiche ouverte (`source: 'page'`). Requête qui
+   * renvoie type, label, id (et source).
+   */
+  references?: string;
+  /** Mode imposé par l'utilisateur (`intentMode`), « auto » par défaut. */
+  mode?: 'auto' | 'read' | 'write' | 'chat' | 'knowledge' | 'help' | 'advice';
   expect: {
     /** Intentions acceptées (événement SSE `intent`). */
     intent?: string[];
+    /** Compétences acceptées : au moins une doit être lancée. */
+    skill?: string[];
+    /**
+     * La bonne réponse est une demande de précision (homonymes, cible
+     * ambiguë) plutôt qu'une réponse au hasard.
+     */
+    clarification?: boolean;
     mentions?: MentionCheck[];
     /** Au moins une de ces expressions doit apparaître (sans casse ni accents). */
     require?: string[];
@@ -98,6 +118,10 @@ export interface TurnResult {
   /** Texte final montré à l'utilisateur. */
   answer: string;
   intent?: string;
+  /** Compétences lancées pendant l'échange. */
+  skills: string[];
+  /** Demande de précision : ambiguïté, clarification ou choix de mode. */
+  clarification: boolean;
   firstTokenMs?: number;
   totalMs: number;
   error?: string;
@@ -124,6 +148,7 @@ export interface QuestionResult {
   score: number;
   checks: CheckResult[];
   intent?: string;
+  skills?: string[];
   answer: string;
   firstTokenMs?: number;
   totalMs?: number;

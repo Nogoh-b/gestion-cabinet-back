@@ -128,6 +128,10 @@ export function valueMentioned(answer: string, value: unknown, kind: ValueKind =
   }
 }
 
+/** Question qui propose un choix à l'utilisateur. */
+export const CLARIFICATION_PATTERN =
+  /\b(lequel|laquelle|lesquel(le)?s|precise[rz]?|preciser|de quel|quel (dossier|client)|plusieurs (dossiers|clients)|s'agit-il|vouliez-vous|voulez-vous dire|choisi(r|ssez))\b/;
+
 /** Expressions (normalisées) qui disent qu'il n'y a rien, ou que l'élément est introuvable. */
 export const ABSENCE_PATTERN =
   /\b(aucun|aucune|pas de|pas d'|n'existe|introuvable|ne trouve|n'ai trouve|pas trouve|n'a ete trouve|rien|zero|0 (facture|dossier|audience|action|paiement|element))/;
@@ -165,6 +169,23 @@ export function scoreTurn({ question, turn, referenceRows, forbiddenValues = [] 
         `attendu ${expect.intent.join('|')}, obtenu ${turn.intent ?? 'aucune'}`,
       ),
     );
+  }
+
+  if (expect.skill?.length) {
+    const launched = turn.skills ?? [];
+    checks.push(
+      pass(
+        'compétence',
+        launched.some((code) => expect.skill!.includes(code)),
+        `attendu ${expect.skill.join('|')}, lancé ${launched.join(', ') || 'aucune'}`,
+      ),
+    );
+  }
+
+  if (expect.clarification) {
+    // Demande de précision : événement dédié, ou question qui propose un choix.
+    const asks = turn.clarification || (/\?/.test(answer) && CLARIFICATION_PATTERN.test(normalized));
+    checks.push(pass('demande de précision', asks, 'la cible est ambiguë : l’assistant doit demander laquelle'));
   }
 
   if (expect.confirmation !== undefined) {

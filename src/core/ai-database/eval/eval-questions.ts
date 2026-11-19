@@ -333,4 +333,170 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
     expect: { intent: ['WRITE'], confirmation: true },
     mutates: true,
   },
+  // ── Compétences : la bonne compétence, sur la bonne cible ──────────────────
+  {
+    id: 'competence-mise-en-demeure',
+    category: 'competences',
+    goal: 'Une rédaction juridique passe par la compétence dédiée, sur le bon dossier',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER}
+        AND EXISTS (SELECT 1 FROM factures f WHERE f.dossier_id = d.id AND f.deleted_at IS NULL AND f.status <> '5' AND ${REMAINING} > 0)
+      ORDER BY d.id LIMIT 1`,
+    ask: 'Rédige une mise en demeure au client du dossier {dossier_number} pour ses factures impayées.',
+    expect: { skill: ['mise_en_demeure', 'courrier', 'rediger_document'] },
+  },
+  {
+    id: 'competence-decompte-creance',
+    category: 'competences',
+    goal: 'Décompte de créance d’un dossier',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER}
+        AND EXISTS (SELECT 1 FROM factures f WHERE f.dossier_id = d.id AND f.deleted_at IS NULL AND f.status <> '5')
+      ORDER BY d.id LIMIT 1`,
+    ask: 'Calcule le décompte de la créance du dossier {dossier_number}.',
+    expect: { skill: ['decompte_creance'] },
+  },
+  {
+    id: 'competence-chronologie',
+    category: 'competences',
+    goal: 'Chronologie d’un dossier',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} ORDER BY d.id LIMIT 1`,
+    ask: 'Établis la chronologie du dossier {dossier_number}.',
+    expect: { skill: ['chronologie'] },
+  },
+  {
+    id: 'competence-delai-appel',
+    category: 'competences',
+    goal: 'Calcul d’un délai de procédure sur un dossier',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} ORDER BY d.id LIMIT 1`,
+    ask: "Calcule le délai d'appel pour le dossier {dossier_number}.",
+    expect: { skill: ['delais_procedure'] },
+  },
+  {
+    id: 'competence-etat-impayes-client',
+    category: 'competences',
+    goal: 'État des impayés d’un client nommé',
+    pick: `SELECT ${CLIENT_NAME} AS client FROM customer c WHERE c.tenant_id = :tenant AND c.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM factures f WHERE f.client_id = c.id AND ${LIVE_INVOICE} AND ${REMAINING} > 0)
+      ORDER BY c.id LIMIT 1`,
+    ask: "Prépare l'état des impayés de {client}.",
+    reference: `SELECT f.numero FROM factures f JOIN customer c ON c.id = f.client_id
+      WHERE ${LIVE_INVOICE} AND ${CLIENT_NAME} = {client} AND ${REMAINING} > 0 ORDER BY f.date_echeance LIMIT 10`,
+    expect: { skill: ['etat_impayes'], mentions: [{ column: 'numero' }] },
+  },
+
+  // ── Références : @mention, fiche ouverte, « ce client », « dessus » ─────────
+  {
+    id: 'reference-mention-dossier',
+    category: 'references',
+    goal: '« Ce dossier » = le dossier mentionné par @',
+    pick: `SELECT d.id, d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} AND d.client_id IS NOT NULL
+      ORDER BY d.id DESC LIMIT 1`,
+    references: `SELECT 'dossier' AS type, {dossier_number} AS label, {id} AS id, 'mention' AS source`,
+    ask: 'Fais le point sur ce dossier.',
+    reference: `SELECT ${CLIENT_NAME} AS client FROM dossiers d LEFT JOIN customer c ON c.id = d.client_id
+      WHERE d.tenant_id = :tenant AND d.dossier_number = {dossier_number}`,
+    expect: { mentions: [{ column: 'client' }] },
+  },
+  {
+    id: 'reference-page-facture',
+    category: 'references',
+    goal: '« Cette facture » = la fiche facture ouverte',
+    pick: `SELECT f.id, f.numero FROM factures f WHERE ${LIVE_INVOICE} AND ${REMAINING} > 0 ORDER BY f.date_facture LIMIT 1`,
+    references: `SELECT 'facture' AS type, {numero} AS label, {id} AS id, 'page' AS source`,
+    ask: 'Combien reste-t-il à payer sur cette facture ?',
+    reference: `SELECT ${REMAINING} AS reste FROM factures f WHERE f.tenant_id = :tenant AND f.numero = {numero}`,
+    expect: { mentions: [{ column: 'reste', kind: 'amount' }] },
+  },
+  {
+    id: 'reference-suivi-client',
+    category: 'references',
+    goal: '« Ce client » = le client de la question précédente',
+    pick: `SELECT ${CLIENT_NAME} AS client FROM customer c WHERE c.tenant_id = :tenant AND c.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM factures f WHERE f.client_id = c.id AND ${LIVE_INVOICE} AND ${REMAINING} > 0)
+        AND EXISTS (SELECT 1 FROM dossiers d WHERE d.client_id = c.id AND ${PICKABLE_DOSSIER})
+      ORDER BY c.id DESC LIMIT 1`,
+    ask: ['Quels sont les dossiers de {client} ?', 'Combien nous doit ce client au total ?'],
+    reference: `SELECT SUM(t.reste) AS du FROM (SELECT ${REMAINING} AS reste FROM factures f JOIN customer c ON c.id = f.client_id
+        WHERE ${LIVE_INVOICE} AND ${CLIENT_NAME} = {client}) t WHERE t.reste > 0`,
+    expect: { mentions: [{ column: 'du', kind: 'amount' }] },
+  },
+  {
+    id: 'reference-suivi-facture',
+    category: 'references',
+    goal: '« Dessus » = la facture de la question précédente',
+    pick: `SELECT f.numero FROM factures f WHERE ${LIVE_INVOICE} AND ${REMAINING} > 0 ORDER BY f.date_facture DESC LIMIT 1`,
+    ask: ['Montre-moi la facture {numero}.', 'Combien reste-t-il à payer dessus ?'],
+    reference: `SELECT ${REMAINING} AS reste FROM factures f WHERE f.tenant_id = :tenant AND f.numero = {numero}`,
+    expect: { mentions: [{ column: 'reste', kind: 'amount' }] },
+  },
+  {
+    id: 'reference-suivi-audience',
+    category: 'references',
+    goal: '« Sa prochaine audience » = celle du dossier précédent',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER}
+        AND EXISTS (SELECT 1 FROM audiences a WHERE a.dossier_id = d.id AND a.deleted_at IS NULL AND a.audience_date >= CURDATE() AND a.status IN ('0', '4'))
+      ORDER BY d.id DESC LIMIT 1`,
+    ask: ['Fais le point sur le dossier {dossier_number}.', 'Quand a lieu sa prochaine audience ?'],
+    reference: `SELECT a.audience_date FROM audiences a JOIN dossiers d ON d.id = a.dossier_id
+      WHERE a.tenant_id = :tenant AND a.deleted_at IS NULL AND d.dossier_number = {dossier_number}
+        AND a.audience_date >= CURDATE() AND a.status IN ('0', '4') ORDER BY a.audience_date LIMIT 1`,
+    expect: { mentions: [{ column: 'audience_date', kind: 'date' }] },
+  },
+
+  // ── Ambiguïté : demander plutôt que choisir au hasard ──────────────────────
+  {
+    id: 'ambiguite-homonymes',
+    category: 'ambiguite',
+    goal: 'Deux clients du même nom : l’assistant demande lequel',
+    pick: `SELECT c.last_name FROM customer c WHERE c.tenant_id = :tenant AND c.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM dossiers d WHERE d.client_id = c.id AND ${PICKABLE_DOSSIER})
+      GROUP BY c.last_name HAVING COUNT(DISTINCT c.id) >= 2 ORDER BY c.last_name LIMIT 1`,
+    ask: 'Fais le point sur le dossier de {last_name}.',
+    expect: { clarification: true },
+  },
+
+  // ── Enchaînements : plusieurs demandes dans une phrase ─────────────────────
+  {
+    id: 'enchainement-dossiers-creances',
+    category: 'enchainement',
+    goal: 'Deux chiffres demandés ensemble : les deux sont donnés',
+    ask: 'Combien de dossiers actifs avons-nous, et combien nos clients nous doivent-ils au total ?',
+    reference: `SELECT
+        (SELECT COUNT(*) FROM dossiers d WHERE d.tenant_id = :tenant AND d.deleted_at IS NULL AND d.status = 'ACTIVE') AS n,
+        (SELECT COALESCE(SUM(t.reste), 0) FROM (SELECT ${REMAINING} AS reste FROM factures f WHERE ${LIVE_INVOICE}) t WHERE t.reste > 0) AS du`,
+    expect: { mentions: [{ column: 'n', kind: 'count' }, { column: 'du', kind: 'amount' }] },
+  },
+  {
+    id: 'enchainement-point-et-retards',
+    category: 'enchainement',
+    goal: 'Point sur un dossier + actions en retard du cabinet',
+    pick: `SELECT d.dossier_number FROM dossiers d WHERE ${PICKABLE_DOSSIER} AND d.client_id IS NOT NULL ORDER BY d.id LIMIT 1`,
+    ask: 'Fais le point sur le dossier {dossier_number} et liste les actions en retard de tout le cabinet.',
+    reference: `(SELECT ${CLIENT_NAME} AS valeur FROM dossiers d LEFT JOIN customer c ON c.id = d.client_id
+        WHERE d.tenant_id = :tenant AND d.dossier_number = {dossier_number})
+      UNION ALL
+      (SELECT a.title AS valeur FROM dossier_actions a JOIN dossiers d ON d.id = a.dossier_id
+        WHERE a.tenant_id = :tenant AND a.deleted_at IS NULL AND d.deleted_at IS NULL AND d.confidentiality_level = 0
+          AND a.status IN ('TODO', 'IN_PROGRESS', 'ON_HOLD') AND a.due_at < NOW() ORDER BY a.due_at LIMIT 5)`,
+    expect: { mentions: [{ column: 'valeur' }] },
+  },
+
+  // ── Briefing : « que dois-je faire ? » ─────────────────────────────────────
+  {
+    id: 'briefing-du-jour',
+    category: 'briefing',
+    goal: 'Les urgences : actions en retard, audiences proches, factures échues',
+    ask: "Qu'est-ce qui est urgent pour le cabinet cette semaine ?",
+    reference: `(SELECT a.title AS element FROM dossier_actions a JOIN dossiers d ON d.id = a.dossier_id
+        WHERE a.tenant_id = :tenant AND a.deleted_at IS NULL AND d.deleted_at IS NULL AND d.confidentiality_level = 0
+          AND a.status IN ('TODO', 'IN_PROGRESS', 'ON_HOLD') AND a.due_at < NOW() + INTERVAL 7 DAY ORDER BY a.due_at LIMIT 5)
+      UNION ALL
+      (SELECT d.dossier_number FROM audiences a JOIN dossiers d ON d.id = a.dossier_id
+        WHERE a.tenant_id = :tenant AND a.deleted_at IS NULL AND d.deleted_at IS NULL
+          AND a.audience_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 14 DAY AND a.status IN ('0', '4')
+        ORDER BY a.audience_date LIMIT 5)
+      UNION ALL
+      (SELECT f.numero FROM factures f WHERE ${LIVE_INVOICE} AND f.date_echeance < CURDATE() AND ${REMAINING} > 0
+        ORDER BY f.date_echeance LIMIT 5)`,
+    expect: { mentions: [{ column: 'element', max: 15 }] },
+  },
 ];
