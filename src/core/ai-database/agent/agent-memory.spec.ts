@@ -32,6 +32,24 @@ describe('mémoire de travail de l’agent', () => {
     expect(memory.client).toEqual({ nom: 'Jean Mballa' });
   });
 
+  it('un collaborateur mentionné (@) ou seul lu devient « le », « lui » du tour suivant', () => {
+    const mention: ResolvedReference = { type: 'collaborateur', source: 'mention', reference: 'Nogoh Brice', details: 'Avocat' };
+    const memory = updateMemory({ dossier: { numero: 'DOS-2026-0002' } }, [mention], []);
+    expect(memory.collaborateur).toEqual({ nom: 'Nogoh Brice' });
+    // Le dossier en cours reste : un collaborateur ne le remplace pas.
+    expect(memory.dossier).toEqual({ numero: 'DOS-2026-0002' });
+    const context = renderWorkingContext([mention], memory);
+    expect(context).toContain("Mentionné par l'utilisateur (@) : collaborateur Nogoh Brice (Avocat)");
+    expect(context).toContain('Collaborateur en cours : Nogoh Brice');
+    expect(readMemory(JSON.parse(JSON.stringify(memory)))).toEqual(memory);
+
+    const read = updateMemory(undefined, [], [step('equipe', { texte: 'Ekane' }, { lignes: [{ collaborateur: 'Paul Ekane', fonction: 'Avocat' }] })]);
+    expect(read.collaborateur).toEqual({ nom: 'Paul Ekane' });
+    const team = updateMemory(undefined, [], [step('equipe', {}, { lignes: [{ collaborateur: 'A' }, { collaborateur: 'B' }] })]);
+    expect(team.collaborateur).toBeUndefined();
+    expect(team.liste).toEqual({ type: 'collaborateurs', elements: ['A', 'B'] });
+  });
+
   it('une erreur ou un « introuvable » ne change pas le sujet', () => {
     const previous = { dossier: { numero: 'DOS-7-0001' } };
     expect(updateMemory(previous, [], [step('synthese_dossier', { dossier: 'DOS-9' }, { introuvable: 'aucun dossier' })])).toEqual(previous);

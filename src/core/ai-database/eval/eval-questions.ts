@@ -204,6 +204,26 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
       WHERE ${PICKABLE_DOSSIER} AND ${CLIENT_NAME} = {client} ORDER BY d.id DESC LIMIT 10`,
     expect: { intent: ['READ'], mentions: [{ column: 'dossier_number' }] },
   },
+  {
+    id: 'equipe-cabinet',
+    category: 'dossiers',
+    goal: 'Collaborateurs du cabinet (outil équipe), avec leurs noms',
+    ask: 'Quels sont les employés du cabinet ?',
+    reference: `SELECT u.full_name AS collaborateur FROM employee e JOIN user u ON u.id = e.id
+      WHERE e.tenant_id = :tenant AND e.deleted_at IS NULL AND e.status = 1 ORDER BY u.full_name LIMIT 10`,
+    expect: { intent: ['READ'], mentions: [{ column: 'collaborateur' }] },
+  },
+  {
+    id: 'dossiers-responsable',
+    category: 'dossiers',
+    goal: 'Dossiers dont un collaborateur est l’avocat responsable',
+    pick: `SELECT u.full_name AS avocat FROM dossiers d JOIN user u ON u.id = d.lawyer_id
+      WHERE ${PICKABLE_DOSSIER} GROUP BY u.id, u.full_name ORDER BY COUNT(*) DESC, u.id LIMIT 1`,
+    ask: 'Liste les dossiers dont {avocat} est responsable, avec leur numéro, leur client et leur statut.',
+    reference: `SELECT d.dossier_number FROM dossiers d JOIN user u ON u.id = d.lawyer_id
+      WHERE ${PICKABLE_DOSSIER} AND u.full_name = {avocat} ORDER BY d.id DESC LIMIT 10`,
+    expect: { intent: ['READ'], mentions: [{ column: 'dossier_number' }] },
+  },
 
   // ── Audiences ──────────────────────────────────────────────────────────────
   {
@@ -711,6 +731,21 @@ export const EVAL_QUESTIONS: EvalQuestion[] = [
     ask: 'Fais le point sur le dossier {dossier_number} et crée une tâche « Préparer les conclusions » à faire avant le 10/12/2026.',
     reference: `SELECT {dossier_number} AS dossier, {client} AS client`,
     expect: { confirmation: true, mentions: [{ column: 'dossier' }, { column: 'client' }], require: ['conclusions'] },
+    mutates: true,
+  },
+  {
+    id: 'ecriture-ajout-collaborateur',
+    category: 'ecritures',
+    goal: 'Ajout d’un collaborateur, demande tournée en question (signalé le 19/11/2026) : action métier à confirmer, pas une réponse « non »',
+    pick: `SELECT d.dossier_number, u.full_name AS collaborateur FROM dossiers d
+        JOIN employee e ON e.tenant_id = d.tenant_id AND e.deleted_at IS NULL AND e.status = 1
+        JOIN user u ON u.id = e.id
+      WHERE ${PICKABLE_DOSSIER} AND d.status IN ('DRAFT', 'ACTIVE') AND (d.lawyer_id IS NULL OR d.lawyer_id <> e.id)
+        AND NOT EXISTS (SELECT 1 FROM dossier_collaborators dc WHERE dc.dossier_id = d.id AND dc.user_id = e.id)
+      ORDER BY d.id DESC, e.id LIMIT 1`,
+    ask: 'tu peux ajouter {collaborateur} en tant que collaborateur du dossier {dossier_number} ?',
+    reference: `SELECT {dossier_number} AS dossier`,
+    expect: { confirmation: true, mentions: [{ column: 'dossier' }], require: ['collaborateur'] },
     mutates: true,
   },
 ];

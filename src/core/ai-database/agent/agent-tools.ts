@@ -13,6 +13,7 @@ import {
   readPeriod,
   readText,
   searchQueries,
+  teamQuery,
 } from './agent-queries';
 
 /** Accès réels fournis par AiDatabaseService (droits, connexion, délais). */
@@ -117,16 +118,33 @@ export const AGENT_TOOLS: Record<string, AgentTool> = {
   },
   dossiers: {
     description:
-      'Liste ou comptage de dossiers. statut : DRAFT (brouillon), ACTIVE (en cours / actif), CLOSED (clôturé), ARCHIVED (archivé). « total » = nombre réel de dossiers correspondants (même si peu de lignes sont affichées).',
-    args: '{ statut?: "DRAFT" | "ACTIVE" | "CLOSED" | "ARCHIVED", client?: nom ou code, texte?: mot de l’objet, numéro RG ou partie adverse, limite?: nombre }',
+      'Liste ou comptage de dossiers (avec leur avocat responsable). statut : DRAFT (brouillon), ACTIVE (en cours / actif), CLOSED (clôturé), ARCHIVED (archivé). membre : dossiers d’un collaborateur, comme responsable ou collaborateur (role pour n’en garder qu’un). « total » = nombre réel de dossiers correspondants (même si peu de lignes sont affichées).',
+    args: '{ statut?: "DRAFT" | "ACTIVE" | "CLOSED" | "ARCHIVED", client?: nom ou code, texte?: mot de l’objet, numéro RG ou partie adverse, membre?: nom d’un collaborateur, role?: "responsable" | "collaborateur", limite?: nombre }',
     run: (args, ctx) =>
       rows(
         ctx,
         dossiersQuery(
           ctx.tenantId,
-          { statut: readText(args.statut, 20), client: readText(args.client), texte: readText(args.texte), limite: readLimit(args.limite, 30) },
+          {
+            statut: readText(args.statut, 20),
+            client: readText(args.client),
+            texte: readText(args.texte),
+            membre: readText(args.membre, 80),
+            role: readText(args.role, 20),
+            limite: readLimit(args.limite, 30),
+          },
           ctx.includeConfidential,
         ),
+      ),
+  },
+  equipe: {
+    description:
+      'Collaborateurs du cabinet (employés : avocats, juristes, secrétaires…) : fonction, statut, spécialisation, nombre de dossiers dont ils sont responsables ou collaborateurs.',
+    args: '{ texte?: nom, fonction?: "avocat" | "collaborateur" | "juriste" | "secretaire" | "stagiaire" | "comptable" | "assistant", limite?: nombre }',
+    run: (args, ctx) =>
+      rows(
+        ctx,
+        teamQuery(ctx.tenantId, { texte: readText(args.texte, 80), fonction: readText(args.fonction, 30), limite: readLimit(args.limite, 40) }, ctx.includeConfidential),
       ),
   },
   synthese_dossier: {

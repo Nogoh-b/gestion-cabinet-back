@@ -58,6 +58,22 @@ export const DOSSIER_STATUS_LABEL = `CASE d.status WHEN 'DRAFT' THEN 'Brouillon'
   WHEN 'CLOSED' THEN 'Clôturé' WHEN 'ARCHIVED' THEN 'Archivé' END`;
 const AUDIENCE_STATUS_LABEL = `CASE a.status WHEN '0' THEN 'Programmée' WHEN '1' THEN 'Tenue'
   WHEN '2' THEN 'Renvoyée' WHEN '3' THEN 'Annulée' WHEN '4' THEN 'En cours' END`;
+/**
+ * Nom d'un compte `alias` de la table `user`. Les requêtes fixes de l'agent
+ * n'en lisent que le nom : `user` reste refusée au SQL libre (mots de passe,
+ * jetons) et n'est donc pas déclarée dans leurs tables.
+ */
+const PERSON_NAME = (alias: string) =>
+  `COALESCE(NULLIF(TRIM(${alias}.full_name), ''), CONCAT_WS(' ', ${alias}.first_name, ${alias}.last_name))`;
+/** Le nom cherché, dans un sens ou dans l'autre (« Nogoh Brice » = « Brice Nogoh »). 3 paramètres. */
+const PERSON_MATCHES = (alias: string) =>
+  `(${alias}.full_name LIKE ? OR CONCAT_WS(' ', ${alias}.first_name, ${alias}.last_name) LIKE ?
+    OR CONCAT_WS(' ', ${alias}.last_name, ${alias}.first_name) LIKE ?)`;
+const POSITION_LABEL = `CASE e.position WHEN 'avocat' THEN 'Avocat' WHEN 'collaborateur' THEN 'Collaborateur'
+  WHEN 'juriste' THEN 'Juriste' WHEN 'comptable' THEN 'Comptable' WHEN 'secretaire' THEN 'Secrétaire'
+  WHEN 'assistant' THEN 'Assistant' WHEN 'stagiaire' THEN 'Stagiaire' WHEN 'huissier' THEN 'Huissier'
+  WHEN 'administratif' THEN 'Administratif' WHEN 'support' THEN 'Support'
+  WHEN 'apporteur_affaire' THEN 'Apporteur d''affaires' ELSE e.position END`;
 
 /** Filtres communs « dossier » / « client » sur une requête jointe à d / c. */
 function scopeFilters(args: { dossier?: string; client?: string }, where: string[], params: unknown[]) {
@@ -185,10 +201,12 @@ export function paymentsQuery(tenantId: number, args: { client?: string; dossier
   };
 }
 
+export type MemberRole = 'responsable' | 'collaborateur';
+
 /** Dossiers (hors confidentiels pour qui n'a pas le droit : filtré par l'appelant). */
 export function dossiersQuery(
   tenantId: number,
-  args: { statut?: string; client?: string; texte?: string; limite?: number },
+  args: { statut?: string; client?: string; texte?: string; membre?: string; role?: string; limite?: number },
   includeConfidential: boolean,
 ): AgentQuery {
   const where = ['d.tenant_id = ?', 'd.deleted_at IS NULL'];
@@ -205,16 +223,70 @@ export function dossiersQuery(
     const pattern = likePattern(args.texte);
     params.push(pattern, pattern, pattern, pattern);
   }
+  // Équipe : avocat responsable, collaborateur, ou l'un des deux sans rôle précisé.
+  if (args.membre) {
+    const pattern = likePattern(args.membre);
+    const lawyer = `EXISTS (SELECT 1 FROM user ul WHERE ul.id = d.lawyer_id AND ${PERSON_MATCHES('ul')})`;
+    const collaborator = `EXISTS (SELECT 1 FROM dossier_collaborators dc JOIN user uc ON uc.id = dc.user_id
+        WHERE dc.dossier_id = d.id AND ${PERSON_MATCHES('uc')})`;
+    if (args.role === 'responsable') where.push(lawyer);
+    else if (args.role === 'collaborateur') where.push(collaborator);
+    else where.push(`(${lawyer} OR ${collaborator})`);
+    const count = args.role === 'responsable' || args.role === 'collaborateur' ? 3 : 6;
+    params.push(...Array(count).fill(pattern));
+  }
   return {
     sql: `SELECT d.dossier_number, LEFT(d.object, 160) AS objet, ${DOSSIER_STATUS_LABEL} AS statut,
-        ${CLIENT_NAME} AS client, d.opening_date AS ouverture, d.closing_date AS cloture,
+        ${CLIENT_NAME} AS client, ${PERSON_NAME('u')} AS responsable, d.opening_date AS ouverture, d.closing_date AS cloture,
         d.opposing_party_name AS partie_adverse,
         COUNT(*) OVER () AS total_correspondant
       FROM dossiers d LEFT JOIN customer c ON c.id = d.client_id
+      LEFT JOIN user u ON u.id = d.lawyer_id
       WHERE ${where.join(' AND ')}
       ORDER BY d.id DESC LIMIT ${readLimit(args.limite, 30)}`,
     params,
+    // `dossier_collaborators` (liaison des dossiers lus) et `user` (noms
+    // seulement) : voir PERSON_NAME.
     tables: ['dossiers', 'customer'],
+  };
+}
+
+/**
+ * Collaborateurs du cabinet : fonction, statut, et dossiers dont ils sont
+ * responsables ou collaborateurs (dossiers supprimés exclus, confidentiels
+ * comptés seulement pour qui peut les voir).
+ */
+export function teamQuery(
+  tenantId: number,
+  args: { texte?: string; fonction?: string; limite?: number },
+  includeConfidential: boolean,
+): AgentQuery {
+  const where = ['e.tenant_id = ?', 'e.deleted_at IS NULL'];
+  const params: unknown[] = [tenantId];
+  if (args.texte) {
+    where.push(PERSON_MATCHES('u'));
+    const pattern = likePattern(args.texte);
+    params.push(pattern, pattern, pattern);
+  }
+  if (args.fonction) {
+    where.push('e.position = ?');
+    params.push(String(args.fonction).toLowerCase());
+  }
+  const visible = `d.tenant_id = e.tenant_id AND d.deleted_at IS NULL ${includeConfidential ? '' : 'AND d.confidentiality_level = 0'}`;
+  return {
+    sql: `SELECT ${PERSON_NAME('u')} AS collaborateur, ${POSITION_LABEL} AS fonction,
+        CASE e.status WHEN 1 THEN 'Actif' WHEN 0 THEN 'Inactif' WHEN -1 THEN 'Suspendu' WHEN 2 THEN 'En congé' END AS statut,
+        e.specialization AS specialisation,
+        (SELECT COUNT(*) FROM dossiers d WHERE d.lawyer_id = e.id AND ${visible}) AS dossiers_responsable,
+        (SELECT COUNT(*) FROM dossier_collaborators dc JOIN dossiers d ON d.id = dc.dossier_id
+          WHERE dc.user_id = e.id AND ${visible}) AS dossiers_collaborateur,
+        COUNT(*) OVER () AS total_correspondant
+      FROM employee e JOIN user u ON u.id = e.id
+      WHERE ${where.join(' AND ')}
+      ORDER BY e.status = 1 DESC, collaborateur
+      LIMIT ${readLimit(args.limite, 40)}`,
+    params,
+    tables: ['employee', 'dossiers'],
   };
 }
 
@@ -309,8 +381,12 @@ export function dossierIdentityQuery(tenantId: number, dossierNumber: string, in
         CASE d.outcome WHEN 'won' THEN 'Gagné' WHEN 'lost' THEN 'Perdu' WHEN 'settled' THEN 'Transigé'
           WHEN 'abandoned' THEN 'Abandonné' ELSE NULL END AS issue,
         ${CLIENT_NAME} AS client, c.customer_code AS code_client, COALESCE(j.name, d.court_name) AS juridiction,
-        d.case_number AS numero_rg, d.opposing_party_name AS partie_adverse, d.opening_date AS ouverture, d.closing_date AS cloture
+        d.case_number AS numero_rg, d.opposing_party_name AS partie_adverse, d.opening_date AS ouverture, d.closing_date AS cloture,
+        ${PERSON_NAME('u')} AS responsable,
+        (SELECT GROUP_CONCAT(${PERSON_NAME('uc')} ORDER BY uc.id SEPARATOR ', ')
+          FROM dossier_collaborators dc JOIN user uc ON uc.id = dc.user_id WHERE dc.dossier_id = d.id) AS collaborateurs
       FROM dossiers d LEFT JOIN customer c ON c.id = d.client_id LEFT JOIN jurisdictions j ON j.id = d.jurisdiction_id
+        LEFT JOIN user u ON u.id = d.lawyer_id
       WHERE d.tenant_id = ? AND d.deleted_at IS NULL ${includeConfidential ? '' : 'AND d.confidentiality_level = 0'}
         AND (d.dossier_number = ? OR d.case_number = ?)
       LIMIT 1`,
@@ -357,12 +433,20 @@ export function searchQueries(tenantId: number, text: string, includeConfidentia
  */
 export function referenceByIdQuery(
   tenantId: number,
-  type: 'dossier' | 'client' | 'facture' | 'audience',
+  type: 'dossier' | 'client' | 'facture' | 'audience' | 'collaborateur',
   id: number | string,
   includeConfidential: boolean,
 ): AgentQuery {
   const confidential = includeConfidential ? '' : 'AND d.confidentiality_level = 0';
   switch (type) {
+    case 'collaborateur':
+      return {
+        sql: `SELECT ${PERSON_NAME('u')} AS reference, ${POSITION_LABEL} AS fonction
+          FROM employee e JOIN user u ON u.id = e.id
+          WHERE e.tenant_id = ? AND e.deleted_at IS NULL AND e.id = ? LIMIT 1`,
+        params: [tenantId, id],
+        tables: ['employee'],
+      };
     case 'dossier':
       return {
         sql: `SELECT d.dossier_number AS reference, ${CLIENT_NAME} AS client, LEFT(d.object, 120) AS objet

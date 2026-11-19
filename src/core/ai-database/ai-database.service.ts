@@ -85,7 +85,7 @@ import {
   type RecommendedAction,
 } from './recommended-actions';
 import type { ResponseMode } from './response-mode';
-import { detectSkillRequest, skillForReferencedRecord, suggestSkills, type SkillDetection } from './skills/skill-suggestions';
+import { detectSkillRequest, pinnedSkillFits, skillForReferencedRecord, suggestSkills, type SkillDetection } from './skills/skill-suggestions';
 import { withTemplateSkills } from './skills/template-routing';
 import type { AiSkillCatalogItem, AiSkillTargetType, EditableDocument } from './skills/ai-skill.types';
 import type { SkillCandidate } from './intent-detection.service';
@@ -131,7 +131,7 @@ import { applyDossierNumberChoice } from '../../modules/dossiers/dossier-number-
 import { BaseWriteHandler } from './write/base-write-handler';
 import { outerJoinRetry } from './outer-join-fallback';
 import { extractPdfText } from './pdf-text';
-import { asksInformationToo, runAgent, buildAgentAnswerRules, renderStepResults, type AgentMessage, type AgentStep } from './agent/agent-loop';
+import { asksInformationToo, runAgent, buildAgentAnswerRules, renderStepResults, type AgentActionRequest, type AgentBusinessAction, type AgentMessage, type AgentStep } from './agent/agent-loop';
 import { referenceByIdQuery, resolveReferenceQuery, type AgentQuery } from './agent/agent-queries';
 import { isAiLifecycleTable } from '../../config/ai-database/ai-lifecycle-tables.config';
 import { readMemory, renderWorkingContext, turnSubjects, updateMemory, type ResolvedReference, type TurnSubject } from './agent/agent-memory';
@@ -252,6 +252,7 @@ import {
 import {
   answerSources,
   extractRecordReference,
+  isDecisiveKnowledgeRoute,
   isKnowledgeQuestion,
   isUnlikelyDatabaseQuestion,
   type SourceSignals,
@@ -502,6 +503,14 @@ interface MultiResourceDraft {
   parts: Promise<Array<SubQuestionResult | null>>;
   abort: () => void;
 }
+
+/** Table visée par une action métier → type de fiche que l'agent désigne par son numéro ou son nom. */
+const AGENT_ACTION_TARGETS: Record<string, AgentBusinessAction['target']> = {
+  dossiers: 'dossier',
+  factures: 'facture',
+  customer: 'client',
+  audiences: 'audience',
+};
 
 /**
  * Mise en forme des réponses rédigées : le chat rend ce Markdown léger
@@ -6078,10 +6087,22 @@ ${blocks.join('\n\n')}
           )
         : enrichedQuestion;
 
-      // Compétence choisie avec « # » : pas de détection d'intention.
+      // Compétence choisie avec « # » (ou gardée en attente d'une précision) :
+      // pas de détection d'intention, sauf si la demande n'a visiblement rien
+      // à voir avec elle (« quels sont les employés du cabinet ? ») : elle est
+      // mise de côté et la demande suit le circuit habituel.
       if (dto.skill && this.skills) {
-        await this.handleSkillStream(dto, user, userId, requestContext, historyOverride, sendEvent, startTime);
-        return;
+        const released = await this.releasedPinnedSkill(dto, requestContext, historyOverride, user);
+        if (!released) {
+          await this.handleSkillStream(dto, user, userId, requestContext, historyOverride, sendEvent, startTime);
+          return;
+        }
+        this.logger.log(`[SKILL] ${released.code} mise de côté : demande sans rapport`);
+        sendEvent('status', {
+          step: 'understand',
+          message: `↩️ « ${released.label} » mise de côté : la demande porte sur autre chose`,
+        });
+        dto = { ...dto, skill: undefined, skillParams: undefined } as AskQuestionDto;
       }
       if (intentMode === 'auto' && this.skills && !dto.textGenerationOnly) {
         const pending = await this.pendingSkillFor(dto, requestContext.referenced, historyOverride, user);
@@ -6474,6 +6495,47 @@ ${blocks.join('\n\n')}
         dto.question,
         enrichedQuestion,
       );
+      // Mode agent : quand les règles locales ne tranchent pas, l'agent décide
+      // lui-même (lecture, compétence, action à confirmer, précision). Le
+      // classifieur (≈ 3 000 jetons avec le catalogue des compétences), dont
+      // presque tous les verdicts menaient de toute façon à l'agent, n'est
+      // appelé que si l'agent ne prend pas la demande.
+      let agentDeclined = false;
+      if (
+        this.agentEnabled() &&
+        intentMode === 'auto' &&
+        !files.length &&
+        !hasReadableDocument &&
+        !forceWriteDespiteReadMode &&
+        !writeWithDocument &&
+        this.agentDecidesFirst(intentText, sourceSignals, skillDetection)
+      ) {
+        if (!dto.conversationId) {
+          dto.conversationId = (
+            await this.conversationManager.createConversation(userId, this.generateConversationTitle(dto.question))
+          ).id;
+        }
+        tLog('agent en premier (sans classifieur)');
+        const handled = await this.answerWithAgentStream({
+          dto,
+          user,
+          conversationId: dto.conversationId,
+          enrichedQuestion,
+          history: historyForIntent,
+          referenced: requestContext.referenced,
+          schema,
+          relevantTables,
+          fileInfo,
+          startTime,
+          sendEvent,
+          emit,
+          skillHandoff: { userId, requestContext, historyOverride, catalog: skillCatalog },
+          allowWrite: true,
+          announce: true,
+        });
+        if (handled) return;
+        agentDeclined = true;
+      }
       if (intentMode === 'read' && !forceWriteDespiteReadMode) {
         intentResult = { type: 'READ', requiresConfirmation: false };
       } else if (intentMode === 'chat') {
@@ -6589,7 +6651,8 @@ ${blocks.join('\n\n')}
             await this.conversationManager.createConversation(userId, this.generateConversationTitle(dto.question))
           ).id;
         }
-        const handled = await this.answerWithAgentStream({
+        // L'agent a déjà décliné la demande (aucun outil) : pas de second essai.
+        const handled = !agentDeclined && await this.answerWithAgentStream({
           dto,
           user,
           conversationId: dto.conversationId,
@@ -6604,6 +6667,7 @@ ${blocks.join('\n\n')}
           emit,
           skillHandoff: { userId, requestContext, historyOverride, catalog: skillCatalog },
           allowWrite: true,
+          announce: true,
         });
         if (handled) return;
         if (agentWrite) {
@@ -6925,7 +6989,7 @@ ${blocks.join('\n\n')}
       );
 
       // ── Agent à outils métier (AI_AGENT_MODE=on) ────────────────────────────
-      if (this.agentEnabled()) {
+      if (this.agentEnabled() && !agentDeclined) {
         const handled = await this.answerWithAgentStream({
           dto,
           user,
@@ -7262,6 +7326,11 @@ ${blocks.join('\n\n')}
     };
     /** L'agent peut préparer une écriture (toujours présentée à confirmer). */
     allowWrite?: boolean;
+    /**
+     * Aucune intention n'a encore été annoncée au chat (l'agent décide
+     * seul) : celle de sa réponse l'est avant le premier mot.
+     */
+    announce?: boolean;
   }): Promise<boolean> {
     const { dto, user, conversationId, sendEvent } = input;
     const aiUser = user as AiUserContext;
@@ -7293,6 +7362,7 @@ ${blocks.join('\n\n')}
         today,
         skills: (input.skillHandoff?.catalog ?? []).map(({ code, label, description, targets }) => ({ code, label, description, targets })),
         allowWrite: !!input.allowWrite,
+        actions: input.allowWrite ? this.directAgentActions() : [],
       },
       {
         // Étapes du chat : « Consultation des données » (détail : les outils),
@@ -7303,7 +7373,10 @@ ${blocks.join('\n\n')}
           void input.emit('status', { step: answering ? 'answer' : 'fetch', message, ...(!answering && { detail }) });
         },
         decide: (messages) => this.invokeAgentModel(messages),
-        answer: ({ question, steps, history }) => this.streamAgentAnswer(question, steps, history, sendEvent),
+        answer: ({ question, steps, history }) => {
+          if (input.announce) this.announceAgentAnswer(steps, sendEvent);
+          return this.streamAgentAnswer(question, steps, history, sendEvent);
+        },
         tools: {
           tenantId,
           includeConfidential,
@@ -7370,6 +7443,35 @@ ${blocks.join('\n\n')}
       );
       return true;
     }
+    if (outcome.action && input.allowWrite) {
+      // Action métier sur des fiches nommées : plan construit ici, sans
+      // second appel au modèle, et toujours présenté à confirmer.
+      this.logger.log(`[AGENT] action ${outcome.action.name} sur ${outcome.action.targets.join(', ')}`);
+      const preface = answerFirst(outcome.action.answerFirst) ? await writePreface() : '';
+      const built = await this.buildAgentActionPlan(aiUser, outcome.action, tenantId, includeConfidential);
+      await this.conversationManager.addUserMessage(conversationId, dto.question, input.referenced);
+      const agentMemory = updateMemory(previousMemory, references, outcome.steps);
+      if (!built.plan) {
+        const text = built.note ?? "Je n'ai pas pu préparer cette action. Précisez les fiches visées (numéros) et je la prépare.";
+        if (input.announce) sendEvent('intent', { type: 'WRITE', origin: 'agent' });
+        sendEvent('token', { text });
+        const analysis = preface ? `${preface}${ANSWER_PART_SEPARATOR}${text}` : text;
+        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, { agentMemory });
+        sendEvent('result', { success: true, question: dto.question, analysis, results: [], rowCount: 0, conversationId, executionTimeMs: Date.now() - input.startTime });
+        return true;
+      }
+      await this.aiPermissionService.assertCanWritePlan(aiUser, built.plan);
+      const intro = [preface, built.note].filter(Boolean).join('\n\n');
+      await this.presentWriteConfirmation(built.plan, {
+        dto,
+        conversationId,
+        startTime: input.startTime,
+        sendEvent,
+        metadata: { agentMemory },
+        ...(intro && { intro }),
+      });
+      return true;
+    }
     if (outcome.write && input.allowWrite) {
       // Plan sur la demande précisée par l'agent (numéros exacts) : jamais
       // exécuté ici, toujours présenté à confirmer.
@@ -7416,6 +7518,7 @@ ${blocks.join('\n\n')}
       // Chaque choix relance la demande d'origine, précisée.
       const base = dto.question.trim().replace(/[\s?.!]+$/, '');
       const suggestions = choix.map((choice) => ({ label: choice, prompt: `${base} : ${choice}` }));
+      if (input.announce) sendEvent('intent', { type: 'READ', origin: 'agent', reason: 'précision demandée' });
       sendEvent('token', { text });
       if (suggestions.length) sendEvent('suggestions', { suggestions });
       await this.conversationManager.addUserMessage(conversationId, dto.question, input.referenced);
@@ -7529,6 +7632,79 @@ ${blocks.join('\n\n')}
     return cited;
   }
 
+  /** Actions métier que l'agent lance lui-même (`direct`), avec le type des fiches qu'elles visent. */
+  private directAgentActions(): AgentBusinessAction[] {
+    return (this.aiActions?.all() ?? []).flatMap(({ definition }) => {
+      const target = AGENT_ACTION_TARGETS[definition.entity];
+      if (!definition.direct || definition.skillOnly || !target) return [];
+      return [{
+        name: definition.name,
+        label: definition.label,
+        description: definition.description,
+        target,
+        params: definition.params.map(({ name, required, description }) => ({ name, required, description })),
+      }];
+    });
+  }
+
+  /**
+   * Action métier demandée par l'agent → plan d'opérations « ACTION », une
+   * par fiche visée, désignée par son identifiant. Une fiche introuvable ou
+   * ambiguë (homonymes) est écartée et signalée au-dessus de la carte.
+   */
+  private async buildAgentActionPlan(
+    user: AiUserContext,
+    request: AgentActionRequest,
+    tenantId: number,
+    includeConfidential: boolean,
+  ): Promise<{ plan?: WritePlan; note?: string }> {
+    const handler = this.aiActions?.get(request.name);
+    const type = handler && AGENT_ACTION_TARGETS[handler.definition.entity];
+    if (!handler || !type) return {};
+    const { definition } = handler;
+    const found = await Promise.all(
+      request.targets.map(async (reference) => ({
+        reference,
+        target: await this.resolveAgentTarget(user, { type, reference }, tenantId, includeConfidential),
+      })),
+    );
+    const missing = found.filter((item) => !item.target).map((item) => item.reference);
+    const note = missing.length ? `⚠️ Introuvable ou ambigu dans le cabinet, non inclus : ${missing.join(', ')}.` : undefined;
+    const operations: WriteOperation[] = [];
+    for (const { target } of found) {
+      if (!target || operations.some((op) => String(op.entityId) === String(target.id))) continue;
+      operations.push({
+        operation: 'ACTION',
+        action: definition.name,
+        entity: definition.entity,
+        entityId: target.id,
+        fields: { ...request.params },
+        humanReadable: `${definition.label} — ${target.label}`,
+      });
+    }
+    if (!operations.length) return { ...(note && { note }) };
+    const plan: WritePlan = {
+      transaction: true,
+      operations,
+      humanReadable: operations.map((op) => op.humanReadable).join('\n'),
+      confidence: 1,
+    };
+    return { plan, ...(note && { note }) };
+  }
+
+  /**
+   * Intention de la réponse rédigée par l'agent, annoncée au chat quand aucun
+   * classifieur ne l'a fait : connaissance ou aide quand seuls ces outils
+   * ont servi, lecture sinon.
+   */
+  private announceAgentAnswer(steps: AgentStep[], sendEvent: (event: string, data: any) => void): void {
+    const tools = new Set(steps.map((step) => step.name));
+    const only = (name: string) => tools.size === 1 && tools.has(name);
+    const type = only('base_juridique') ? 'KNOWLEDGE' : only('aide_application') ? 'HELP' : 'READ';
+    this.markMetric({ intent: type });
+    sendEvent('intent', { type, origin: 'agent' });
+  }
+
   /** Cible d'une compétence nommée par l'agent (numéro ou nom) → fiche, si une seule correspond. */
   private async resolveAgentTarget(
     user: AiUserContext,
@@ -7556,11 +7732,12 @@ ${blocks.join('\n\n')}
     tenantId: number,
     includeConfidential: boolean,
   ): Promise<ResolvedReference[]> {
-    const targets = findTargets(referenced, ['dossier', 'client', 'facture', 'audience']).slice(0, 5);
+    const targets = findTargets(referenced, ['dossier', 'client', 'facture', 'audience', 'employee']).slice(0, 5);
     const resolved = await Promise.all(
       targets.map(async (target): Promise<ResolvedReference | null> => {
         try {
-          const type = target.type as ResolvedReference['type'];
+          // Un collaborateur mentionné (« @Nogoh Brice ») : « le », « lui » le désignent.
+          const type = (target.type === 'employee' ? 'collaborateur' : target.type) as ResolvedReference['type'];
           const query = referenceByIdQuery(tenantId, type, target.id, includeConfidential);
           await this.aiPermissionService.assertCanReadTables(user, query.tables);
           const [row] = await this.runAiRead(query.sql, query.params);
@@ -7574,7 +7751,7 @@ ${blocks.join('\n\n')}
             reference: String(row.reference),
             ...(client && { client }),
             ...(dossier && { dossier }),
-            details: [dossier && `dossier ${dossier}`, client && `client ${client}`, row.code && `code ${row.code}`]
+            details: [dossier && `dossier ${dossier}`, client && `client ${client}`, row.code && `code ${row.code}`, row.fonction && String(row.fonction)]
               .filter(Boolean)
               .join(', ') || undefined,
           };
@@ -8704,6 +8881,38 @@ RÉPONSE :`;
       if (rows.length === 1) refs.push({ type: 'client', id: rows[0].id, label: String(rows[0].label), source: 'mention' });
     }
     return refs;
+  }
+
+  /**
+   * Compétence épinglée (« # », ou réarmée par le chat après une demande de
+   * précision) qui ne vaut pas pour cette demande, sinon null (voir
+   * pinnedSkillFits). Une reprise explicite (passage cité, retouche d'un
+   * document, modèle ou cible choisis) la garde toujours.
+   */
+  private async releasedPinnedSkill(
+    dto: AskQuestionDto,
+    requestContext: RequestContext,
+    history: VisibleHistoryMessage[],
+    user: AiUserContext | string,
+  ): Promise<{ code: string; label: string } | null> {
+    const code = String(dto.skill ?? '').trim().toLowerCase();
+    if (!code || !this.skills?.has(code) || requestContext.quote || dto.textGenerationOnly) return null;
+    const { previousQuestion, ...params } = parseSkillParams(dto.skillParams);
+    if (Object.keys(params).length) return null;
+    const catalog = await this.skills.catalog(user).catch(() => [] as AiSkillCatalogItem[]);
+    // Précision attendue : la fiche que la compétence demandait (mentionnée
+    // dans ce message, pas déjà dans la demande précédente) la garde.
+    const targets = (this.skills.targets(code) ?? []) as AiSkillTargetType[];
+    const previousUser = [...history].reverse().find((message) => message.role === 'user');
+    const known = new Set((previousUser?.refs ?? []).map((ref) => `${canonicalTargetType(ref.entity ?? ref.type)}:${ref.id}`));
+    const fresh = requestContext.referenced.filter(
+      (ref) => !known.has(`${canonicalTargetType(ref.type)}:${ref.id ?? ref.data?.id}`),
+    );
+    const fits = pinnedSkillFits(dto.question, code, catalog, {
+      pending: !!String(previousQuestion ?? '').trim(),
+      freshTarget: targets.length > 0 && !!findTarget(fresh, targets),
+    });
+    return fits ? null : { code, label: this.skills.label(code) };
   }
 
   /**
@@ -11634,6 +11843,21 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
   /** Agent à outils pour les lectures (AI_AGENT_MODE=on) ; circuit SQL unique sinon. */
   private agentEnabled(): boolean {
     return process.env.AI_AGENT_MODE === 'on';
+  }
+
+  /**
+   * Mode agent : l'agent décide avant tout classifieur quand les règles
+   * locales ne tranchent pas (les cas où detectIntent appellerait le
+   * classifieur), et pour une écriture reconnue localement, qu'il précise de
+   * toute façon avant de la faire planifier. Aide, conseil, conversation et
+   * questions de droit sans ancrage dans le cabinet gardent leur route locale.
+   */
+  private agentDecidesFirst(question: string, signals: SourceSignals | undefined, skill: SkillDetection | null): boolean {
+    const local = this.intentDetectionService.classifyLocal(question);
+    if (local === 'WRITE') return true;
+    // Compétence désignée par un mot-clé : les règles locales ne tranchent plus seules.
+    if (skill?.decisive && skill.code) return local === null || local === 'READ' || local === 'CHAT';
+    return local === null && !(signals && (isDecisiveKnowledgeRoute(signals) || isUnlikelyDatabaseQuestion(signals)));
   }
 
   /** Base de l'application : seule base que l'assistant peut lire. */

@@ -1,6 +1,17 @@
-import { AGENT_MAX_ROUNDS, asksForAction, asksInformationToo, parseAgentReply, renderStepResults, runAgent, type AgentDeps } from './agent-loop';
+import {
+  AGENT_MAX_ROUNDS,
+  asActionCall,
+  asksForAction,
+  asksInformationToo,
+  parseAgentReply,
+  readAction,
+  renderStepResults,
+  runAgent,
+  type AgentBusinessAction,
+  type AgentDeps,
+} from './agent-loop';
 import { AGENT_TOOLS, runAgentTool, type AgentToolContext } from './agent-tools';
-import { invoicesQuery, likePattern, readPeriod } from './agent-queries';
+import { dossiersQuery, invoicesQuery, likePattern, readPeriod, teamQuery } from './agent-queries';
 
 function toolContext(rows: Record<string, Array<Record<string, unknown>>> = {}): AgentToolContext & { queries: string[] } {
   const queries: string[] = [];
@@ -270,6 +281,78 @@ describe('agent IA — compétences et demandes de précision', () => {
   });
 });
 
+describe('agent IA — actions métier directes', () => {
+  const actions: AgentBusinessAction[] = [
+    {
+      name: 'ajouter_collaborateur',
+      label: "Ajout d'un collaborateur",
+      description: "Ajoute un collaborateur du cabinet à l'équipe d'un dossier.",
+      target: 'dossier',
+      params: [{ name: 'collaborateur', required: true }],
+    },
+  ];
+
+  it('« ajoute-le aux 2 dossiers ? » : lit les dossiers, puis une action par dossier, sans planificateur ni réponse', async () => {
+    const { d, decide, answer } = deps([
+      '{"outils":[{"nom":"dossiers","arguments":{}}]}',
+      '{"outils":[{"nom":"action_metier","arguments":{"action":"ajouter_collaborateur","cibles":["DOS-2026-0001","DOS-2026-0002"],"parametres":{"collaborateur":"Nogoh Brice","inconnu":"x"}}}]}',
+    ]);
+    const outcome = await runAgent(
+      { question: "l'ajoute le en tant que collaborateur des 2 dossier du cabinet ?", today: '2026-11-19', allowWrite: true, actions },
+      d,
+    );
+    expect(outcome.action).toEqual({
+      name: 'ajouter_collaborateur',
+      targets: ['DOS-2026-0001', 'DOS-2026-0002'],
+      params: { collaborateur: 'Nogoh Brice' },
+    });
+    expect(outcome.write).toBeUndefined();
+    expect(answer).not.toHaveBeenCalled();
+    const system = (decide.mock.calls[0] as any)[0][0].content;
+    expect(system).toContain('action_metier');
+    expect(system).toContain('ajouter_collaborateur (cible : dossier)');
+    expect(system).toContain('terminée par « ? »');
+    // Demande d'action : après la lecture, le rappel cite action_metier.
+    expect((decide.mock.calls[1] as any)[0].at(-1).content).toContain('action_metier');
+  });
+
+  it('une action appelée comme un outil devient action_metier, cible lue dans son argument', async () => {
+    const { d } = deps(['{"outils":[{"nom":"ajouter_collaborateur","arguments":{"dossier":"DOS-2026-0002","collaborateur":"Nogoh Brice"}}]}']);
+    const outcome = await runAgent({ question: 'Ajoute Nogoh Brice au dossier DOS-2026-0002', today: '2026-11-19', allowWrite: true, actions }, d);
+    expect(outcome.action).toEqual({ name: 'ajouter_collaborateur', targets: ['DOS-2026-0002'], params: { collaborateur: 'Nogoh Brice' } });
+  });
+
+  it('mode lecture : aucune action proposée ni acceptée', async () => {
+    const { d, decide } = deps(['{"outils":[{"nom":"action_metier","arguments":{"action":"ajouter_collaborateur","cibles":["DOS-1"]}}]}']);
+    const outcome = await runAgent({ question: 'Ajoute X au dossier DOS-1', today: '2026-11-19', allowWrite: false, actions }, d);
+    expect(outcome.action).toBeUndefined();
+    expect(outcome.fallback).toBe(true);
+    expect((decide.mock.calls[0] as any)[0][0].content).not.toContain('action_metier');
+  });
+
+  it('valide l’action : nom connu, cibles présentes et bornées, paramètres déclarés seulement', () => {
+    expect(readAction({ action: 'supprimer_tout', cibles: ['DOS-1'] }, actions)).toBeNull();
+    expect(readAction({ action: 'ajouter_collaborateur', cibles: [] }, actions)).toBeNull();
+    const many = Array.from({ length: 15 }, (_, i) => `DOS-${i}`);
+    expect(readAction({ action: 'ajouter_collaborateur', cibles: many }, actions)?.targets).toHaveLength(10);
+    expect(readAction({ action: 'ajouter_collaborateur', cible: { type: 'dossier', reference: 'DOS-1' }, repondre_d_abord: true }, actions)).toEqual({
+      name: 'ajouter_collaborateur',
+      targets: ['DOS-1'],
+      params: {},
+      answerFirst: true,
+    });
+    expect(asActionCall({ name: 'dossiers', args: {} }, actions)).toEqual({ name: 'dossiers', args: {} });
+  });
+
+  it('reconnaît l’ajout, le retrait ou le changement d’un membre comme une action, même tourné en question', () => {
+    expect(asksForAction("l'ajoute le en tant que collaborateur des 2 dossier du cabinet ?")).toBe(true);
+    expect(asksForAction('Retire Paul Ngo du dossier DOS-1')).toBe(true);
+    expect(asksForAction('Mets Maître Ekane sur ce dossier')).toBe(true);
+    expect(asksForAction('Quels sont les employés du cabinet ?')).toBe(false);
+    expect(asksForAction('Liste les dossiers dont Nogoh Brice est responsable')).toBe(false);
+  });
+});
+
 describe('agent IA — outils', () => {
   it('outil inconnu ou en erreur : résultat lisible, jamais d’exception', async () => {
     const ctx = toolContext();
@@ -319,6 +402,12 @@ describe('agent IA — outils', () => {
     expect(ctx.queries.some((sql) => sql.includes('a.due_at >= NOW() AND a.due_at < NOW() + INTERVAL ? DAY'))).toBe(true);
   });
 
+  it('équipe : liste des collaborateurs avec leurs dossiers', async () => {
+    const ctx = toolContext({ 'FROM employee e': [{ collaborateur: 'Nogoh Brice', fonction: 'Avocat', dossiers_responsable: 0, total_correspondant: 3 }] });
+    const result = await runAgentTool('equipe', {}, ctx);
+    expect(result).toMatchObject({ total: 3, lignes: [{ collaborateur: 'Nogoh Brice', fonction: 'Avocat' }], liste_partielle: true });
+  });
+
   it('requête libre, aide et base juridique passent par le contexte', async () => {
     const ctx = toolContext();
     expect(await runAgentTool('requete_libre', { question: 'nombre de bulletins de paie' }, ctx)).toMatchObject({ total: 1 });
@@ -348,6 +437,28 @@ describe('agent IA — requêtes métier', () => {
   it('nettoie les périodes et les motifs LIKE', () => {
     expect(readPeriod({ du: '2026-01-01', au: 'demain' })).toEqual({ du: '2026-01-01' });
     expect(likePattern('100%_sûr')).toBe('%100\\%\\_sûr%');
+  });
+
+  it('équipe : collaborateurs du cabinet courant, dossiers confidentiels comptés seulement si visibles', () => {
+    const hidden = teamQuery(2, { texte: 'Nogoh', fonction: 'Avocat' }, false);
+    expect(hidden.sql).toContain('e.tenant_id = ?');
+    expect(hidden.sql).toContain('e.deleted_at IS NULL');
+    expect(hidden.sql).toContain('d.confidentiality_level = 0');
+    expect(hidden.params).toEqual([2, '%Nogoh%', '%Nogoh%', '%Nogoh%', 'avocat']);
+    // `user` n'est lue que pour les noms, jamais déclarée (refusée au SQL libre).
+    expect(hidden.tables).toEqual(['employee', 'dossiers']);
+    expect(teamQuery(2, {}, true).sql).not.toContain('confidentiality_level');
+  });
+
+  it('dossiers d’un membre : responsable, collaborateur, ou l’un des deux', () => {
+    const either = dossiersQuery(2, { membre: 'Nogoh Brice' }, false);
+    expect(either.sql).toContain('ul.id = d.lawyer_id');
+    expect(either.sql).toContain('dc.dossier_id = d.id');
+    expect(either.params).toEqual([2, ...Array(6).fill('%Nogoh Brice%')]);
+    const lawyer = dossiersQuery(2, { membre: 'Nogoh Brice', role: 'responsable' }, true);
+    expect(lawyer.sql).not.toContain('dossier_collaborators dc');
+    expect(lawyer.params).toEqual([2, ...Array(3).fill('%Nogoh Brice%')]);
+    expect(dossiersQuery(2, {}, true).params).toEqual([2]);
   });
 
   it('borne les résultats envoyés au modèle', () => {

@@ -217,6 +217,37 @@ function hasModalCue(normalized: string): boolean {
   return MODAL_CUES.some((pattern) => pattern.test(normalized));
 }
 
+/** Écriture sur une fiche (« ajoute X au dossier », « supprime… »), texte normalisé. */
+const RECORD_WRITE_VERB =
+  /\b(?:ajoute[rsz]?|cree[rsz]?|creer|modifie[rsz]?|supprime[rsz]?|retire[rsz]?|assigne[rsz]?|affecte[rsz]?|mets|mettre|programme[rsz]?|planifie[rsz]?)\b/;
+
+/**
+ * Compétence épinglée dans le chat (choisie avec « # », ou gardée en attente
+ * d'une précision) : vaut-elle pour cette demande ? Elle est mise de côté
+ * quand la demande désigne nettement une autre compétence, quand c'est une
+ * consultation sans rapport avec elle (« quels sont les employés du
+ * cabinet ? »), ou, si elle attendait une précision, quand le message est
+ * une nouvelle demande et non la précision (la fiche demandée, un choix, une
+ * date…). Purement local : aucun appel au modèle. Dans le doute, gardée.
+ */
+export function pinnedSkillFits(
+  question: string,
+  code: string,
+  catalog: AiSkillCatalogItem[],
+  options: { pending?: boolean; freshTarget?: boolean } = {},
+): boolean {
+  const normalized = normalizeSkillText(question);
+  const skill = catalog.find((item) => item.code === code);
+  if (!normalized || !skill) return true;
+  const detection = detectSkillRequest(question, catalog);
+  if (detection.decisive && detection.code && detection.code !== code) return false;
+  // Ses déclencheurs ou ses mots-clés : la demande la concerne.
+  if (detection.candidates.some((item) => item.code === code) || suggestSkills(question, [skill], 1).length) return true;
+  if ((READ_QUESTION.test(normalized) || USAGE_QUESTION.test(normalized)) && !hasModalCue(normalized)) return false;
+  if (!options.pending || options.freshTarget) return true;
+  return words(question).length <= 8 && !hasActionCue(question) && !RECORD_WRITE_VERB.test(normalized);
+}
+
 export function suggestSkills(
   question: string,
   catalog: AiSkillCatalogItem[],

@@ -83,6 +83,20 @@ la fiche trouvée, avec ses chiffres. « Que dois-je faire aujourd'hui ? » donn
 point du jour (audiences proches, retards, factures à relancer, éléments à
 facturer) terminé par les prochaines étapes. Les fiches lues sont citées par la
 réponse : les actions recommandées et la demande suivante les visent.
+Quand les règles locales ne tranchent pas, l'agent décide en premier : le
+classifieur d'intention (environ 3 000 jetons avec le catalogue des
+compétences) n'est appelé que si l'agent ne prend pas la demande. Les actions
+métier marquées `direct` (ajouter ou retirer un collaborateur d'un dossier,
+changer l'avocat responsable, envoyer une facture) sont lancées par l'agent
+lui-même (outil `action_metier`, une opération par fiche, sans second appel au
+modèle) et passent par les commandes de la fiche, toujours sur la carte de
+confirmation. Une demande à l'impératif reste une action même terminée par
+« ? ». L'outil `equipe` et le filtre `membre` des dossiers répondent aux
+questions sur les collaborateurs ; un collaborateur mentionné (@) devient « le »,
+« lui » de la demande suivante. Dans les deux modes, ces actions d'équipe sont
+aussi proposées au planificateur, et une compétence épinglée dans le chat
+(« # », ou gardée en attente d'une précision) est mise de côté, sans appel au
+modèle, quand la demande n'a visiblement rien à voir avec elle.
 `off` (défaut) conserve le circuit actuel. Mesurer avant d'activer :
 `npm run eval:ai` (voir `docs/ai-eval.md`).
 

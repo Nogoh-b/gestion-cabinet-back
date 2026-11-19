@@ -14,15 +14,25 @@ export interface WorkingMemory {
   dossier?: { numero: string; client?: string };
   client?: { nom: string; code?: string };
   facture?: { numero: string; dossier?: string };
+  /** Collaborateur du cabinet en cours (« ajoute-le au dossier »). */
+  collaborateur?: { nom: string };
   /** Dernière liste affichée, dans l'ordre (« la deuxième » = elements[1]). */
   liste?: { type: ListType; elements: string[] };
 }
 
-export type ListType = 'factures' | 'dossiers' | 'clients' | 'audiences' | 'actions' | 'paiements' | 'elements_facturables';
+export type ListType =
+  | 'factures'
+  | 'dossiers'
+  | 'clients'
+  | 'audiences'
+  | 'actions'
+  | 'paiements'
+  | 'elements_facturables'
+  | 'collaborateurs';
 
 /** Enregistrement joint par l'utilisateur (@mention ou fiche ouverte), résolu en numéro métier. */
 export interface ResolvedReference {
-  type: 'dossier' | 'client' | 'facture' | 'audience';
+  type: 'dossier' | 'client' | 'facture' | 'audience' | 'collaborateur';
   source: 'page' | 'mention';
   /** Numéro métier ou nom, utilisable par les outils. */
   reference: string;
@@ -64,6 +74,8 @@ function listOf(step: AgentStep): WorkingMemory['liste'] | undefined {
       return pick('paiements', 'facture');
     case 'elements_a_facturer':
       return pick('elements_facturables', 'element');
+    case 'equipe':
+      return pick('collaborateurs', 'collaborateur');
     default:
       return undefined;
   }
@@ -89,6 +101,7 @@ export function updateMemory(
     if (ref.type === 'dossier') memory.dossier = { numero: ref.reference, ...(ref.client && { client: ref.client }) };
     if (ref.type === 'client') memory.client = { nom: ref.reference };
     if (ref.type === 'facture') memory.facture = { numero: ref.reference, ...(ref.dossier && { dossier: ref.dossier }) };
+    if (ref.type === 'collaborateur') memory.collaborateur = { nom: ref.reference };
     if ((ref.type === 'facture' || ref.type === 'audience') && ref.dossier && !dossierJoint) {
       memory.dossier = { numero: ref.dossier, ...(ref.client && { client: ref.client }) };
     }
@@ -114,6 +127,11 @@ export function updateMemory(
     }
     if (text(args.client) && rows.length) {
       memory.client = { nom: text(rows[0].client) || text(args.client) };
+    }
+    // Dossiers d'un collaborateur, ou un seul collaborateur lu : « il », « lui ».
+    if (step.name === 'dossiers' && text(args.membre)) memory.collaborateur = { nom: text(args.membre) };
+    if (step.name === 'equipe' && rows.length === 1 && text(rows[0].collaborateur)) {
+      memory.collaborateur = { nom: text(rows[0].collaborateur) };
     }
     // Une seule facture lue : c'est « cette facture ».
     if (step.name === 'factures' && rows.length === 1 && text(rows[0].numero)) {
@@ -205,6 +223,7 @@ export function renderWorkingContext(references: ResolvedReference[], memory: Wo
   if (memory?.facture?.numero) {
     lines.push(`- Facture en cours : ${memory.facture.numero}${memory.facture.dossier ? ` (dossier ${memory.facture.dossier})` : ''}`);
   }
+  if (memory?.collaborateur?.nom) lines.push(`- Collaborateur en cours : ${memory.collaborateur.nom}`);
   if (memory?.liste?.elements.length) {
     lines.push(
       `- Dernière liste affichée (${memory.liste.type}) : ${memory.liste.elements.map((element, i) => `${i + 1}. ${element}`).join(', ')}`,
@@ -221,6 +240,7 @@ export function readMemory(value: unknown): WorkingMemory | undefined {
   if (text(raw.dossier?.numero)) memory.dossier = { numero: text(raw.dossier.numero), ...(text(raw.dossier.client) && { client: text(raw.dossier.client) }) };
   if (text(raw.client?.nom)) memory.client = { nom: text(raw.client.nom), ...(text(raw.client.code) && { code: text(raw.client.code) }) };
   if (text(raw.facture?.numero)) memory.facture = { numero: text(raw.facture.numero), ...(text(raw.facture.dossier) && { dossier: text(raw.facture.dossier) }) };
+  if (text(raw.collaborateur?.nom)) memory.collaborateur = { nom: text(raw.collaborateur.nom) };
   if (Array.isArray(raw.liste?.elements) && typeof raw.liste?.type === 'string') {
     const elements = raw.liste.elements.map(text).filter(Boolean).slice(0, MAX_LIST);
     if (elements.length) memory.liste = { type: raw.liste.type, elements };

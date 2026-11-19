@@ -2,7 +2,7 @@
 // Détection des compétences en mode auto, sur les vraies définitions des
 // compétences (déclencheurs `autoTriggers` et exclusions `autoExclude`).
 import type { AiSkillCatalogItem, AiSkillHandler } from 'src/core/ai-database/skills/ai-skill.types';
-import { detectSkillRequest, skillForReferencedRecord, suggestSkills } from 'src/core/ai-database/skills/skill-suggestions';
+import { detectSkillRequest, pinnedSkillFits, skillForReferencedRecord, suggestSkills } from 'src/core/ai-database/skills/skill-suggestions';
 import { planAnswer, splitRequests } from 'src/core/ai-database/answer-plan';
 import * as agenda from './agenda.skills';
 import * as billing from './billing.skills';
@@ -254,5 +254,35 @@ describe('réponses en plusieurs parties', () => {
   it('deux lectures consécutives restent une seule lecture', () => {
     const steps = planAnswer('liste mes dossiers puis montre mes audiences', () => ({ kind: 'READ' }));
     expect(steps).toBeNull();
+  });
+});
+
+describe('compétence épinglée dans le chat (« # » ou précision attendue)', () => {
+  const fits = (question: string, options: { pending?: boolean; freshTarget?: boolean } = {}) =>
+    pinnedSkillFits(question, 'rediger_document', catalog, options);
+
+  it('mise de côté pour une consultation sans rapport (cas signalé le 19/11/2026)', () => {
+    expect(fits('quels sont les employé du cabinet ?', { pending: true, freshTarget: true })).toBe(false);
+    expect(fits('quels sont les employé du cabinet ?')).toBe(false);
+    expect(fits('Liste les dossiers dont Nogoh Brice est responsable')).toBe(false);
+  });
+
+  it('mise de côté quand la demande désigne nettement une autre compétence', () => {
+    expect(fits('prépare un whatsapp pour le client')).toBe(false);
+  });
+
+  it('précision attendue : une nouvelle demande la libère, la précision la garde', () => {
+    expect(fits("ajoute Nogoh Brice comme collaborateur des 2 dossiers", { pending: true })).toBe(false);
+    expect(fits("l'audience du 12 novembre", { pending: true })).toBe(true);
+    expect(fits('la deuxième', { pending: true })).toBe(true);
+    expect(fits('voici la fiche', { pending: true, freshTarget: true })).toBe(true);
+  });
+
+  it('gardée quand la demande la concerne ou dans le doute', () => {
+    expect(fits('Rédige plutôt une lettre de relance')).toBe(true);
+    expect(fits('quelle version du contrat garder ?')).toBe(true);
+    expect(fits('pour le dossier de Mballa contre Ekane')).toBe(true);
+    expect(fits('')).toBe(true);
+    expect(pinnedSkillFits('quels sont les employés ?', 'inconnue', catalog)).toBe(true);
   });
 });

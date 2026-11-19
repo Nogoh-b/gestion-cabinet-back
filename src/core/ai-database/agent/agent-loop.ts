@@ -55,6 +55,32 @@ export interface AgentInput {
    * l'utilisateur a choisi le mode lecture.
    */
   allowWrite?: boolean;
+  /**
+   * Actions métier que l'agent lance lui-même sur des fiches nommées (outil
+   * `action_metier`, avec `allowWrite`) : le plan est construit sans second
+   * appel au modèle, et toujours présenté à confirmer.
+   */
+  actions?: AgentBusinessAction[];
+}
+
+/** Action métier lançable directement (ajout d'un collaborateur, envoi d'une facture…). */
+export interface AgentBusinessAction {
+  name: string;
+  label: string;
+  description: string;
+  /** Type des fiches visées, désignées par leur numéro métier ou leur nom. */
+  target: 'dossier' | 'client' | 'facture' | 'audience';
+  params: Array<{ name: string; required?: boolean; description?: string }>;
+}
+
+/** Action métier demandée par l'agent : une opération par fiche visée. */
+export interface AgentActionRequest {
+  name: string;
+  /** Numéros métier ou noms des fiches visées. */
+  targets: string[];
+  params: Record<string, string>;
+  /** La demande posait aussi une question : la réponse aux lectures est affichée avant. */
+  answerFirst?: boolean;
 }
 
 /** Écriture à préparer : la demande précisée (numéros exacts, montants, dates). */
@@ -103,10 +129,70 @@ export interface AgentOutcome {
   clarification?: AgentClarification;
   /** Écriture à faire planifier puis confirmer par l'utilisateur. */
   write?: AgentWrite;
+  /** Action métier à présenter directement sur la carte de confirmation. */
+  action?: AgentActionRequest;
 }
 
 /** Outils qui terminent le tour : passage de main ou question à l'utilisateur. */
-export const TERMINAL_TOOLS = ['competence', 'demander_precision', 'preparer_operation'] as const;
+export const TERMINAL_TOOLS = ['competence', 'demander_precision', 'preparer_operation', 'action_metier'] as const;
+
+/** Fiches visées par une même action (« les 2 dossiers du cabinet »…). */
+const MAX_ACTION_TARGETS = 10;
+
+const asText = (value: unknown): string => {
+  if (typeof value === 'string' || typeof value === 'number') return String(value).trim();
+  // { type, reference } : forme des cibles de compétence.
+  if (value && typeof value === 'object') return asText((value as Record<string, unknown>).reference);
+  return '';
+};
+
+/** Arguments de `action_metier` → action connue, cibles et paramètres déclarés seulement. */
+export function readAction(args: Record<string, any>, actions: AgentBusinessAction[]): AgentActionRequest | null {
+  const name = asText(args?.action ?? args?.nom);
+  const action = actions.find((item) => item.name === name);
+  if (!action) return null;
+  const raw: unknown[] = Array.isArray(args.cibles) ? args.cibles : args.cible !== undefined ? [args.cible] : [];
+  const targets = [...new Set(raw.map(asText).filter(Boolean).map((target) => target.slice(0, 120)))].slice(0, MAX_ACTION_TARGETS);
+  if (!targets.length) return null;
+  const given = args.parametres && typeof args.parametres === 'object' && !Array.isArray(args.parametres) ? args.parametres : {};
+  const params: Record<string, string> = {};
+  for (const param of action.params) {
+    const value = asText(given[param.name]);
+    // Paramètre absent : la carte de confirmation le demande (liste de choix).
+    if (value) params[param.name] = value.slice(0, 2000);
+  }
+  return { name, targets, params, ...(answerFirstFlag(args) && { answerFirst: true }) };
+}
+
+/**
+ * `{ nom: "ajouter_collaborateur", arguments: { dossier: "DOS-1", collaborateur: "X" } }`
+ * → `action_metier` : la cible est lue dans l'argument du type de fiche visé.
+ */
+export function asActionCall(call: AgentCall, actions: AgentBusinessAction[]): AgentCall {
+  const action = actions.find((item) => item.name === call.name);
+  if (!action) return call;
+  const { cibles, cible, parametres, [action.target]: named, ...rest } = call.args ?? {};
+  const targets = cibles ?? cible ?? named;
+  return {
+    name: 'action_metier',
+    args: {
+      action: action.name,
+      ...(targets !== undefined && { cibles: Array.isArray(targets) ? targets : [targets] }),
+      parametres: parametres && typeof parametres === 'object' ? parametres : rest,
+      ...(answerFirstFlag(call.args) && { repondre_d_abord: true }),
+    },
+  };
+}
+
+/** Catalogue des actions métier pour le prompt. */
+export function describeActions(actions: AgentBusinessAction[]): string {
+  return actions
+    .map((action) => {
+      const params = action.params.map((param) => `${param.name}${param.required ? '*' : ''}`).join(', ');
+      return `  · ${action.name} (cible : ${action.target}) — ${action.description.slice(0, 110)}${params ? ` ; parametres : ${params}` : ''}`;
+    })
+    .join('\n');
+}
 
 const TARGET_TYPES = ['dossier', 'client', 'facture', 'audience'] as const;
 
@@ -132,11 +218,12 @@ function answerFirstFlag(args: Record<string, any>): boolean {
 
 /**
  * La demande comporte une action à faire faire (« prépare-lui une mise en
- * demeure », « rédige une relance », « crée une tâche ») et pas seulement une
- * lecture. « Fais le point » n'en est pas une.
+ * demeure », « rédige une relance », « crée une tâche », « ajoute-le au
+ * dossier ») et pas seulement une lecture, même tournée en question
+ * (« l'ajoutes-tu… ? »). « Fais le point » n'en est pas une.
  */
 export function asksForAction(question: string): boolean {
-  return /(?:^|[\s,.;:!?'’(«-])(?:pr[ée]pare[rz]?|r[ée]dige[rz]?|envoie[rz]?|[ée]cri[st]|relance[rz]?|cr[ée]e[rz]?|enregistre[rz]?|programme[rz]?|g[ée]n[èe]re[rz]?|ajoute[rz]?|modifie[rz]?|supprime[rz]?|planifie[rz]?)(?=$|[\s,.;:!?'’)»-])/i.test(question);
+  return /(?:^|[\s,.;:!?'’(«-])(?:pr[ée]pare[rz]?|r[ée]dige[rz]?|envoie[rz]?|[ée]cri[st]|relance[rz]?|cr[ée]e[rz]?|enregistre[rz]?|programme[rz]?|g[ée]n[èe]re[rz]?|ajoute[rsz]?|modifie[rz]?|supprime[rz]?|planifie[rz]?|retire[rz]?|assigne[rz]?|affecte[rz]?|attribue[rz]?|mets|mettre|change[rz]?|d[ée]signe[rz]?|nomme[rz]?|transf[èe]re[rz]?)(?=$|[\s,.;:!?'’)»-])/i.test(question);
 }
 
 /**
@@ -187,7 +274,8 @@ export function describeSkills(skills: AgentSkill[]): string {
     .map((skill) => {
       const hint = SKILL_HINTS[skill.code];
       const targets = skill.targets?.length ? ` [cible : ${skill.targets.join(' | ')}]` : '';
-      return `- ${skill.code} — ${skill.label} : ${skill.description.slice(0, 140)}${hint ? ` (pour : ${hint})` : ''}${targets}`;
+      // Description abrégée : le catalogue est renvoyé à chaque tour de décision.
+      return `- ${skill.code} — ${skill.label} : ${skill.description.slice(0, 100)}${hint ? ` (pour : ${hint})` : ''}${targets}`;
     })
     .join('\n');
 }
@@ -203,6 +291,7 @@ const TOOL_LABELS: Record<string, string> = {
   paiements: '💳 Lecture des paiements',
   dossiers: '📁 Lecture des dossiers',
   synthese_dossier: '📁 Synthèse du dossier',
+  equipe: '👥 Lecture de l’équipe',
   audiences: '⚖️ Lecture des audiences',
   actions: '✅ Lecture des actions',
   elements_a_facturer: '🧾 Éléments à facturer',
@@ -213,8 +302,22 @@ const TOOL_LABELS: Record<string, string> = {
   base_juridique: '📚 Base juridique',
 };
 
-export function buildAgentSystemPrompt(today: string, skills: AgentSkill[] = [], allowWrite = false): string {
+export function buildAgentSystemPrompt(
+  today: string,
+  skills: AgentSkill[] = [],
+  allowWrite = false,
+  actions: AgentBusinessAction[] = [],
+): string {
   const year = today.slice(0, 4);
+  const actionSection = allowWrite && actions.length
+    ? `
+- action_metier { action: un nom ci-dessous, cibles: [numéros ou noms des fiches visées], parametres: { … }, repondre_d_abord?: true }
+  Action métier préparée directement sur chaque fiche visée, TOUJOURS présentée à confirmer (rien n'est fait avant le clic).
+  À préférer à preparer_operation quand une action ci-dessous correspond. Ex. « ajoute Paul Ngo aux dossiers DOS-1 et DOS-2 »
+  → {"nom": "action_metier", "arguments": {"action": "ajouter_collaborateur", "cibles": ["DOS-1", "DOS-2"], "parametres": {"collaborateur": "Paul Ngo"}}}.
+  « Tous mes dossiers », « les 2 dossiers du cabinet » : lis d'abord les numéros (dossiers), puis appelle-la. Seule, en dernier.
+${describeActions(actions)}`
+    : '';
   const skillSection = skills.length
     ? `
 
@@ -255,12 +358,17 @@ Date du jour : ${today}. « Cette année » = du ${year}-01-01 au ${year}-12-31 
 « ce trimestre » : calcule les dates exactes. Sans période demandée, n'en mets pas.
 
 OUTILS DISPONIBLES :
-${describeTools()}${clarifySection}${writeSection}${skillSection}
+${describeTools()}${clarifySection}${writeSection}${actionSection}${skillSection}
 
 MÉTHODE :
 - Choisis l'outil le plus précis. « Fais le point / synthèse / état d'un dossier » → synthese_dossier.
   « Qui nous doit le plus ? » → debiteurs. Chiffre d'affaires, encaissé, créances → chiffres_facturation.
   « Que dois-je faire aujourd'hui / cette semaine ? », « urgences », « priorités », « point du jour » → point_du_jour.
+  Employés, collaborateurs, avocats du cabinet → equipe. « Les dossiers de X », « dont X est responsable » → dossiers { membre: X, role? }.
+- Une demande à l'impératif, même polie ou terminée par « ? » (« ajoute-le au dossier ? », « peux-tu créer… ? »), est une
+  ACTION à préparer, pas une question sur ce qui existe : ne réponds jamais « non, ce n'est pas fait ».${allowWrite ? '' : `
+  Le mode lecture est choisi : n'en prépare aucune ; la réponse dira qu'il faut repasser en mode auto ou écriture.`}
+- « le », « lui », « il » désignent d'abord la personne ou la fiche du CONTEXTE DE TRAVAIL (mention @, collaborateur en cours).
 - Si un nom ou un numéro est approximatif ou ambigu, appelle d'abord chercher.
 - Tu peux appeler plusieurs outils à la fois (${MAX_CALLS_PER_ROUND} au plus), puis d'autres au tour suivant si les résultats ne suffisent pas.
 - RÉFÉRENCES (voir CONTEXTE DE TRAVAIL) : « ce dossier », « cette facture », « ce client » désignent d'abord l'élément
@@ -284,7 +392,8 @@ RÉPONDS UNIQUEMENT avec un objet JSON, sans texte autour :
 export function buildAgentAnswerRules(): string {
   return `RÈGLES DE RÉPONSE :
 - Réponds à la question en t'appuyant UNIQUEMENT sur les résultats des outils ci-dessous. Aucun chiffre, numéro, nom ou date qui n'y figure pas.
-- Résultat vide (total 0, lignes vides, « introuvable ») : dis clairement qu'il n'y a rien ou que l'élément n'existe pas dans le cabinet.
+- Résultat vide (total 0, lignes vides, « introuvable ») : dis-le en une phrase (rien ou élément inexistant dans le cabinet),
+  sans ligne « Non renseigné » ni hypothèse sur la cause.
 - « Combien » : cite le champ « total » (nombre réel), jamais le nombre de lignes affichées d'une liste partielle.
 - Résultat « erreur » : dis que cette partie n'a pas pu être consultée (ce n'est PAS une absence de données).
 - Montants : séparateur de milliers et devise (ex. 1 250 000 FCFA). Dates au format JJ/MM/AAAA.
@@ -295,9 +404,10 @@ export function buildAgentAnswerRules(): string {
 - Point du jour (point_du_jour) : classe par priorité (audiences proches à préparer, actions en retard, factures à relancer,
   éléments à facturer), puis termine par « Prochaines étapes » : 2 ou 3 actions concrètes sur les fiches citées
   (préparer l'audience X, relancer la facture Y…), proposées et non exécutées.
-- Si la demande comporte aussi une action (relance, courrier, message, tâche…), ne la rédige pas toi-même et ne l'annonce
-  pas comme faite.
-- Sois concis et structuré (liste ou tableau Markdown si plusieurs éléments). Tu peux ajouter des repères juridiques généraux, présentés comme tels.`;
+- Si la demande comporte aussi une action (relance, courrier, message, tâche, ajout d'un collaborateur…), ne la rédige pas
+  toi-même et ne l'annonce pas comme faite.
+- Sois concis et structuré (liste ou tableau Markdown si plusieurs éléments). Pas de remplissage : un « repère » juridique
+  seulement si la question porte sur une procédure, un délai ou une stratégie, jamais pour une liste, un comptage ou une absence.`;
 }
 
 export interface ParsedAgentReply {
@@ -342,16 +452,18 @@ const callKey = (call: AgentCall) => `${call.name}:${JSON.stringify(call.args)}`
 
 /** Rappel de l'action demandée avec la lecture (une fois par demande). */
 function actionReminder(input: AgentInput): string {
+  const write = input.allowWrite ? (input.actions?.length ? ' (ou action_metier, ou preparer_operation)' : ' (ou preparer_operation)') : '';
   return (
     `La demande comporte aussi une ACTION à faire (« ${input.question.slice(0, 300)} »). Dès que la fiche visée est connue, ` +
-    `appelle la compétence${input.allowWrite ? ' (ou preparer_operation)' : ''} qui la réalise, sur cette fiche, avec "repondre_d_abord": true ` +
+    `appelle la compétence${write} qui la réalise, sur cette fiche, avec "repondre_d_abord": true ` +
     "(s'il faut encore lire, demande d'abord les outils). Si aucune ne convient, renvoie {\"outils\": []}. Réponds en JSON."
   );
 }
 
 export async function runAgent(input: AgentInput, deps: AgentDeps): Promise<AgentOutcome> {
+  const actions = input.allowWrite ? (input.actions ?? []) : [];
   const messages: AgentMessage[] = [
-    { role: 'system', content: buildAgentSystemPrompt(input.today, input.skills ?? [], !!input.allowWrite) },
+    { role: 'system', content: buildAgentSystemPrompt(input.today, input.skills ?? [], !!input.allowWrite, actions) },
     {
       role: 'user',
       content: [
@@ -382,14 +494,19 @@ export async function runAgent(input: AgentInput, deps: AgentDeps): Promise<Agen
         ]),
       );
     }
-    // Un code de compétence appelé comme un outil (« evaluer_chances ») est
-    // un passage de main : sa cible est déduite de ses arguments.
-    const asked = (reply?.calls ?? []).map((call) => asSkillCall(call, input.skills ?? []));
+    // Un code de compétence (« evaluer_chances ») ou d'action métier
+    // (« ajouter_collaborateur ») appelé comme un outil : sa cible est
+    // déduite de ses arguments.
+    const asked = (reply?.calls ?? []).map((call) => asActionCall(asSkillCall(call, input.skills ?? []), actions));
     // Outil terminal (passage de main, question) : le tour s'arrête là.
     const terminal = asked.find((call) => (TERMINAL_TOOLS as readonly string[]).includes(call.name));
     if (terminal?.name === 'competence') {
       const handoff = readHandoff(terminal.args, input.skills ?? []);
       if (handoff) return { answer: '', steps, rounds: rounds + 1, handoff };
+    }
+    if (terminal?.name === 'action_metier') {
+      const action = readAction(terminal.args, actions);
+      if (action) return { answer: '', steps, rounds: rounds + 1, action };
     }
     if (terminal?.name === 'preparer_operation' && input.allowWrite) {
       const demande = typeof terminal.args?.demande === 'string' ? terminal.args.demande.trim().slice(0, 2000) : '';
