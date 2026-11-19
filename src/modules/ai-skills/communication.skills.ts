@@ -1,5 +1,6 @@
 // src/modules/ai-skills/communication.skills.ts
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -89,11 +90,11 @@ export class EnvoyerEmailSkill implements AiSkillHandler {
   /** Modèles du composer de la même catégorie : la rédaction s'en inspire. */
   private async templateHints(info: TargetInfo): Promise<string> {
     const categories = TEMPLATE_CATEGORY[info.type] ?? ['general'];
-    const templates = await this.dataSource.getRepository(MailTemplate)
+    const templates = await addTenantCondition(this.dataSource.getRepository(MailTemplate)
       .createQueryBuilder('t')
       .where('t.is_active = 1')
       .andWhere("t.code LIKE 'composer_%'")
-      .andWhere('t.category IN (:...categories)', { categories })
+      .andWhere('t.category IN (:...categories)', { categories }), 't')
       .orderBy('t.id', 'ASC')
       .take(3)
       .getMany()

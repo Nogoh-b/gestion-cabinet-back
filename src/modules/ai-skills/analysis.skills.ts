@@ -1,5 +1,6 @@
 // src/modules/ai-skills/analysis.skills.ts
 import { Injectable } from '@nestjs/common';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -690,10 +691,10 @@ export class DossiersComparablesSkill implements AiSkillHandler {
     const info = await this.targets.load(target);
     const reference = info.dossier!;
     ctx.status('🔎 Recherche des dossiers comparables…');
-    const candidates = await this.dataSource.getRepository(Dossier)
+    const candidates = await addTenantCondition(this.dataSource.getRepository(Dossier)
       .createQueryBuilder('d')
       .leftJoinAndSelect('d.jurisdiction', 'j')
-      .where('d.id != :id', { id: reference.id })
+      .where('d.id != :id', { id: reference.id }), 'd')
       .orderBy('d.id', 'DESC')
       .take(400)
       .getMany();
@@ -708,12 +709,12 @@ export class DossiersComparablesSkill implements AiSkillHandler {
     const canSeeFees = (await this.permissions.missingPermissions(ctx.user, [Permission.VIEW_FACTURES])).length === 0;
     const fees = new Map<number, number>();
     if (canSeeFees) {
-      const rows: Array<{ dossier_id: number; total: string }> = await this.dataSource.getRepository(Facture)
+      const rows: Array<{ dossier_id: number; total: string }> = await addTenantCondition(this.dataSource.getRepository(Facture)
         .createQueryBuilder('f')
         .select('f.dossier_id', 'dossier_id')
         .addSelect('SUM(f.montantTTC)', 'total')
         .where('f.dossier_id IN (:...ids)', { ids: ranked.map((item) => item.dossier.id) })
-        .andWhere("f.status NOT IN ('0', '5')")
+        .andWhere("f.status NOT IN ('0', '5')"), 'f')
         .groupBy('f.dossier_id')
         .getRawMany()
         .catch(() => []);

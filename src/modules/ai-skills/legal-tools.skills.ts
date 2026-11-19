@@ -1,5 +1,6 @@
 // src/modules/ai-skills/legal-tools.skills.ts
 import { Injectable } from '@nestjs/common';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -270,10 +271,10 @@ export class DecompteCreanceSkill implements AiSkillHandler {
     if (info?.type === 'facture') {
       const facture = info.resource;
       factureNumber = facture.numero;
-      const payments = await this.dataSource.getRepository(Paiement)
+      const payments = await addTenantCondition(this.dataSource.getRepository(Paiement)
         .createQueryBuilder('p')
         .where('p.facture_id = :id', { id: info.id })
-        .andWhere("p.status = '1'")
+        .andWhere("p.status = '1'"), 'p')
         .orderBy('p.datePaiement', 'ASC')
         .getMany()
         .catch(() => [] as Paiement[]);

@@ -1,5 +1,6 @@
 // src/modules/ai-skills/report.skills.ts
 import { Injectable } from '@nestjs/common';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -299,10 +300,10 @@ export class CompteRenduAudienceSkill implements AiSkillHandler {
     let audienceId = target.id;
     if (target.type === 'dossier') {
       // Dernière audience passée du dossier.
-      const last = await this.dataSource.getRepository(Audience)
+      const last = await addTenantCondition(this.dataSource.getRepository(Audience)
         .createQueryBuilder('a')
         .where('a.dossier_id = :id', { id: target.id })
-        .andWhere('a.audience_date <= CURDATE()')
+        .andWhere('a.audience_date <= CURDATE()'), 'a')
         .orderBy('a.audience_date', 'DESC')
         .getOne();
       if (!last) return { type: 'clarify', markdown: "❓ Ce dossier n'a pas encore d'audience passée : mentionnez l'audience voulue avec @." };

@@ -1,5 +1,6 @@
 // src/modules/ai-skills/audience-documents.skills.ts
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -92,10 +93,10 @@ export function audienceDocumentKind(question: string, param?: unknown, fallback
 
 /** Dernière audience passée (ou du jour) d'un dossier. */
 async function lastAudienceOf(dataSource: DataSource, dossierId: number | string): Promise<number | null> {
-  const last = await dataSource.getRepository(Audience)
+  const last = await addTenantCondition(dataSource.getRepository(Audience)
     .createQueryBuilder('a')
     .where('a.dossier_id = :id', { id: dossierId })
-    .andWhere('a.audience_date <= CURDATE()')
+    .andWhere('a.audience_date <= CURDATE()'), 'a')
     .orderBy('a.audience_date', 'DESC')
     .getOne();
   return last?.id ?? null;

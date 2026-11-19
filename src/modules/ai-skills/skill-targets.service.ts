@@ -1,5 +1,6 @@
 // src/modules/ai-skills/skill-targets.service.ts
 import { Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, In } from 'typeorm';
 
@@ -111,13 +112,13 @@ export async function unpaidInvoices(
   scope: { clientId?: number | string; dossierId?: number | string } = {},
   today = new Date(),
 ): Promise<UnpaidInvoice[]> {
-  const qb = dataSource.getRepository(Facture)
+  const qb = addTenantCondition(dataSource.getRepository(Facture)
     .createQueryBuilder('f')
     .leftJoinAndSelect('f.client', 'c')
     .leftJoinAndSelect('f.dossier', 'd')
     // Colonnes ENUM numériques : codes BD en chaînes (brouillon, payée, annulée exclues).
     .leftJoinAndSelect('f.paiements', 'p', "p.status = '1'")
-    .where("f.status NOT IN ('0', '3', '5')")
+    .where("f.status NOT IN ('0', '3', '5')"), 'f')
     .orderBy('f.dateEcheance', 'ASC');
   if (scope.clientId) qb.andWhere('f.client_id = :client', { client: scope.clientId });
   if (scope.dossierId) qb.andWhere('f.dossier_id = :dossier', { dossier: scope.dossierId });
@@ -348,11 +349,11 @@ export class SkillTargetsService {
       if (dossier.court_name || (dossier as any).jurisdiction?.name) lines.push(`Juridiction : ${(dossier as any).jurisdiction?.name ?? dossier.court_name}`);
       if (dossier.opposing_party_name) lines.push(`Partie adverse : ${dossier.opposing_party_name}${dossier.opposing_party_contact ? ` (${dossier.opposing_party_contact})` : ''}`);
       if ((dossier as any).lawyer) lines.push(`Avocat en charge : ${employeeName((dossier as any).lawyer)}`);
-      const next = await this.dataSource.getRepository(Audience)
+      const next = await addTenantCondition(this.dataSource.getRepository(Audience)
         .createQueryBuilder('a')
         .leftJoinAndSelect('a.jurisdiction', 'j')
         .where('a.dossier_id = :id', { id: dossier.id })
-        .andWhere('a.audience_date >= CURDATE()')
+        .andWhere('a.audience_date >= CURDATE()'), 'a')
         .orderBy('a.audience_date', 'ASC')
         .getOne()
         .catch(() => null);
@@ -420,11 +421,11 @@ export class SkillTargetsService {
       add('Dossier', 'Partie adverse', dossier.opposing_party_name);
       add('Dossier', 'Avocat adverse', dossier.opposing_party_lawyer);
       if ((dossier as any).lawyer) add('Dossier', 'Avocat en charge', employeeName((dossier as any).lawyer));
-      const next = await this.dataSource.getRepository(Audience)
+      const next = await addTenantCondition(this.dataSource.getRepository(Audience)
         .createQueryBuilder('a')
         .leftJoinAndSelect('a.jurisdiction', 'j')
         .where('a.dossier_id = :id', { id: dossier.id })
-        .andWhere('a.audience_date >= CURDATE()')
+        .andWhere('a.audience_date >= CURDATE()'), 'a')
         .orderBy('a.audience_date', 'ASC')
         .getOne()
         .catch(() => null);
@@ -469,11 +470,11 @@ export class SkillTargetsService {
       const object = htmlToText(d.object ?? '');
       return `${d.dossier_number}${object ? ` (${object.slice(0, 80)})` : ''}`;
     }).join(' ; ')}`];
-    const next = await this.dataSource.getRepository(Audience)
+    const next = await addTenantCondition(this.dataSource.getRepository(Audience)
       .createQueryBuilder('a')
       .leftJoinAndSelect('a.jurisdiction', 'j')
       .where('a.dossier_id IN (:...ids)', { ids: dossiers.map((d) => d.id) })
-      .andWhere('a.audience_date >= CURDATE()')
+      .andWhere('a.audience_date >= CURDATE()'), 'a')
       .orderBy('a.audience_date', 'ASC')
       .getOne()
       .catch(() => null);
@@ -669,11 +670,11 @@ export class SkillTargetsService {
     }
 
     if (await can('view_audiences')) {
-      const audiences = await this.dataSource.getRepository(Audience)
+      const audiences = await addTenantCondition(this.dataSource.getRepository(Audience)
         .createQueryBuilder('a')
         .leftJoinAndSelect('a.jurisdiction', 'j')
         .where('a.dossier_id = :id', { id: dossierId })
-        .andWhere('a.audience_date < CURDATE()')
+        .andWhere('a.audience_date < CURDATE()'), 'a')
         .orderBy('a.audience_date', 'DESC')
         .take(15)
         .getMany()
@@ -749,7 +750,8 @@ export class SkillTargetsService {
     if (info.dossier) qb.where('d.dossier_id = :id', { id: info.dossier.id });
     else if (info.client) qb.where('d.customer_id = :id', { id: info.client.id });
     else return [];
-    return qb.getMany();
+    // Après le .where() : un andWhere posé avant serait écrasé.
+    return addTenantCondition(qb, 'd').getMany();
   }
 
   /**
