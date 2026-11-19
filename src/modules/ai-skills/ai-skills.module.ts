@@ -11,6 +11,7 @@ import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
 import { DossiersModule } from '../dossiers/dossiers.module';
 import { ReferralModule } from '../referral/referral.module';
 import { OuvrirDossierAiAction } from './ouvrir-dossier.action';
+import { DOSSIER_TEAM_ACTIONS } from './equipe-dossier.actions';
 import { ChatModule } from '../chat/chat.module';
 import { ClientPortalModule } from '../client-portal/client-portal.module';
 import { DocumentsModule } from '../documents/documents.module';
@@ -74,7 +75,7 @@ import {
 } from './legal-tools.skills';
 
 import { PaiementModule } from '../paiement/paiement.module';
-const ACTIONS = [EnvoyerEmailAiAction, MessagePortailAiAction, MessageCollaborateurAiAction, ProgrammerAudienceAiAction, ReporterAudienceAiAction, EnregistrerPaiementAiAction, ConfigurerFacturationAiAction, OuvrirDossierAiAction];
+const ACTIONS = [EnvoyerEmailAiAction, MessagePortailAiAction, MessageCollaborateurAiAction, ProgrammerAudienceAiAction, ReporterAudienceAiAction, EnregistrerPaiementAiAction, ConfigurerFacturationAiAction, OuvrirDossierAiAction, ...DOSSIER_TEAM_ACTIONS];
 
 /** Ordre du menu « # » dans chaque famille. */
 const SKILLS = [

@@ -265,7 +265,7 @@ export class PlanFieldsService {
         ...(param.format && { format: param.format }),
       };
       if ((kind === 'enum' || kind === 'multi') && options?.length) {
-        const selected = kind === 'enum' ? options.find((option) => String(option.value) === String(value ?? '')) : undefined;
+        const selected = kind === 'enum' ? optionFor(options, value) : undefined;
         return { ...base, kind, options, selected: selected ?? null };
       }
       // Sans choix possibles (aucun modèle, aucune pièce) : champ masqué.
@@ -731,6 +731,31 @@ function scalarKind(column?: ColumnMetadata): PlanFieldDescriptor['kind'] {
   if (['int', 'integer', 'smallint', 'bigint', 'decimal', 'float', 'double', 'number'].includes(type)) return 'number';
   if (column?.type === Number) return 'number';
   return 'text';
+}
+
+/**
+ * Choix d'une action désigné par sa valeur, sinon par son libellé : le plan
+ * donne souvent un nom (« Brice Nogoh ») là où la liste propose
+ * « Nogoh Brice · Avocat » (identifiant en valeur). Un seul libellé doit
+ * correspondre, mots dans n'importe quel ordre.
+ */
+export function optionFor<T extends { value: unknown; label: string }>(options: T[], value: unknown): T | undefined {
+  const wanted = String(value ?? '').trim();
+  if (!wanted) return undefined;
+  const byValue = options.find((option) => String(option.value) === wanted);
+  if (byValue) return byValue;
+  const key = (text: string) =>
+    text
+      .split(' · ')[0]
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+      .sort()
+      .join(' ');
+  const matches = options.filter((option) => key(String(option.label)) === key(wanted));
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 /** Une option par valeur, la première l'emporte. */

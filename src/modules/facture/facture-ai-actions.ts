@@ -26,6 +26,7 @@ export class EnvoyerFactureAiAction implements AiActionHandler {
   readonly definition: AiActionDefinition = {
     name: 'envoyer_facture',
     entity: 'factures',
+    direct: true,
     label: 'Envoi de la facture par e-mail',
     description:
       "Envoie une facture au client par e-mail (récapitulatif : numéro, dates, montant TTC, reste à payer). Une facture au brouillon passe au statut « Envoyée ».",

@@ -48,6 +48,12 @@ export interface AiActionDefinition {
    * ses paramètres : absente du prompt du planificateur.
    */
   skillOnly?: boolean;
+  /**
+   * L'agent peut la lancer lui-même (outil `action_metier`) : fiches visées
+   * par leur numéro métier ou leur nom, paramètres simples. Le plan est
+   * construit sans appel au planificateur et toujours présenté à confirmer.
+   */
+  direct?: boolean;
   /** Libellé court pour la carte et le compte rendu. */
   label: string;
   /** Ce que fait l'action, pour le planificateur. */
@@ -117,8 +123,9 @@ export class AiActionRegistry {
       const examples = d.examples?.length ? `\n  Exemples de demandes : ${d.examples.map((e) => `« ${e} »`).join(', ')}` : '';
       return `- "${d.name}" (entity "${d.entity}") : ${d.description}\n  Paramètres (fields) : ${params}${examples}`;
     });
-    return `## ⚡ ACTIONS DISPONIBLES (envois d'e-mails…)
-Pour ENVOYER, RELANCER ou TRANSMETTRE, utilise une opération "ACTION" (jamais un UPDATE de statut pour simuler un envoi) :
+    return `## ⚡ ACTIONS DISPONIBLES (envois d'e-mails, équipe d'un dossier…)
+Pour ENVOYER, RELANCER, TRANSMETTRE ou faire une action ci-dessous (ajouter un collaborateur à un dossier…), utilise une
+opération "ACTION" (jamais un UPDATE de statut pour simuler un envoi, ni une écriture directe sur les tables concernées) :
 { "operation": "ACTION", "action": "<nom>", "entity": "<table>", "entityId": <id si connu>, "match": { … }, "fields": { …paramètres } }
 ${lines.join('\n')}
 Cible de l'action : comme pour un UPDATE — l'identifiant #N des enregistrements affichés en "entityId", sinon "match"

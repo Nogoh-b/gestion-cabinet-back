@@ -3,7 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { SharedAcrossTenants } from '../tenant/tenant.decorator';
 import { TenantContext } from '../tenant/tenant.context';
 import { GenericWriteService } from './generic-write.service';
-import { PlanFieldsService } from './plan-fields.service';
+import { PlanFieldsService, optionFor } from './plan-fields.service';
 
 // ── Fausses métadonnées TypeORM ─────────────────────────────────────────────
 
@@ -366,5 +366,25 @@ describe('PlanFieldsService — listes', () => {
       editable: false,
       selected: { value: null, label: 'OVAMBE NDONO (créé par ce plan), 4' },
     });
+  });
+});
+
+describe('choix présélectionné sur la carte d’une action', () => {
+  const options = [
+    { value: 5, label: 'Nogoh Brice · Avocat' },
+    { value: 7, label: 'Paul Ekane · Avocat' },
+    { value: 9, label: 'Paul Ngo · Juriste' },
+  ];
+
+  it('par sa valeur, sinon par son libellé, mots dans n’importe quel ordre', () => {
+    expect(optionFor(options, 7)?.label).toBe('Paul Ekane · Avocat');
+    expect(optionFor(options, 'Nogoh Brice')?.value).toBe(5);
+    expect(optionFor(options, 'brice nogoh')?.value).toBe(5);
+  });
+
+  it('jamais au hasard', () => {
+    expect(optionFor(options, 'Paul')).toBeUndefined();
+    expect(optionFor(options, '')).toBeUndefined();
+    expect(optionFor(options, undefined)).toBeUndefined();
   });
 });
