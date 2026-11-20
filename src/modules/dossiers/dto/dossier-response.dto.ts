@@ -347,6 +347,20 @@ export class DossierResponseDto {
     ],
   })
   @Expose()
+  // montantPaye / resteAPayer sont des getters de l'entité : JSON.stringify les
+  // ignore, on les recopie donc quand les paiements ont été chargés.
+  @Transform(({ obj }) => {
+    if (!obj.factures) return undefined;
+    return obj.factures.map((facture: any) =>
+      Array.isArray(facture.paiements)
+        ? {
+            ...facture,
+            montantPaye: facture.montantPaye,
+            resteAPayer: facture.resteAPayer,
+          }
+        : facture,
+    );
+  })
   factures?: FactureResponseDto[];
 
   // @Transform(({ obj }) => {
